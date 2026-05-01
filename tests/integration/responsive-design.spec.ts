@@ -20,7 +20,7 @@ for (const viewport of [
 
 		await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
 		await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible()
-		await expect(page.getByLabel('Inspector')).toBeVisible()
+		await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible()
 		await expect(page.getByLabel('Transform controls')).toBeVisible()
 		await expect(page.getByLabel('Effects editor')).toBeVisible()
 

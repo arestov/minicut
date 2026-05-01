@@ -1,14 +1,20 @@
 import { expect, test } from '@playwright/test'
 
+const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
+	const projectsRegion = page.getByLabel('Projects')
+	await projectsRegion.getByRole('button').click()
+	await projectsRegion.getByRole('button', { name: 'New project' }).click()
+}
+
 test('shared worker synchronizes project patches across browser pages', async ({ context }) => {
 	const firstPage = await context.newPage()
 	const secondPage = await context.newPage()
 
 	await Promise.all([firstPage.goto('/'), secondPage.goto('/')])
-	await expect(firstPage.getByRole('heading', { name: 'Video Editor Harness' })).toBeVisible()
-	await expect(secondPage.getByRole('heading', { name: 'Video Editor Harness' })).toBeVisible()
+	await expect(firstPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
+	await expect(secondPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
 
-	await firstPage.getByRole('button', { name: 'New project' }).click()
+	await createProjectFromMenu(firstPage)
 	await expect(secondPage.getByRole('button', { name: /Project 1/i })).toBeVisible()
 
 	await firstPage.getByRole('button', { name: 'Import sample' }).click()

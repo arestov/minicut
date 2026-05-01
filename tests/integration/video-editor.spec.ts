@@ -24,7 +24,7 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	await expect(clip).toBeVisible()
 
 	await clip.click()
-	const inspector = page.getByLabel('Inspector')
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	const opacitySlider = inspector.getByLabel('Opacity')
 	await opacitySlider.focus()
 	for (const value of ['90', '80', '70', '60']) {
@@ -37,7 +37,7 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	await expect(page.getByRole('button', { name: /Sample asset 1/i })).toHaveCount(2)
 
 	await inspector.getByRole('button', { name: 'Nudge +0.5s' }).click()
-	await expect(inspector.getByText('3.0s')).toBeVisible()
+	await expect(inspector.locator('dd').filter({ hasText: '3.0s' })).toBeVisible()
 })
 
 test('project dropdown shows items when opened', async ({ page }) => {
