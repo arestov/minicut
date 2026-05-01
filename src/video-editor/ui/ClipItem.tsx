@@ -1,5 +1,5 @@
 import { observer } from '@legendapp/state/react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { formatPercent, formatSeconds } from './format'
 
@@ -18,6 +18,7 @@ interface ClipItemProps {
 export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, activeTool }: ClipItemProps) => {
 	const { projects$, actions } = useVideoEditor()
 	const dragState = useRef<ClipPointerDragState | null>(null)
+	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0)
 	const clip$ = projects$.entitiesById[clipId]
 	const name = String(clip$.attrs.name.get())
 	const start = Number(clip$.attrs.start.get())
@@ -25,7 +26,7 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 	const opacity = Number(clip$.attrs.opacity.value.get())
 	const color = String(clip$.attrs.color.get() ?? '#2563eb')
 	const width = Math.max(36, duration * timelineZoom)
-	const left = Math.max(0, start * timelineZoom)
+	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx)
 	const splitAtPointer = (clientX: number, element: HTMLElement): void => {
 		const rect = element.getBoundingClientRect()
 		const localTime = Math.max(0, (clientX - rect.left) / timelineZoom)
@@ -34,11 +35,12 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 	const finishPointerDrag = (clientX: number): void => {
 		const state = dragState.current
 		dragState.current = null
+		setDragPreviewDeltaPx(0)
 		if (!state) {
 			return
 		}
 
-		const deltaSeconds = Math.round(((clientX - state.startX) / timelineZoom) * 2) / 2
+		const deltaSeconds = Math.round(((clientX - state.startX) / timelineZoom) * 100) / 100
 		if (deltaSeconds === 0) {
 			return
 		}
@@ -82,8 +84,20 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 				event.currentTarget.setPointerCapture?.(event.pointerId)
 				dragState.current = { kind: 'move', startX: event.clientX }
 			}}
+			onPointerMove={(event) => {
+				const state = dragState.current
+				if (!state || state.kind !== 'move' || activeTool !== 'select' || (event.buttons & 1) === 0) {
+					return
+				}
+
+				setDragPreviewDeltaPx(Math.max(-start * timelineZoom, event.clientX - state.startX))
+			}}
 			onPointerUp={(event) => {
 				finishPointerDrag(event.clientX)
+			}}
+			onPointerCancel={() => {
+				dragState.current = null
+				setDragPreviewDeltaPx(0)
 			}}
 		>
 			<span

@@ -84,6 +84,14 @@ interface RenderableResource {
 	loadPromise?: Promise<void>
 }
 
+interface PreparedFrameOperation {
+	operation: ClipFrameOperation
+	resource: RenderableResource
+	sourceWidth: number
+	sourceHeight: number
+	drawSource?: CanvasImageSource
+}
+
 const sanitizeFileNamePart = (value: string): string =>
 	value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'export'
 
@@ -198,6 +206,11 @@ const waitForDuration = async (milliseconds: number): Promise<void> =>
 		globalThis.setTimeout(resolve, Math.max(0, milliseconds))
 	})
 
+const waitForRecorderData = async (): Promise<void> =>
+	new Promise((resolve) => {
+		globalThis.requestAnimationFrame?.(() => resolve()) ?? globalThis.setTimeout(resolve, 0)
+	})
+
 const clampTimeToDuration = (time: number, duration: number): number => {
 	if (!Number.isFinite(duration) || duration <= 0) {
 		return Math.max(0, time)
@@ -295,19 +308,13 @@ const ensureRenderableResource = async (
 	}
 }
 
-const drawFrameOperations = async (
-	context: CanvasRenderingContext2D,
+const prepareFrameOperations = async (
 	operations: ClipFrameOperation[],
 	resourceCache: Map<string, RenderableResource>,
 	width: number,
 	height: number,
-	backgroundColor: string,
-): Promise<void> => {
-	context.save()
-	context.clearRect(0, 0, width, height)
-	context.fillStyle = backgroundColor
-	context.fillRect(0, 0, width, height)
-	context.restore()
+): Promise<PreparedFrameOperation[]> => {
+	const prepared: PreparedFrameOperation[] = []
 
 	for (const operation of operations) {
 		const resource = resourceCache.get(operation.resourceId)
@@ -316,6 +323,54 @@ const drawFrameOperations = async (
 		}
 
 		await ensureRenderableResource(resource, operation.resourceKind)
+		if (operation.resourceKind === 'image' && resource.image) {
+			prepared.push({
+				operation,
+				resource,
+				drawSource: resource.image,
+				sourceWidth: resource.image.naturalWidth || Number(resource.attrs.width) || width,
+				sourceHeight: resource.image.naturalHeight || Number(resource.attrs.height) || height,
+			})
+			continue
+		}
+
+		if (operation.resourceKind === 'video' && resource.video) {
+			await seekVideo(resource.video, operation.sourceTime)
+			prepared.push({
+				operation,
+				resource,
+				drawSource: resource.video,
+				sourceWidth: resource.video.videoWidth || Number(resource.attrs.width) || width,
+				sourceHeight: resource.video.videoHeight || Number(resource.attrs.height) || height,
+			})
+			continue
+		}
+
+		prepared.push({
+			operation,
+			resource,
+			sourceWidth: width,
+			sourceHeight: height,
+		})
+	}
+
+	return prepared
+}
+
+const drawPreparedFrameOperations = (
+	context: CanvasRenderingContext2D,
+	preparedOperations: PreparedFrameOperation[],
+	width: number,
+	height: number,
+	backgroundColor: string,
+): void => {
+	context.save()
+	context.clearRect(0, 0, width, height)
+	context.fillStyle = backgroundColor
+	context.fillRect(0, 0, width, height)
+	context.restore()
+
+	for (const { operation, resource, sourceWidth, sourceHeight, drawSource } of preparedOperations) {
 		const transform = getOperationValue<{ x: number; y: number; scale: number; rotation: number }>(
 			operation.operations,
 			'transform',
@@ -334,21 +389,11 @@ const drawFrameOperations = async (
 		context.rotate((transform.rotation * Math.PI) / 180)
 		context.scale(transform.scale, transform.scale)
 
-		if (operation.resourceKind === 'image' && resource.image) {
-			const sourceWidth = resource.image.naturalWidth || Number(resource.attrs.width) || width
-			const sourceHeight = resource.image.naturalHeight || Number(resource.attrs.height) || height
+		if (drawSource) {
 			const fitScale = Math.min(width / sourceWidth, height / sourceHeight)
 			const drawWidth = sourceWidth * fitScale
 			const drawHeight = sourceHeight * fitScale
-			context.drawImage(resource.image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
-		} else if (operation.resourceKind === 'video' && resource.video) {
-			await seekVideo(resource.video, operation.sourceTime)
-			const sourceWidth = resource.video.videoWidth || Number(resource.attrs.width) || width
-			const sourceHeight = resource.video.videoHeight || Number(resource.attrs.height) || height
-			const fitScale = Math.min(width / sourceWidth, height / sourceHeight)
-			const drawWidth = sourceWidth * fitScale
-			const drawHeight = sourceHeight * fitScale
-			context.drawImage(resource.video, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+			context.drawImage(drawSource, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
 		} else {
 			context.fillStyle = '#e4e4e7'
 			context.fillRect(-220, -40, 440, 80)
@@ -491,7 +536,15 @@ export const createBrowserVideoExportRenderer = (
 				throw new Error('Unable to acquire export canvas context')
 			}
 
-			const stream = canvas.captureStream(fps)
+			let stream = canvas.captureStream(0)
+			let videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
+			if (typeof videoTrack?.requestFrame !== 'function') {
+				for (const track of stream.getTracks()) {
+					track.stop()
+				}
+				stream = canvas.captureStream(fps)
+				videoTrack = undefined
+			}
 			const mimeType = getWebmMimeType() ?? videoMimeType
 			const recorder = new MediaRecorder(stream, {
 				mimeType,
@@ -519,10 +572,13 @@ export const createBrowserVideoExportRenderer = (
 						compileFrameOperations(request.registry, request.projectId, time),
 						request.range,
 					)
+					const preparedOperations = await prepareFrameOperations(operations, resourceCache, width, height)
 					frames.push({ index, time, operations })
-					await drawFrameOperations(context, operations, resourceCache, width, height, backgroundColor)
+					drawPreparedFrameOperations(context, preparedOperations, width, height, backgroundColor)
+					videoTrack?.requestFrame()
 					onProgress?.({ stage: 'rendering', progress: (index + 1) / frameCount })
 					await waitForDuration(1000 / fps)
+					await waitForRecorderData()
 				}
 
 				onProgress?.({ stage: 'finalizing', progress: 1 })

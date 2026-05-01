@@ -335,6 +335,30 @@ test('dragging a clip changes its timeline start position', async ({ page }) => 
 	await expect(clip).not.toHaveText(/0\.0s \/ 1\.0s/)
 })
 
+test('dragging a clip previews movement immediately with fine-grained timing', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const clip = page.getByRole('button', { name: /fixture-video.webm/i }).first()
+	const box = await clip.boundingBox()
+	if (!box) {
+		throw new Error('Clip bounding box is unavailable for drag simulation')
+	}
+
+	const initialLeft = box.x
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(box.x + box.width / 2 + 14, box.y + box.height / 2)
+	await expect.poll(async () => {
+		const liveBox = await clip.boundingBox()
+		return liveBox ? liveBox.x - initialLeft : 0
+	}).toBeGreaterThan(10)
+	await page.mouse.up()
+
+	await expect(clip).toHaveText(/0\.3s \/ 1\.0s/)
+})
+
 test('resizing a clip from the right edge changes its duration', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
@@ -611,7 +635,30 @@ test('export project button downloads a webm video file', async ({ page }) => {
 	expect(download.suggestedFilename()).toMatch(/\.webm$/)
 	const downloadPath = await download.path()
 	expect(downloadPath).toBeTruthy()
-	const videoFile = await fs.stat(downloadPath as string)
-	expect(videoFile.size).toBeGreaterThan(0)
+	const videoBytes = await fs.readFile(downloadPath as string)
+	expect(videoBytes.length).toBeGreaterThan(1000)
+	expect([...videoBytes.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3])
+	const videoProbe = await page.evaluate(async (bytes) => {
+		const blob = new Blob([new Uint8Array(bytes)], { type: 'video/webm' })
+		const url = URL.createObjectURL(blob)
+		try {
+			return await new Promise<{ duration: number; width: number; height: number }>((resolve, reject) => {
+				const video = document.createElement('video')
+				video.preload = 'metadata'
+				video.onloadedmetadata = () => resolve({
+					duration: video.duration,
+					width: video.videoWidth,
+					height: video.videoHeight,
+				})
+				video.onerror = () => reject(new Error('Exported WebM failed to load metadata'))
+				video.src = url
+			})
+		} finally {
+			URL.revokeObjectURL(url)
+		}
+	}, Array.from(videoBytes))
+	expect(videoProbe.duration).toBeGreaterThan(0.5)
+	expect(videoProbe.width).toBe(1280)
+	expect(videoProbe.height).toBe(720)
 	await expect(page.getByRole('status').filter({ hasText: 'Export ready' })).toBeVisible()
 })
