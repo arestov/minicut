@@ -119,4 +119,31 @@ describe('video editor harness', () => {
 			unmount()
 		}
 	})
+
+	it('switches inspector tabs for clip editing modes', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
+			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
+
+			const inspector = screen.getByLabelText('Inspector')
+			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
+			expect(within(inspector).getByLabelText('Color inspector')).toBeVisible()
+			expect(within(inspector).getByLabelText('Color presets')).toBeVisible()
+
+			await user.click(within(inspector).getByRole('tab', { name: 'Audio' }))
+			expect(within(inspector).getByLabelText('Audio inspector')).toHaveTextContent('Audio controls')
+
+			await user.click(within(inspector).getByRole('tab', { name: 'Export' }))
+			expect(within(inspector).getByLabelText('Export inspector')).toHaveTextContent('Queue clip export')
+
+			await user.click(within(inspector).getByRole('tab', { name: 'Edit' }))
+			expect(within(inspector).getByLabelText('Transform controls')).toBeVisible()
+		} finally {
+			unmount()
+		}
+	})
 })

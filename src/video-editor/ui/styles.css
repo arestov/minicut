@@ -243,7 +243,7 @@ button:disabled {
 
 .ve-main__top {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(260px, 300px);
 	gap: 16px;
 }
 
@@ -255,8 +255,17 @@ button:disabled {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 12px;
+	margin-bottom: 10px;
 	gap: 12px;
+}
+
+.ve-inspector-status {
+	border-radius: 999px;
+	background: #eff6ff;
+	color: #2563eb;
+	font-size: 11px;
+	font-weight: 600;
+	padding: 3px 8px;
 }
 
 .ve-timeline {
@@ -399,12 +408,88 @@ button:disabled {
 	cursor: grabbing;
 }
 
-/* Inspector name + color label */
-.ve-inspector-clip-meta {
+.ve-inspector-tabs {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 0;
+	margin: 0 -8px 12px;
+	padding: 0 8px;
+	border-bottom: 1px solid #e4e4e7;
+}
+
+.ve-inspector-tabs button {
+	flex: 1 1 0;
+	height: 34px;
+	padding: 0 4px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	border-radius: 0;
+	background: transparent;
+	color: #71717a;
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.ve-inspector-tabs button.is-active {
+	border-bottom-color: #2563eb;
+	color: #2563eb;
+}
+
+.ve-inspector-tabs button:disabled {
+	color: #a1a1aa;
+	opacity: 0.75;
+}
+
+.ve-inspector-selected {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding-bottom: 12px;
+	margin-bottom: 12px;
+	border-bottom: 1px solid #f4f4f5;
+}
+
+.ve-inspector-selected > div:last-child {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
 	min-width: 0;
+}
+
+.ve-inspector-selected strong,
+.ve-inspector-selected small {
+	overflow-wrap: anywhere;
+}
+
+.ve-inspector-selected small {
+	color: #71717a;
+	font-size: 12px;
+}
+
+.ve-inspector-thumb {
+	width: 48px;
+	height: 36px;
+	border-radius: 6px;
+	border: 1px solid rgba(24, 24, 27, 0.08);
+	flex: 0 0 auto;
+}
+
+.ve-inspector-tab-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.ve-inspector-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.ve-inspector-field span,
+.ve-color-field span {
+	color: #52525b;
+	font-size: 13px;
 }
 
 .ve-inspector-name {
@@ -415,7 +500,7 @@ button:disabled {
 	padding: 0 8px;
 	color: #18181b;
 	font-size: 13px;
-	width: 130px;
+	width: 100%;
 	min-width: 0;
 }
 
@@ -426,20 +511,33 @@ button:disabled {
 	background: #ffffff;
 }
 
-.ve-inspector-color {
+.ve-color-field {
 	display: flex;
-	align-items: center;
-	cursor: pointer;
+	flex-direction: column;
+	gap: 8px;
 }
 
-.ve-inspector-color input[type='color'] {
-	width: 28px;
-	height: 28px;
+.ve-color-field input[type='color'] {
+	width: 100%;
+	height: 42px;
 	border: 1px solid #e4e4e7;
-	border-radius: 6px;
+	border-radius: 8px;
 	padding: 2px;
 	cursor: pointer;
 	background: #fafafa;
+}
+
+.ve-swatch-grid {
+	display: grid;
+	grid-template-columns: repeat(6, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.ve-swatch-grid button {
+	height: 30px;
+	border-radius: 6px;
+	border: 1px solid rgba(24, 24, 27, 0.14);
+	padding: 0;
 }
 
 .ve-sr-only {
@@ -458,7 +556,7 @@ button:disabled {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 12px;
-	margin: 0 0 16px;
+	margin: 0;
 }
 
 .ve-inspector-grid div {
@@ -475,7 +573,7 @@ button:disabled {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	margin-bottom: 16px;
+	margin: 0;
 }
 
 .ve-preview__summary {
@@ -548,7 +646,6 @@ button:disabled {
 }
 
 .ve-tool-group {
-	margin-bottom: 16px;
 	padding: 12px;
 	border: 1px solid #ececef;
 	border-radius: 8px;
