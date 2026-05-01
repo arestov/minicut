@@ -24,12 +24,39 @@ describe('video editor harness', () => {
 			fireEvent.change(opacitySlider, { target: { value: '60' } })
 
 			expect(screen.getByText('60%', { selector: 'dd' })).toBeInTheDocument()
+			await user.click(within(inspector).getByRole('button', { name: 'Start +0.5s' }))
+			expect(screen.getByText('0.5s', { selector: 'dd' })).toBeInTheDocument()
+
+			const transformControls = within(inspector).getByLabelText('Transform controls')
+			fireEvent.change(within(transformControls).getByLabelText('X'), { target: { value: '24' } })
+			expect(within(transformControls).getByLabelText('X')).toHaveValue(24)
+
+			await user.click(within(inspector).getByRole('button', { name: 'Blur' }))
+			expect(within(inspector).getByText('1 effects')).toBeInTheDocument()
 
 			await user.click(within(inspector).getByRole('button', { name: 'Split clip' }))
 			expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2)
 
 			await user.click(within(inspector).getByRole('button', { name: 'Nudge +0.5s' }))
-			expect(screen.getByText('3.0s')).toBeInTheDocument()
+			expect(screen.getByText('3.3s')).toBeInTheDocument()
+		} finally {
+			unmount()
+		}
+	})
+
+	it('deletes selected clips through the inspector', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await user.click(screen.getByRole('button', { name: 'New project' }))
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
+			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			await user.click(clipButton)
+
+			await user.click(within(screen.getByLabelText('Inspector')).getByRole('button', { name: 'Delete clip' }))
+			expect(screen.queryByRole('button', { name: /Sample asset 1 · 0.0s/i })).not.toBeInTheDocument()
+			expect(screen.getByText('Select a clip to edit opacity or split it.')).toBeInTheDocument()
 		} finally {
 			unmount()
 		}

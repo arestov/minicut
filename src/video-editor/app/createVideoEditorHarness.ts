@@ -253,11 +253,16 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 				return
 			}
 
+			actions.moveClipById(clip.id, delta)
+		},
+
+		moveClipById(clipId: string, delta: number): void {
+
 			dispatch({
 				c: CMD.TIMELINE_MOVE_CLIP,
 				p: {
 					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					clipId,
 					delta,
 				},
 			})

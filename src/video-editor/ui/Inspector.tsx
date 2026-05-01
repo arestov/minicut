@@ -26,6 +26,15 @@ export const Inspector = observer(() => {
 	const start = Number(selectedEntity$.attrs.start.get())
 	const duration = Number(selectedEntity$.attrs.duration.get())
 	const opacity = Number(selectedEntity$.attrs.opacity.value.get())
+	const inPoint = Number(selectedEntity$.attrs.in.get())
+	const transform = selectedEntity$.attrs.transform.get() as {
+		x: { value: number }
+		y: { value: number }
+		scale: { value: number }
+		rotation: { value: number }
+	}
+	const effectIds = selectedEntity$.rels.effects.get()
+	const effects = Array.isArray(effectIds) ? effectIds : []
 	const opacityPercent = Math.round(opacity * 100)
 
 	return (
@@ -59,12 +68,87 @@ export const Inspector = observer(() => {
 					onChange={(event) => actions.updateSelectedClipOpacity(Number(event.currentTarget.value))}
 				/>
 			</label>
+			<div className="ve-tool-group" aria-label="Trim controls">
+				<h3>Trim</h3>
+				<div className="ve-button-grid">
+					<button type="button" onClick={() => actions.trimSelectedClip('start', 0.5)}>
+						Start +0.5s
+					</button>
+					<button type="button" onClick={() => actions.trimSelectedClip('start', -0.5)} disabled={start <= 0}>
+						Start -0.5s
+					</button>
+					<button type="button" onClick={() => actions.trimSelectedClip('end', -0.5)} disabled={duration <= 0.5}>
+						End -0.5s
+					</button>
+					<button type="button" onClick={() => actions.trimSelectedClip('end', 0.5)}>
+						End +0.5s
+					</button>
+				</div>
+				<small>In {formatSeconds(inPoint)}</small>
+			</div>
+			<div className="ve-tool-group" aria-label="Transform controls">
+				<h3>Transform</h3>
+				<div className="ve-field-grid">
+					<label>
+						<span>X</span>
+						<input
+							type="number"
+							value={transform.x.value}
+							onChange={(event) => actions.updateSelectedClipTransform({ x: Number(event.currentTarget.value) })}
+						/>
+					</label>
+					<label>
+						<span>Y</span>
+						<input
+							type="number"
+							value={transform.y.value}
+							onChange={(event) => actions.updateSelectedClipTransform({ y: Number(event.currentTarget.value) })}
+						/>
+					</label>
+					<label>
+						<span>Scale</span>
+						<input
+							type="number"
+							step="0.1"
+							min="0.1"
+							value={transform.scale.value}
+							onChange={(event) => actions.updateSelectedClipTransform({ scale: Number(event.currentTarget.value) })}
+						/>
+					</label>
+					<label>
+						<span>Rotate</span>
+						<input
+							type="number"
+							value={transform.rotation.value}
+							onChange={(event) => actions.updateSelectedClipTransform({ rotation: Number(event.currentTarget.value) })}
+						/>
+					</label>
+				</div>
+			</div>
+			<div className="ve-tool-group" aria-label="Effects editor">
+				<h3>Effects</h3>
+				<div className="ve-button-grid">
+					<button type="button" onClick={() => actions.addEffectToSelectedClip('blur')}>
+						Blur
+					</button>
+					<button type="button" onClick={() => actions.addEffectToSelectedClip('sharpen')}>
+						Sharpen
+					</button>
+					<button type="button" onClick={() => actions.addEffectToSelectedClip('tint')}>
+						Tint
+					</button>
+				</div>
+				<small>{effects.length} effects</small>
+			</div>
 			<div className="ve-inline-actions">
 				<button type="button" onClick={() => actions.splitSelectedClip()}>
 					Split clip
 				</button>
 				<button type="button" onClick={() => actions.nudgeSelectedClip(0.5)}>
 					Nudge +0.5s
+				</button>
+				<button type="button" onClick={() => actions.deleteSelectedClip()}>
+					Delete clip
 				</button>
 			</div>
 		</aside>

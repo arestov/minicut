@@ -97,7 +97,8 @@ button:disabled {
 .ve-track-row,
 .ve-resource-list,
 .ve-project-list,
-.ve-inline-actions {
+.ve-inline-actions,
+.ve-tool-group {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
@@ -255,6 +256,11 @@ button:disabled {
 	flex: 0 0 auto;
 	justify-content: center;
 	text-align: left;
+	touch-action: pan-y;
+}
+
+.ve-clip:active {
+	cursor: grabbing;
 }
 
 .ve-inspector-grid {
@@ -288,6 +294,48 @@ button:disabled {
 	border: 1px solid #ececef;
 }
 
+.ve-tool-group {
+	margin-bottom: 16px;
+	padding: 12px;
+	border: 1px solid #ececef;
+	border-radius: 8px;
+	background: #fafafa;
+}
+
+.ve-tool-group h3 {
+	margin: 0;
+	font-size: 14px;
+}
+
+.ve-tool-group small {
+	color: #52525b;
+}
+
+.ve-button-grid,
+.ve-field-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.ve-field-grid label {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 13px;
+	color: #52525b;
+}
+
+.ve-field-grid input {
+	width: 100%;
+	height: 34px;
+	border: 1px solid #d4d4d8;
+	border-radius: 8px;
+	background: #ffffff;
+	padding: 0 8px;
+	color: #18181b;
+}
+
 @media (max-width: 1200px) {
 	.ve-layout {
 		grid-template-columns: 1fr;
@@ -311,5 +359,10 @@ button:disabled {
 	.ve-resource-list li {
 		align-items: flex-start;
 		flex-direction: column;
+	}
+
+	.ve-button-grid,
+	.ve-field-grid {
+		grid-template-columns: 1fr;
 	}
 }
