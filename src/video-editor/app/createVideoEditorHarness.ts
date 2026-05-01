@@ -41,6 +41,7 @@ const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 }
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
+const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
 
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value))
@@ -59,11 +60,71 @@ const getActiveProjectId = (
 	return projectId
 }
 
-export const createVideoEditorHarness = (authority: EditorAuthorityClient = createAuthorityClient()) => {
+interface CreateVideoEditorHarnessOptions {
+	autoCreateInitialProject?: boolean
+}
+
+export const createVideoEditorHarness = (
+	authority: EditorAuthorityClient = createAuthorityClient(),
+	options: CreateVideoEditorHarnessOptions = {},
+) => {
+	const autoCreateInitialProject = options.autoCreateInitialProject ?? true
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const importedObjectUrls = new Set<string>()
+	let initialBootstrapChecked = false
+	let projectBootstrapInFlight = false
 	let isDestroyed = false
+
+	const syncActiveProjectSelection = (): void => {
+		const registry = projects$.get()
+		const sessionActiveProjectId = session$.activeProjectId.get()
+		if (sessionActiveProjectId && registry.projects[sessionActiveProjectId]) {
+			return
+		}
+
+		const fallbackProjectId = registry.activeProjectId ?? Object.keys(registry.projects)[0] ?? null
+		if (!fallbackProjectId) {
+			return
+		}
+
+		if (projects$.activeProjectId.get() !== fallbackProjectId) {
+			projects$.activeProjectId.set(fallbackProjectId)
+		}
+		if (session$.activeProjectId.get() !== fallbackProjectId) {
+			session$.activeProjectId.set(fallbackProjectId)
+		}
+	}
+
+	const ensureInitialProject = (): void => {
+		if (!autoCreateInitialProject) {
+			return
+		}
+		if (initialBootstrapChecked || isDestroyed) {
+			return
+		}
+		initialBootstrapChecked = true
+
+		const registry = projects$.get()
+		if (Object.keys(registry.projects).length > 0 || projectBootstrapInFlight) {
+			syncActiveProjectSelection()
+			return
+		}
+
+		projectBootstrapInFlight = true
+		Promise.resolve(authority.dispatch({ c: CMD.PROJECT_CREATE, p: {} })).then((result) => {
+			if (isDestroyed) {
+				return
+			}
+
+			const projectId = String(result.createdIds?.projectId)
+			session$.activeProjectId.set(projectId)
+			session$.selectedEntityId.set(null)
+			session$.cursor.set(0)
+		}).finally(() => {
+			projectBootstrapInFlight = false
+		})
+	}
 
 	Promise.resolve(authority.getSnapshot()).then((snapshot) => {
 		if (isDestroyed) {
@@ -71,10 +132,13 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 		}
 
 		applySnapshot(projects$, snapshot)
+		syncActiveProjectSelection()
+		ensureInitialProject()
 	})
 
 	const unsubscribe = authority.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
+		syncActiveProjectSelection()
 	})
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
@@ -362,7 +426,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 		},
 
 		setCursor(value: number): void {
-			session$.cursor.set(roundToTenths(value))
+			session$.cursor.set(roundToHundredths(value))
 		},
 
 		tickPlayback(deltaSeconds: number): void {

@@ -1,5 +1,6 @@
 import type { Observable } from '@legendapp/state'
 import { For, observer } from '@legendapp/state/react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { TrackRow } from './TrackRow'
 
@@ -22,6 +23,10 @@ const TrackListItem = observer(({ item$, projectId, timelineZoom }: TrackListIte
 })
 
 const timelineTicks = Array.from({ length: 7 }, (_, index) => index * 5)
+const cursorRangeMax = 20
+const timelineTimeOriginPx = 151
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
 export const TimelineView = observer(() => {
 	const { projects$, session$, actions } = useVideoEditor()
@@ -43,12 +48,32 @@ export const TimelineView = observer(() => {
 			? (projects$.entitiesById[timelineId].rels.tracks as Observable<string[]>)
 			: null
 
+	const updateCursorFromPointer = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		if (event.type === 'pointermove' && (event.buttons & 1) === 0) {
+			return
+		}
+
+		const target = event.target as HTMLElement | null
+		if (target?.closest('.ve-clip') || target?.closest('button, input, label')) {
+			return
+		}
+
+		const rect = event.currentTarget.getBoundingClientRect()
+		const timelineX = event.clientX - rect.left - timelineTimeOriginPx
+		if (timelineX < 0) {
+			return
+		}
+
+		actions.setCursor(clamp(timelineX / timelineZoom, 0, cursorRangeMax))
+		event.preventDefault()
+	}
+
 	return (
 		<section className="ve-panel ve-timeline" aria-label="Timeline">
 			<div className="ve-panel__header">
 				<h2>Timeline</h2>
 				<div className="ve-timeline__tools" aria-label="Timeline tools">
-					<span className="ve-timeline__time" aria-label="Current time">{cursorSeconds.toFixed(1)}s</span>
+					<span className="ve-timeline__time" aria-label="Current time">{cursorSeconds.toFixed(2)}s</span>
 					<span>{tracks.length} tracks</span>
 					<button type="button" onClick={() => actions.addTrack('video')} disabled={!activeProjectId}>
 						Add video track
@@ -74,13 +99,17 @@ export const TimelineView = observer(() => {
 						<input
 							type="range"
 							min="0"
-							max="20"
-							step="0.5"
+							max={String(cursorRangeMax)}
+							step="0.01"
 							value={cursorSeconds}
 							onChange={(event) => actions.setCursor(Number(event.currentTarget.value))}
 						/>
 					</label>
-					<div className="ve-timeline-scroll-area">
+					<div
+						className="ve-timeline-scroll-area"
+						onPointerDown={updateCursorFromPointer}
+						onPointerMove={updateCursorFromPointer}
+					>
 						<div className="ve-timeline-ruler" aria-label="Time ruler">
 							{timelineTicks.map((tick) => (
 								<span key={tick} style={{ left: `${tick * timelineZoom}px` }}>

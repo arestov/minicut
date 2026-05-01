@@ -3,7 +3,6 @@ import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
 
 interface ResourceRowProps {
-	projectId: string
 	resourceId: string
 }
 
@@ -28,23 +27,25 @@ const ResourceThumbnail = ({ attrs }: { attrs: ResourceAttrs }) => {
 	)
 }
 
-const ResourceRow = observer(({ projectId, resourceId }: ResourceRowProps) => {
+const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 	const { projects$, actions } = useVideoEditor()
 	const resource$ = projects$.entitiesById[resourceId]
 	const attrs = resource$.attrs.get() as unknown as ResourceAttrs
 
 	return (
-		<li>
+		<li className="ve-resource-row">
 			<ResourceThumbnail attrs={attrs} />
-			<div>
+			<div className="ve-resource-row__content">
 				<strong>{attrs.name}</strong>
-				<small>
-					{attrs.name} · {attrs.kind} · {attrs.mime} · {attrs.duration.toFixed(1)}s
-				</small>
+				<div className="ve-resource-row__meta-line">
+					<small>
+						{attrs.kind} · {attrs.mime} · {attrs.duration.toFixed(1)}s
+					</small>
+					<button type="button" onClick={() => actions.addResourceToTimeline(resourceId)}>
+						Add to timeline
+					</button>
+				</div>
 			</div>
-			<button type="button" onClick={() => actions.addResourceToTimeline(resourceId)}>
-				Add to timeline
-			</button>
 		</li>
 	)
 })
@@ -60,7 +61,7 @@ export const MediaBin = observer(() => {
 	const resources = Array.isArray(resourceIds) ? resourceIds : []
 
 	return (
-		<section className="ve-panel" aria-label="Media bin">
+		<section className="ve-panel ve-media-bin" aria-label="Media bin">
 			<div className="ve-panel__header">
 				<h2>Media bin</h2>
 				<label className="ve-import-button">
@@ -81,17 +82,19 @@ export const MediaBin = observer(() => {
 				</label>
 			</div>
 			<div className="ve-media-count">{resources.length} assets</div>
-			{!activeProjectId ? (
-				<p className="ve-empty">No active project.</p>
-			) : resources.length === 0 ? (
-				<p className="ve-empty">Import video, image, or audio files to populate the bin.</p>
-			) : (
-				<ul className="ve-resource-list">
-					{resources.map((resourceId) => (
-						<ResourceRow key={resourceId} projectId={activeProjectId} resourceId={resourceId} />
-					))}
-				</ul>
-			)}
+			<div className="ve-media-bin__body">
+				{!activeProjectId ? (
+					<p className="ve-empty">No active project.</p>
+				) : resources.length === 0 ? (
+					<p className="ve-empty">Import video, image, or audio files to populate the bin.</p>
+				) : (
+					<ul className="ve-resource-list">
+						{resources.map((resourceId) => (
+							<ResourceRow key={resourceId} resourceId={resourceId} />
+						))}
+					</ul>
+				)}
+			</div>
 		</section>
 	)
 })

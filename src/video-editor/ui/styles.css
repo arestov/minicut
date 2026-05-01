@@ -383,6 +383,7 @@ button:disabled {
 	position: relative;
 	height: 28px;
 	margin-left: 151px;
+	cursor: ew-resize;
 	overflow: hidden;
 	border-radius: 8px;
 	background:
@@ -405,6 +406,7 @@ button:disabled {
 	flex: 1 1 auto;
 	min-height: 0;
 	max-height: 256px;
+	cursor: ew-resize;
 	overflow-y: auto;
 	overflow-x: hidden;
 	padding-right: 2px;
@@ -478,6 +480,20 @@ button:disabled {
 	cursor: pointer;
 }
 
+.ve-media-bin {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.ve-media-bin__body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding-right: 4px;
+}
+
 .ve-media-count {
 	margin: -4px 0 12px;
 	color: #71717a;
@@ -506,7 +522,7 @@ button:disabled {
 .ve-resource-list li {
 	display: flex;
 	justify-content: flex-start;
-	align-items: center;
+	align-items: flex-start;
 	gap: 12px;
 	padding: 12px;
 	border: 1px solid #ececef;
@@ -548,12 +564,31 @@ button:disabled {
 	background: linear-gradient(135deg, #16a34a, #facc15);
 }
 
-.ve-resource-list li > div {
+.ve-resource-row__content {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
 	min-width: 0;
 	flex: 1 1 auto;
+}
+
+.ve-resource-row__meta-line {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-width: 0;
+}
+
+.ve-resource-row__meta-line small {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.ve-resource-row__meta-line button {
+	flex: 0 0 auto;
+	align-self: center;
+	height: 30px;
 }
 
 .ve-resource-list strong,
@@ -564,6 +599,10 @@ button:disabled {
 
 .ve-resource-list button {
 	flex: 0 0 auto;
+}
+
+.ve-resource-row {
+	min-height: 64px;
 }
 
 .ve-track-row {
