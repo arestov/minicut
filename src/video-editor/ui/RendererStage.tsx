@@ -7,6 +7,10 @@ import { evaluateFadeOpacity, evaluateKeyframedScalar } from '../render/timing'
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
 
 const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()
+const pausedSeekToleranceSeconds = 0.04
+const playingSeekToleranceSeconds = 0.18
+const pausedSeekIntervalMs = 45
+const playingSeekIntervalMs = 250
 
 interface RenderedClip {
 	id: string
@@ -22,6 +26,11 @@ interface RenderedClip {
 	transform: { x: number; y: number; scale: number; rotation: number }
 	audio: { gain: number; pan: number }
 	filters: string[]
+}
+
+interface MediaSeekState {
+	lastSeekAt: number
+	wasPlaying: boolean
 }
 
 const isRealMediaUrl = (url: string): boolean =>
@@ -115,14 +124,17 @@ const getKeyframeResolver = (
 		: null
 }
 
-const seekMediaElement = (element: HTMLMediaElement, localTime: number): void => {
-	if (Number.isFinite(localTime) && Math.abs(element.currentTime - localTime) > 0.05) {
+const seekMediaElement = (element: HTMLMediaElement, localTime: number, tolerance = pausedSeekToleranceSeconds): boolean => {
+	if (Number.isFinite(localTime) && Math.abs(element.currentTime - localTime) > tolerance) {
 		try {
 			element.currentTime = localTime
+			return true
 		} catch {
 			// Some browsers reject seeking before metadata is ready; metadata handlers retry.
 		}
 	}
+
+	return false
 }
 
 export const RendererStage = observer(() => {
@@ -130,6 +142,7 @@ export const RendererStage = observer(() => {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null)
 	const workerRef = useRef<Worker | null>(null)
 	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
+	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
 	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>('fallback')
 	const cursor = session$.cursor.get()
 	const isPlaying = session$.isPlaying.get()
@@ -242,6 +255,7 @@ export const RendererStage = observer(() => {
 	}, [cursor, renderedClips])
 
 	useEffect(() => {
+		const now = performance.now()
 		for (const clip of renderedClips) {
 			if (clip.resourceKind !== 'video' && clip.resourceKind !== 'audio') {
 				continue
@@ -252,7 +266,18 @@ export const RendererStage = observer(() => {
 				continue
 			}
 
-			seekMediaElement(element, getClipLocalMediaTime(clip, cursor))
+			const localTime = getClipLocalMediaTime(clip, cursor)
+			const seekState = mediaSeekStateRef.current.get(clip.id) ?? { lastSeekAt: 0, wasPlaying: false }
+			const playbackStateChanged = seekState.wasPlaying !== isPlaying
+			const tolerance = isPlaying ? playingSeekToleranceSeconds : pausedSeekToleranceSeconds
+			const interval = isPlaying ? playingSeekIntervalMs : pausedSeekIntervalMs
+			const canSeek = playbackStateChanged || now - seekState.lastSeekAt >= interval
+
+			if (canSeek && seekMediaElement(element, localTime, tolerance)) {
+				seekState.lastSeekAt = now
+			}
+			seekState.wasPlaying = isPlaying
+			mediaSeekStateRef.current.set(clip.id, seekState)
 			element.volume = Math.min(1, Math.max(0, clip.audio.gain))
 			element.dataset.pan = String(clip.audio.pan)
 			syncMediaPlayback(element, isPlaying)
@@ -296,6 +321,7 @@ export const RendererStage = observer(() => {
 												return
 											}
 											mediaElementsRef.current.delete(clip.id)
+											mediaSeekStateRef.current.delete(clip.id)
 										}}
 										src={clip.resourceUrl}
 										muted
@@ -314,6 +340,7 @@ export const RendererStage = observer(() => {
 													return
 												}
 												mediaElementsRef.current.delete(clip.id)
+												mediaSeekStateRef.current.delete(clip.id)
 											}}
 											src={clip.resourceUrl}
 											data-gain={clip.audio.gain}

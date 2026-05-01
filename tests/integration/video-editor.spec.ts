@@ -158,6 +158,49 @@ test('video resources add linked audio clips that play, inspect, and export sett
 	expect(videoBytes.length).toBeGreaterThan(1000)
 })
 
+test('preview playback lets video decode forward without seeking every cursor tick', async ({ page }) => {
+	await page.addInitScript(() => {
+		const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')
+		if (!descriptor?.get || !descriptor.set) {
+			return
+		}
+
+		const writes: Array<{ tag: string; value: number }> = []
+		Object.defineProperty(window, '__previewCurrentTimeWrites', { value: writes, configurable: true })
+		Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
+			configurable: descriptor.configurable,
+			enumerable: descriptor.enumerable,
+			get: descriptor.get,
+			set(value: number) {
+				writes.push({ tag: this.tagName.toLowerCase(), value })
+				descriptor.set?.call(this, value)
+			},
+		})
+	})
+
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+	await setTimelineCursor(page, 0.2)
+
+	const renderer = page.getByLabel('Renderer stage')
+	const video = renderer.locator('video')
+	await expect(video).toHaveCount(1)
+	await expect.poll(async () => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.15)
+	await page.evaluate(() => {
+		const instrumentedWindow = window as Window & { __previewCurrentTimeWrites?: Array<{ tag: string; value: number }> }
+		instrumentedWindow.__previewCurrentTimeWrites?.splice(0)
+	})
+
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
+	await expect.poll(async () => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.55)
+	const videoSeekWrites = await page.evaluate(() => {
+		const instrumentedWindow = window as Window & { __previewCurrentTimeWrites?: Array<{ tag: string; value: number }> }
+		return instrumentedWindow.__previewCurrentTimeWrites?.filter((write) => write.tag === 'video').length ?? 0
+	})
+	expect(videoSeekWrites).toBeLessThanOrEqual(2)
+})
+
 test('imports real media files, edits timeline clips, and previews actual media elements', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
