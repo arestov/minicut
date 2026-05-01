@@ -160,7 +160,7 @@ describe('video editor harness', () => {
 			fireEvent.change(cursorSlider, { target: { value: '4.5' } })
 
 			expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.5s')
-			expect(within(timeline).getAllByLabelText('Time cursor')).toHaveLength(2)
+			expect(within(timeline).getAllByLabelText('Current step')).toHaveLength(1)
 			expect(within(screen.getByLabelText('Preview panel')).queryByRole('slider', { name: 'Cursor' })).toBeNull()
 			expect(within(screen.getByLabelText('Preview panel')).getByText('Cursor at 4.5s')).toBeVisible()
 		} finally {

@@ -7,10 +7,9 @@ interface TrackListItemProps {
 	item$: Observable<string>
 	projectId: string
 	timelineZoom: number
-	cursorSeconds: number
 }
 
-const TrackListItem = observer(({ item$, projectId, timelineZoom, cursorSeconds }: TrackListItemProps) => {
+const TrackListItem = observer(({ item$, projectId, timelineZoom }: TrackListItemProps) => {
 	const trackId = item$.get()
 
 	return (
@@ -18,7 +17,6 @@ const TrackListItem = observer(({ item$, projectId, timelineZoom, cursorSeconds 
 			projectId={projectId}
 			trackId={trackId}
 			timelineZoom={timelineZoom}
-			cursorSeconds={cursorSeconds}
 		/>
 	)
 })
@@ -76,26 +74,29 @@ export const TimelineView = observer(() => {
 							onChange={(event) => actions.setCursor(Number(event.currentTarget.value))}
 						/>
 					</label>
-					<div className="ve-timeline-ruler" aria-label="Time ruler">
-						{timelineTicks.map((tick) => (
-							<span key={tick} style={{ left: `${tick * timelineZoom}px` }}>
-								{tick}s
-							</span>
-						))}
+					<div className="ve-timeline-scroll-area">
+						<div className="ve-timeline-ruler" aria-label="Time ruler">
+							{timelineTicks.map((tick) => (
+								<span key={tick} style={{ left: `${tick * timelineZoom}px` }}>
+									{tick}s
+								</span>
+							))}
+						</div>
 						<div
-							className="ve-timeline-ruler__cursor"
-							style={{ left: `${cursorSeconds * timelineZoom}px` }}
+							className="ve-timeline-playhead"
+							aria-label="Current step"
+							style={{ left: `calc(151px + ${cursorSeconds * timelineZoom}px)` }}
 						/>
-					</div>
-					<div className="ve-track-list">
-						{trackIds$ ? (
-							<For
-								each={trackIds$}
-								optimized
-								item={TrackListItem}
-								itemProps={{ projectId: activeProjectId, timelineZoom, cursorSeconds }}
-							/>
-						) : null}
+						<div className="ve-track-list">
+							{trackIds$ ? (
+								<For
+									each={trackIds$}
+									optimized
+									item={TrackListItem}
+									itemProps={{ projectId: activeProjectId, timelineZoom }}
+								/>
+							) : null}
+						</div>
 					</div>
 				</div>
 			)}

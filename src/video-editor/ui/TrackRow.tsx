@@ -7,7 +7,6 @@ interface TrackRowProps {
 	projectId: string
 	trackId: string
 	timelineZoom: number
-	cursorSeconds: number
 }
 
 interface ClipListItemProps {
@@ -31,7 +30,7 @@ const ClipListItem = observer(({ item$, projectId, timelineZoom }: ClipListItemP
 	)
 })
 
-export const TrackRow = observer(({ projectId, trackId, timelineZoom, cursorSeconds }: TrackRowProps) => {
+export const TrackRow = observer(({ projectId, trackId, timelineZoom }: TrackRowProps) => {
 	const { projects$ } = useVideoEditor()
 	const track$ = projects$.entitiesById[trackId]
 	const clipIds$ = track$.rels.clips as Observable<string[]>
@@ -45,11 +44,6 @@ export const TrackRow = observer(({ projectId, trackId, timelineZoom, cursorSeco
 				<small>{String(track$.attrs.kind.get())}</small>
 			</div>
 			<div className="ve-track-row__rail">
-				<div
-					className="ve-time-cursor"
-					aria-label="Time cursor"
-					style={{ left: `${cursorSeconds * timelineZoom}px` }}
-				/>
 				{clips.length === 0 ? (
 					<p className="ve-empty">Drop clips here.</p>
 				) : (

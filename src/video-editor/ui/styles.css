@@ -332,6 +332,8 @@ button:disabled {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
+	min-height: 0;
+	height: calc(100% - 44px);
 }
 
 .ve-timeline__tools {
@@ -398,19 +400,26 @@ button:disabled {
 	font-variant-numeric: tabular-nums;
 }
 
-.ve-timeline-ruler__cursor,
-.ve-time-cursor {
+.ve-timeline-scroll-area {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding-right: 2px;
+}
+
+.ve-timeline-playhead {
 	position: absolute;
 	top: 0;
 	bottom: 0;
 	width: 2px;
 	background: #dc2626;
 	pointer-events: none;
-	z-index: 2;
+	z-index: 4;
 }
 
-.ve-timeline-ruler__cursor::before,
-.ve-time-cursor::before {
+.ve-timeline-playhead::before {
 	content: '';
 	position: absolute;
 	left: 50%;
