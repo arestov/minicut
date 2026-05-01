@@ -428,6 +428,80 @@ test('exports generated solid video, trailing image, and audio through MediaReco
 	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[2] + 30)
 })
 
+test('imports a video with embedded audio as linked tracks and exports audible audio', async ({ page }) => {
+	await page.addInitScript(() => {
+		const OriginalMediaRecorder = window.MediaRecorder
+		if (!OriginalMediaRecorder) {
+			return
+		}
+		class InstrumentedMediaRecorder extends OriginalMediaRecorder {
+			constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+				super(stream, options)
+				const target = window as Window & { __minicutMediaRecorderCount?: number }
+				target.__minicutMediaRecorderCount = (target.__minicutMediaRecorderCount ?? 0) + 1
+			}
+		}
+		Object.defineProperty(InstrumentedMediaRecorder, 'isTypeSupported', {
+			value: OriginalMediaRecorder.isTypeSupported.bind(OriginalMediaRecorder),
+		})
+		window.MediaRecorder = InstrumentedMediaRecorder as typeof MediaRecorder
+	})
+
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const videoFile = await createSolidVideoFile(page)
+	await page.getByLabel('Import media files').setInputFiles(videoFile)
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const videoClip = timeline.getByRole('button', { name: /solid-red-video.webm/i }).first()
+	const embeddedAudioClip = timeline.getByRole('button', { name: /Embedded audio/i }).first()
+	await expect(videoClip).toBeVisible()
+	await expect(embeddedAudioClip).toBeVisible()
+	const parseStartDuration = (text: string): { start: number; duration: number } | null => {
+		const match = text.match(/·\s*(\d+(?:\.\d+)?)s\s*\/\s*(\d+(?:\.\d+)?)s/)
+		if (!match) {
+			return null
+		}
+		return { start: Number(match[1]), duration: Number(match[2]) }
+	}
+	const videoTiming = parseStartDuration(await videoClip.innerText())
+	const audioTiming = parseStartDuration(await embeddedAudioClip.innerText())
+	expect(videoTiming).not.toBeNull()
+	expect(audioTiming).not.toBeNull()
+	expect(videoTiming?.start ?? -1).toBe(0)
+	expect(audioTiming?.start ?? -1).toBe(0)
+	expect(videoTiming?.duration ?? 0).toBeGreaterThan(1.3)
+	expect(Math.abs((videoTiming?.duration ?? 0) - (audioTiming?.duration ?? 0))).toBeLessThan(0.2)
+
+	await setTimelineCursor(page, 0.4)
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
+	const previewAudio = page.getByLabel('Renderer stage').locator('audio').first()
+	await expect.poll(async () => previewAudio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.45)
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
+
+	await page.evaluate(() => {
+		const target = window as Window & { __minicutMediaRecorderCount?: number }
+		target.__minicutMediaRecorderCount = 0
+	})
+	const downloadPromise = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export project' }).click()
+	const download = await downloadPromise
+	const downloadPath = await download.path()
+	expect(downloadPath).toBeTruthy()
+	const exportedBytes = await fs.readFile(downloadPath as string)
+	expect(exportedBytes.length).toBeGreaterThan(1000)
+	await expect.poll(async () => page.evaluate(() => {
+		const target = window as Window & { __minicutMediaRecorderCount?: number }
+		return target.__minicutMediaRecorderCount ?? 0
+	})).toBeGreaterThan(0)
+
+	const sample = await sampleWebmFrame(page, exportedBytes)
+	expect(sample.audioTrackCount).toBeGreaterThan(0)
+	expect(sample.audioRms).toBeGreaterThan(0.001)
+	expect(exportedBytes.includes(Buffer.from('A_OPUS')) || exportedBytes.includes(Buffer.from('A_VORBIS'))).toBe(true)
+})
+
 test('preview playback lets video decode forward without seeking every cursor tick', async ({ page }) => {
 	await page.addInitScript(() => {
 		const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')
