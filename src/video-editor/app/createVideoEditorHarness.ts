@@ -608,6 +608,23 @@ export const createVideoEditorHarness = (
 			})
 		},
 
+		splitClipByIdAt(clipId: string, time: number): void {
+			const clip = projects$.get().entitiesById[clipId]
+			if (!clip || clip.type !== 'clip') {
+				return
+			}
+
+			const attrs = clip.attrs as ClipAttrs
+			const splitTime = clamp(roundToHundredths(time), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
+			dispatch({
+				c: CMD.TIMELINE_SPLIT_CLIP,
+				p: { id: clipId, time: splitTime },
+			}).then((result) => {
+				const newClipId = String(result.createdIds?.clipId)
+				session$.selectedEntityId.set(newClipId)
+			})
+		},
+
 		removeEffectFromSelectedClip(effectId: string): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {

@@ -10,15 +10,17 @@ interface TrackRowProps {
 	projectId: string
 	trackId: string
 	timelineZoom: number
+	activeTool: 'select' | 'trim' | 'split' | 'hand'
 }
 
 interface ClipListItemProps {
 	item$: Observable<string>
 	projectId: string
 	timelineZoom: number
+	activeTool: 'select' | 'trim' | 'split' | 'hand'
 }
 
-const ClipListItem = observer(({ item$, projectId, timelineZoom }: ClipListItemProps) => {
+const ClipListItem = observer(({ item$, projectId, timelineZoom, activeTool }: ClipListItemProps) => {
 	const { session$ } = useVideoEditor()
 	const clipId = item$.get()
 	const selectedEntityId = session$.selectedEntityId.get()
@@ -29,11 +31,12 @@ const ClipListItem = observer(({ item$, projectId, timelineZoom }: ClipListItemP
 			clipId={clipId}
 			selected={clipId === selectedEntityId}
 			timelineZoom={timelineZoom}
+			activeTool={activeTool}
 		/>
 	)
 })
 
-export const TrackRow = observer(({ projectId, trackId, timelineZoom }: TrackRowProps) => {
+export const TrackRow = observer(({ projectId, trackId, timelineZoom, activeTool }: TrackRowProps) => {
 	const { projects$ } = useVideoEditor()
 	const track$ = projects$.entitiesById[trackId]
 	const clipIds$ = track$.rels.clips as Observable<string[]>
@@ -70,7 +73,7 @@ export const TrackRow = observer(({ projectId, trackId, timelineZoom }: TrackRow
 							each={clipIds$}
 							optimized
 							item={ClipListItem}
-							itemProps={{ projectId, timelineZoom }}
+							itemProps={{ projectId, timelineZoom, activeTool }}
 						/>
 					</div>
 				)}

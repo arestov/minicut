@@ -530,7 +530,7 @@ button:disabled {
 	max-height: none;
 	cursor: ew-resize;
 	overflow-y: auto;
-	overflow-x: hidden;
+	overflow-x: auto;
 	padding-right: 2px;
 }
 
@@ -546,6 +546,10 @@ button:disabled {
 
 .ve-timeline-scroll-area[data-tool='hand'] {
 	cursor: grab;
+}
+
+.ve-timeline-scroll-area[data-tool='hand']:active {
+	cursor: grabbing;
 }
 
 .ve-timeline-scroll-area[data-tool='trim'],
@@ -933,7 +937,7 @@ button:disabled {
 	display: block;
 	min-height: 78px;
 	overflow-x: auto;
-	padding: 10px;
+	padding: 10px 0;
 	border-radius: 8px;
 	background:
 		linear-gradient(90deg, rgba(39, 39, 42, 0.08) 1px, transparent 1px) 0 0 / 56px 100%,
@@ -968,6 +972,15 @@ button:disabled {
 
 .ve-clip:active {
 	cursor: grabbing;
+}
+
+.ve-clip[data-tool='trim'],
+.ve-clip[data-tool='split'] {
+	cursor: crosshair;
+}
+
+.ve-clip[data-tool='hand'] {
+	cursor: grab;
 }
 
 .ve-clip__resize-handle {
@@ -1277,14 +1290,14 @@ button:disabled {
 
 .ve-renderer__layer {
 	position: absolute;
-	left: 18%;
-	top: 18%;
-	width: 64%;
-	height: 64%;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
 	flex-direction: column;
 	gap: 8px;
-	border: 1px solid rgba(255, 255, 255, 0.4);
-	background: linear-gradient(135deg, #dbeafe, #f8fafc 52%, #bfdbfe);
+	border: 0;
+	background: transparent;
 	color: #18181b;
 	transform-origin: center;
 	box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
@@ -1296,7 +1309,8 @@ button:disabled {
 .ve-renderer__layer video {
 	width: 100%;
 	height: 100%;
-	object-fit: cover;
+	object-fit: contain;
+	background: #09090b;
 }
 
 .ve-renderer__layer--audio {

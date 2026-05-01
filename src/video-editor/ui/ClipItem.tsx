@@ -12,9 +12,10 @@ interface ClipItemProps {
 	clipId: string
 	selected: boolean
 	timelineZoom: number
+	activeTool: 'select' | 'trim' | 'split' | 'hand'
 }
 
-export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom }: ClipItemProps) => {
+export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, activeTool }: ClipItemProps) => {
 	const { projects$, actions } = useVideoEditor()
 	const dragState = useRef<ClipPointerDragState | null>(null)
 	const clip$ = projects$.entitiesById[clipId]
@@ -25,6 +26,11 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom }:
 	const color = String(clip$.attrs.color.get() ?? '#2563eb')
 	const width = Math.max(36, duration * timelineZoom)
 	const left = Math.max(0, start * timelineZoom)
+	const splitAtPointer = (clientX: number, element: HTMLElement): void => {
+		const rect = element.getBoundingClientRect()
+		const localTime = Math.max(0, (clientX - rect.left) / timelineZoom)
+		actions.splitClipByIdAt(clipId, start + localTime)
+	}
 	const finishPointerDrag = (clientX: number): void => {
 		const state = dragState.current
 		dragState.current = null
@@ -38,8 +44,11 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom }:
 		}
 
 		actions.selectEntity(clipId)
-		if (state.kind === 'move') {
+		if (state.kind === 'move' && activeTool === 'select') {
 			actions.moveClipById(clipId, deltaSeconds)
+			return
+		}
+		if (state.kind === 'move') {
 			return
 		}
 
@@ -50,10 +59,23 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom }:
 		<button
 			type="button"
 			className={`ve-clip${selected ? ' is-selected' : ''}`}
+			data-tool={activeTool}
 			style={{ left: `${left}px`, width: `${width}px`, borderLeft: `4px solid ${color}` }}
-			onClick={() => actions.selectEntity(clipId)}
+			onClick={(event) => {
+				if (activeTool === 'split') {
+					splitAtPointer(event.clientX, event.currentTarget)
+					return
+				}
+
+				if (activeTool !== 'hand') {
+					actions.selectEntity(clipId)
+				}
+			}}
 			onPointerDown={(event) => {
 				if ((event.target as HTMLElement | null)?.closest('.ve-clip__resize-handle')) {
+					return
+				}
+				if (activeTool !== 'select') {
 					return
 				}
 

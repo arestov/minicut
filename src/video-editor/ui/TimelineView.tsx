@@ -1,7 +1,8 @@
 import type { Observable } from '@legendapp/state'
 import { For, observer } from '@legendapp/state/react'
-import { Hand, Magnet, MousePointer2, Music, Scissors, SquareSplitHorizontal, Video, ZoomIn, ZoomOut } from 'lucide-react'
-import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import { Hand, Magnet, MousePointer2, Music, Scissors, StretchHorizontal, Video, ZoomIn, ZoomOut } from 'lucide-react'
+import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_STEP } from '../legend/sessionStore'
 import { IconButton } from './ControlPrimitives'
@@ -13,9 +14,10 @@ interface TrackListItemProps {
 	item$: Observable<string>
 	projectId: string
 	timelineZoom: number
+	activeTool: TimelineTool
 }
 
-const TrackListItem = observer(({ item$, projectId, timelineZoom }: TrackListItemProps) => {
+const TrackListItem = observer(({ item$, projectId, timelineZoom, activeTool }: TrackListItemProps) => {
 	const trackId = item$.get()
 
 	return (
@@ -23,6 +25,7 @@ const TrackListItem = observer(({ item$, projectId, timelineZoom }: TrackListIte
 			projectId={projectId}
 			trackId={trackId}
 			timelineZoom={timelineZoom}
+			activeTool={activeTool}
 		/>
 	)
 })
@@ -30,16 +33,23 @@ const TrackListItem = observer(({ item$, projectId, timelineZoom }: TrackListIte
 const timelineTicks = Array.from({ length: 7 }, (_, index) => index * 5)
 const timelineTimeOriginPx = 167
 
-const timelineTools: Array<{ id: TimelineTool, label: string, icon: typeof MousePointer2 }> = [
+const timelineTools: Array<{ id: TimelineTool, label: string, icon: LucideIcon }> = [
 	{ id: 'select', label: 'Select tool', icon: MousePointer2 },
-	{ id: 'trim', label: 'Trim tool', icon: Scissors },
-	{ id: 'split', label: 'Split tool', icon: SquareSplitHorizontal },
+	{ id: 'trim', label: 'Trim tool', icon: StretchHorizontal },
+	{ id: 'split', label: 'Split tool', icon: Scissors },
 	{ id: 'hand', label: 'Hand tool', icon: Hand },
 ]
 
 export const TimelineView = observer(() => {
 	const [activeTool, setActiveTool] = useState<TimelineTool>('select')
 	const [snappingEnabled, setSnappingEnabled] = useState(true)
+	const panState = useRef<{
+		x: number
+		y: number
+		scrollLeft: number
+		scrollTop: number
+		railScrollLefts: number[]
+	} | null>(null)
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const timelineZoom = session$.timelineZoom.get()
@@ -62,6 +72,10 @@ export const TimelineView = observer(() => {
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 
 	const updateCursorFromPointer = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		if (activeTool === 'hand') {
+			return
+		}
+
 		if (event.type === 'pointermove' && (event.buttons & 1) === 0) {
 			return
 		}
@@ -79,6 +93,38 @@ export const TimelineView = observer(() => {
 
 		actions.setCursor(Math.max(0, timelineX / timelineZoom))
 		event.preventDefault()
+	}
+
+	const handleHandPan = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		if (activeTool !== 'hand') {
+			return
+		}
+
+		if (event.type === 'pointerdown') {
+			const rails = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('.ve-track-row__rail'))
+			panState.current = {
+				x: event.clientX,
+				y: event.clientY,
+				scrollLeft: event.currentTarget.scrollLeft,
+				scrollTop: event.currentTarget.scrollTop,
+				railScrollLefts: rails.map((rail) => rail.scrollLeft),
+			}
+			event.currentTarget.setPointerCapture?.(event.pointerId)
+			event.preventDefault()
+			return
+		}
+
+		if (event.type === 'pointermove' && panState.current && (event.buttons & 1) !== 0) {
+			const deltaX = event.clientX - panState.current.x
+			const deltaY = event.clientY - panState.current.y
+			const rails = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('.ve-track-row__rail'))
+			event.currentTarget.scrollLeft = panState.current.scrollLeft - deltaX
+			event.currentTarget.scrollTop = panState.current.scrollTop - deltaY
+			rails.forEach((rail, index) => {
+				rail.scrollLeft = (panState.current?.railScrollLefts[index] ?? 0) - deltaX
+			})
+			event.preventDefault()
+		}
 	}
 
 	return (
@@ -101,6 +147,8 @@ export const TimelineView = observer(() => {
 								type="button"
 								icon={tool.icon}
 								label={tool.label}
+								data-tool-id={tool.id}
+								data-icon-name={tool.id === 'trim' ? 'stretch-horizontal' : tool.id === 'split' ? 'scissors' : tool.id}
 								variant={activeTool === tool.id ? 'secondary' : 'ghost'}
 								aria-pressed={activeTool === tool.id}
 								onClick={() => setActiveTool(tool.id)}
@@ -145,8 +193,14 @@ export const TimelineView = observer(() => {
 						data-tool={activeTool}
 						data-snapping={snappingEnabled ? 'on' : 'off'}
 						style={{ '--ve-track-count': tracks.length } as CSSProperties}
-						onPointerDown={updateCursorFromPointer}
-						onPointerMove={updateCursorFromPointer}
+						onPointerDown={(event) => {
+							handleHandPan(event)
+							updateCursorFromPointer(event)
+						}}
+						onPointerMove={(event) => {
+							handleHandPan(event)
+							updateCursorFromPointer(event)
+						}}
 					>
 						<div className="ve-timeline-ruler" aria-label="Time ruler">
 							{timelineTicks.map((tick) => (
@@ -166,7 +220,7 @@ export const TimelineView = observer(() => {
 									each={trackIds$}
 									optimized
 									item={TrackListItem}
-									itemProps={{ projectId: activeProjectId, timelineZoom }}
+									itemProps={{ projectId: activeProjectId, timelineZoom, activeTool }}
 								/>
 							) : null}
 						</div>

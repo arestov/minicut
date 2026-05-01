@@ -415,3 +415,130 @@ test('creates an initial project automatically on startup', async ({ page }) => 
 	await expect(projectsRegion.getByRole('button', { name: /Project \d+/i })).toBeVisible()
 	await expect(page.getByLabel('Media bin')).not.toContainText('No active project.')
 })
+
+test('timeline tools perform select, split, trim, and hand pan actions', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
+	await timeline.getByRole('button', { name: 'Select tool' }).click()
+	await clip.click()
+	await expect(page.getByRole('complementary', { name: 'Inspector' })).toContainText('fixture-video.webm')
+
+	const trimTool = timeline.getByRole('button', { name: 'Trim tool' })
+	const splitTool = timeline.getByRole('button', { name: 'Split tool' })
+	await expect(trimTool).toHaveAttribute('data-icon-name', 'stretch-horizontal')
+	await expect(splitTool).toHaveAttribute('data-icon-name', 'scissors')
+	await splitTool.click()
+	await clip.click({ position: { x: 28, y: 20 } })
+	await expect(timeline.getByRole('button', { name: /fixture-video.webm/i })).toHaveCount(2)
+
+	const rightClip = timeline.getByRole('button', { name: /fixture-video.webm/i }).nth(1)
+	await trimTool.click()
+	await expect(rightClip).toHaveAttribute('data-tool', 'trim')
+	const beforeTrimText = await rightClip.innerText()
+	const handle = rightClip.locator('.ve-clip__resize-handle--end')
+	const handleBox = await handle.boundingBox()
+	if (!handleBox) {
+		throw new Error('Trim handle is unavailable')
+	}
+	await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(handleBox.x + handleBox.width / 2 + 28, handleBox.y + handleBox.height / 2)
+	await page.mouse.up()
+	await expect(rightClip).not.toHaveText(beforeTrimText)
+
+	for (let index = 0; index < 8; index += 1) {
+		await timeline.getByRole('button', { name: 'Add video track' }).click()
+	}
+	const videoResource = page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
+	for (let index = 0; index < 24; index += 1) {
+		await videoResource.getByRole('button', { name: 'Add to timeline' }).click()
+	}
+	await timeline.getByRole('button', { name: 'Hand tool' }).click()
+	const scrollArea = timeline.locator('.ve-timeline-scroll-area')
+	const firstRail = timeline.locator('.ve-track-row__rail').first()
+	await expect.poll(async () => firstRail.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+	await firstRail.evaluate((element) => { element.scrollLeft = 0 })
+	const scrollBox = await scrollArea.boundingBox()
+	if (!scrollBox) {
+		throw new Error('Timeline scroll area is unavailable')
+	}
+	await page.mouse.move(scrollBox.x + scrollBox.width - 30, scrollBox.y + scrollBox.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(scrollBox.x + 20, scrollBox.y + scrollBox.height / 2)
+	await page.mouse.up()
+	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+})
+
+test('timeline clip boxes align to the ruler and playhead origin', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
+	const rulerBox = await timeline.getByLabel('Time ruler').boundingBox()
+	const playheadBox = await timeline.getByLabel('Current step').boundingBox()
+	const clipBox = await clip.boundingBox()
+	if (!rulerBox || !playheadBox || !clipBox) {
+		throw new Error('Timeline geometry boxes are unavailable')
+	}
+
+	expect(Math.abs(clipBox.x - rulerBox.x)).toBeLessThanOrEqual(2)
+	expect(Math.abs(playheadBox.x - rulerBox.x)).toBeLessThanOrEqual(2)
+	const zoomText = await timeline.getByText(/px\/s$/i).first().textContent()
+	const zoom = Number.parseFloat((zoomText ?? '56').replace(/[^0-9.]/g, '')) || 56
+	expect(Math.abs(clipBox.width - zoom)).toBeLessThanOrEqual(2)
+})
+
+test('preview keeps offscreen canvas active and syncs media layers across playhead positions', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureMedia(page)
+
+	const mediaBin = page.getByLabel('Media bin')
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	for (const resourceName of ['fixture-image.png', 'fixture-audio.wav']) {
+		if (await timeline.getByRole('button', { name: new RegExp(resourceName, 'i') }).count() === 0) {
+			await mediaBin.locator('.ve-resource-row').filter({ hasText: resourceName }).getByRole('button', { name: 'Add to timeline' }).click()
+		}
+	}
+
+	const renderer = page.getByLabel('Renderer stage')
+	const canvas = renderer.getByLabel('Offscreen preview canvas')
+	await setTimelineCursor(page, 0.5)
+	await expect(canvas).toHaveAttribute('data-render-mode', 'offscreen')
+	await expect(renderer.locator('video')).toHaveCount(1)
+	await expect(renderer.locator('audio')).toHaveCount(1)
+	const safeAreaBox = await renderer.locator('.ve-renderer__safe-area').boundingBox()
+	const videoLayerBox = await renderer.locator('.ve-renderer__layer--video').boundingBox()
+	if (!safeAreaBox || !videoLayerBox) {
+		throw new Error('Preview geometry boxes are unavailable')
+	}
+	expect(Math.abs(videoLayerBox.width - safeAreaBox.width)).toBeLessThanOrEqual(2)
+	expect(Math.abs(videoLayerBox.height - safeAreaBox.height)).toBeLessThanOrEqual(2)
+
+	const imageClipText = await timeline.getByRole('button', { name: /fixture-image.png/i }).first().innerText()
+	const imageClipStart = Number(imageClipText.match(/· (\d+(?:\.\d+)?)s \//)?.[1] ?? 0)
+	await setTimelineCursor(page, imageClipStart + 0.5)
+	await expect(renderer.locator('img[alt="fixture-image.png"]')).toBeVisible()
+	await expect(renderer.locator('video')).toHaveCount(0)
+
+	await setTimelineCursor(page, imageClipStart + 2)
+	await expect(renderer.getByText('No frame at cursor')).toBeVisible()
+})
+
+test('export project button downloads a manifest file', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const downloadPromise = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export project' }).click()
+	const download = await downloadPromise
+	expect(download.suggestedFilename()).toMatch(/\.minicut-export\.json$/)
+	await expect(page.getByRole('status').filter({ hasText: 'Export ready' })).toBeVisible()
+})

@@ -14,7 +14,24 @@ export const Toolbar = observer(() => {
 	const exportProject = (): void => {
 		setExportStatus('rendering')
 		actions.queueProjectExport()
-			.then((result) => setExportStatus(result ? 'ready' : 'error'))
+			.then((result) => {
+				if (!result) {
+					setExportStatus('error')
+					return
+				}
+
+				if (result.downloadUrl) {
+					const link = document.createElement('a')
+					link.href = result.downloadUrl
+					link.download = result.fileName
+					link.style.display = 'none'
+					document.body.append(link)
+					link.click()
+					link.remove()
+				}
+
+				setExportStatus('ready')
+			})
 			.catch(() => setExportStatus('error'))
 	}
 
