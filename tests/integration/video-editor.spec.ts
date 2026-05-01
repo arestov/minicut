@@ -5,10 +5,13 @@ const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
 	const projectsRegion = page.getByLabel('Projects')
 	await projectsRegion.getByRole('button').click()
 	await projectsRegion.getByRole('button', { name: 'New project' }).click()
+	await expect(projectsRegion.getByRole('button', { name: /Project \d+/i })).toBeVisible()
 }
 
 const importFixtureMedia = async (page: import('@playwright/test').Page) => {
-	await page.getByLabel('Import media files').setInputFiles([
+	const importInput = page.getByLabel('Import media files')
+	await expect(importInput).toBeEnabled()
+	await importInput.setInputFiles([
 		path.resolve('tests/fixtures/media/fixture-video.webm'),
 		path.resolve('tests/fixtures/media/fixture-image.png'),
 		path.resolve('tests/fixtures/media/fixture-audio.wav'),
@@ -166,4 +169,42 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await inspector.getByRole('tab', { name: 'Edit' }).click()
 	await inspector.getByRole('button', { name: 'Delete clip' }).click()
 	await expect(page.getByText('Select a clip to edit opacity or split it.')).toBeVisible()
+})
+
+test('dragging a clip changes its timeline start position', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+	await page.getByRole('button', { name: 'Add first resource' }).click()
+
+	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	await expect(clip).toHaveText(/0\.0s \/ 5\.0s/)
+
+	const box = await clip.boundingBox()
+	if (!box) {
+		throw new Error('Clip bounding box is unavailable for drag simulation')
+	}
+
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2)
+	await page.mouse.up()
+
+	await expect(clip).not.toHaveText(/0\.0s \/ 5\.0s/)
+})
+
+test('playback toggle advances timeline cursor over time', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+	await page.getByRole('button', { name: 'Add first resource' }).click()
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const currentTime = timeline.getByLabel('Current time')
+	await expect(currentTime).toHaveText('0.0s')
+
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
+	await page.waitForTimeout(700)
+	await expect(currentTime).not.toHaveText('0.0s')
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
 })

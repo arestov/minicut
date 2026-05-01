@@ -114,7 +114,7 @@ describe('createVideoEditorHarness actions', () => {
 			harness.session$.cursor.set(19.8)
 			harness.session$.isPlaying.set(true)
 			harness.actions.tickPlayback(0.5)
-			expect(harness.session$.cursor.get()).toBe(0.3)
+			expect(harness.session$.cursor.get()).toBeCloseTo(0.3, 5)
 		} finally {
 			harness.destroy()
 		}

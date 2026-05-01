@@ -25,6 +25,18 @@ const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	if (file.type.startsWith('image/')) {
 		return 'image'
 	}
+
+	const lowerName = file.name.toLowerCase()
+	if (/\.(mp4|webm|mov|mkv)$/.test(lowerName)) {
+		return 'video'
+	}
+	if (/\.(wav|mp3|ogg|m4a|aac)$/.test(lowerName)) {
+		return 'audio'
+	}
+	if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(lowerName)) {
+		return 'image'
+	}
+
 	return null
 }
 
@@ -358,7 +370,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 				return
 			}
 
-			session$.cursor.set(roundToTenths((session$.cursor.get() + deltaSeconds) % 20))
+			session$.cursor.set((session$.cursor.get() + deltaSeconds) % 20)
 		},
 
 		zoomTimeline(delta: number): void {
