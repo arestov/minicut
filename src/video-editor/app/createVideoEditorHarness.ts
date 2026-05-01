@@ -1,6 +1,6 @@
 import type { Observable } from '@legendapp/state'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
-import { createSessionStore } from '../legend/sessionStore'
+import { createSessionStore, TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from '../legend/sessionStore'
 import { getActiveProject, getAudioTrack, getProjectMetaList, getSelectedClip, getVideoTrack } from '../domain/selectors'
 import type {
 	ClipAttrs,
@@ -553,7 +553,7 @@ export const createVideoEditorHarness = (
 		},
 
 		zoomTimeline(delta: number): void {
-			session$.timelineZoom.set(clamp(session$.timelineZoom.get() + delta, 32, 112))
+			session$.timelineZoom.set(clamp(session$.timelineZoom.get() + delta, TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_MAX))
 		},
 	}
 

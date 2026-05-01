@@ -3,6 +3,7 @@ import { For, observer } from '@legendapp/state/react'
 import { Hand, Magnet, MousePointer2, Music, Scissors, Video, ZoomIn, ZoomOut } from 'lucide-react'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_STEP } from '../legend/sessionStore'
 import { IconButton } from './ControlPrimitives'
 import { TrackRow } from './TrackRow'
 
@@ -60,6 +61,8 @@ export const TimelineView = observer(() => {
 		typeof timelineId === 'string'
 			? (projects$.entitiesById[timelineId].rels.tracks as Observable<string[]>)
 			: null
+	const canZoomOut = timelineZoom > TIMELINE_ZOOM_MIN
+	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 
 	const updateCursorFromPointer = (event: ReactPointerEvent<HTMLDivElement>): void => {
 		if (event.type === 'pointermove' && (event.buttons & 1) === 0) {
@@ -115,9 +118,23 @@ export const TimelineView = observer(() => {
 						aria-pressed={snappingEnabled}
 						onClick={() => setSnappingEnabled((value) => !value)}
 					/>
-					<IconButton type="button" icon={ZoomOut} label="Zoom out" variant="ghost" onClick={() => actions.zoomTimeline(-8)} />
+					<IconButton
+						type="button"
+						icon={ZoomOut}
+						label="Zoom out"
+						variant="ghost"
+						onClick={() => actions.zoomTimeline(-TIMELINE_ZOOM_STEP)}
+						disabled={!canZoomOut}
+					/>
 					<span>{Math.round(timelineZoom)} px/s</span>
-					<IconButton type="button" icon={ZoomIn} label="Zoom in" variant="ghost" onClick={() => actions.zoomTimeline(8)} />
+					<IconButton
+						type="button"
+						icon={ZoomIn}
+						label="Zoom in"
+						variant="ghost"
+						onClick={() => actions.zoomTimeline(TIMELINE_ZOOM_STEP)}
+						disabled={!canZoomIn}
+					/>
 				</div>
 			</div>
 			{!activeProjectId ? (

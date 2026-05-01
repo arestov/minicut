@@ -259,16 +259,24 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
 
 	for (let index = 0; index < 20; index += 1) {
+		if (await zoomIn.isDisabled()) {
+			break
+		}
 		await zoomIn.click()
 	}
-	await expect(timeline.getByText('112 px/s')).toBeVisible()
+	await expect(timeline.getByText('96 px/s')).toBeVisible()
+	await expect(zoomIn).toBeDisabled()
 
 	for (let index = 0; index < 30; index += 1) {
+		if (await zoomOut.isDisabled()) {
+			break
+		}
 		await zoomOut.click()
 	}
-	await expect(timeline.getByText('32 px/s')).toBeVisible()
+	await expect(timeline.getByText('8 px/s')).toBeVisible()
+	await expect(zoomOut).toBeDisabled()
 
-	for (let index = 0; index < 3; index += 1) {
+	for (let index = 0; index < 6; index += 1) {
 		await zoomIn.click()
 	}
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
