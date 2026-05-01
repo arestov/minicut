@@ -73,6 +73,14 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			return
 		}
 
+		case CMD.TRACK_CREATE: {
+			const project = assertProject(registry, command.p.projectId)
+			assertProjectGraphShape(registry, project)
+			assert(['video', 'audio'].includes(command.p.kind), 'Track kind is invalid')
+			assert(!command.p.name || command.p.name.trim().length > 0, 'Track name must not be empty')
+			return
+		}
+
 		case CMD.TIMELINE_ADD_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
 			assertProjectGraphShape(registry, project)

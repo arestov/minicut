@@ -404,9 +404,15 @@ button:disabled {
 	position: relative;
 	flex: 1 1 auto;
 	min-height: 0;
+	max-height: 256px;
 	overflow-y: auto;
 	overflow-x: hidden;
 	padding-right: 2px;
+}
+
+.ve-track-list {
+	position: relative;
+	padding-bottom: 2px;
 }
 
 .ve-timeline-playhead {

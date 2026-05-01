@@ -50,6 +50,12 @@ export const TimelineView = observer(() => {
 				<div className="ve-timeline__tools" aria-label="Timeline tools">
 					<span className="ve-timeline__time" aria-label="Current time">{cursorSeconds.toFixed(1)}s</span>
 					<span>{tracks.length} tracks</span>
+					<button type="button" onClick={() => actions.addTrack('video')} disabled={!activeProjectId}>
+						Add video track
+					</button>
+					<button type="button" onClick={() => actions.addTrack('audio')} disabled={!activeProjectId}>
+						Add audio track
+					</button>
 					<button type="button" onClick={() => actions.zoomTimeline(-8)} aria-label="Zoom out">
 						Zoom out
 					</button>

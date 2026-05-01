@@ -122,6 +122,7 @@ export const MSG = {
 export const CMD = {
 	PROJECT_CREATE: -100,
 	RESOURCE_IMPORT: -110,
+	TRACK_CREATE: -115,
 	TIMELINE_ADD_CLIP: -120,
 	TIMELINE_MOVE_CLIP: -121,
 	TIMELINE_SPLIT_CLIP: -122,
@@ -155,6 +156,14 @@ export type Command =
 				mime?: string
 				width?: number
 				height?: number
+			}
+	  }
+	| {
+			c: typeof CMD.TRACK_CREATE
+			p: {
+				projectId: ProjectId
+				kind: TrackAttrs['kind']
+				name?: string
 			}
 	  }
 	| {

@@ -159,6 +159,14 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			})
 		},
 
+		addTrack(kind: 'video' | 'audio'): void {
+			const projectId = getActiveProjectId(projects$, session$)
+			dispatch({
+				c: CMD.TRACK_CREATE,
+				p: { projectId, kind },
+			})
+		},
+
 		selectEntity(entityId: string | null): void {
 			session$.selectedEntityId.set(entityId)
 		},

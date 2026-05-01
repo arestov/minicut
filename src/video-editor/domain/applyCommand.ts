@@ -3,7 +3,9 @@ import { assertEntity, assertProject, assertProjectForEntity, validateCommand } 
 import { createEntityId } from './id'
 import {
 	getClipIdsForTrack,
+	getActiveTimeline,
 	getProjectEntity,
+	getTracks,
 	getTrackEnd,
 	getVideoTrack,
 } from './selectors'
@@ -102,6 +104,48 @@ export const buildDispatchResult = (
 					],
 				},
 				createdIds: { resourceId },
+			}
+		}
+
+		case CMD.TRACK_CREATE: {
+			const project = assertProject(registry, command.p.projectId)
+			const timeline = getActiveTimeline(registry, project)
+			const trackCount = getTracks(registry, project).filter((track) => track.attrs.kind === command.p.kind).length
+			const trackId = createEntityId()
+			const tracks = Array.isArray(timeline.rels.tracks) ? timeline.rels.tracks : []
+			const track: Entity = {
+				id: trackId,
+				type: 'track',
+				attrs: {
+					kind: command.p.kind,
+					name: command.p.name ?? `${command.p.kind === 'video' ? 'V' : 'A'}${trackCount + 1}`,
+					muted: false,
+					locked: false,
+					height: command.p.kind === 'video' ? 72 : 64,
+				},
+				rels: {
+					clips: [],
+				},
+			}
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [
+						{ c: PATCH.ENTITY_SET, p: { entity: track } },
+						{
+							c: PATCH.REL_SPLICE,
+							p: {
+								id: timeline.id,
+								rel: 'tracks',
+								index: tracks.length,
+								deleteCount: 0,
+								insert: [trackId],
+							},
+						},
+					],
+				},
 			}
 		}
 
