@@ -28,6 +28,24 @@ button {
 	padding: 0 12px;
 	height: 36px;
 	cursor: pointer;
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease,
+		box-shadow 0.15s ease,
+		color 0.15s ease;
+}
+
+button:not(:disabled):hover {
+	border-color: #a1a1aa;
+	background: #f4f4f5;
+}
+
+button:focus,
+button:focus-visible,
+input:focus-visible {
+	outline: none;
+	border-color: #2563eb;
+	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
 }
 
 button:disabled {
@@ -39,25 +57,28 @@ button:disabled {
 	display: flex;
 	flex-direction: column;
 	min-height: 100vh;
-	padding: 16px;
-	gap: 16px;
+	padding: 0;
+	gap: 0;
 }
 
 .ve-toolbar,
 .ve-panel {
 	background: #ffffff;
 	border: 1px solid #e4e4e7;
-	border-radius: 8px;
-	box-shadow: 0 12px 40px rgba(24, 24, 27, 0.05);
+	border-radius: 0;
+	box-shadow: none;
 }
 
 .ve-toolbar {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	min-height: 56px;
-	padding: 12px 16px;
+	height: 56px;
+	padding: 11px 16px;
 	gap: 16px;
+	border-top: 0;
+	border-left: 0;
+	border-right: 0;
 }
 
 .ve-toolbar__left {
@@ -121,6 +142,11 @@ button:disabled {
 	gap: 8px;
 	align-items: center;
 	justify-content: flex-end;
+}
+
+.ve-toolbar__actions button {
+	height: 32px;
+	border-radius: 6px;
 }
 
 /* Project dropdown */
@@ -220,6 +246,11 @@ button:disabled {
 	padding: 0 10px;
 }
 
+.ve-project-dropdown__new:not(:disabled):hover {
+	border-color: #27272a;
+	background: #27272a;
+}
+
 .ve-project-dropdown__empty {
 	padding: 8px;
 	font-size: 13px;
@@ -238,17 +269,28 @@ button:disabled {
 }
 
 .ve-main {
-	gap: 16px;
+	gap: 0;
 }
 
 .ve-main__top {
 	display: grid;
-	grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(260px, 300px);
-	gap: 16px;
+	grid-template-columns: 280px minmax(0, 1fr) 280px;
+	gap: 0;
 }
 
 .ve-panel {
 	padding: 16px;
+	border-top: 0;
+	border-left: 0;
+}
+
+.ve-main__top > .ve-panel:last-child,
+.ve-timeline {
+	border-right: 0;
+}
+
+.ve-timeline {
+	border-bottom: 0;
 }
 
 .ve-panel__header {
@@ -328,7 +370,7 @@ button:disabled {
 	top: 0;
 	bottom: 0;
 	width: 2px;
-	background: #2563eb;
+	background: #dc2626;
 	pointer-events: none;
 	z-index: 2;
 }
@@ -343,7 +385,7 @@ button:disabled {
 	height: 10px;
 	transform: translateX(-50%);
 	border-radius: 0 0 999px 999px;
-	background: #2563eb;
+	background: #dc2626;
 }
 
 .ve-project-list,
@@ -491,9 +533,25 @@ button:disabled {
 	font-weight: 500;
 }
 
+.ve-inspector-tabs button:not(:disabled):hover {
+	background: #f4f4f5;
+	border-bottom-color: #a1a1aa;
+	color: #18181b;
+}
+
 .ve-inspector-tabs button.is-active {
 	border-bottom-color: #2563eb;
 	color: #2563eb;
+}
+
+.ve-inspector-tabs button.is-active:not(:disabled):hover {
+	border-bottom-color: #2563eb;
+	color: #2563eb;
+}
+
+.ve-inspector-tabs button:focus,
+.ve-inspector-tabs button:focus-visible {
+	box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.18);
 }
 
 .ve-inspector-tabs button:disabled {
