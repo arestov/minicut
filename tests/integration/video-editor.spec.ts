@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import fs from 'node:fs/promises'
 import path from 'node:path'
 
 const timelineTimeOriginPx = 167
@@ -513,6 +514,13 @@ test('preview keeps offscreen canvas active and syncs media layers across playhe
 	await expect(canvas).toHaveAttribute('data-render-mode', 'offscreen')
 	await expect(renderer.locator('video')).toHaveCount(1)
 	await expect(renderer.locator('audio')).toHaveCount(1)
+	await expect.poll(async () =>
+		renderer.locator('video').evaluate((element) => (element as HTMLVideoElement).currentTime),
+	).toBeGreaterThan(0.4)
+	await setTimelineCursor(page, 0.75)
+	await expect.poll(async () =>
+		renderer.locator('video').evaluate((element) => (element as HTMLVideoElement).currentTime),
+	).toBeGreaterThan(0.7)
 	const safeAreaBox = await renderer.locator('.ve-renderer__safe-area').boundingBox()
 	const videoLayerBox = await renderer.locator('.ve-renderer__layer--video').boundingBox()
 	if (!safeAreaBox || !videoLayerBox) {
@@ -531,6 +539,67 @@ test('preview keeps offscreen canvas active and syncs media layers across playhe
 	await expect(renderer.getByText('No frame at cursor')).toBeVisible()
 })
 
+test('preview sends playhead renders through an OffscreenCanvas worker', async ({ page }) => {
+	await page.addInitScript(() => {
+		const messages: unknown[] = []
+		Object.defineProperty(window, '__previewWorkerMessages', { value: messages, configurable: true })
+		Object.defineProperty(window, '__previewOffscreenTransfers', { value: 0, writable: true, configurable: true })
+
+		class PreviewWorkerProbe {
+			url: unknown
+			options: unknown
+
+			constructor(url: unknown, options: unknown) {
+				this.url = url
+				this.options = options
+			}
+
+			postMessage(message: unknown) {
+				messages.push(message)
+			}
+
+			terminate() {}
+			addEventListener() {}
+			removeEventListener() {}
+			dispatchEvent() { return true }
+		}
+
+		Object.defineProperty(window, 'Worker', { value: PreviewWorkerProbe, configurable: true })
+		Object.defineProperty(HTMLCanvasElement.prototype, 'transferControlToOffscreen', {
+			value() {
+				window.__previewOffscreenTransfers += 1
+				return { __offscreenCanvasProbe: true }
+			},
+			configurable: true,
+		})
+	})
+
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const renderer = page.getByLabel('Renderer stage')
+	await setTimelineCursor(page, 0.25)
+	await expect(renderer.getByLabel('Offscreen preview canvas')).toHaveAttribute('data-render-mode', 'offscreen')
+	await setTimelineCursor(page, 0.75)
+
+	const probe = await page.evaluate(() => ({
+		transfers: window.__previewOffscreenTransfers,
+		messages: window.__previewWorkerMessages,
+	}))
+	expect(probe.transfers).toBe(1)
+	expect(probe.messages).toEqual(expect.arrayContaining([
+		expect.objectContaining({ type: 'init' }),
+		expect.objectContaining({
+			type: 'render',
+			cursor: expect.closeTo(0.75, 1),
+			clips: expect.arrayContaining([
+				expect.objectContaining({ name: 'fixture-video.webm', kind: 'video' }),
+			]),
+		}),
+	]))
+})
+
 test('export project button downloads a manifest file', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
@@ -540,5 +609,16 @@ test('export project button downloads a manifest file', async ({ page }) => {
 	await page.getByRole('button', { name: 'Export project' }).click()
 	const download = await downloadPromise
 	expect(download.suggestedFilename()).toMatch(/\.minicut-export\.json$/)
+	const downloadPath = await download.path()
+	expect(downloadPath).toBeTruthy()
+	const manifest = JSON.parse(await fs.readFile(downloadPath as string, 'utf8')) as {
+		frames: unknown[]
+		clips: Array<{ type: string; source: string; start: number; duration: number }>
+	}
+	expect(manifest.frames.length).toBeGreaterThan(0)
+	expect(manifest.clips).toEqual(expect.arrayContaining([
+		expect.objectContaining({ type: 'ef-video', start: 0, duration: 1 }),
+	]))
+	expect(manifest.clips[0]?.source).toMatch(/^blob:/)
 	await expect(page.getByRole('status').filter({ hasText: 'Export ready' })).toBeVisible()
 })

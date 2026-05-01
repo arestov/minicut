@@ -263,6 +263,43 @@ describe('video editor harness', () => {
 		}
 	})
 
+	it('edits clip name, direct color input, and every transform input', async () => {
+		const { harness, user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await importSampleResource(harness)
+			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			await user.click(clipButton)
+
+			const inspector = screen.getByLabelText('Inspector')
+			fireEvent.change(within(inspector).getByLabelText('Clip name'), { target: { value: 'Renamed clip' } })
+			expect(screen.getByRole('button', { name: /Renamed clip/i })).toBeInTheDocument()
+
+			const transformControls = within(inspector).getByLabelText('Transform controls')
+			fireEvent.change(within(transformControls).getByLabelText('X'), { target: { value: '24' } })
+			fireEvent.change(within(transformControls).getByLabelText('Y'), { target: { value: '-12' } })
+			fireEvent.change(within(transformControls).getByLabelText('Scale'), { target: { value: '1.5' } })
+			fireEvent.change(within(transformControls).getByLabelText('Rotate'), { target: { value: '15' } })
+			expect(within(transformControls).getByLabelText('X')).toHaveValue(24)
+			expect(within(transformControls).getByLabelText('Y')).toHaveValue(-12)
+			expect(within(transformControls).getByLabelText('Scale')).toHaveValue(1.5)
+			expect(within(transformControls).getByLabelText('Rotate')).toHaveValue(15)
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle(
+				'transform: translate(24px, -12px) scale(1.5) rotate(15deg)',
+			)
+
+			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
+			fireEvent.change(within(inspector).getByLabelText('Color'), { target: { value: '#dc2626' } })
+			expect(within(inspector).getByLabelText('Color')).toHaveValue('#dc2626')
+			expect(screen.getByRole('button', { name: /Renamed clip/i })).toHaveStyle({
+				borderLeftColor: 'rgb(220, 38, 38)',
+			})
+		} finally {
+			unmount()
+		}
+	})
+
 	it('keeps projects isolated when switching active project', async () => {
 		const { harness, user, unmount } = renderVideoEditor()
 
