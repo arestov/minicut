@@ -35,17 +35,18 @@ const getActiveProjectId = (
 export const createVideoEditorHarness = (authority: EditorAuthorityClient = createAuthorityClient()) => {
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
+	let isDestroyed = false
 
 	Promise.resolve(authority.getSnapshot()).then((snapshot) => {
+		if (isDestroyed) {
+			return
+		}
+
 		applySnapshot(projects$, snapshot)
 	})
 
 	const unsubscribe = authority.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
-		const activeProjectId = projects$.activeProjectId.get()
-		if (activeProjectId) {
-			session$.activeProjectId.set(activeProjectId)
-		}
 	})
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
@@ -54,10 +55,10 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 	const actions = {
 		createProject(title?: string): void {
 			dispatch({ c: CMD.PROJECT_CREATE, p: { title } }).then((result) => {
-			const projectId = String(result.createdIds?.projectId)
-			session$.activeProjectId.set(projectId)
-			session$.selectedEntityId.set(null)
-			session$.cursor.set(0)
+				const projectId = String(result.createdIds?.projectId)
+				session$.activeProjectId.set(projectId)
+				session$.selectedEntityId.set(null)
+				session$.cursor.set(0)
 			})
 		},
 
@@ -190,7 +191,9 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 		session$,
 		actions,
 		destroy(): void {
+			isDestroyed = true
 			unsubscribe()
+			authority.destroy?.()
 		},
 	}
 }

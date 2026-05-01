@@ -6,4 +6,5 @@ export interface EditorAuthorityClient {
 	getSnapshot(): ProjectRegistry | Promise<ProjectRegistry>
 	subscribe(listener: PatchListener): () => void
 	dispatch(command: Command): DispatchResult | Promise<DispatchResult>
+	destroy?(): void
 }

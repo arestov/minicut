@@ -18,6 +18,13 @@ const broadcastPatch = (envelope: PatchEnvelope): void => {
 	}
 }
 
+const cleanupPort = (port: MessagePort): void => {
+	ports.delete(port)
+	port.onmessage = null
+	port.onmessageerror = null
+	port.close()
+}
+
 const handleCommand = (port: MessagePort, requestId: string | undefined, command: Command): void => {
 	try {
 		const result: DispatchResult = buildDispatchResult(registry, command)
@@ -48,6 +55,10 @@ self.onconnect = (event: MessageEvent) => {
 				handleCommand(port, message.requestId, message.p as Command)
 				break
 
+			case MSG.DISCONNECT:
+				cleanupPort(port)
+				break
+
 			default:
 				post(port, {
 					m: MSG.ERROR,
@@ -55,6 +66,10 @@ self.onconnect = (event: MessageEvent) => {
 					p: `Unsupported message code ${message.m}`,
 				})
 		}
+	}
+
+	port.onmessageerror = () => {
+		cleanupPort(port)
 	}
 
 	port.start()

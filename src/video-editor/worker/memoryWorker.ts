@@ -32,4 +32,8 @@ export class MemoryWorkerAuthority implements EditorAuthorityClient {
 
 		return result
 	}
+
+	destroy(): void {
+		this.#listeners.clear()
+	}
 }

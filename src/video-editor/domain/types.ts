@@ -108,6 +108,7 @@ export const MSG = {
 	PATCHES: -4,
 	ERROR: -5,
 	DISPATCH_RESULT: -6,
+	DISCONNECT: -7,
 } as const
 
 export const CMD = {

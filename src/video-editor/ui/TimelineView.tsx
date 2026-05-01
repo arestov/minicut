@@ -1,6 +1,19 @@
-import { observer } from '@legendapp/state/react'
+import type { Observable } from '@legendapp/state'
+import { For, observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { TrackRow } from './TrackRow'
+
+interface TrackListItemProps {
+	item$: Observable<string>
+	projectId: string
+	timelineZoom: number
+}
+
+const TrackListItem = observer(({ item$, projectId, timelineZoom }: TrackListItemProps) => {
+	const trackId = item$.get()
+
+	return <TrackRow projectId={projectId} trackId={trackId} timelineZoom={timelineZoom} />
+})
 
 export const TimelineView = observer(() => {
 	const { projects$, session$, actions } = useVideoEditor()
@@ -16,6 +29,10 @@ export const TimelineView = observer(() => {
 			? activeProject$.entities[timelineId].rels.tracks.get()
 			: []
 	const tracks = Array.isArray(trackIds) ? trackIds : []
+	const trackIds$ =
+		activeProject$ && typeof timelineId === 'string'
+			? (activeProject$.entities[timelineId].rels.tracks as Observable<string[]>)
+			: null
 
 	return (
 		<section className="ve-panel ve-timeline" aria-label="Timeline">
@@ -36,14 +53,14 @@ export const TimelineView = observer(() => {
 				<p className="ve-empty">Create a project to allocate timeline tracks.</p>
 			) : (
 				<div className="ve-track-list">
-					{tracks.map((trackId) => (
-						<TrackRow
-							key={trackId}
-							projectId={activeProjectId}
-							trackId={trackId}
-							timelineZoom={timelineZoom}
+					{trackIds$ ? (
+						<For
+							each={trackIds$}
+							optimized
+							item={TrackListItem}
+							itemProps={{ projectId: activeProjectId, timelineZoom }}
 						/>
-					))}
+					) : null}
 				</div>
 			)}
 		</section>

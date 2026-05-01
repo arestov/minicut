@@ -1,4 +1,4 @@
-import { batch, observable, type Observable } from '@legendapp/state'
+import { batch, mergeIntoObservable, observable, type Observable } from '@legendapp/state'
 import { createEmptyRegistry } from '../domain/createProject'
 import { PATCH, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
 
@@ -20,7 +20,7 @@ export const applyPatchEnvelope = (
 		for (const patch of envelope.patches) {
 			switch (patch.c) {
 				case PATCH.PROJECT_SET:
-					projects$.projects[patch.p.project.id].set({
+					mergeIntoObservable(projects$.projects[patch.p.project.id], {
 						...patch.p.project,
 						version: envelope.version,
 					})
