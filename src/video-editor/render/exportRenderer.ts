@@ -99,6 +99,11 @@ interface PreparedFrameOperation {
 	drawSource?: CanvasImageSource
 }
 
+interface PrepareFrameOptions {
+	videoSyncMode?: 'seek-each-frame' | 'realtime-playback'
+	realtimeSeekTolerance?: number
+}
+
 interface AudioExportMixer {
 	stream: MediaStream | null
 	start(): Promise<void>
@@ -288,6 +293,24 @@ const clampTimeToDuration = (time: number, duration: number): number => {
 	return Math.min(Math.max(0, time), Math.max(0, duration - 0.001))
 }
 
+export const shouldSeekRealtimeVideoFrame = (
+	currentTime: number,
+	targetTime: number,
+	tolerance: number,
+): boolean =>
+	!Number.isFinite(currentTime)
+	|| !Number.isFinite(targetTime)
+	|| Math.abs(currentTime - targetTime) > tolerance
+
+export const getFramePacingDelayMs = (recordingStartedAt: number, frameIndex: number, fps: number, now: number): number => {
+	if (!Number.isFinite(recordingStartedAt) || !Number.isFinite(now) || !Number.isFinite(fps) || fps <= 0) {
+		return 0
+	}
+	const targetElapsed = ((frameIndex + 1) / fps) * 1000
+	const elapsed = now - recordingStartedAt
+	return Math.max(0, targetElapsed - elapsed)
+}
+
 const loadImageResource = (url: string): Promise<HTMLImageElement> =>
 	new Promise((resolve, reject) => {
 		const image = new Image()
@@ -382,8 +405,11 @@ const prepareFrameOperations = async (
 	resourceCache: Map<string, RenderableResource>,
 	width: number,
 	height: number,
+	options: PrepareFrameOptions = {},
 ): Promise<PreparedFrameOperation[]> => {
 	const prepared: PreparedFrameOperation[] = []
+	const videoSyncMode = options.videoSyncMode ?? 'seek-each-frame'
+	const realtimeSeekTolerance = options.realtimeSeekTolerance ?? 0.15
 
 	for (const operation of operations) {
 		const resource = resourceCache.get(operation.resourceId)
@@ -413,7 +439,14 @@ const prepareFrameOperations = async (
 		}
 
 		if (operation.resourceKind === 'video' && resource.video) {
-			await seekVideo(resource.video, operation.sourceTime)
+			if (videoSyncMode === 'seek-each-frame') {
+				await seekVideo(resource.video, operation.sourceTime)
+			} else {
+				if (shouldSeekRealtimeVideoFrame(resource.video.currentTime, operation.sourceTime, realtimeSeekTolerance)) {
+					await seekVideo(resource.video, operation.sourceTime)
+				}
+				void resource.video.play().catch(() => undefined)
+			}
 			prepared.push({
 				operation,
 				resource,
@@ -878,6 +911,7 @@ export const createBrowserVideoExportRenderer = (
 			const resourceCache = createResourceCache(request.registry)
 			recorder.start(Math.max(100, Math.round(1000 / fps)))
 			await audioMixer.start()
+			const recordingStartedAt = performance.now()
 
 			try {
 				for (let index = 0; index < frameCount; index += 1) {
@@ -886,12 +920,21 @@ export const createBrowserVideoExportRenderer = (
 						compileFrameOperations(request.registry, request.projectId, time),
 						request.range,
 					)
-					const preparedOperations = await prepareFrameOperations(operations, resourceCache, width, height)
+					const preparedOperations = await prepareFrameOperations(
+						operations,
+						resourceCache,
+						width,
+						height,
+						{
+							videoSyncMode: 'realtime-playback',
+							realtimeSeekTolerance: Math.max(0.08, 1 / fps),
+						},
+					)
 					frames.push({ index, time, operations })
 					drawPreparedFrameOperations(context, preparedOperations, width, height, backgroundColor)
 					videoTrack?.requestFrame()
 					onProgress?.({ stage: 'rendering', progress: (index + 1) / frameCount })
-					await waitForDuration(1000 / fps)
+					await waitForDuration(getFramePacingDelayMs(recordingStartedAt, index, fps, performance.now()))
 					await waitForRecorderData()
 				}
 

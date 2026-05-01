@@ -2,7 +2,13 @@ import { buildDispatchResult } from '../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
 import { CMD, type Entity, type ProjectRegistry, type ResourceAttrs } from '../domain/types'
-import { createBrowserVideoExportRenderer, createManifestExportRenderer, type ExportRange } from './exportRenderer'
+import {
+	createBrowserVideoExportRenderer,
+	createManifestExportRenderer,
+	getFramePacingDelayMs,
+	shouldSeekRealtimeVideoFrame,
+	type ExportRange,
+} from './exportRenderer'
 
 const createProjectWithClip = (kind: ResourceAttrs['kind']): { registry: ProjectRegistry; projectId: string; clipId: string } => {
 	let registry = createEmptyRegistry()
@@ -35,6 +41,58 @@ const rangeCases: Array<{ kind: ResourceAttrs['kind']; rangeType: ExportRange['t
 ]
 
 describe('manifest export renderer', () => {
+	it('keeps trailing image frames after a short clip trimmed from a large video source', async () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: { title: 'trim export' } })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const videoImport = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Long source', kind: 'video', duration: 120, url: 'file:///long.webm' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, videoImport.envelope)
+		const imageImport = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'End card', kind: 'image', duration: 1, url: 'file:///end.png' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, imageImport.envelope)
+		const videoClipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(videoImport.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, videoClipResult.envelope)
+		const imageClipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(imageImport.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, imageClipResult.envelope)
+		const videoClipId = String(videoClipResult.createdIds?.clipId)
+		const imageClipId = String(imageClipResult.createdIds?.clipId)
+		registry.entitiesById[videoClipId].attrs.in = 80
+		registry.entitiesById[videoClipId].attrs.duration = 2
+		registry.entitiesById[imageClipId].attrs.start = 2
+		registry.entitiesById[imageClipId].attrs.duration = 1
+
+		const result = await createManifestExportRenderer().render({
+			registry,
+			projectId,
+			range: { type: 'project' },
+			fps: 2,
+		})
+
+		expect(result.duration).toBe(3)
+		expect(result.manifest.frames).toHaveLength(6)
+		expect(result.manifest.frames[0].operations[0]).toMatchObject({
+			clipId: videoClipId,
+			resourceKind: 'video',
+			sourceTime: 80,
+		})
+		expect(result.manifest.frames.slice(4).flatMap((frame) => frame.operations)).toEqual([
+			expect.objectContaining({ clipId: imageClipId, resourceKind: 'image' }),
+			expect.objectContaining({ clipId: imageClipId, resourceKind: 'image' }),
+		])
+	})
+
 	it.each(rangeCases)('exports $kind media for $rangeType ranges', async ({ kind, rangeType, editframeType }) => {
 		const { registry, projectId, clipId } = createProjectWithClip(kind)
 		const renderer = createManifestExportRenderer()
@@ -139,6 +197,18 @@ describe('manifest export renderer', () => {
 })
 
 describe('browser video export renderer', () => {
+	it('does not seek realtime video playback while it remains within frame tolerance', () => {
+		expect(shouldSeekRealtimeVideoFrame(80, 80, 0.08)).toBe(false)
+		expect(shouldSeekRealtimeVideoFrame(80.03, 80, 0.08)).toBe(false)
+		expect(shouldSeekRealtimeVideoFrame(79.5, 80, 0.08)).toBe(true)
+	})
+
+	it('paces recorded frames against target export time instead of adding render work time', () => {
+		expect(getFramePacingDelayMs(1000, 0, 25, 1010)).toBe(30)
+		expect(getFramePacingDelayMs(1000, 0, 25, 1045)).toBe(0)
+		expect(getFramePacingDelayMs(1000, 4, 25, 1100)).toBe(100)
+	})
+
 	it('falls back to json manifest when video export is unsupported', async () => {
 		const { registry, projectId, clipId } = createProjectWithClip('video')
 		const renderer = createBrowserVideoExportRenderer({ fallbackToManifestOnUnsupported: true })
