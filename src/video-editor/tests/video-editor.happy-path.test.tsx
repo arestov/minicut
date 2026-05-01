@@ -146,4 +146,24 @@ describe('video editor harness', () => {
 			unmount()
 		}
 	})
+
+	it('shows a timeline time cursor synced to preview cursor', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
+
+			const preview = screen.getByLabelText('Preview panel')
+			const cursorSlider = within(preview).getByRole('slider', { name: 'Cursor' })
+			fireEvent.change(cursorSlider, { target: { value: '4.5' } })
+
+			const timeline = screen.getByLabelText('Timeline')
+			expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.5s')
+			expect(within(timeline).getAllByLabelText('Time cursor')).toHaveLength(2)
+		} finally {
+			unmount()
+		}
+	})
 })
