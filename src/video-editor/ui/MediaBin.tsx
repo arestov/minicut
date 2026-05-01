@@ -17,7 +17,7 @@ const ResourceRow = observer(({ projectId, resourceId }: ResourceRowProps) => {
 			<div>
 				<strong>{attrs.name}</strong>
 				<small>
-					{attrs.name} · {attrs.kind} · {attrs.duration.toFixed(1)}s
+					{attrs.name} · {attrs.kind} · {attrs.mime} · {attrs.duration.toFixed(1)}s
 				</small>
 			</div>
 			<button type="button" onClick={() => actions.addResourceToTimeline(resourceId)}>

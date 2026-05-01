@@ -9,6 +9,8 @@ const createTrack = (kind: TrackAttrs['kind'], name: string, height: number): En
 	attrs: {
 		kind,
 		name,
+		muted: false,
+		locked: false,
 		height,
 	},
 	rels: {
@@ -35,6 +37,10 @@ export const createProjectGraph = (title: string, ordinal: number): ProjectGraph
 			type: 'project',
 			attrs: {
 				title: title || `Project ${ordinal}`,
+				fps: 30,
+				width: 1920,
+				height: 1080,
+				duration: 0,
 				createdAt: now,
 				updatedAt: now,
 			},

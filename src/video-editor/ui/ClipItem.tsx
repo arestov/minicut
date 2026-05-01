@@ -15,7 +15,7 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom }:
 	const name = String(clip$.attrs.name.get())
 	const start = Number(clip$.attrs.start.get())
 	const duration = Number(clip$.attrs.duration.get())
-	const opacity = Number(clip$.attrs.opacity.get())
+	const opacity = Number(clip$.attrs.opacity.value.get())
 	const width = Math.max(160, duration * timelineZoom)
 
 	return (

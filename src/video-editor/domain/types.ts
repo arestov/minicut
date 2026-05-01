@@ -2,7 +2,7 @@ export type ProjectId = string
 export type EntityId = string
 export type RelValue = EntityId | EntityId[] | null
 
-export type EntityType = 'project' | 'timeline' | 'track' | 'resource' | 'clip'
+export type EntityType = 'project' | 'timeline' | 'track' | 'resource' | 'clip' | 'effect' | 'keyframe'
 
 export interface Entity {
 	id: EntityId
@@ -43,21 +43,56 @@ export interface EditorSessionState {
 export interface ResourceAttrs {
 	name: string
 	kind: 'video' | 'audio' | 'image'
+	url: string
+	mime: string
 	duration: number
+	width?: number
+	height?: number
 	status: 'ready' | 'loading' | 'error'
 }
 
 export interface TrackAttrs {
 	kind: 'video' | 'audio'
 	name: string
+	muted: boolean
+	locked: boolean
 	height: number
+}
+
+export interface ProjectAttrs {
+	title: string
+	fps: number
+	width: number
+	height: number
+	duration: number
+	createdAt: number
+	updatedAt: number
+}
+
+export interface TimelineAttrs {
+	name: string
+	duration: number
+}
+
+export interface AnimatedScalar {
+	value: number
+	keyframes?: EntityId[]
+}
+
+export interface TransformAttrs {
+	x: AnimatedScalar
+	y: AnimatedScalar
+	scale: AnimatedScalar
+	rotation: AnimatedScalar
 }
 
 export interface ClipAttrs {
 	name: string
 	start: number
 	duration: number
-	opacity: number
+	in: number
+	opacity: AnimatedScalar
+	transform: TransformAttrs
 }
 
 export interface PatchEnvelope {
@@ -101,6 +136,10 @@ export type Command =
 				name: string
 				kind: ResourceAttrs['kind']
 				duration: number
+				url?: string
+				mime?: string
+				width?: number
+				height?: number
 			}
 	  }
 	| {

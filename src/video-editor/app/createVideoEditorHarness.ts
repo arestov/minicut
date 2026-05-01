@@ -82,6 +82,10 @@ export const createVideoEditorHarness = () => {
 					name: `Sample asset ${resourceOrdinal}`,
 					kind,
 					duration: 4 + resourceOrdinal,
+					mime: `${kind}/sample`,
+					url: `sample://asset-${resourceOrdinal}`,
+					width: kind === 'audio' ? undefined : 1920,
+					height: kind === 'audio' ? undefined : 1080,
 				},
 			})
 
@@ -124,7 +128,7 @@ export const createVideoEditorHarness = () => {
 				p: {
 					projectId: getActiveProjectId(projects$, session$),
 					clipId: clip.id,
-					attrs: { opacity: roundToTenths(opacityPercent / 100) },
+					attrs: { opacity: { value: roundToTenths(opacityPercent / 100) } },
 				},
 			})
 		},

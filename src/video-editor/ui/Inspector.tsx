@@ -25,7 +25,7 @@ export const Inspector = observer(() => {
 	const name = String(selectedEntity$.attrs.name.get())
 	const start = Number(selectedEntity$.attrs.start.get())
 	const duration = Number(selectedEntity$.attrs.duration.get())
-	const opacity = Number(selectedEntity$.attrs.opacity.get())
+	const opacity = Number(selectedEntity$.attrs.opacity.value.get())
 	const opacityPercent = Math.round(opacity * 100)
 
 	return (

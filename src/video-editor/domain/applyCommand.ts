@@ -8,6 +8,7 @@ import {
 	getVideoTrack,
 } from './selectors'
 import {
+	type AnimatedScalar,
 	type ClipAttrs,
 	type Command,
 	type DispatchResult,
@@ -20,6 +21,8 @@ import {
 } from './types'
 
 const makeEntityId = (prefix: string) => `${prefix}:${nanoid(6)}`
+
+const scalar = (value: number): AnimatedScalar => ({ value })
 
 const assertProject = (registry: ProjectRegistry, projectId: string): ProjectGraph => {
 	const project = registry.projects[projectId]
@@ -76,7 +79,11 @@ export const buildDispatchResult = (
 				attrs: {
 					name: command.p.name,
 					kind: command.p.kind,
+					url: command.p.url ?? `sample://${resourceId}`,
+					mime: command.p.mime ?? `${command.p.kind}/sample`,
 					duration: command.p.duration,
+					width: command.p.width,
+					height: command.p.height,
 					status: 'ready',
 				},
 				rels: {},
@@ -129,10 +136,18 @@ export const buildDispatchResult = (
 					name: String(resource.attrs.name),
 					start: clipStart,
 					duration: clipDuration,
-					opacity: 1,
+					in: 0,
+					opacity: scalar(1),
+					transform: {
+						x: scalar(0),
+						y: scalar(0),
+						scale: scalar(1),
+						rotation: scalar(0),
+					},
 				},
 				rels: {
 					resource: resource.id,
+					effects: [],
 				},
 			}
 

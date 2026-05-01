@@ -99,7 +99,7 @@ export const getClipLabel = (clip: Entity): string => {
 
 export const getResourceLabel = (resource: Entity): string => {
 	const attrs = resource.attrs as ResourceAttrs
-	return `${attrs.name} · ${attrs.kind} · ${attrs.duration.toFixed(1)}s`
+	return `${attrs.name} · ${attrs.kind} · ${attrs.mime} · ${attrs.duration.toFixed(1)}s`
 }
 
 export const getTrackEnd = (project: ProjectGraph, trackId: EntityId): number =>
