@@ -259,6 +259,56 @@ describe('command validation', () => {
 		expect(String(effects[0])).not.toBe(String(effects[1]))
 	})
 
+	it('removes one effect without touching siblings and rejects detached effect ids', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Effect remove source', kind: 'video', duration: 5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const clipId = String(clipResult.createdIds?.clipId)
+
+		const effectOne = buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: { id: clipId, name: 'Blur A', kind: 'blur', amount: 0.15 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, effectOne.envelope)
+
+		const effectTwo = buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: { id: clipId, name: 'Blur B', kind: 'blur', amount: 0.45 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, effectTwo.envelope)
+
+		const firstEffectId = String(effectOne.createdIds?.effectId)
+		const secondEffectId = String(effectTwo.createdIds?.effectId)
+		const removeResult = buildDispatchResult(registry, {
+			c: CMD.EFFECT_REMOVE,
+			p: { id: clipId, effectId: firstEffectId },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, removeResult.envelope)
+
+		expect(registry.entitiesById[firstEffectId]).toBeUndefined()
+		expect(registry.entitiesById[clipId].rels.effects).toEqual([secondEffectId])
+
+		expect(() =>
+			buildDispatchResult(registry, {
+				c: CMD.EFFECT_REMOVE,
+				p: { id: clipId, effectId: firstEffectId },
+			}),
+		).toThrow('Unknown entity')
+	})
+
 	it('rejects clip duration updates when duration is not positive', () => {
 		let registry = createEmptyRegistry()
 		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })

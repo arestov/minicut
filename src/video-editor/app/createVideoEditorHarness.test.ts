@@ -1,6 +1,6 @@
 import { createVideoEditorHarness } from './createVideoEditorHarness'
 import { MemoryWorkerAuthority } from '../worker/memoryWorker'
-import { getActiveProject, getAudioTrack, getClipIdsForTrack, getResourceEntities } from '../domain/selectors'
+import { getActiveProject, getAudioTrack, getClipIdsForTrack, getResourceEntities, getVideoTrack } from '../domain/selectors'
 import { CMD, type ResourceAttrs } from '../domain/types'
 import { createEmptyRegistry } from '../domain/createProject'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
@@ -79,6 +79,87 @@ describe('createVideoEditorHarness actions', () => {
 			expect(clipAttrs.start).toBe(4.5)
 			expect(clipAttrs.in).toBe(4.5)
 			expect(clipAttrs.duration).toBe(0.5)
+		} finally {
+			harness.destroy()
+		}
+	})
+
+	it('splits selected clip at playhead and keeps resulting durations aligned', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			const project = getActiveProject(harness.projects$.get(), harness.session$.get())
+			expect(project).not.toBeNull()
+			const resources = getResourceEntities(harness.projects$.get(), project!)
+			harness.actions.addResourceToTimeline(String(resources[0].id))
+			await settleHarness()
+
+			const clipId = String(harness.session$.selectedEntityId.get())
+			harness.actions.setCursor(1.25)
+			harness.actions.splitSelectedClip()
+			await settleHarness()
+
+			const nextRegistry = harness.projects$.get()
+			const nextProject = getActiveProject(nextRegistry, harness.session$.get())
+			expect(nextProject).not.toBeNull()
+			const videoTrack = getVideoTrack(nextRegistry, nextProject!)
+			expect(videoTrack).not.toBeNull()
+			const clipIds = getClipIdsForTrack(nextRegistry, String(videoTrack?.id))
+			expect(clipIds).toHaveLength(2)
+
+			const leftAttrs = nextRegistry.entitiesById[clipId].attrs as { duration: number }
+			const rightClipId = clipIds.find((id) => id !== clipId)
+			expect(rightClipId).toBeTruthy()
+			const rightAttrs = nextRegistry.entitiesById[String(rightClipId)].attrs as { start: number, duration: number }
+			expect(rightAttrs.start).toBe(1.25)
+			expect(leftAttrs.duration).toBe(1.25)
+			expect(leftAttrs.duration + rightAttrs.duration).toBeCloseTo(5, 5)
+		} finally {
+			harness.destroy()
+		}
+	})
+
+	it('removes a single effect from selected clip', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			const project = getActiveProject(harness.projects$.get(), harness.session$.get())
+			expect(project).not.toBeNull()
+			const resources = getResourceEntities(harness.projects$.get(), project!)
+			harness.actions.addResourceToTimeline(String(resources[0].id))
+			await settleHarness()
+
+			harness.actions.addEffectToSelectedClip('blur')
+			harness.actions.addEffectToSelectedClip('sharpen')
+			await settleHarness()
+
+			const clipId = String(harness.session$.selectedEntityId.get())
+			const beforeEffects = harness.projects$.entitiesById[clipId].rels.effects.get()
+			expect(Array.isArray(beforeEffects)).toBe(true)
+			expect(beforeEffects).toHaveLength(2)
+			const beforeEffectIds = Array.isArray(beforeEffects) ? [...beforeEffects] : []
+
+			const removedEffectId = String(beforeEffectIds[0])
+			harness.actions.removeEffectFromSelectedClip(removedEffectId)
+			await settleHarness()
+
+			const afterEffects = harness.projects$.entitiesById[clipId].rels.effects.get()
+			expect(afterEffects).toEqual([String(beforeEffectIds[1])])
+			expect(harness.projects$.entitiesById[removedEffectId].get()).toBeUndefined()
 		} finally {
 			harness.destroy()
 		}

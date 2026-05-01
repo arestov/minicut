@@ -45,12 +45,37 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 		await expect(opacitySlider).toHaveValue(value)
 	}
 	await expect(inspector.getByText('60%')).toBeVisible()
+	await page.getByRole('region', { name: 'Timeline' }).getByRole('slider', { name: 'Cursor' }).fill('2.75')
 
 	await inspector.getByRole('button', { name: 'Split clip' }).click()
 	await expect(page.getByRole('button', { name: /Sample asset 1/i })).toHaveCount(2)
 
 	await inspector.getByRole('button', { name: 'Nudge +0.5s' }).click()
-	await expect(inspector.locator('dd').filter({ hasText: '3.0s' })).toBeVisible()
+	await expect(inspector.locator('dd').filter({ hasText: '3.3s' })).toBeVisible()
+})
+
+test('split clip follows playhead and reflects resulting durations in timeline widths', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+	await page.getByRole('button', { name: 'Add first resource' }).click()
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const clip = timeline.getByRole('button', { name: /Sample asset 1/i }).first()
+	await clip.click()
+	await timeline.getByRole('slider', { name: 'Cursor' }).fill('1.25')
+
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('button', { name: 'Split clip' }).click()
+
+	const clips = timeline.getByRole('button', { name: /Sample asset 1/i })
+	await expect(clips).toHaveCount(2)
+	const leftWidth = await clips.nth(0).evaluate((element) => Number.parseFloat(getComputedStyle(element).width))
+	const rightWidth = await clips.nth(1).evaluate((element) => Number.parseFloat(getComputedStyle(element).width))
+	expect(leftWidth).toBeGreaterThan(60)
+	expect(leftWidth).toBeLessThan(90)
+	expect(rightWidth).toBeGreaterThan(190)
+	expect(rightWidth).toBeLessThan(230)
 })
 
 test('project dropdown shows items when opened', async ({ page }) => {
@@ -155,10 +180,15 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await inspector.getByRole('button', { name: 'Tint' }).click()
 	await expect(inspector.getByText('1 effects')).toBeVisible()
 	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer')).toHaveCSS('filter', /sepia/)
+	await inspector.getByRole('button', { name: 'Manage effects' }).click()
+	await inspector.getByRole('button', { name: 'Remove effect Tint' }).click()
+	await expect(inspector.getByText('0 effects')).toBeVisible()
 
 	await inspector.getByRole('tab', { name: 'Color' }).click()
 	await inspector.getByRole('button', { name: 'Set color #16a34a' }).click()
 	await expect(inspector.locator('.ve-inspector-thumb')).toHaveCSS('background-color', 'rgb(22, 163, 74)')
+	await expect(clip).toHaveCSS('border-left-color', 'rgb(22, 163, 74)')
+	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer')).toHaveCSS('border-color', 'rgb(22, 163, 74)')
 
 	await inspector.getByRole('tab', { name: 'Audio' }).click()
 	await expect(inspector.getByLabel('Audio inspector').getByText('Gain')).toBeVisible()
@@ -168,8 +198,39 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await expect(inspector.getByRole('button', { name: 'Queue clip export' })).toBeVisible()
 
 	await inspector.getByRole('tab', { name: 'Edit' }).click()
+	const overflowingInspectorButtons = await inspector.locator('.ve-button-grid button, .ve-inline-actions button').evaluateAll((buttons) =>
+		buttons
+			.filter((button) => button.scrollWidth > button.clientWidth || button.scrollHeight > button.clientHeight)
+			.map((button) => button.textContent?.trim() ?? ''),
+	)
+	expect(overflowingInspectorButtons).toEqual([])
 	await inspector.getByRole('button', { name: 'Delete clip' }).click()
 	await expect(page.getByText('Select a clip to edit opacity or split it.')).toBeVisible()
+})
+
+test('media resources render metadata and action on separate lines', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+
+	const mediaBin = page.getByLabel('Media bin')
+	const firstResource = mediaBin.locator('.ve-resource-row').first()
+	const layout = await firstResource.evaluate((row) => {
+		const small = row.querySelector('small')
+		const button = row.querySelector('button')
+		if (!small || !button) {
+			return { smallTop: 0, buttonTop: 0 }
+		}
+
+		const smallRect = small.getBoundingClientRect()
+		const buttonRect = button.getBoundingClientRect()
+		return {
+			smallTop: smallRect.top,
+			buttonTop: buttonRect.top,
+		}
+	})
+
+	expect(layout.buttonTop).toBeGreaterThan(layout.smallTop)
 })
 
 test('dragging a clip changes its timeline start position', async ({ page }) => {

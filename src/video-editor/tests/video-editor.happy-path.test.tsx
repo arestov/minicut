@@ -32,9 +32,13 @@ describe('video editor harness', () => {
 
 			expect(screen.getByText('60%', { selector: 'dd' })).toBeInTheDocument()
 			await user.click(within(inspector).getByRole('button', { name: 'Blur' }))
+			await user.click(within(inspector).getByRole('button', { name: 'Sharpen' }))
+			expect(within(inspector).getByText('2 effects')).toBeInTheDocument()
+			await user.click(within(inspector).getByRole('button', { name: 'Manage effects' }))
+			await user.click(within(inspector).getByRole('button', { name: 'Remove effect Blur' }))
 			expect(within(inspector).getByText('1 effects')).toBeInTheDocument()
 			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
-				filter: 'blur(3px)',
+				filter: 'contrast(1.25) saturate(1.125)',
 			})
 
 			await user.click(within(inspector).getByRole('button', { name: 'Start +0.5s' }))
@@ -44,12 +48,45 @@ describe('video editor harness', () => {
 			fireEvent.change(within(transformControls).getByLabelText('X'), { target: { value: '24' } })
 			expect(within(transformControls).getByLabelText('X')).toHaveValue(24)
 
+			const timeline = screen.getByLabelText('Timeline')
+			const cursorSlider = within(timeline).getByRole('slider', { name: 'Cursor' })
+			fireEvent.change(cursorSlider, { target: { value: '2.75' } })
+
 			await user.click(within(inspector).getByRole('button', { name: 'Split clip' }))
 			expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2)
 
 			await user.click(within(inspector).getByRole('button', { name: 'Nudge +0.5s' }))
 			expect(screen.getByText('3.3s')).toBeInTheDocument()
 		} finally {
+			unmount()
+		}
+	})
+
+	it('splits clip at playhead and updates timeline clip widths from resulting durations', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
+
+			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			await user.click(clipButton)
+
+			const timeline = screen.getByLabelText('Timeline')
+			const cursorSlider = within(timeline).getByRole('slider', { name: 'Cursor' })
+			fireEvent.change(cursorSlider, { target: { value: '1.25' } })
+
+			await user.click(within(screen.getByLabelText('Inspector')).getByRole('button', { name: 'Split clip' }))
+
+			const splitClips = screen.getAllByRole('button', { name: /Sample asset 1/i }) as HTMLButtonElement[]
+			expect(splitClips).toHaveLength(2)
+			const leftWidth = Number.parseFloat(splitClips[0].style.width)
+			const rightWidth = Number.parseFloat(splitClips[1].style.width)
+			expect(leftWidth).toBeCloseTo(70, 0)
+			expect(rightWidth).toBeCloseTo(210, 0)
+		}
+		finally {
 			unmount()
 		}
 	})
@@ -68,6 +105,30 @@ describe('video editor harness', () => {
 			expect(screen.queryByRole('button', { name: /Sample asset 1 · 0.0s/i })).not.toBeInTheDocument()
 			expect(screen.getByText('Select a clip to edit opacity or split it.')).toBeInTheDocument()
 		} finally {
+			unmount()
+		}
+	})
+
+	it('applies clip color to timeline accent and renderer frame', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
+			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			await user.click(clipButton)
+
+			const inspector = screen.getByLabelText('Inspector')
+			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
+			await user.click(within(inspector).getByRole('button', { name: 'Set color #16a34a' }))
+
+			expect(clipButton).toHaveStyle({ borderLeftColor: 'rgb(22, 163, 74)' })
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+				borderColor: 'rgb(22, 163, 74)',
+			})
+		}
+		finally {
 			unmount()
 		}
 	})
