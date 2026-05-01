@@ -389,7 +389,6 @@ button:disabled {
 
 .ve-main,
 .ve-main__top,
-.ve-track-row,
 .ve-resource-list,
 .ve-project-list,
 .ve-inline-actions,
@@ -505,7 +504,8 @@ button:disabled {
 .ve-timeline-ruler {
 	position: relative;
 	height: 28px;
-	margin-left: 167px;
+	width: 100%;
+	min-width: 960px;
 	cursor: ew-resize;
 	overflow: hidden;
 	border-radius: 8px;
@@ -529,37 +529,77 @@ button:disabled {
 	flex: 1 1 auto;
 	min-height: 0;
 	max-height: none;
-	cursor: ew-resize;
 	overflow-y: auto;
-	overflow-x: auto;
+	overflow-x: hidden;
 	padding-right: 2px;
 }
 
+.ve-timeline-grid {
+	display: grid;
+	grid-template-columns: 167px minmax(0, 1fr);
+	align-items: start;
+	min-width: 100%;
+}
+
+.ve-track-label-column {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 167px;
+	padding-right: 10px;
+}
+
+.ve-track-lane-scroll {
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	cursor: ew-resize;
+}
+
+.ve-track-lane-column {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: max-content;
+	min-width: 100%;
+}
+
+.ve-timeline-label-spacer {
+	height: 28px;
+}
+
 .ve-timeline-scroll-area,
+.ve-track-lane-scroll,
 .ve-timeline-ruler,
 .ve-timeline-ruler span,
-.ve-track-list,
+.ve-track-label-list,
+.ve-track-lane-list,
 .ve-track-row__rail,
 .ve-clip {
 	user-select: none;
 	-webkit-user-select: none;
 }
 
-.ve-timeline-scroll-area[data-tool='hand'] {
+.ve-track-lane-scroll[data-tool='hand'] {
 	cursor: grab;
 }
 
-.ve-timeline-scroll-area[data-tool='hand']:active {
+.ve-track-lane-scroll[data-tool='hand']:active {
 	cursor: grabbing;
 }
 
-.ve-timeline-scroll-area[data-tool='trim'],
-.ve-timeline-scroll-area[data-tool='split'] {
+.ve-track-lane-scroll[data-tool='trim'],
+.ve-track-lane-scroll[data-tool='split'] {
 	cursor: crosshair;
 }
 
-.ve-track-list {
+.ve-track-label-list,
+.ve-track-lane-list {
 	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
 	padding-bottom: 2px;
 }
 
@@ -586,8 +626,7 @@ button:disabled {
 }
 
 .ve-project-list,
-.ve-resource-list,
-.ve-track-list {
+.ve-resource-list {
 	list-style: none;
 	padding: 0;
 	margin: 0;
@@ -597,8 +636,7 @@ button:disabled {
 }
 
 .ve-project-list button,
-.ve-resource-list li,
-.ve-track-row {
+.ve-resource-list li {
 	width: 100%;
 	align-items: stretch;
 }
@@ -898,22 +936,12 @@ button:disabled {
 	min-height: 64px;
 }
 
-.ve-track-row {
-	display: grid;
-	grid-template-columns: 144px minmax(0, 1fr);
-	align-items: stretch;
-	padding: 12px;
-	border: 1px solid #ececef;
-	border-radius: 8px;
-	background: #fafafa;
-	gap: 10px;
-}
-
 .ve-track-row__label {
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
 	align-items: flex-start;
+	height: 102px;
 	gap: 8px;
 	padding: 10px;
 	border-radius: 8px;
@@ -942,9 +970,10 @@ button:disabled {
 .ve-track-row__rail {
 	position: relative;
 	display: block;
-	min-height: 78px;
-	overflow-x: auto;
-	padding: 10px 0;
+	height: 102px;
+	min-width: 960px;
+	overflow: visible;
+	padding: 21px 0;
 	border-radius: 8px;
 	background:
 		linear-gradient(90deg, rgba(39, 39, 42, 0.08) 1px, transparent 1px) 0 0 / 56px 100%,
@@ -1320,26 +1349,14 @@ button:disabled {
 	background: #09090b;
 }
 
-.ve-renderer__layer--audio {
-	left: 10%;
-	top: 34%;
-	width: 80%;
-	height: 32%;
-	background: linear-gradient(135deg, #ecfeff, #cffafe);
-}
-
-.ve-renderer__audio {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	justify-content: center;
-	gap: 10px;
-	width: 90%;
-	color: #164e63;
-}
-
-.ve-renderer__audio audio {
-	width: 100%;
+.ve-renderer__audio-elements {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	pointer-events: none;
 }
 
 .ve-renderer__layer strong,
@@ -1493,10 +1510,6 @@ button:disabled {
 	.ve-main__top > .ve-panel[aria-label='Inspector'] {
 		max-height: none;
 		overflow-y: visible;
-	}
-
-	.ve-track-row {
-		grid-template-columns: 1fr;
 	}
 
 	.ve-panel__header,

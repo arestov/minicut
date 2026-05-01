@@ -8,17 +8,15 @@ const createProjectFromMenu = async (user: ReturnType<typeof renderVideoEditor>[
 	await user.click(within(projectsRegion).getByRole('button', { name: 'New project' }))
 }
 
-const timelineTimeOriginPx = 167
-
 const setTimelineCursor = (timeline: HTMLElement, seconds: number): void => {
-	const scrollArea = timeline.querySelector('.ve-timeline-scroll-area') as HTMLDivElement | null
-	expect(scrollArea).not.toBeNull()
+	const laneScroll = timeline.querySelector('.ve-track-lane-scroll') as HTMLDivElement | null
+	expect(laneScroll).not.toBeNull()
 
 	const zoomText = within(timeline).getByText(/px\/s$/i).textContent ?? '56'
 	const zoom = Number.parseFloat(zoomText)
-	fireEvent.pointerDown(scrollArea as HTMLDivElement, {
+	fireEvent.pointerDown(laneScroll as HTMLDivElement, {
 		buttons: 1,
-		clientX: timelineTimeOriginPx + seconds * zoom,
+		clientX: seconds * zoom,
 	})
 }
 

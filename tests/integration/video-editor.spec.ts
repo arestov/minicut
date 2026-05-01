@@ -142,6 +142,10 @@ test('video resources add linked audio clips that play, inspect, and export sett
 	const renderer = page.getByLabel('Renderer stage')
 	const audio = renderer.locator('audio')
 	await expect(audio).toHaveCount(1)
+	await expect(renderer.locator('.ve-renderer__layer--audio')).toHaveCount(0)
+	await expect(renderer.getByLabel('Audio preview')).toHaveCount(0)
+	await expect(audio).not.toHaveAttribute('controls', '')
+	await expect(audio).toHaveAttribute('data-resource-name', 'fixture-video.webm')
 	await expect(audio).toHaveAttribute('data-gain', '0.65')
 	await expect(audio).toHaveAttribute('data-pan', '-0.4')
 	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).volume)).toBeCloseTo(0.65, 2)
@@ -248,6 +252,14 @@ test('imports real media files, edits timeline clips, and previews actual media 
 
 	await setTimelineCursor(page, 0.5)
 	await expect(renderer.locator('audio')).toHaveCount(1)
+	await expect(renderer.locator('audio')).toHaveAttribute('data-resource-name', 'fixture-video.webm')
+	await expect(renderer.locator('.ve-renderer__layer--audio')).toHaveCount(0)
+
+	const audioClipText = await timeline.getByRole('button', { name: /fixture-audio.wav/i }).innerText()
+	const audioClipStart = Number(audioClipText.match(/· (\d+(?:\.\d+)?)s \//)?.[1] ?? 0)
+	await setTimelineCursor(page, audioClipStart + 0.5)
+	await expect(renderer.locator('audio')).toHaveCount(1)
+	await expect(renderer.locator('audio')).toHaveAttribute('data-resource-name', 'fixture-audio.wav')
 })
 
 test('timeline uses one shared current step and keeps many tracks scrollable', async ({ page }) => {
@@ -559,23 +571,33 @@ test('timeline tools perform select, split, trim, and hand pan actions', async (
 		await timeline.getByRole('button', { name: 'Add video track' }).click()
 	}
 	const videoResource = page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
-	for (let index = 0; index < 24; index += 1) {
+	for (let index = 0; index < 12; index += 1) {
 		await videoResource.getByRole('button', { name: 'Add to timeline' }).click()
+	}
+	for (let index = 0; index < 5; index += 1) {
+		await timeline.getByRole('button', { name: 'Zoom in' }).click()
 	}
 	await timeline.getByRole('button', { name: 'Hand tool' }).click()
 	const scrollArea = timeline.locator('.ve-timeline-scroll-area')
+	const laneScroll = timeline.locator('.ve-track-lane-scroll')
 	const firstRail = timeline.locator('.ve-track-row__rail').first()
-	await expect.poll(async () => firstRail.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
-	await firstRail.evaluate((element) => { element.scrollLeft = 0 })
-	const scrollBox = await scrollArea.boundingBox()
+	await expect.poll(async () => laneScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+	await expect.poll(async () => scrollArea.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+	await laneScroll.evaluate((element) => { element.scrollLeft = 0 })
+	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBe(0)
+	const scrollBox = await laneScroll.boundingBox()
 	if (!scrollBox) {
-		throw new Error('Timeline scroll area is unavailable')
+		throw new Error('Timeline lane scroll area is unavailable')
 	}
-	await page.mouse.move(scrollBox.x + scrollBox.width - 30, scrollBox.y + scrollBox.height / 2)
+	const visibleLaneY = scrollBox.y + 30
+	await page.mouse.move(scrollBox.x + scrollBox.width - 30, visibleLaneY)
 	await page.mouse.down()
-	await page.mouse.move(scrollBox.x + 20, scrollBox.y + scrollBox.height / 2)
+	await page.mouse.move(scrollBox.x + 20, visibleLaneY)
 	await page.mouse.up()
-	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+	await expect.poll(async () => laneScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+	await expect.poll(async () => scrollArea.evaluate((element) => element.scrollLeft)).toBe(0)
+	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBe(0)
+	await expect(timeline.getByText('V1')).toBeVisible()
 })
 
 test('timeline clip boxes align to the ruler and playhead origin', async ({ page }) => {

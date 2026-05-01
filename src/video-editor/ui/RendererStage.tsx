@@ -1,7 +1,13 @@
 import { observer } from '@legendapp/state/react'
 import { useEffect, useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import type { ClipAttrs, Entity, EntityId, KeyframeAttrs, ResourceAttrs } from '../domain/types'
+import type {
+	ClipAttrs,
+	Entity,
+	EntityId,
+	KeyframeAttrs,
+	ResourceAttrs,
+} from '../domain/types'
 import type { ScalarKeyframe } from '../render/timing'
 import { evaluateFadeOpacity, evaluateKeyframedScalar } from '../render/timing'
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
@@ -34,7 +40,11 @@ interface MediaSeekState {
 }
 
 const isRealMediaUrl = (url: string): boolean =>
-	url.startsWith('blob:') || url.startsWith('/') || url.startsWith('./') || url.startsWith('http') || url.startsWith('data:')
+	url.startsWith('blob:') ||
+	url.startsWith('/') ||
+	url.startsWith('./') ||
+	url.startsWith('http') ||
+	url.startsWith('data:')
 
 const getEffectFilter = (effect: Entity): string | null => {
 	const kind = String(effect.attrs.kind)
@@ -101,7 +111,10 @@ const drawFallbackPreview = (
 const getClipLocalMediaTime = (clip: RenderedClip, cursor: number): number =>
 	Math.max(0, clip.inPoint + cursor - clip.start)
 
-const syncMediaPlayback = (element: HTMLMediaElement, shouldPlay: boolean): void => {
+const syncMediaPlayback = (
+	element: HTMLMediaElement,
+	shouldPlay: boolean,
+): void => {
 	if (shouldPlay) {
 		void element.play().catch(() => undefined)
 		return
@@ -110,22 +123,35 @@ const syncMediaPlayback = (element: HTMLMediaElement, shouldPlay: boolean): void
 	element.pause()
 }
 
-const getKeyframeResolver = (
-	projects$: ReturnType<typeof useVideoEditor>['projects$'],
-): ((id: EntityId) => ScalarKeyframe | null) => (id) => {
-	const keyframe$ = projects$.entitiesById[id]
-	if (!keyframe$ || keyframe$.type.get() !== 'keyframe') {
-		return null
+const getKeyframeResolver =
+	(
+		projects$: ReturnType<typeof useVideoEditor>['projects$'],
+	): ((id: EntityId) => ScalarKeyframe | null) =>
+	(id) => {
+		const keyframe$ = projects$.entitiesById[id]
+		if (!keyframe$ || keyframe$.type.get() !== 'keyframe') {
+			return null
+		}
+
+		const attrs = keyframe$.attrs.get() as unknown as KeyframeAttrs
+		return Number.isFinite(attrs.time) && Number.isFinite(attrs.value)
+			? {
+					time: attrs.time,
+					value: attrs.value,
+					interpolation: attrs.interpolation,
+				}
+			: null
 	}
 
-	const attrs = keyframe$.attrs.get() as unknown as KeyframeAttrs
-	return Number.isFinite(attrs.time) && Number.isFinite(attrs.value)
-		? { time: attrs.time, value: attrs.value, interpolation: attrs.interpolation }
-		: null
-}
-
-const seekMediaElement = (element: HTMLMediaElement, localTime: number, tolerance = pausedSeekToleranceSeconds): boolean => {
-	if (Number.isFinite(localTime) && Math.abs(element.currentTime - localTime) > tolerance) {
+const seekMediaElement = (
+	element: HTMLMediaElement,
+	localTime: number,
+	tolerance = pausedSeekToleranceSeconds,
+): boolean => {
+	if (
+		Number.isFinite(localTime) &&
+		Math.abs(element.currentTime - localTime) > tolerance
+	) {
 		try {
 			element.currentTime = localTime
 			return true
@@ -143,22 +169,31 @@ export const RendererStage = observer(() => {
 	const workerRef = useRef<Worker | null>(null)
 	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
 	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
-	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>('fallback')
+	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>(
+		'fallback',
+	)
 	const cursor = session$.cursor.get()
 	const isPlaying = session$.isPlaying.get()
-	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const activeProjectId =
+		session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const project$ = activeProjectId ? projects$.projects[activeProjectId] : null
 	const rootEntityId = project$?.rootEntityId.get()
-	const timelineId = rootEntityId ? projects$.entitiesById[rootEntityId].rels.activeTimeline.get() : null
-	const trackIds = typeof timelineId === 'string'
-		? projects$.entitiesById[timelineId].rels.tracks.get()
-		: []
-	const activeClips: Array<{ id: string; trackKind: ResourceAttrs['kind'] }> = []
+	const timelineId = rootEntityId
+		? projects$.entitiesById[rootEntityId].rels.activeTimeline.get()
+		: null
+	const trackIds =
+		typeof timelineId === 'string'
+			? projects$.entitiesById[timelineId].rels.tracks.get()
+			: []
+	const activeClips: Array<{ id: string; trackKind: ResourceAttrs['kind'] }> =
+		[]
 	const resolveKeyframe = getKeyframeResolver(projects$)
 
 	if (Array.isArray(trackIds)) {
 		for (const trackId of trackIds) {
-			const trackKind = String(projects$.entitiesById[trackId].attrs.kind.get()) as ResourceAttrs['kind']
+			const trackKind = String(
+				projects$.entitiesById[trackId].attrs.kind.get(),
+			) as ResourceAttrs['kind']
 			const clipIds = projects$.entitiesById[trackId].rels.clips.get()
 			if (!Array.isArray(clipIds)) {
 				continue
@@ -175,45 +210,82 @@ export const RendererStage = observer(() => {
 		}
 	}
 
-	const renderedClips: RenderedClip[] = activeClips.map(({ id: clipId, trackKind }) => {
-		const clip$ = projects$.entitiesById[clipId]
-		const attrs = clip$.attrs.get() as unknown as ClipAttrs
-		const localTime = Math.max(0, cursor - attrs.start)
-		const resourceId = clip$.rels.resource.get()
-		const resourceAttrs = typeof resourceId === 'string'
-			? projects$.entitiesById[resourceId].attrs.get() as unknown as ResourceAttrs
-			: null
-		const resourceKind = trackKind === 'audio' ? 'audio' : attrs.mediaKind ?? resourceAttrs?.kind ?? 'image'
-		const effectIds = clip$.rels.effects.get()
-		const filters = Array.isArray(effectIds)
-			? effectIds
-				.map((effectId) => getEffectFilter(projects$.entitiesById[effectId].get() as Entity))
-				.filter((filter): filter is string => Boolean(filter))
-			: []
+	const renderedClips: RenderedClip[] = activeClips.map(
+		({ id: clipId, trackKind }) => {
+			const clip$ = projects$.entitiesById[clipId]
+			const attrs = clip$.attrs.get() as unknown as ClipAttrs
+			const localTime = Math.max(0, cursor - attrs.start)
+			const resourceId = clip$.rels.resource.get()
+			const resourceAttrs =
+				typeof resourceId === 'string'
+					? (projects$.entitiesById[
+							resourceId
+						].attrs.get() as unknown as ResourceAttrs)
+					: null
+			const resourceKind =
+				trackKind === 'audio'
+					? 'audio'
+					: (attrs.mediaKind ?? resourceAttrs?.kind ?? 'image')
+			const effectIds = clip$.rels.effects.get()
+			const filters = Array.isArray(effectIds)
+				? effectIds
+						.map((effectId) =>
+							getEffectFilter(projects$.entitiesById[effectId].get() as Entity),
+						)
+						.filter((filter): filter is string => Boolean(filter))
+				: []
 
-		const baseOpacity = evaluateKeyframedScalar(attrs.opacity, localTime, resolveKeyframe)
+			const baseOpacity = evaluateKeyframedScalar(
+				attrs.opacity,
+				localTime,
+				resolveKeyframe,
+			)
 
-		return {
-			id: clipId,
-			name: attrs.name,
-			color: String(attrs.color ?? '#2563eb'),
-			resourceName: resourceAttrs?.name ?? attrs.name,
-			resourceKind,
-			resourceUrl: resourceAttrs?.url ?? '',
-			mime: resourceAttrs?.mime ?? '',
-			inPoint: attrs.in,
-			start: attrs.start,
-			opacity: evaluateFadeOpacity(cursor, attrs.start, attrs.duration, baseOpacity, attrs.fadeIn ?? 0, attrs.fadeOut ?? 0),
-			transform: {
-				x: evaluateKeyframedScalar(attrs.transform.x, localTime, resolveKeyframe),
-				y: evaluateKeyframedScalar(attrs.transform.y, localTime, resolveKeyframe),
-				scale: evaluateKeyframedScalar(attrs.transform.scale, localTime, resolveKeyframe),
-				rotation: evaluateKeyframedScalar(attrs.transform.rotation, localTime, resolveKeyframe),
-			},
-			audio: attrs.audio ?? { gain: 1, pan: 0 },
-			filters,
-		}
-	})
+			return {
+				id: clipId,
+				name: attrs.name,
+				color: String(attrs.color ?? '#2563eb'),
+				resourceName: resourceAttrs?.name ?? attrs.name,
+				resourceKind,
+				resourceUrl: resourceAttrs?.url ?? '',
+				mime: resourceAttrs?.mime ?? '',
+				inPoint: attrs.in,
+				start: attrs.start,
+				opacity: evaluateFadeOpacity(
+					cursor,
+					attrs.start,
+					attrs.duration,
+					baseOpacity,
+					attrs.fadeIn ?? 0,
+					attrs.fadeOut ?? 0,
+				),
+				transform: {
+					x: evaluateKeyframedScalar(
+						attrs.transform.x,
+						localTime,
+						resolveKeyframe,
+					),
+					y: evaluateKeyframedScalar(
+						attrs.transform.y,
+						localTime,
+						resolveKeyframe,
+					),
+					scale: evaluateKeyframedScalar(
+						attrs.transform.scale,
+						localTime,
+						resolveKeyframe,
+					),
+					rotation: evaluateKeyframedScalar(
+						attrs.transform.rotation,
+						localTime,
+						resolveKeyframe,
+					),
+				},
+				audio: attrs.audio ?? { gain: 1, pan: 0 },
+				filters,
+			}
+		},
+	)
 
 	useEffect(() => {
 		const canvas = canvasRef.current
@@ -246,7 +318,13 @@ export const RendererStage = observer(() => {
 			opacity: clip.opacity,
 		}))
 		if (workerRef.current) {
-			workerRef.current.postMessage({ type: 'render', width, height, cursor, clips })
+			workerRef.current.postMessage({
+				type: 'render',
+				width,
+				height,
+				cursor,
+				clips,
+			})
 			return
 		}
 
@@ -267,11 +345,17 @@ export const RendererStage = observer(() => {
 			}
 
 			const localTime = getClipLocalMediaTime(clip, cursor)
-			const seekState = mediaSeekStateRef.current.get(clip.id) ?? { lastSeekAt: 0, wasPlaying: false }
+			const seekState = mediaSeekStateRef.current.get(clip.id) ?? {
+				lastSeekAt: 0,
+				wasPlaying: false,
+			}
 			const playbackStateChanged = seekState.wasPlaying !== isPlaying
-			const tolerance = isPlaying ? playingSeekToleranceSeconds : pausedSeekToleranceSeconds
+			const tolerance = isPlaying
+				? playingSeekToleranceSeconds
+				: pausedSeekToleranceSeconds
 			const interval = isPlaying ? playingSeekIntervalMs : pausedSeekIntervalMs
-			const canSeek = playbackStateChanged || now - seekState.lastSeekAt >= interval
+			const canSeek =
+				playbackStateChanged || now - seekState.lastSeekAt >= interval
 
 			if (canSeek && seekMediaElement(element, localTime, tolerance)) {
 				seekState.lastSeekAt = now
@@ -284,6 +368,13 @@ export const RendererStage = observer(() => {
 		}
 	}, [cursor, isPlaying, renderedClips])
 
+	const visualRenderedClips = renderedClips.filter(
+		(clip) => clip.resourceKind !== 'audio',
+	)
+	const audioRenderedClips = renderedClips.filter(
+		(clip) => clip.resourceKind === 'audio',
+	)
+
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">
 			<div className="ve-renderer__safe-area">
@@ -293,10 +384,10 @@ export const RendererStage = observer(() => {
 					aria-label="Offscreen preview canvas"
 					data-render-mode={renderMode}
 				/>
-				{renderedClips.length === 0 ? (
+				{visualRenderedClips.length === 0 ? (
 					<div className="ve-renderer__empty">No frame at cursor</div>
 				) : (
-					renderedClips.map((clip) => {
+					visualRenderedClips.map((clip) => {
 						const hasMedia = isRealMediaUrl(clip.resourceUrl)
 						return (
 							<div
@@ -327,29 +418,13 @@ export const RendererStage = observer(() => {
 										muted
 										playsInline
 										preload="metadata"
-										onLoadedMetadata={(event) => seekMediaElement(event.currentTarget, getClipLocalMediaTime(clip, cursor))}
+										onLoadedMetadata={(event) =>
+											seekMediaElement(
+												event.currentTarget,
+												getClipLocalMediaTime(clip, cursor),
+											)
+										}
 									/>
-								) : null}
-								{hasMedia && clip.resourceKind === 'audio' ? (
-									<div className="ve-renderer__audio" aria-label="Audio preview" data-gain={clip.audio.gain} data-pan={clip.audio.pan}>
-										<span>{clip.resourceName}</span>
-										<audio
-											ref={(element) => {
-												if (element) {
-													mediaElementsRef.current.set(clip.id, element)
-													return
-												}
-												mediaElementsRef.current.delete(clip.id)
-												mediaSeekStateRef.current.delete(clip.id)
-											}}
-											src={clip.resourceUrl}
-											data-gain={clip.audio.gain}
-											data-pan={clip.audio.pan}
-											preload="metadata"
-											controls
-											onLoadedMetadata={(event) => seekMediaElement(event.currentTarget, getClipLocalMediaTime(clip, cursor))}
-										/>
-									</div>
 								) : null}
 								{!hasMedia ? (
 									<>
@@ -361,6 +436,34 @@ export const RendererStage = observer(() => {
 						)
 					})
 				)}
+				<div className="ve-renderer__audio-elements" aria-hidden="true">
+					{audioRenderedClips.map((clip) =>
+						isRealMediaUrl(clip.resourceUrl) ? (
+							<audio
+								key={clip.id}
+								ref={(element) => {
+									if (element) {
+										mediaElementsRef.current.set(clip.id, element)
+										return
+									}
+									mediaElementsRef.current.delete(clip.id)
+									mediaSeekStateRef.current.delete(clip.id)
+								}}
+								src={clip.resourceUrl}
+								data-resource-name={clip.resourceName}
+								data-gain={clip.audio.gain}
+								data-pan={clip.audio.pan}
+								preload="metadata"
+								onLoadedMetadata={(event) =>
+									seekMediaElement(
+										event.currentTarget,
+										getClipLocalMediaTime(clip, cursor),
+									)
+								}
+							/>
+						) : null,
+					)}
+				</div>
 			</div>
 		</div>
 	)
