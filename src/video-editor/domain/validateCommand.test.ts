@@ -2,7 +2,7 @@ import { buildDispatchResult } from './applyCommand'
 import { applyPatchEnvelopeInPlace } from './applyPatchInPlace'
 import { applyPatchEnvelopeToRegistry } from './applyPatch'
 import { createEmptyRegistry } from './createProject'
-import { getClipIdsForTrack, getVideoTrack } from './selectors'
+import { getAudioTrack, getClipIdsForTrack, getTracks, getVideoTrack } from './selectors'
 import { CMD, type Command } from './types'
 
 describe('command validation', () => {
@@ -88,5 +88,250 @@ describe('command validation', () => {
 		const track = getVideoTrack(immutableNext, project)
 		expect(track).not.toBeNull()
 		expect(getClipIdsForTrack(immutableNext, track!.id)).toEqual([])
+	})
+
+	it('routes audio resources into audio tracks when clip is inserted with audio trackId', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const project = registry.projects[projectId]
+		const audioTrack = getAudioTrack(registry, project)
+		expect(audioTrack).not.toBeNull()
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Voice over', kind: 'audio', duration: 3.5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: {
+				projectId,
+				resourceId: String(importResult.createdIds?.resourceId),
+				trackId: String(audioTrack?.id),
+			},
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		const clipId = String(clipResult.createdIds?.clipId)
+		expect(getClipIdsForTrack(registry, String(audioTrack?.id))).toContain(clipId)
+		const videoTrack = getVideoTrack(registry, project)
+		expect(videoTrack).not.toBeNull()
+		expect(getClipIdsForTrack(registry, String(videoTrack?.id))).not.toContain(clipId)
+	})
+
+	it('rejects split commands on clip boundaries', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Split source', kind: 'video', duration: 5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		const clipId = String(clipResult.createdIds?.clipId)
+		const clipAttrs = registry.entitiesById[clipId].attrs as { start: number, duration: number }
+
+		for (const splitTime of [clipAttrs.start, clipAttrs.start + clipAttrs.duration]) {
+			expect(() =>
+				buildDispatchResult(registry, {
+					c: CMD.TIMELINE_SPLIT_CLIP,
+					p: { id: clipId, time: splitTime },
+				}),
+			).toThrow('Split time must be inside clip bounds')
+		}
+	})
+
+	it('clamps moved clip start to zero when delta is too negative', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Move source', kind: 'video', duration: 5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const clipId = String(clipResult.createdIds?.clipId)
+
+		const moveForward = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_MOVE_CLIP,
+			p: { id: clipId, delta: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, moveForward.envelope)
+
+		const moveBackward = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_MOVE_CLIP,
+			p: { id: clipId, delta: -100 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, moveBackward.envelope)
+
+		expect(Number(registry.entitiesById[clipId].attrs.start)).toBe(0)
+	})
+
+	it('creates a new track and supports clip insertion into it', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const createTrackResult = buildDispatchResult(registry, {
+			c: CMD.TRACK_CREATE,
+			p: { projectId, kind: 'video', name: 'V2' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, createTrackResult.envelope)
+
+		const project = registry.projects[projectId]
+		const newTrack = getTracks(registry, project).find((track) => String(track.attrs.name) === 'V2')
+		expect(newTrack).not.toBeUndefined()
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Track source', kind: 'video', duration: 4 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: {
+				projectId,
+				resourceId: String(importResult.createdIds?.resourceId),
+				trackId: String(newTrack?.id),
+			},
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		expect(getClipIdsForTrack(registry, String(newTrack?.id))).toEqual([String(clipResult.createdIds?.clipId)])
+	})
+
+	it('keeps duplicate effects on the same clip in insertion order', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Effect source', kind: 'video', duration: 5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const clipId = String(clipResult.createdIds?.clipId)
+
+		const effectOne = buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: { id: clipId, name: 'Blur A', kind: 'blur', amount: 0.15 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, effectOne.envelope)
+
+		const effectTwo = buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: { id: clipId, name: 'Blur B', kind: 'blur', amount: 0.45 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, effectTwo.envelope)
+
+		const effects = registry.entitiesById[clipId].rels.effects
+		expect(Array.isArray(effects)).toBe(true)
+		expect(effects).toHaveLength(2)
+		expect(String(effects[0])).not.toBe(String(effects[1]))
+	})
+
+	it('rejects clip duration updates when duration is not positive', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Duration source', kind: 'video', duration: 5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		expect(() =>
+			buildDispatchResult(registry, {
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					id: String(clipResult.createdIds?.clipId),
+					attrs: { duration: 0 },
+				},
+			}),
+		).toThrow('Clip duration must be positive')
+	})
+
+	it('supports duplicate resource names while creating distinct ids', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const firstImport = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Same name', kind: 'image', duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, firstImport.envelope)
+
+		const secondImport = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Same name', kind: 'image', duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, secondImport.envelope)
+
+		expect(String(firstImport.createdIds?.resourceId)).not.toBe(String(secondImport.createdIds?.resourceId))
+		const projectEntity = registry.entitiesById[registry.projects[projectId].rootEntityId]
+		const resources = Array.isArray(projectEntity.rels.resources) ? projectEntity.rels.resources : []
+		expect(resources).toHaveLength(2)
+	})
+
+	it('increments versions predictably when the same import command is dispatched twice', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const command: Command = {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Repeat import', kind: 'video', duration: 1 },
+		}
+
+		const first = buildDispatchResult(registry, command)
+		registry = applyPatchEnvelopeToRegistry(registry, first.envelope)
+		const second = buildDispatchResult(registry, command)
+		registry = applyPatchEnvelopeToRegistry(registry, second.envelope)
+
+		expect(first.envelope.version).toBe(2)
+		expect(second.envelope.version).toBe(3)
+		const projectEntity = registry.entitiesById[registry.projects[projectId].rootEntityId]
+		const resources = Array.isArray(projectEntity.rels.resources) ? projectEntity.rels.resources : []
+		expect(resources).toHaveLength(2)
 	})
 })

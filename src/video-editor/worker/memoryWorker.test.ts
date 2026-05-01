@@ -59,4 +59,67 @@ describe('MemoryWorkerAuthority', () => {
 		expect(Array.isArray(projectEntity.rels.resources)).toBe(true)
 		expect(snapshot.projects[projectId].version).toBe(5)
 	})
+
+	it('does not increment project version when invalid commands throw', () => {
+		const { worker, projectId, clipId } = createClipWithEffect()
+		const versionBefore = worker.getSnapshot().projects[projectId].version
+
+		expect(() =>
+			worker.dispatch({
+				c: CMD.TIMELINE_SPLIT_CLIP,
+				p: { id: clipId, time: 0 },
+			}),
+		).toThrow('Split time must be inside clip bounds')
+
+		const versionAfter = worker.getSnapshot().projects[projectId].version
+		expect(versionAfter).toBe(versionBefore)
+	})
+
+	it('applies sequential versions when dispatch calls happen in quick succession', async () => {
+		const worker = new MemoryWorkerAuthority()
+		const projectResult = worker.dispatch({ c: CMD.PROJECT_CREATE, p: {} })
+		const projectId = String(projectResult.createdIds?.projectId)
+
+		const [first, second] = await Promise.all([
+			Promise.resolve().then(() =>
+				worker.dispatch({
+					c: CMD.RESOURCE_IMPORT,
+					p: { projectId, name: 'A', kind: 'video', duration: 1 },
+				}),
+			),
+			Promise.resolve().then(() =>
+				worker.dispatch({
+					c: CMD.RESOURCE_IMPORT,
+					p: { projectId, name: 'B', kind: 'video', duration: 1 },
+				}),
+			),
+		])
+
+		expect([first.envelope.version, second.envelope.version].sort((a, b) => a - b)).toEqual([2, 3])
+		expect(worker.getSnapshot().projects[projectId].version).toBe(3)
+	})
+
+	it('keeps clip-track indexes empty for newly created tracks without clips', () => {
+		const worker = new MemoryWorkerAuthority()
+		const projectResult = worker.dispatch({ c: CMD.PROJECT_CREATE, p: {} })
+		const projectId = String(projectResult.createdIds?.projectId)
+
+		worker.dispatch({
+			c: CMD.TRACK_CREATE,
+			p: { projectId, kind: 'audio', name: 'A2' },
+		})
+
+		const indexes = worker.getDerivedIndexes()
+		expect(indexes.clipTrackById).toEqual({})
+	})
+
+	it('removes patch listeners after destroy', () => {
+		const worker = new MemoryWorkerAuthority()
+		const listener = vi.fn()
+		worker.subscribe(listener)
+		worker.destroy()
+
+		worker.dispatch({ c: CMD.PROJECT_CREATE, p: {} })
+		expect(listener).not.toHaveBeenCalled()
+	})
 })
