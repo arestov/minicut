@@ -13,8 +13,8 @@ import type {
 const asArray = (value: Entity['rels'][string]): EntityId[] =>
 	Array.isArray(value) ? value : []
 
-export const getProjectEntity = (project: ProjectGraph): Entity =>
-	project.entities[project.rootEntityId]
+export const getProjectEntity = (registry: ProjectRegistry, project: ProjectGraph): Entity =>
+	registry.entitiesById[project.rootEntityId]
 
 export const getActiveProjectId = (
 	registry: ProjectRegistry,
@@ -35,11 +35,12 @@ export const getActiveProject = (
 
 export const getProjectMetaList = (registry: ProjectRegistry): ProjectMeta[] =>
 	Object.values(registry.projects).map((project) => {
-		const projectEntity = getProjectEntity(project)
+		const projectEntity = getProjectEntity(registry, project)
 		const resourceCount = asArray(projectEntity.rels.resources).length
-		const clipCount = Object.values(project.entities).filter(
-			(entity) => entity.type === 'clip',
-		).length
+		const clipCount = getTracks(registry, project).reduce(
+			(count, track) => count + getClipIdsForTrack(registry, track.id).length,
+			0,
+		)
 
 		return {
 			id: project.id,
@@ -50,34 +51,34 @@ export const getProjectMetaList = (registry: ProjectRegistry): ProjectMeta[] =>
 		}
 	})
 
-export const getActiveTimelineId = (project: ProjectGraph): EntityId =>
-	String(getProjectEntity(project).rels.activeTimeline)
+export const getActiveTimelineId = (registry: ProjectRegistry, project: ProjectGraph): EntityId =>
+	String(getProjectEntity(registry, project).rels.activeTimeline)
 
-export const getActiveTimeline = (project: ProjectGraph): Entity =>
-	project.entities[getActiveTimelineId(project)]
+export const getActiveTimeline = (registry: ProjectRegistry, project: ProjectGraph): Entity =>
+	registry.entitiesById[getActiveTimelineId(registry, project)]
 
-export const getTrackIds = (project: ProjectGraph): EntityId[] =>
-	asArray(getActiveTimeline(project).rels.tracks)
+export const getTrackIds = (registry: ProjectRegistry, project: ProjectGraph): EntityId[] =>
+	asArray(getActiveTimeline(registry, project).rels.tracks)
 
-export const getTracks = (project: ProjectGraph): Entity[] =>
-	getTrackIds(project).map((trackId) => project.entities[trackId])
+export const getTracks = (registry: ProjectRegistry, project: ProjectGraph): Entity[] =>
+	getTrackIds(registry, project).map((trackId) => registry.entitiesById[trackId])
 
-export const getVideoTrack = (project: ProjectGraph): Entity | null =>
-	getTracks(project).find((entity) => entity.attrs.kind === 'video') ?? null
+export const getVideoTrack = (registry: ProjectRegistry, project: ProjectGraph): Entity | null =>
+	getTracks(registry, project).find((entity) => entity.attrs.kind === 'video') ?? null
 
-export const getEntity = (project: ProjectGraph, entityId: EntityId | null): Entity | null =>
-	entityId ? project.entities[entityId] ?? null : null
+export const getEntity = (registry: ProjectRegistry, entityId: EntityId | null): Entity | null =>
+	entityId ? registry.entitiesById[entityId] ?? null : null
 
-export const getResourceEntities = (project: ProjectGraph): Entity[] =>
-	asArray(getProjectEntity(project).rels.resources).map(
-		(resourceId) => project.entities[resourceId],
+export const getResourceEntities = (registry: ProjectRegistry, project: ProjectGraph): Entity[] =>
+	asArray(getProjectEntity(registry, project).rels.resources).map(
+		(resourceId) => registry.entitiesById[resourceId],
 	)
 
-export const getClipIdsForTrack = (project: ProjectGraph, trackId: EntityId): EntityId[] =>
-	asArray(project.entities[trackId]?.rels.clips)
+export const getClipIdsForTrack = (registry: ProjectRegistry, trackId: EntityId): EntityId[] =>
+	asArray(registry.entitiesById[trackId]?.rels.clips)
 
-export const getClipEntitiesForTrack = (project: ProjectGraph, trackId: EntityId): Entity[] =>
-	getClipIdsForTrack(project, trackId).map((clipId) => project.entities[clipId])
+export const getClipEntitiesForTrack = (registry: ProjectRegistry, trackId: EntityId): Entity[] =>
+	getClipIdsForTrack(registry, trackId).map((clipId) => registry.entitiesById[clipId])
 
 export const getSelectedClip = (
 	registry: ProjectRegistry,
@@ -88,7 +89,7 @@ export const getSelectedClip = (
 		return null
 	}
 
-	const entity = getEntity(project, session.selectedEntityId)
+	const entity = getEntity(registry, session.selectedEntityId)
 	return entity?.type === 'clip' ? entity : null
 }
 
@@ -102,8 +103,8 @@ export const getResourceLabel = (resource: Entity): string => {
 	return `${attrs.name} · ${attrs.kind} · ${attrs.mime} · ${attrs.duration.toFixed(1)}s`
 }
 
-export const getTrackEnd = (project: ProjectGraph, trackId: EntityId): number =>
-	getClipEntitiesForTrack(project, trackId).reduce((max, clip) => {
+export const getTrackEnd = (registry: ProjectRegistry, trackId: EntityId): number =>
+	getClipEntitiesForTrack(registry, trackId).reduce((max, clip) => {
 		const attrs = clip.attrs as ClipAttrs
 		return Math.max(max, attrs.start + attrs.duration)
 	}, 0)
@@ -117,8 +118,8 @@ export const getActiveClipNamesAtCursor = (
 		return []
 	}
 
-	return getTracks(project)
-		.flatMap((track) => getClipEntitiesForTrack(project, track.id))
+	return getTracks(registry, project)
+		.flatMap((track) => getClipEntitiesForTrack(registry, track.id))
 		.filter((clip) => {
 			const attrs = clip.attrs as ClipAttrs
 			return session.cursor >= attrs.start && session.cursor < attrs.start + attrs.duration

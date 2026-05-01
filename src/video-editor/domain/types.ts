@@ -11,14 +11,17 @@ export interface Entity {
 	rels: Record<string, RelValue>
 }
 
+export interface GraphRoot {
+	entitiesById: Record<EntityId, Entity>
+}
+
 export interface ProjectGraph {
 	id: ProjectId
 	version: number
 	rootEntityId: EntityId
-	entities: Record<EntityId, Entity>
 }
 
-export interface ProjectRegistry {
+export interface ProjectRegistry extends GraphRoot {
 	activeProjectId: ProjectId | null
 	projects: Record<ProjectId, ProjectGraph>
 }

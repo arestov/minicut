@@ -13,25 +13,25 @@ const getActiveClipNames = (
 
 	const project$ = projects$.projects[projectId]
 	const rootEntityId = project$.rootEntityId.get()
-	const timelineId = project$.entities[rootEntityId].rels.activeTimeline.get()
+	const timelineId = projects$.entitiesById[rootEntityId].rels.activeTimeline.get()
 	if (typeof timelineId !== 'string') {
 		return []
 	}
 
-	const trackIds = project$.entities[timelineId].rels.tracks.get()
+	const trackIds = projects$.entitiesById[timelineId].rels.tracks.get()
 	if (!Array.isArray(trackIds)) {
 		return []
 	}
 
 	const activeNames: string[] = []
 	for (const trackId of trackIds) {
-		const clipIds = project$.entities[trackId].rels.clips.get()
+		const clipIds = projects$.entitiesById[trackId].rels.clips.get()
 		if (!Array.isArray(clipIds)) {
 			continue
 		}
 
 		for (const clipId of clipIds) {
-			const clip$ = project$.entities[clipId]
+			const clip$ = projects$.entitiesById[clipId]
 			const start = Number(clip$.attrs.start.get())
 			const duration = Number(clip$.attrs.duration.get())
 			if (cursor >= start && cursor < start + duration) {

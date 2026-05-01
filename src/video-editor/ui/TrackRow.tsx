@@ -32,7 +32,7 @@ const ClipListItem = observer(({ item$, projectId, timelineZoom }: ClipListItemP
 
 export const TrackRow = observer(({ projectId, trackId, timelineZoom }: TrackRowProps) => {
 	const { projects$ } = useVideoEditor()
-	const track$ = projects$.projects[projectId].entities[trackId]
+	const track$ = projects$.entitiesById[trackId]
 	const clipIds$ = track$.rels.clips as Observable<string[]>
 	const clipIds = clipIds$.get()
 	const clips = Array.isArray(clipIds) ? clipIds : []

@@ -27,20 +27,15 @@ export const applyPatchEnvelope = (
 					break
 
 				case PATCH.ENTITY_SET:
-					projects$.projects[envelope.projectId].entities[patch.p.entity.id].set(
-						patch.p.entity,
-					)
+					projects$.entitiesById[patch.p.entity.id].set(patch.p.entity)
 					break
 
 				case PATCH.ATTRS_MERGE:
-					projects$.projects[envelope.projectId].entities[patch.p.id].attrs.assign(
-						patch.p.attrs,
-					)
+					projects$.entitiesById[patch.p.id].attrs.assign(patch.p.attrs)
 					break
 
 				case PATCH.REL_SPLICE: {
-					const rel$ =
-						projects$.projects[envelope.projectId].entities[patch.p.id].rels[patch.p.rel]
+					const rel$ = projects$.entitiesById[patch.p.id].rels[patch.p.rel]
 					if (!Array.isArray(rel$.get())) {
 						rel$.set([])
 					}

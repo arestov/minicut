@@ -21,9 +21,15 @@ const createTrack = (kind: TrackAttrs['kind'], name: string, height: number): En
 export const createEmptyRegistry = (): ProjectRegistry => ({
 	activeProjectId: null,
 	projects: {},
+	entitiesById: {},
 })
 
-export const createProjectGraph = (title: string, ordinal: number): ProjectGraph => {
+export interface ProjectCreationResult {
+	project: ProjectGraph
+	entities: Entity[]
+}
+
+export const createProjectGraph = (title: string, ordinal: number): ProjectCreationResult => {
 	const projectId = `project-${nanoid(6)}`
 	const projectEntityId = makeEntityId('project')
 	const timelineId = makeEntityId('timeline')
@@ -31,8 +37,7 @@ export const createProjectGraph = (title: string, ordinal: number): ProjectGraph
 	const audioTrack = createTrack('audio', 'A1', 64)
 	const now = Date.now()
 
-	const entities: Record<string, Entity> = {
-		[projectEntityId]: {
+	const projectEntity: Entity = {
 			id: projectEntityId,
 			type: 'project',
 			attrs: {
@@ -49,8 +54,8 @@ export const createProjectGraph = (title: string, ordinal: number): ProjectGraph
 				timelines: [timelineId],
 				activeTimeline: timelineId,
 			},
-		},
-		[timelineId]: {
+		}
+	const timeline: Entity = {
 			id: timelineId,
 			type: 'timeline',
 			attrs: {
@@ -60,15 +65,14 @@ export const createProjectGraph = (title: string, ordinal: number): ProjectGraph
 			rels: {
 				tracks: [videoTrack.id, audioTrack.id],
 			},
-		},
-		[videoTrack.id]: videoTrack,
-		[audioTrack.id]: audioTrack,
 	}
 
 	return {
-		id: projectId,
-		version: 0,
-		rootEntityId: projectEntityId,
-		entities,
+		project: {
+			id: projectId,
+			version: 0,
+			rootEntityId: projectEntityId,
+		},
+		entities: [projectEntity, timeline, videoTrack, audioTrack],
 	}
 }

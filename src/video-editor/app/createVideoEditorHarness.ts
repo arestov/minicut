@@ -71,12 +71,10 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 
 		importSampleResource(): void {
 			const projectId = getActiveProjectId(projects$, session$)
-			const project = getActiveProject(projects$.get(), session$.get())
+			const registry = projects$.get()
+			const project = getActiveProject(registry, session$.get())
 			const resourceOrdinal = project
-				? getProjectMetaList({
-						activeProjectId: project.id,
-						projects: { [project.id]: project },
-					})[0].resourceCount + 1
+				? (getProjectMetaList(registry).find((meta) => meta.id === project.id)?.resourceCount ?? 0) + 1
 				: 1
 			const kind = sampleKindCycle[(resourceOrdinal - 1) % sampleKindCycle.length]
 			dispatch({
@@ -96,12 +94,13 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 
 		addResourceToTimeline(resourceId: string): void {
 			const projectId = getActiveProjectId(projects$, session$)
-			const project = getActiveProject(projects$.get(), session$.get())
+			const registry = projects$.get()
+			const project = getActiveProject(registry, session$.get())
 			if (!project) {
 				throw new Error('No active project to add a clip into')
 			}
 
-			const track = getVideoTrack(project)
+			const track = getVideoTrack(registry, project)
 			if (!track) {
 				throw new Error('No video track available')
 			}

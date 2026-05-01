@@ -11,7 +11,7 @@ interface ClipItemProps {
 
 export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom }: ClipItemProps) => {
 	const { projects$, actions } = useVideoEditor()
-	const clip$ = projects$.projects[projectId].entities[clipId]
+	const clip$ = projects$.entitiesById[clipId]
 	const name = String(clip$.attrs.name.get())
 	const start = Number(clip$.attrs.start.get())
 	const duration = Number(clip$.attrs.duration.get())

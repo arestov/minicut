@@ -3,7 +3,6 @@ import { createProjectGraph } from './createProject'
 import { assertEntity, assertProject, validateCommand } from './validateCommand'
 import {
 	getClipIdsForTrack,
-	getEntity,
 	getProjectEntity,
 	getTrackEnd,
 	getVideoTrack,
@@ -15,7 +14,6 @@ import {
 	type DispatchResult,
 	type Entity,
 	type EntityId,
-	type ProjectGraph,
 	type ProjectRegistry,
 	CMD,
 	PATCH,
@@ -33,7 +31,7 @@ export const buildDispatchResult = (
 
 	switch (command.c) {
 		case CMD.PROJECT_CREATE: {
-			const project = createProjectGraph(
+			const { project, entities } = createProjectGraph(
 				command.p.title || '',
 				Object.keys(registry.projects).length + 1,
 			)
@@ -44,6 +42,7 @@ export const buildDispatchResult = (
 					version: 1,
 					patches: [
 						{ c: PATCH.PROJECT_SET, p: { project } },
+						...entities.map((entity) => ({ c: PATCH.ENTITY_SET, p: { entity } }) as const),
 						{
 							c: PATCH.WORKSPACE_ACTIVE_PROJECT_SET,
 							p: { projectId: project.id },
@@ -56,7 +55,7 @@ export const buildDispatchResult = (
 
 		case CMD.RESOURCE_IMPORT: {
 			const project = assertProject(registry, command.p.projectId)
-			const projectEntity = getProjectEntity(project)
+			const projectEntity = getProjectEntity(registry, project)
 			const resourceId = makeEntityId('resource')
 			const resource: Entity = {
 				id: resourceId,
@@ -102,17 +101,17 @@ export const buildDispatchResult = (
 
 		case CMD.TIMELINE_ADD_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
-			const resource = assertEntity(project, command.p.resourceId)
+			const resource = assertEntity(registry, command.p.resourceId)
 			const targetTrack = command.p.trackId
-				? assertEntity(project, command.p.trackId)
-				: getVideoTrack(project)
+				? assertEntity(registry, command.p.trackId)
+				: getVideoTrack(registry, project)
 
 			if (!targetTrack) {
 				throw new Error('No video track available for clip insertion')
 			}
 
 			const clipId = makeEntityId('clip')
-			const clipStart = getTrackEnd(project, targetTrack.id)
+			const clipStart = getTrackEnd(registry, targetTrack.id)
 			const clipDuration = Number(resource.attrs.duration) || 1
 			const clip: Entity = {
 				id: clipId,
@@ -147,7 +146,7 @@ export const buildDispatchResult = (
 							p: {
 								id: targetTrack.id,
 								rel: 'clips',
-								index: getClipIdsForTrack(project, targetTrack.id).length,
+								index: getClipIdsForTrack(registry, targetTrack.id).length,
 								deleteCount: 0,
 								insert: [clipId],
 							},
@@ -160,7 +159,7 @@ export const buildDispatchResult = (
 
 		case CMD.TIMELINE_MOVE_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
-			const clip = assertEntity(project, command.p.clipId)
+			const clip = assertEntity(registry, command.p.clipId)
 			const clipAttrs = clip.attrs as ClipAttrs
 
 			return {
@@ -184,7 +183,7 @@ export const buildDispatchResult = (
 
 		case CMD.TIMELINE_SPLIT_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
-			const clip = assertEntity(project, command.p.clipId)
+			const clip = assertEntity(registry, command.p.clipId)
 			const clipAttrs = clip.attrs as ClipAttrs
 			const splitTime = command.p.time
 			const clipEnd = clipAttrs.start + clipAttrs.duration
@@ -207,7 +206,7 @@ export const buildDispatchResult = (
 				},
 			}
 
-			const track = Object.values(project.entities).find(
+			const track = Object.values(registry.entitiesById).find(
 				(entity) =>
 					entity.type === 'track' &&
 					Array.isArray(entity.rels.clips) &&
@@ -218,7 +217,7 @@ export const buildDispatchResult = (
 				throw new Error(`Unable to find parent track for clip ${clip.id}`)
 			}
 
-			const clipIds = getClipIdsForTrack(project, track.id)
+			const clipIds = getClipIdsForTrack(registry, track.id)
 			const clipIndex = clipIds.indexOf(clip.id)
 
 			return {
@@ -254,7 +253,7 @@ export const buildDispatchResult = (
 
 		case CMD.CLIP_UPDATE_ATTRS: {
 			const project = assertProject(registry, command.p.projectId)
-			assertEntity(project, command.p.clipId)
+			assertEntity(registry, command.p.clipId)
 
 			return {
 				envelope: {

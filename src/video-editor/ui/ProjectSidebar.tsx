@@ -10,12 +10,20 @@ const ProjectListItem = observer(({ projectId, activeProjectId }: ProjectListIte
 	const { projects$, actions } = useVideoEditor()
 	const project$ = projects$.projects[projectId]
 	const rootEntityId = project$.rootEntityId.get()
-	const projectEntity$ = project$.entities[rootEntityId]
+	const projectEntity$ = projects$.entitiesById[rootEntityId]
 	const resourceIds = projectEntity$.rels.resources.get()
 	const resourceCount = Array.isArray(resourceIds) ? resourceIds.length : 0
-	const clipCount = Object.values(project$.entities.get()).filter(
-		(entity) => entity.type === 'clip',
-	).length
+	const timelineId = projectEntity$.rels.activeTimeline.get()
+	const trackIds =
+		typeof timelineId === 'string'
+			? projects$.entitiesById[timelineId].rels.tracks.get()
+			: []
+	const clipCount = Array.isArray(trackIds)
+		? trackIds.reduce((count, trackId) => {
+				const clipIds = projects$.entitiesById[trackId].rels.clips.get()
+				return count + (Array.isArray(clipIds) ? clipIds.length : 0)
+			}, 0)
+		: 0
 	const isActive = projectId === activeProjectId
 
 	return (

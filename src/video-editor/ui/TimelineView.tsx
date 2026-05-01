@@ -22,16 +22,16 @@ export const TimelineView = observer(() => {
 	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
 	const rootEntityId = activeProject$?.rootEntityId.get()
 	const timelineId = rootEntityId
-		? activeProject$?.entities[rootEntityId].rels.activeTimeline.get()
+		? projects$.entitiesById[rootEntityId].rels.activeTimeline.get()
 		: null
 	const trackIds =
-		activeProject$ && typeof timelineId === 'string'
-			? activeProject$.entities[timelineId].rels.tracks.get()
+		typeof timelineId === 'string'
+			? projects$.entitiesById[timelineId].rels.tracks.get()
 			: []
 	const tracks = Array.isArray(trackIds) ? trackIds : []
 	const trackIds$ =
-		activeProject$ && typeof timelineId === 'string'
-			? (activeProject$.entities[timelineId].rels.tracks as Observable<string[]>)
+		typeof timelineId === 'string'
+			? (projects$.entitiesById[timelineId].rels.tracks as Observable<string[]>)
 			: null
 
 	return (

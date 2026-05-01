@@ -8,11 +8,11 @@ export const Toolbar = observer(() => {
 	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
 	const rootEntityId = activeProject$?.rootEntityId.get()
 	const resourceIds = rootEntityId
-		? activeProject$?.entities[rootEntityId].rels.resources.get()
+		? projects$.entitiesById[rootEntityId].rels.resources.get()
 		: []
 	const resources = Array.isArray(resourceIds) ? resourceIds : []
 	const selectedEntityType = selectedEntityId
-		? activeProject$?.entities[selectedEntityId].type.get()
+		? projects$.entitiesById[selectedEntityId].type.get()
 		: null
 	const hasSelectedClip = selectedEntityType === 'clip'
 

@@ -7,7 +7,7 @@ export const Inspector = observer(() => {
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const selectedEntityId = session$.selectedEntityId.get()
 	const selectedEntity$ = activeProjectId && selectedEntityId
-		? projects$.projects[activeProjectId].entities[selectedEntityId]
+		? projects$.entitiesById[selectedEntityId]
 		: null
 	const isClip = selectedEntity$?.type.get() === 'clip'
 
