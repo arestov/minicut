@@ -57,6 +57,9 @@ export const PreviewPanel = observer(() => {
 		<section className="ve-panel ve-preview-panel" aria-label="Preview panel">
 			<div className="ve-panel__header">
 				<h2>Preview</h2>
+			</div>
+			<RendererStage />
+			<div className="ve-preview-panel__playback">
 				<IconButton
 					type="button"
 					icon={isPlaying ? Pause : Play}
@@ -67,7 +70,6 @@ export const PreviewPanel = observer(() => {
 					{isPlaying ? 'Pause' : 'Play'}
 				</IconButton>
 			</div>
-			<RendererStage />
 			<div className="ve-preview-transport" aria-label="Preview transport status">
 				<div>
 					<Timer size={15} aria-hidden="true" />

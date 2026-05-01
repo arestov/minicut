@@ -807,6 +807,12 @@ button:disabled {
 	flex-direction: column;
 }
 
+.ve-preview-panel__playback {
+	display: flex;
+	justify-content: center;
+	padding: 0 0 12px;
+}
+
 .ve-preview-transport {
 	display: flex;
 	align-items: center;
