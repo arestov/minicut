@@ -69,8 +69,8 @@ aria-hidden="true"
 <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
 </svg>
 </button>
-{isOpen && (
-<div className="ve-project-dropdown__menu">
+			{isOpen && (
+				<div className="ve-project-dropdown__menu is-open">
 {projectIds.length === 0 ? (
 <p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
 ) : (

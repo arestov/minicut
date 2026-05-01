@@ -33,3 +33,17 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	await inspector.getByRole('button', { name: 'Nudge +0.5s' }).click()
 	await expect(inspector.getByText('3.0s')).toBeVisible()
 })
+
+test('project dropdown shows items when opened', async ({ page }) => {
+	await page.goto('/')
+
+	await page.getByRole('button', { name: 'New project' }).click()
+	await page.getByRole('button', { name: 'New project' }).click()
+
+	const projectsRegion = page.getByLabel('Projects')
+	await projectsRegion.getByRole('button', { name: /Project 2/i }).click()
+	const projectList = projectsRegion.getByRole('list')
+
+	await expect(projectList.getByRole('button', { name: /Project 1/i })).toBeVisible()
+	await expect(projectList.getByRole('button', { name: /Project 2/i })).toBeVisible()
+})

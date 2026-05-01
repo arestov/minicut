@@ -95,4 +95,22 @@ describe('video editor harness', () => {
 			unmount()
 		}
 	})
+
+	it('shows project items in dropdown after opening switcher', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await user.click(screen.getByRole('button', { name: 'New project' }))
+			await user.click(screen.getByRole('button', { name: 'New project' }))
+
+			const projectsRegion = screen.getByLabelText('Projects')
+			await user.click(within(projectsRegion).getByRole('button', { name: /Project 2/i }))
+
+			const projectList = within(projectsRegion).getByRole('list')
+			expect(within(projectList).getByRole('button', { name: /Project 1/i })).toBeVisible()
+			expect(within(projectList).getByRole('button', { name: /Project 2/i })).toBeVisible()
+		} finally {
+			unmount()
+		}
+	})
 })
