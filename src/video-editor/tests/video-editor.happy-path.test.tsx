@@ -22,15 +22,23 @@ const setTimelineCursor = (timeline: HTMLElement, seconds: number): void => {
 	})
 }
 
+const importSampleResource = async (harness: ReturnType<typeof renderVideoEditor>['harness']): Promise<void> => {
+	await act(async () => {
+		harness.actions.importSampleResource()
+		await Promise.resolve()
+		await Promise.resolve()
+	})
+}
+
 describe('video editor harness', () => {
 	it('runs the happy path: project -> import -> clip -> inspect -> split -> nudge', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
 			expect(screen.getByRole('button', { name: /Project \d+/i })).toBeInTheDocument()
 
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			const mediaBin = screen.getByLabelText('Media bin')
 			expect(within(mediaBin).getByText('Sample asset 1', { selector: 'strong' })).toBeInTheDocument()
 
@@ -78,11 +86,11 @@ describe('video editor harness', () => {
 	})
 
 	it('splits clip at playhead and updates timeline clip widths from resulting durations', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
@@ -105,11 +113,11 @@ describe('video editor harness', () => {
 	})
 
 	it('resizes a clip from its timeline edges', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			const endHandle = clipButton.querySelector('.ve-clip__resize-handle--end') as HTMLElement | null
@@ -130,11 +138,11 @@ describe('video editor harness', () => {
 	})
 
 	it('deletes selected clips through the inspector', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
@@ -147,11 +155,11 @@ describe('video editor harness', () => {
 	})
 
 	it('applies clip color to timeline accent and renderer frame', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
@@ -174,7 +182,7 @@ describe('video editor harness', () => {
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			const clipId = String(harness.session$.selectedEntityId.get())
 			expect(clipId).not.toBe('null')
 
@@ -201,7 +209,7 @@ describe('video editor harness', () => {
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
@@ -223,11 +231,11 @@ describe('video editor harness', () => {
 	})
 
 	it('applies every color preset button in inspector', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
@@ -256,13 +264,13 @@ describe('video editor harness', () => {
 	})
 
 	it('keeps projects isolated when switching active project', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
 			const projectsRegion = screen.getByLabelText('Projects')
 			const sourceProjectName = within(projectsRegion).getByRole('button').textContent?.trim() ?? 'Project 1'
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 
 			await createProjectFromMenu(user)
 			// Open project switcher to inspect all projects (trigger shows active "Project 2")
@@ -272,7 +280,7 @@ describe('video editor harness', () => {
 			expect(projectButtons.length).toBeGreaterThanOrEqual(2)
 			expect(screen.queryByRole('button', { name: /Sample asset 1/i })).not.toBeInTheDocument()
 
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			const mediaBin = screen.getByLabelText('Media bin')
 			expect(within(mediaBin).getByText('Sample asset 1', { selector: 'strong' })).toBeInTheDocument()
 
@@ -284,7 +292,7 @@ describe('video editor harness', () => {
 	})
 
 	it('shows project items in dropdown after opening switcher', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
@@ -301,18 +309,23 @@ describe('video editor harness', () => {
 		}
 	})
 
-	it('covers toolbar scaffolds, media controls, and timeline tool toggles', async () => {
-		const { user, unmount } = renderVideoEditor()
+	it('covers toolbar history/export, media controls, and timeline tool toggles', async () => {
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
-			expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
-			expect(screen.getByRole('button', { name: 'Export project' })).toBeDisabled()
+			expect(screen.queryByRole('button', { name: 'Import sample' })).not.toBeInTheDocument()
+			expect(screen.getByRole('button', { name: 'Export project' })).toBeEnabled()
 
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
+			await importSampleResource(harness)
+			await importSampleResource(harness)
+			await user.click(screen.getByRole('button', { name: 'Undo' }))
+			expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
+			await user.click(screen.getByRole('button', { name: 'Redo' }))
+			expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
+			await user.click(screen.getByRole('button', { name: 'Export project' }))
+			expect(await screen.findByRole('status')).toHaveTextContent('Export ready')
 
 			const mediaBin = screen.getByLabelText('Media bin')
 			expect(within(mediaBin).getByText('3 of 3 assets')).toBeInTheDocument()
@@ -355,11 +368,11 @@ describe('video editor harness', () => {
 	})
 
 	it('switches inspector tabs for clip editing modes', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
@@ -383,11 +396,11 @@ describe('video editor harness', () => {
 	})
 
 	it('controls cursor from the timeline and syncs preview state', async () => {
-		const { user, unmount } = renderVideoEditor()
+		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await importSampleResource(harness)
 
 			const timeline = screen.getByLabelText('Timeline')
 			setTimelineCursor(timeline, 4.5)

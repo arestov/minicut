@@ -19,6 +19,10 @@ export const applyPatchEnvelope = (
 	batch(() => {
 		for (const patch of envelope.patches) {
 			switch (patch.c) {
+				case PATCH.REGISTRY_SET:
+					projects$.set(patch.p.registry)
+					return
+
 				case PATCH.PROJECT_SET:
 					mergeIntoObservable(projects$.projects[patch.p.project.id], {
 						...patch.p.project,

@@ -125,6 +125,10 @@ export const MSG = {
 	ERROR: -5,
 	DISPATCH_RESULT: -6,
 	DISCONNECT: -7,
+	UNDO: -8,
+	REDO: -9,
+	HISTORY_STATE_REQUEST: -10,
+	HISTORY_STATE: -11,
 } as const
 
 export const CMD = {
@@ -141,6 +145,7 @@ export const CMD = {
 } as const
 
 export const PATCH = {
+	REGISTRY_SET: -199,
 	PROJECT_SET: -200,
 	ENTITY_SET: -210,
 	ENTITY_DELETE: -211,
@@ -223,6 +228,10 @@ export type Command =
 
 export type Patch =
 	| {
+			c: typeof PATCH.REGISTRY_SET
+			p: { registry: ProjectRegistry }
+	  }
+	| {
 			c: typeof PATCH.PROJECT_SET
 			p: { project: ProjectGraph }
 	  }
@@ -261,6 +270,11 @@ export interface DispatchResult {
 	envelope: PatchEnvelope
 	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId' | 'effectId', EntityId>>
 	deletedIds?: EntityId[]
+}
+
+export interface HistoryState {
+	canUndo: boolean
+	canRedo: boolean
 }
 
 export interface WireMessage<Payload = unknown> {

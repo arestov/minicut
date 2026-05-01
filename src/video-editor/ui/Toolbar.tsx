@@ -1,12 +1,22 @@
 import { observer } from '@legendapp/state/react'
-import { Download, FolderPlus, Redo2, Undo2, Upload } from 'lucide-react'
+import { useState } from 'react'
+import { Download, FolderPlus, Redo2, Undo2 } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { IconButton } from './ControlPrimitives'
 import { ProjectDropdown } from './ProjectDropdown'
 
 export const Toolbar = observer(() => {
-	const { projects$, session$, actions } = useVideoEditor()
+	const { projects$, session$, history$, actions } = useVideoEditor()
+	const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'ready' | 'error'>('idle')
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const history = history$.get()
+
+	const exportProject = (): void => {
+		setExportStatus('rendering')
+		actions.queueProjectExport()
+			.then((result) => setExportStatus(result ? 'ready' : 'error'))
+			.catch(() => setExportStatus('error'))
+	}
 
 	return (
 		<header className="ve-toolbar">
@@ -29,22 +39,21 @@ export const Toolbar = observer(() => {
 			</div>
 			<div className="ve-toolbar__actions">
 				<div className="ve-toolbar__history" aria-label="History controls">
-					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" disabled />
-					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" disabled />
+					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" onClick={() => actions.undo()} disabled={!history.canUndo} />
+					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" onClick={() => actions.redo()} disabled={!history.canRedo} />
 				</div>
 				<IconButton
 					type="button"
-					icon={Upload}
-					label="Import sample"
-					variant="outline"
-					onClick={() => actions.importSampleResource()}
-					disabled={!activeProjectId}
+					icon={Download}
+					label="Export project"
+					variant="default"
+					onClick={exportProject}
+					disabled={!activeProjectId || exportStatus === 'rendering'}
 				>
-					Import sample
-				</IconButton>
-				<IconButton type="button" icon={Download} label="Export project" variant="default" disabled>
 					Export
 				</IconButton>
+				{exportStatus === 'ready' ? <span className="ve-toolbar__status" role="status">Export ready</span> : null}
+				{exportStatus === 'error' ? <span className="ve-toolbar__status is-error" role="status">Export failed</span> : null}
 			</div>
 		</header>
 	)

@@ -6,8 +6,9 @@ import { createEmptyRegistry } from '../domain/createProject'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 
 const flushMicrotasks = async () => {
-	await Promise.resolve()
-	await Promise.resolve()
+	for (let index = 0; index < 8; index += 1) {
+		await Promise.resolve()
+	}
 }
 
 const settleHarness = async () => {
@@ -268,6 +269,79 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('exports the active project as a render manifest', async () => {
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:project-export')
+		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			const result = await harness.actions.queueProjectExport()
+
+			expect(result).not.toBeNull()
+			expect(result?.downloadUrl).toBe('blob:project-export')
+			expect(result?.manifest.range).toEqual({ type: 'project' })
+			expect(result?.manifest.clips.length).toBeGreaterThan(0)
+			expect(createObjectURL).toHaveBeenCalledWith(result?.blob)
+		} finally {
+			harness.destroy()
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:project-export')
+			createObjectURL.mockRestore()
+			revokeObjectURL.mockRestore()
+		}
+	})
+
+	it('undoes and redoes timeline edits through the harness', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			let registry = harness.projects$.get()
+			let project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			let videoTrack = getVideoTrack(registry, project!)
+			expect(videoTrack).not.toBeNull()
+			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
+			expect(harness.history$.get().canUndo).toBe(true)
+
+			harness.actions.undo()
+			await settleHarness()
+
+			registry = harness.projects$.get()
+			project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			videoTrack = getVideoTrack(registry, project!)
+			expect(videoTrack).not.toBeNull()
+			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(0)
+			expect(harness.history$.get()).toMatchObject({ canUndo: true, canRedo: true })
+
+			harness.actions.redo()
+			await settleHarness()
+
+			registry = harness.projects$.get()
+			project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			videoTrack = getVideoTrack(registry, project!)
+			expect(videoTrack).not.toBeNull()
+			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
+			expect(harness.history$.get()).toMatchObject({ canUndo: true, canRedo: false })
+		} finally {
+			harness.destroy()
+		}
+	})
+
 	it('tracks in-point and clamps trim start to keep positive duration', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)
@@ -414,8 +488,11 @@ describe('createVideoEditorHarness actions', () => {
 		})
 		const authority: EditorAuthorityClient = {
 			getSnapshot: () => createEmptyRegistry(),
+			getHistoryState: () => ({ canUndo: false, canRedo: false }),
 			subscribe: () => () => {},
 			dispatch,
+			undo: () => null,
+			redo: () => null,
 		}
 		const harness = createVideoEditorHarness(authority, { autoCreateInitialProject: false })
 

@@ -38,9 +38,18 @@ export const applyPatchEnvelopeInPlace = (
 	envelope: PatchEnvelope,
 ): ProjectRegistry => {
 	let project = envelope.projectId ? registry.projects[envelope.projectId] : undefined
+	let didSetRegistry = false
 
 	for (const patch of envelope.patches) {
 		switch (patch.c) {
+			case PATCH.REGISTRY_SET:
+				registry.activeProjectId = patch.p.registry.activeProjectId
+				registry.projects = structuredClone(patch.p.registry.projects)
+				registry.entitiesById = structuredClone(patch.p.registry.entitiesById)
+				project = envelope.projectId ? registry.projects[envelope.projectId] : undefined
+				didSetRegistry = true
+				break
+
 			case PATCH.PROJECT_SET:
 				project = withEnvelopeVersion(patch.p.project, envelope)
 				registry.projects[patch.p.project.id] = project
@@ -114,7 +123,7 @@ export const applyPatchEnvelopeInPlace = (
 		}
 	}
 
-	if (project) {
+	if (project && !didSetRegistry) {
 		project.version = envelope.version
 	}
 

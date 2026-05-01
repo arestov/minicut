@@ -1,4 +1,4 @@
-import type { Observable } from '@legendapp/state'
+import { observable, type Observable } from '@legendapp/state'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
 import { createSessionStore, TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from '../legend/sessionStore'
 import { getActiveProject, getAudioTrack, getClipIdsForTrack, getProjectMetaList, getSelectedClip, getTracks, getVideoTrack } from '../domain/selectors'
@@ -7,6 +7,7 @@ import type {
 	Command,
 	DispatchResult,
 	EditorSessionState,
+	HistoryState,
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
@@ -205,6 +206,7 @@ export const createVideoEditorHarness = (
 	const exportRenderer = options.exportRenderer ?? createManifestExportRenderer()
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
+	const history$ = observable<HistoryState>({ canUndo: false, canRedo: false })
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
 	let importFilesQueue = Promise.resolve()
@@ -227,6 +229,14 @@ export const createVideoEditorHarness = (
 		if (session$.activeProjectId.get() !== resolvedProjectId) {
 			session$.activeProjectId.set(resolvedProjectId)
 		}
+	}
+
+	const syncHistoryState = (): void => {
+		Promise.resolve(authority.getHistoryState()).then((state) => {
+			if (!isDestroyed) {
+				history$.set(state)
+			}
+		})
 	}
 
 	const ensureInitialProject = (): void => {
@@ -256,6 +266,7 @@ export const createVideoEditorHarness = (
 			session$.cursor.set(0)
 		}).finally(() => {
 			projectBootstrapInFlight = false
+			syncHistoryState()
 		})
 	}
 
@@ -266,16 +277,18 @@ export const createVideoEditorHarness = (
 
 		applySnapshot(projects$, snapshot)
 		syncActiveProjectSelection()
+		syncHistoryState()
 		ensureInitialProject()
 	})
 
 	const unsubscribe = authority.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
 		syncActiveProjectSelection()
+		syncHistoryState()
 	})
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
-		Promise.resolve(authority.dispatch(command))
+		Promise.resolve(authority.dispatch(command)).finally(syncHistoryState)
 
 	const addResourceToTimelineIfEmpty = (projectId: string, resourceId: string): void => {
 		if (isDestroyed || !isProjectTimelineEmpty(projects$.get(), projectId)) {
@@ -300,6 +313,14 @@ export const createVideoEditorHarness = (
 			session$.activeProjectId.set(projectId)
 			session$.selectedEntityId.set(null)
 			session$.cursor.set(0)
+		},
+
+		undo(): void {
+			Promise.resolve(authority.undo()).finally(syncHistoryState)
+		},
+
+		redo(): void {
+			Promise.resolve(authority.redo()).finally(syncHistoryState)
 		},
 
 		importSampleResource(): void {
@@ -627,6 +648,29 @@ export const createVideoEditorHarness = (
 			return result
 		},
 
+		async queueProjectExport(): Promise<ExportRenderResult | null> {
+			const registry = projects$.get()
+			const project = getActiveProject(registry, session$.get())
+			if (!project) {
+				return null
+			}
+
+			const result = await exportRenderer.render({
+				registry,
+				projectId: project.id,
+				range: { type: 'project' },
+				format: 'json-manifest',
+				fps: 30,
+			})
+			if (typeof URL.createObjectURL === 'function') {
+				const downloadUrl = URL.createObjectURL(result.blob)
+				exportObjectUrls.add(downloadUrl)
+				return { ...result, downloadUrl }
+			}
+
+			return result
+		},
+
 		nudgeSelectedClip(delta: number): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {
@@ -676,6 +720,7 @@ export const createVideoEditorHarness = (
 		worker: authority,
 		projects$,
 		session$,
+		history$,
 		actions,
 		destroy(): void {
 			isDestroyed = true
