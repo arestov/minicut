@@ -1007,6 +1007,30 @@ button:disabled {
 	gap: 12px;
 }
 
+.ve-property-section {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 12px;
+	border: 1px solid var(--ve-border);
+	border-radius: 8px;
+	background: #fafafa;
+}
+
+.ve-property-section__header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--ve-muted-foreground);
+}
+
+.ve-property-section__header h3 {
+	margin: 0;
+	color: var(--ve-foreground);
+	font-size: 13px;
+	font-weight: 650;
+}
+
 .ve-inspector-field {
 	display: flex;
 	flex-direction: column;
