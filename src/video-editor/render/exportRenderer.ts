@@ -76,6 +76,10 @@ const webCodecsVideoCandidates: Array<{ encoderCodec: string; muxerCodec: 'V_VP8
 	{ encoderCodec: 'vp09.00.10.08', muxerCodec: 'V_VP9' },
 ]
 
+const webCodecsAudioCandidates: Array<{ encoderCodec: string; muxerCodec: 'A_OPUS' }> = [
+	{ encoderCodec: 'opus', muxerCodec: 'A_OPUS' },
+]
+
 interface BrowserVideoExportRendererOptions {
 	fallbackToManifestOnUnsupported?: boolean
 	width?: number
@@ -124,6 +128,17 @@ interface ElementAudioExportClip {
 	start: number
 	duration: number
 	trimStart: number
+}
+
+interface MixedAudioTrack {
+	sampleRate: number
+	numberOfChannels: number
+	frames: Float32Array[]
+}
+
+interface WebCodecsAudioConfig {
+	encoderConfig: AudioEncoderConfig
+	muxerCodec: 'A_OPUS'
 }
 
 const sanitizeFileNamePart = (value: string): string =>
@@ -214,9 +229,6 @@ const getEffectFilter = (effect: string): string => {
 	return ''
 }
 
-const hasAudioExportClips = (registry: ProjectRegistry, projectId: string, range: ExportRange): boolean =>
-	getRangeClips(registry, projectId, range).some((clip) => clip.type === 'ef-audio')
-
 const getWebmMimeType = (): string | null => {
 	if (typeof MediaRecorder === 'undefined') {
 		return null
@@ -243,6 +255,11 @@ const isWebCodecsExportSupported = (): boolean =>
 	&& typeof VideoFrame !== 'undefined'
 	&& typeof document !== 'undefined'
 
+const isWebCodecsAudioSupported = (): boolean =>
+	typeof AudioEncoder !== 'undefined'
+	&& typeof AudioData !== 'undefined'
+	&& typeof document !== 'undefined'
+
 const waitForDuration = async (milliseconds: number): Promise<void> =>
 	new Promise((resolve) => {
 		globalThis.setTimeout(resolve, Math.max(0, milliseconds))
@@ -252,6 +269,159 @@ const waitForRecorderData = async (): Promise<void> =>
 	new Promise((resolve) => {
 		globalThis.requestAnimationFrame?.(() => resolve()) ?? globalThis.setTimeout(resolve, 0)
 	})
+
+const getWebCodecsAudioConfig = async (
+	numberOfChannels: number,
+	bitrate: number,
+): Promise<WebCodecsAudioConfig | null> => {
+	if (!isWebCodecsAudioSupported()) {
+		return null
+	}
+
+	const sampleRates = [48_000, 44_100]
+	for (const candidate of webCodecsAudioCandidates) {
+		for (const sampleRate of sampleRates) {
+			const encoderConfig: AudioEncoderConfig = {
+				codec: candidate.encoderCodec,
+				numberOfChannels,
+				sampleRate,
+				bitrate,
+			}
+			try {
+				const support = await AudioEncoder.isConfigSupported(encoderConfig)
+				if (support.supported) {
+					return {
+						encoderConfig: support.config ?? encoderConfig,
+						muxerCodec: candidate.muxerCodec,
+					}
+				}
+			} catch {
+				// Try the next codec candidate.
+			}
+		}
+	}
+
+	return null
+}
+
+const clampAudioSample = (sample: number): number => Math.max(-1, Math.min(1, sample))
+
+const resolveStereoSample = (buffer: AudioBuffer, samplePosition: number): [number, number] => {
+	const frameIndex = Math.floor(samplePosition)
+	const nextIndex = Math.min(buffer.length - 1, frameIndex + 1)
+	const interpolation = samplePosition - frameIndex
+	const sampleAt = (channel: Float32Array): number =>
+		channel[frameIndex] + (channel[nextIndex] - channel[frameIndex]) * interpolation
+
+	if (buffer.numberOfChannels <= 0) {
+		return [0, 0]
+	}
+
+	if (buffer.numberOfChannels === 1) {
+		const mono = sampleAt(buffer.getChannelData(0))
+		return [mono, mono]
+	}
+
+	return [
+		sampleAt(buffer.getChannelData(0)),
+		sampleAt(buffer.getChannelData(1)),
+	]
+}
+
+const getStereoPanGains = (gain: number, pan: number): [number, number] => {
+	const normalizedPan = Math.max(-1, Math.min(1, pan))
+	const left = gain * (normalizedPan <= 0 ? 1 : 1 - normalizedPan)
+	const right = gain * (normalizedPan >= 0 ? 1 : 1 + normalizedPan)
+	return [left, right]
+}
+
+const mixWebCodecsAudioTrack = async (
+	registry: ProjectRegistry,
+	projectId: string,
+	range: ExportRange,
+	exportStart: number,
+	exportDuration: number,
+	sampleRate: number,
+	numberOfChannels: number,
+): Promise<MixedAudioTrack | null> => {
+	const audioClips = getRangeClips(registry, projectId, range).filter((clip) => clip.type === 'ef-audio')
+	if (audioClips.length === 0) {
+		return null
+	}
+
+	const AudioContextConstructor = globalThis.AudioContext ?? globalThis.webkitAudioContext
+	if (!AudioContextConstructor) {
+		return null
+	}
+
+	const audioContext = new AudioContextConstructor()
+	const totalFrames = Math.max(1, Math.ceil(exportDuration * sampleRate))
+	const mixedFrames = Array.from({ length: numberOfChannels }, () => new Float32Array(totalFrames))
+
+	try {
+		for (const clip of audioClips) {
+			const decodedBuffer = await fetch(clip.source)
+				.then((response) => response.arrayBuffer())
+				.then((audioData) => audioContext.decodeAudioData(audioData.slice(0)))
+				.catch(() => null)
+			if (!decodedBuffer) {
+				return null
+			}
+
+			const clipEnd = clip.start + clip.duration
+			const activeStart = Math.max(exportStart, clip.start)
+			const activeEnd = Math.min(exportStart + exportDuration, clipEnd)
+			if (activeEnd <= activeStart) {
+				continue
+			}
+
+			const destinationStartFrame = Math.max(0, Math.floor((activeStart - exportStart) * sampleRate))
+			const destinationFrameCount = Math.min(
+				totalFrames - destinationStartFrame,
+				Math.ceil((activeEnd - activeStart) * sampleRate),
+			)
+			if (destinationFrameCount <= 0) {
+				continue
+			}
+
+			const sourceOffsetSeconds = clip.trimStart + Math.max(0, exportStart - clip.start)
+			const sourceStartFrame = sourceOffsetSeconds * decodedBuffer.sampleRate
+			const sourceFrameStep = decodedBuffer.sampleRate / sampleRate
+			const [leftGain, rightGain] = getStereoPanGains(
+				Math.max(0, Math.min(1.5, Number(clip.gain ?? 1))),
+				Math.max(-1, Math.min(1, Number(clip.pan ?? 0))),
+			)
+
+			for (let frameOffset = 0; frameOffset < destinationFrameCount; frameOffset += 1) {
+				const sourcePosition = sourceStartFrame + frameOffset * sourceFrameStep
+				if (!Number.isFinite(sourcePosition) || sourcePosition >= decodedBuffer.length - 1) {
+					break
+				}
+				const [leftSample, rightSample] = resolveStereoSample(decodedBuffer, sourcePosition)
+				const destinationIndex = destinationStartFrame + frameOffset
+				mixedFrames[0][destinationIndex] += leftSample * leftGain
+				if (numberOfChannels > 1) {
+					mixedFrames[1][destinationIndex] += rightSample * rightGain
+				}
+			}
+		}
+
+		for (let channel = 0; channel < mixedFrames.length; channel += 1) {
+			const channelData = mixedFrames[channel]
+			for (let index = 0; index < channelData.length; index += 1) {
+				channelData[index] = clampAudioSample(channelData[index])
+			}
+		}
+
+		return {
+			sampleRate,
+			numberOfChannels,
+			frames: mixedFrames,
+		}
+	} finally {
+		await audioContext.close().catch(() => undefined)
+	}
+}
 
 const waitForMediaMetadata = (element: HTMLMediaElement): Promise<void> =>
 	new Promise((resolve) => {
@@ -538,6 +708,50 @@ const drawPreparedFrameOperations = (
 	}
 }
 
+const encodeMixedAudioTrack = async (
+	muxer: Muxer<ArrayBufferTarget>,
+	audioConfig: WebCodecsAudioConfig,
+	mixedTrack: MixedAudioTrack,
+): Promise<void> => {
+	const encoder = new AudioEncoder({
+		output: (chunk, metadata) => muxer.addAudioChunk(chunk, metadata),
+		error: (error) => {
+			throw error
+		},
+	})
+	encoder.configure(audioConfig.encoderConfig)
+
+	const framesPerChunk = 960
+	try {
+		const { numberOfChannels, sampleRate, frames } = mixedTrack
+		const totalFrames = frames[0]?.length ?? 0
+		for (let offset = 0; offset < totalFrames; offset += framesPerChunk) {
+			const frameCount = Math.min(framesPerChunk, totalFrames - offset)
+			const interleaved = new Float32Array(frameCount * numberOfChannels)
+			for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+				for (let channel = 0; channel < numberOfChannels; channel += 1) {
+					interleaved[frameIndex * numberOfChannels + channel] = frames[channel][offset + frameIndex] ?? 0
+				}
+			}
+
+			const audioData = new AudioData({
+				format: 'f32',
+				sampleRate,
+				numberOfFrames: frameCount,
+				numberOfChannels,
+				timestamp: Math.round((offset / sampleRate) * 1_000_000),
+				data: new Uint8Array(interleaved.buffer),
+			})
+			encoder.encode(audioData)
+			audioData.close()
+		}
+
+		await encoder.flush()
+	} finally {
+		encoder.close()
+	}
+}
+
 const createAudioExportMixer = async (
 	registry: ProjectRegistry,
 	projectId: string,
@@ -717,6 +931,27 @@ const renderWebCodecsVideoBlob = async ({
 	if (!config) {
 		return null
 	}
+	const audioClipCount = getRangeClips(registry, projectId, range).filter((clip) => clip.type === 'ef-audio').length
+	const audioConfig = audioClipCount > 0
+		? await getWebCodecsAudioConfig(2, 128_000)
+		: null
+	if (audioClipCount > 0 && !audioConfig) {
+		return null
+	}
+	const mixedAudioTrack = audioConfig
+		? await mixWebCodecsAudioTrack(
+			registry,
+			projectId,
+			range,
+			start,
+			frameCount / fps,
+			audioConfig.encoderConfig.sampleRate,
+			audioConfig.encoderConfig.numberOfChannels,
+		)
+		: null
+	if (audioClipCount > 0 && audioConfig && !mixedAudioTrack) {
+		return null
+	}
 
 	const canvas = document.createElement('canvas')
 	canvas.width = width
@@ -735,6 +970,15 @@ const renderWebCodecsVideoBlob = async ({
 			height,
 			frameRate: fps,
 		},
+		...(audioConfig && mixedAudioTrack
+			? {
+				audio: {
+					codec: audioConfig.muxerCodec,
+					numberOfChannels: mixedAudioTrack.numberOfChannels,
+					sampleRate: mixedAudioTrack.sampleRate,
+				},
+			}
+			: {}),
 		firstTimestampBehavior: 'strict',
 	})
 	const encoder = new VideoEncoder({
@@ -766,6 +1010,9 @@ const renderWebCodecsVideoBlob = async ({
 		}
 
 		await encoder.flush()
+		if (audioConfig && mixedAudioTrack) {
+			await encodeMixedAudioTrack(muxer, audioConfig, mixedAudioTrack)
+		}
 		muxer.finalize()
 		return new Blob([target.buffer], { type: videoMimeType })
 	} finally {
@@ -895,8 +1142,7 @@ export const createBrowserVideoExportRenderer = (
 			const videoBitsPerSecond = options.videoBitsPerSecond ?? 4_000_000
 			const frames: ExportFrameSample[] = []
 
-			const hasAudioClips = hasAudioExportClips(request.registry, request.projectId, request.range)
-			const webCodecsBlob = hasAudioClips ? null : await renderWebCodecsVideoBlob({
+			const webCodecsBlob = await renderWebCodecsVideoBlob({
 				registry: request.registry,
 				projectId: request.projectId,
 				range: request.range,

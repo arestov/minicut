@@ -219,6 +219,76 @@ const sampleWebmFrame = async (
 		}
 	}, Array.from(buffer))
 
+const installExportPathProbe = async (page: import('@playwright/test').Page): Promise<void> => {
+	await page.addInitScript(() => {
+		const target = window as Window & { __minicutMediaRecorderCount?: number }
+		target.__minicutMediaRecorderCount = 0
+		const OriginalMediaRecorder = window.MediaRecorder
+		if (!OriginalMediaRecorder) {
+			return
+		}
+
+		class InstrumentedMediaRecorder extends OriginalMediaRecorder {
+			constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+				super(stream, options)
+				target.__minicutMediaRecorderCount = (target.__minicutMediaRecorderCount ?? 0) + 1
+			}
+		}
+
+		Object.defineProperty(InstrumentedMediaRecorder, 'isTypeSupported', {
+			value: OriginalMediaRecorder.isTypeSupported.bind(OriginalMediaRecorder),
+		})
+		window.MediaRecorder = InstrumentedMediaRecorder as typeof MediaRecorder
+	})
+}
+
+const supportsWebCodecsAudio = async (page: import('@playwright/test').Page): Promise<boolean> =>
+	page.evaluate(async () => {
+		if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined' || typeof AudioData === 'undefined') {
+			return false
+		}
+
+		try {
+			const videoSupport = await VideoEncoder.isConfigSupported({
+				codec: 'vp8',
+				width: 80,
+				height: 80,
+				bitrate: 500_000,
+				framerate: 8,
+			})
+			const audioSupport = await AudioEncoder.isConfigSupported({
+				codec: 'opus',
+				numberOfChannels: 2,
+				sampleRate: 48_000,
+				bitrate: 128_000,
+			})
+			return videoSupport.supported && audioSupport.supported
+		} catch {
+			return false
+		}
+	})
+
+const expectExportPathForAudio = async (
+	page: import('@playwright/test').Page,
+	mode: 'prefer-webcodecs' | 'allow-fallback' = 'allow-fallback',
+): Promise<void> => {
+	const mediaRecorderCount = await page.evaluate(() => {
+		const target = window as Window & { __minicutMediaRecorderCount?: number }
+		return target.__minicutMediaRecorderCount ?? 0
+	})
+	const webCodecsAudioAvailable = await supportsWebCodecsAudio(page)
+	if (mode === 'prefer-webcodecs' && webCodecsAudioAvailable) {
+		expect(mediaRecorderCount).toBe(0)
+		return
+	}
+
+	if (webCodecsAudioAvailable && mediaRecorderCount === 0) {
+		return
+	}
+
+	expect(mediaRecorderCount).toBeGreaterThan(0)
+}
+
 const setTimelineCursor = async (
 	page: import('@playwright/test').Page,
 	seconds: number,
@@ -356,24 +426,8 @@ test('video resources add linked audio clips that play, inspect, and export sett
 	expect(videoBytes.length).toBeGreaterThan(1000)
 })
 
-test('exports generated solid video, trailing image, and audio through MediaRecorder', async ({ page }) => {
-	await page.addInitScript(() => {
-		const OriginalMediaRecorder = window.MediaRecorder
-		if (!OriginalMediaRecorder) {
-			return
-		}
-		class InstrumentedMediaRecorder extends OriginalMediaRecorder {
-			constructor(stream: MediaStream, options?: MediaRecorderOptions) {
-				super(stream, options)
-				const target = window as Window & { __minicutMediaRecorderCount?: number }
-				target.__minicutMediaRecorderCount = (target.__minicutMediaRecorderCount ?? 0) + 1
-			}
-		}
-		Object.defineProperty(InstrumentedMediaRecorder, 'isTypeSupported', {
-			value: OriginalMediaRecorder.isTypeSupported.bind(OriginalMediaRecorder),
-		})
-		window.MediaRecorder = InstrumentedMediaRecorder as typeof MediaRecorder
-	})
+test('exports generated solid video, trailing image, and audio with audible output', async ({ page }) => {
+	await installExportPathProbe(page)
 
 	await page.goto('/')
 	await createProjectFromMenu(page)
@@ -400,10 +454,6 @@ test('exports generated solid video, trailing image, and audio through MediaReco
 	await videoClip.click()
 	await page.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Start +0.5s' }).click()
 	await expect(videoClip).toHaveText(/0\.5s/)
-	await page.evaluate(() => {
-		const target = window as Window & { __minicutMediaRecorderCount?: number }
-		target.__minicutMediaRecorderCount = 0
-	})
 
 	const downloadPromise = page.waitForEvent('download')
 	await page.getByRole('button', { name: 'Export project' }).click()
@@ -412,10 +462,7 @@ test('exports generated solid video, trailing image, and audio through MediaReco
 	expect(downloadPath).toBeTruthy()
 	const exportedBytes = await fs.readFile(downloadPath as string)
 	expect(exportedBytes.length).toBeGreaterThan(1000)
-	await expect.poll(async () => page.evaluate(() => {
-		const target = window as Window & { __minicutMediaRecorderCount?: number }
-		return target.__minicutMediaRecorderCount ?? 0
-	})).toBeGreaterThan(0)
+	await expectExportPathForAudio(page, 'allow-fallback')
 
 	const sample = await sampleWebmFrame(page, exportedBytes)
 	expect(sample.duration).toBeGreaterThan(1.4)
@@ -428,24 +475,43 @@ test('exports generated solid video, trailing image, and audio through MediaReco
 	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[2] + 30)
 })
 
+test('exports image plus wav audio via WebCodecs when available', async ({ page }) => {
+	await installExportPathProbe(page)
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const imageFile = await createSolidPngFile(page, 'webcodecs-green-image.png', '#16a34a')
+	const audioFile = createToneWavFile('webcodecs-tone.wav')
+	await page.getByLabel('Import media files').setInputFiles([imageFile, audioFile])
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const mediaBin = page.getByLabel('Media bin')
+	await expect(timeline.getByRole('button', { name: /webcodecs-green-image.png/i })).toBeVisible()
+	await expect(mediaBin.locator('strong').filter({ hasText: 'webcodecs-tone.wav' })).toBeVisible()
+	if (await timeline.getByRole('button', { name: /webcodecs-tone.wav/i }).count() === 0) {
+		await mediaBin.locator('.ve-resource-row').filter({ hasText: 'webcodecs-tone.wav' }).getByRole('button', { name: 'Add to timeline' }).click()
+	}
+	await expect(timeline.getByRole('button', { name: /webcodecs-tone.wav/i })).toBeVisible()
+
+	const downloadPromise = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export project' }).click()
+	const download = await downloadPromise
+	const downloadPath = await download.path()
+	expect(downloadPath).toBeTruthy()
+	const exportedBytes = await fs.readFile(downloadPath as string)
+	expect(exportedBytes.length).toBeGreaterThan(1000)
+	await expectExportPathForAudio(page, 'prefer-webcodecs')
+
+	const sample = await sampleWebmFrame(page, exportedBytes)
+	expect(sample.audioTrackCount).toBeGreaterThan(0)
+	expect(sample.audioRms).toBeGreaterThan(0.001)
+	expect(sample.rgba[1]).toBeGreaterThan(120)
+	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[0] + 30)
+	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[2] + 30)
+})
+
 test('imports a video with embedded audio as linked tracks and exports audible audio', async ({ page }) => {
-	await page.addInitScript(() => {
-		const OriginalMediaRecorder = window.MediaRecorder
-		if (!OriginalMediaRecorder) {
-			return
-		}
-		class InstrumentedMediaRecorder extends OriginalMediaRecorder {
-			constructor(stream: MediaStream, options?: MediaRecorderOptions) {
-				super(stream, options)
-				const target = window as Window & { __minicutMediaRecorderCount?: number }
-				target.__minicutMediaRecorderCount = (target.__minicutMediaRecorderCount ?? 0) + 1
-			}
-		}
-		Object.defineProperty(InstrumentedMediaRecorder, 'isTypeSupported', {
-			value: OriginalMediaRecorder.isTypeSupported.bind(OriginalMediaRecorder),
-		})
-		window.MediaRecorder = InstrumentedMediaRecorder as typeof MediaRecorder
-	})
+	await installExportPathProbe(page)
 
 	await page.goto('/')
 	await createProjectFromMenu(page)
@@ -480,10 +546,6 @@ test('imports a video with embedded audio as linked tracks and exports audible a
 	await expect.poll(async () => previewAudio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.45)
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
 
-	await page.evaluate(() => {
-		const target = window as Window & { __minicutMediaRecorderCount?: number }
-		target.__minicutMediaRecorderCount = 0
-	})
 	const downloadPromise = page.waitForEvent('download')
 	await page.getByRole('button', { name: 'Export project' }).click()
 	const download = await downloadPromise
@@ -491,10 +553,7 @@ test('imports a video with embedded audio as linked tracks and exports audible a
 	expect(downloadPath).toBeTruthy()
 	const exportedBytes = await fs.readFile(downloadPath as string)
 	expect(exportedBytes.length).toBeGreaterThan(1000)
-	await expect.poll(async () => page.evaluate(() => {
-		const target = window as Window & { __minicutMediaRecorderCount?: number }
-		return target.__minicutMediaRecorderCount ?? 0
-	})).toBeGreaterThan(0)
+	await expectExportPathForAudio(page, 'allow-fallback')
 
 	const sample = await sampleWebmFrame(page, exportedBytes)
 	expect(sample.audioTrackCount).toBeGreaterThan(0)
