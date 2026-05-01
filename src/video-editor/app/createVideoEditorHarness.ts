@@ -14,6 +14,8 @@ import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createAuthorityClient } from '../worker/createAuthorityClient'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
+const fallbackMediaDuration = 6
+const imageDuration = 1
 
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	if (file.type.startsWith('video/')) {
@@ -38,6 +40,45 @@ const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	}
 
 	return null
+}
+
+const getMediaDuration = (
+	url: string,
+	kind: 'video' | 'audio',
+	fallbackDuration = fallbackMediaDuration,
+): Promise<number> => new Promise((resolve) => {
+	const element = document.createElement(kind)
+	let settled = false
+	const timeoutId = window.setTimeout(() => finish(fallbackDuration), 3000)
+
+	const finish = (duration: number): void => {
+		if (settled) {
+			return
+		}
+
+		settled = true
+		window.clearTimeout(timeoutId)
+		element.removeAttribute('src')
+		element.load()
+		resolve(Number.isFinite(duration) && duration > 0 ? duration : fallbackDuration)
+	}
+
+	element.preload = 'metadata'
+	element.onloadedmetadata = () => finish(element.duration)
+	element.onerror = () => finish(fallbackDuration)
+	element.src = url
+	element.load()
+})
+
+const getImportedResourceDuration = async (
+	url: string,
+	kind: 'video' | 'audio' | 'image',
+): Promise<number> => {
+	if (kind === 'image') {
+		return imageDuration
+	}
+
+	return getMediaDuration(url, kind)
 }
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
@@ -73,6 +114,7 @@ export const createVideoEditorHarness = (
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const importedObjectUrls = new Set<string>()
+	let importFilesQueue = Promise.resolve()
 	let initialBootstrapChecked = false
 	let projectBootstrapInFlight = false
 	let isDestroyed = false
@@ -195,18 +237,25 @@ export const createVideoEditorHarness = (
 
 				const url = URL.createObjectURL(file)
 				importedObjectUrls.add(url)
-				dispatch({
-					c: CMD.RESOURCE_IMPORT,
-					p: {
-						projectId,
-						name: file.name,
-						kind,
-						duration: kind === 'image' ? 5 : 6,
-						mime: file.type || `${kind}/unknown`,
-						url,
-						width: kind === 'audio' ? undefined : 1920,
-						height: kind === 'audio' ? undefined : 1080,
-					},
+				importFilesQueue = importFilesQueue.then(async () => {
+					const duration = await getImportedResourceDuration(url, kind)
+					if (isDestroyed) {
+						return
+					}
+
+					dispatch({
+						c: CMD.RESOURCE_IMPORT,
+						p: {
+							projectId,
+							name: file.name,
+							kind,
+							duration,
+							mime: file.type || `${kind}/unknown`,
+							url,
+							width: kind === 'audio' ? undefined : 1920,
+							height: kind === 'audio' ? undefined : 1080,
+						},
+					})
 				})
 			}
 		},

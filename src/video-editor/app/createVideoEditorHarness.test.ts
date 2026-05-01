@@ -15,8 +15,38 @@ const settleHarness = async () => {
 	await flushMicrotasks()
 }
 
+const mockMediaElementDuration = (options: { duration?: number, fail?: boolean }) => {
+	const originalCreateElement = document.createElement.bind(document)
+	return vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
+		if (tagName !== 'video' && tagName !== 'audio') {
+			return originalCreateElement(tagName)
+		}
+
+		const element = {
+			preload: '',
+			duration: options.duration ?? Number.NaN,
+			onloadedmetadata: null as null | (() => void),
+			onerror: null as null | (() => void),
+			removeAttribute: vi.fn(),
+			load: vi.fn(() => {
+				queueMicrotask(() => {
+					if (options.fail) {
+						element.onerror?.()
+						return
+					}
+
+					element.onloadedmetadata?.()
+				})
+			}),
+		}
+
+		return element as unknown as HTMLElement
+	}) as typeof document.createElement)
+}
+
 describe('createVideoEditorHarness actions', () => {
-	it('filters unsupported files in importFiles', async () => {
+	it('filters unsupported files and imports real media duration from metadata', async () => {
+		const createElement = mockMediaElementDuration({ duration: 12.75 })
 		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
 			const file = blob as File
 			return `blob:${file.name}`
@@ -42,10 +72,48 @@ describe('createVideoEditorHarness actions', () => {
 			const resources = getResourceEntities(registry, project!)
 			expect(resources).toHaveLength(1)
 			expect((resources[0].attrs as ResourceAttrs).name).toBe('clip.webm')
+			expect((resources[0].attrs as ResourceAttrs).duration).toBe(12.75)
 			expect(createObjectURL).toHaveBeenCalledTimes(1)
 		} finally {
 			harness.destroy()
 			expect(revokeObjectURL).toHaveBeenCalledWith('blob:clip.webm')
+			createElement.mockRestore()
+			createObjectURL.mockRestore()
+			revokeObjectURL.mockRestore()
+		}
+	})
+
+	it('uses one second for images and fallback duration when media metadata fails', async () => {
+		const createElement = mockMediaElementDuration({ fail: true })
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+			const file = blob as File
+			return `blob:${file.name}`
+		})
+		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+
+			harness.actions.importFiles([
+				new File(['image'], 'still.png', { type: 'image/png' }),
+				new File(['audio'], 'bad.wav', { type: 'audio/wav' }),
+			])
+			await settleHarness()
+
+			const registry = harness.projects$.get()
+			const project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			const resources = getResourceEntities(registry, project!)
+			expect(resources.map((resource) => (resource.attrs as ResourceAttrs).duration)).toEqual([1, 6])
+		} finally {
+			harness.destroy()
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:still.png')
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:bad.wav')
+			createElement.mockRestore()
 			createObjectURL.mockRestore()
 			revokeObjectURL.mockRestore()
 		}
