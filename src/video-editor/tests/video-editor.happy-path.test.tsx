@@ -250,6 +250,59 @@ describe('video editor harness', () => {
 		}
 	})
 
+	it('covers toolbar scaffolds, media controls, and timeline tool toggles', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+			expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
+			expect(screen.getByRole('button', { name: 'Export project' })).toBeDisabled()
+
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+
+			const mediaBin = screen.getByLabelText('Media bin')
+			expect(within(mediaBin).getByText('3 of 3 assets')).toBeInTheDocument()
+			await user.click(within(mediaBin).getByRole('button', { name: 'Grid view' }))
+			expect(within(mediaBin).getByRole('button', { name: 'Grid view' })).toHaveAttribute('aria-pressed', 'true')
+			await user.click(within(mediaBin).getByRole('button', { name: 'List view' }))
+			expect(within(mediaBin).getByRole('button', { name: 'List view' })).toHaveAttribute('aria-pressed', 'true')
+
+			fireEvent.change(within(mediaBin).getByLabelText('Filter media kind'), { target: { value: 'audio' } })
+			expect(within(mediaBin).getByText('Sample asset 2', { selector: 'strong' })).toBeInTheDocument()
+			expect(within(mediaBin).queryByText('Sample asset 1', { selector: 'strong' })).not.toBeInTheDocument()
+			fireEvent.change(within(mediaBin).getByLabelText('Search media'), { target: { value: 'asset 2' } })
+			expect(within(mediaBin).getByText('1 of 3 assets')).toBeInTheDocument()
+
+			const timeline = screen.getByLabelText('Timeline')
+			const scrollArea = timeline.querySelector('.ve-timeline-scroll-area') as HTMLDivElement | null
+			expect(scrollArea).not.toBeNull()
+			expect(within(timeline).getByRole('button', { name: 'Select tool' })).toHaveAttribute('aria-pressed', 'true')
+			await user.click(within(timeline).getByRole('button', { name: 'Trim tool' }))
+			expect(scrollArea).toHaveAttribute('data-tool', 'trim')
+			expect(within(timeline).getByRole('button', { name: 'Trim tool' })).toHaveAttribute('aria-pressed', 'true')
+			await user.click(within(timeline).getByRole('button', { name: 'Split tool' }))
+			expect(scrollArea).toHaveAttribute('data-tool', 'split')
+			await user.click(within(timeline).getByRole('button', { name: 'Hand tool' }))
+			expect(scrollArea).toHaveAttribute('data-tool', 'hand')
+
+			const snappingButton = within(timeline).getByRole('button', { name: 'Toggle snapping' })
+			expect(snappingButton).toHaveAttribute('aria-pressed', 'true')
+			await user.click(snappingButton)
+			expect(snappingButton).toHaveAttribute('aria-pressed', 'false')
+			expect(scrollArea).toHaveAttribute('data-snapping', 'off')
+
+			const v1Controls = within(timeline).getByLabelText('V1 controls')
+			expect(within(v1Controls).getByRole('button', { name: 'Track audible' })).toBeDisabled()
+			expect(within(v1Controls).getByRole('button', { name: 'Track unlocked' })).toBeDisabled()
+			expect(within(v1Controls).getByRole('button', { name: 'Track visible' })).toBeDisabled()
+		} finally {
+			unmount()
+		}
+	})
+
 	it('switches inspector tabs for clip editing modes', async () => {
 		const { user, unmount } = renderVideoEditor()
 
