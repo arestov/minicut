@@ -6,7 +6,7 @@ import { formatPercent, formatSeconds } from './format'
 
 type ClipPointerDragState =
 	| { kind: 'move'; startX: number }
-	| { kind: 'resize-start' | 'resize-end'; startX: number }
+	| { kind: 'resize-start' | 'resize-end'; startX: number; lastClientX: number }
 
 interface ClipItemProps {
 	projectId: string
@@ -33,11 +33,26 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 		const localTime = Math.max(0, (clientX - rect.left) / timelineZoom)
 		actions.splitClipByIdAt(clipId, start + localTime)
 	}
+	const applyResizeDelta = (state: Extract<ClipPointerDragState, { kind: 'resize-start' | 'resize-end' }>, clientX: number): void => {
+		const deltaSeconds = Math.round(((clientX - state.lastClientX) / timelineZoom) * 100) / 100
+		if (deltaSeconds === 0) {
+			return
+		}
+
+		actions.selectEntity(clipId)
+		actions.resizeClipById(clipId, state.kind === 'resize-start' ? 'start' : 'end', deltaSeconds)
+		dragState.current = { ...state, lastClientX: clientX }
+	}
 	const finishPointerDrag = (clientX: number): void => {
 		const state = dragState.current
 		dragState.current = null
 		setDragPreviewDeltaPx(0)
 		if (!state) {
+			return
+		}
+
+		if (state.kind === 'resize-start' || state.kind === 'resize-end') {
+			applyResizeDelta(state, clientX)
 			return
 		}
 
@@ -87,7 +102,15 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 			}}
 			onPointerMove={(event) => {
 				const state = dragState.current
-				if (!state || state.kind !== 'move' || activeTool !== 'select' || (event.buttons & 1) === 0) {
+				if (!state || (event.buttons & 1) === 0) {
+					return
+				}
+
+				if (state.kind === 'resize-start' || state.kind === 'resize-end') {
+					applyResizeDelta(state, event.clientX)
+					return
+				}
+				if (activeTool !== 'select') {
 					return
 				}
 
@@ -108,7 +131,8 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 				onPointerDown={(event) => {
 					event.stopPropagation()
 					event.currentTarget.setPointerCapture?.(event.pointerId)
-					dragState.current = { kind: 'resize-start', startX: event.clientX }
+					actions.selectEntity(clipId)
+					dragState.current = { kind: 'resize-start', startX: event.clientX, lastClientX: event.clientX }
 				}}
 				onPointerUp={(event) => {
 					event.stopPropagation()
@@ -126,7 +150,8 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 				onPointerDown={(event) => {
 					event.stopPropagation()
 					event.currentTarget.setPointerCapture?.(event.pointerId)
-					dragState.current = { kind: 'resize-end', startX: event.clientX }
+					actions.selectEntity(clipId)
+					dragState.current = { kind: 'resize-end', startX: event.clientX, lastClientX: event.clientX }
 				}}
 				onPointerUp={(event) => {
 					event.stopPropagation()

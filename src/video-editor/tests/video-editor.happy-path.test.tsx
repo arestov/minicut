@@ -124,10 +124,14 @@ describe('video editor harness', () => {
 			expect(startHandle).not.toBeNull()
 
 			fireEvent.pointerDown(endHandle as HTMLElement, { clientX: 100, buttons: 1 })
+			fireEvent.pointerMove(endHandle as HTMLElement, { clientX: 128, buttons: 1 })
+			expect(clipButton).toHaveTextContent(/0\.0s \/ 5\.5s/)
 			fireEvent.pointerUp(endHandle as HTMLElement, { clientX: 128, buttons: 0 })
 			expect(clipButton).toHaveTextContent(/0\.0s \/ 5\.5s/)
 
 			fireEvent.pointerDown(startHandle as HTMLElement, { clientX: 100, buttons: 1 })
+			fireEvent.pointerMove(startHandle as HTMLElement, { clientX: 128, buttons: 1 })
+			expect(clipButton).toHaveTextContent(/0\.5s \/ 5\.0s/)
 			fireEvent.pointerUp(startHandle as HTMLElement, { clientX: 128, buttons: 0 })
 			expect(clipButton).toHaveTextContent(/0\.5s \/ 5\.0s/)
 		} finally {

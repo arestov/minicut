@@ -467,6 +467,7 @@ test('resizing a clip from the right edge changes its duration', async ({ page }
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 	await page.mouse.down()
 	await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2)
+	await expect(clip).toHaveText(/0\.0s \/ 1\.5s/)
 	await page.mouse.up()
 
 	await expect(clip).toHaveText(/0\.0s \/ 1\.5s/)
@@ -487,6 +488,7 @@ test('resizing a clip from the left edge trims its start and duration', async ({
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 	await page.mouse.down()
 	await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2)
+	await expect(clip).toHaveText(/0\.5s \/ 0\.5s/)
 	await page.mouse.up()
 
 	await expect(clip).toHaveText(/0\.5s \/ 0\.5s/)
@@ -717,11 +719,14 @@ test('preview sends playhead renders through an OffscreenCanvas worker', async (
 	expect(probe.messages).toEqual(expect.arrayContaining([
 		expect.objectContaining({ type: 'init' }),
 		expect.objectContaining({
-			type: 'render',
-			cursor: expect.closeTo(0.75, 1),
+			type: 'setScene',
 			clips: expect.arrayContaining([
 				expect.objectContaining({ name: 'fixture-video.webm', kind: 'video' }),
 			]),
+		}),
+		expect.objectContaining({
+			type: 'render',
+			cursor: expect.closeTo(0.75, 1),
 		}),
 	]))
 })
