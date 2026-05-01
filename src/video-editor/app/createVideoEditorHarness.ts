@@ -332,6 +332,9 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 		},
 
 		moveClipById(clipId: string, delta: number): void {
+			if (delta === 0) {
+				return
+			}
 
 			dispatch({
 				c: CMD.TIMELINE_MOVE_CLIP,
