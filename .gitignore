@@ -2,3 +2,5 @@
 /dist-video-editor
 /coverage
 /.vite
+/playwright-report
+/test-results
