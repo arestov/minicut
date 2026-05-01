@@ -232,9 +232,26 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
-	await timeline.getByRole('button', { name: 'Zoom in' }).click()
+	const zoomIn = timeline.getByRole('button', { name: 'Zoom in' })
+	const zoomOut = timeline.getByRole('button', { name: 'Zoom out' })
+	await zoomIn.click()
 	await expect(timeline.getByText('64 px/s')).toBeVisible()
-	await timeline.getByRole('button', { name: 'Zoom out' }).click()
+	await zoomOut.click()
+	await expect(timeline.getByText('56 px/s')).toBeVisible()
+
+	for (let index = 0; index < 20; index += 1) {
+		await zoomIn.click()
+	}
+	await expect(timeline.getByText('112 px/s')).toBeVisible()
+
+	for (let index = 0; index < 30; index += 1) {
+		await zoomOut.click()
+	}
+	await expect(timeline.getByText('32 px/s')).toBeVisible()
+
+	for (let index = 0; index < 3; index += 1) {
+		await zoomIn.click()
+	}
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
 
 	const clip = timeline.getByRole('button', { name: /Sample asset 1/i }).first()
