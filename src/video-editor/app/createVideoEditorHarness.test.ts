@@ -119,6 +119,36 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('does not dispatch async media imports after destroy', async () => {
+		const createElement = mockMediaElementDuration({ duration: 9 })
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+			const file = blob as File
+			return `blob:${file.name}`
+		})
+		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+		const authority = new MemoryWorkerAuthority()
+		const createResult = authority.dispatch({ c: CMD.PROJECT_CREATE, p: {} })
+		const projectId = String(createResult.createdIds?.projectId)
+		const harness = createVideoEditorHarness(authority, { autoCreateInitialProject: false })
+
+		try {
+			await settleHarness()
+			harness.actions.importFiles([new File(['video'], 'late.webm', { type: 'video/webm' })])
+			harness.destroy()
+			await settleHarness()
+
+			const snapshot = authority.getSnapshot()
+			const project = snapshot.projects[projectId]
+			expect(project).toBeDefined()
+			expect(getResourceEntities(snapshot, project)).toHaveLength(0)
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:late.webm')
+		} finally {
+			createElement.mockRestore()
+			createObjectURL.mockRestore()
+			revokeObjectURL.mockRestore()
+		}
+	})
+
 	it('tracks in-point and clamps trim start to keep positive duration', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)
