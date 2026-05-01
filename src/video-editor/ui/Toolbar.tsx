@@ -1,14 +1,20 @@
 import { observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { getActiveProject, getResourceEntities, getSelectedClip } from '../domain/selectors'
 
 export const Toolbar = observer(() => {
 	const { projects$, session$, actions } = useVideoEditor()
-	const registry = projects$.get()
-	const session = session$.get()
-	const activeProject = getActiveProject(registry, session)
-	const selectedClip = getSelectedClip(registry, session)
-	const resources = activeProject ? getResourceEntities(activeProject) : []
+	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const selectedEntityId = session$.selectedEntityId.get()
+	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
+	const rootEntityId = activeProject$?.rootEntityId.get()
+	const resourceIds = rootEntityId
+		? activeProject$?.entities[rootEntityId].rels.resources.get()
+		: []
+	const resources = Array.isArray(resourceIds) ? resourceIds : []
+	const selectedEntityType = selectedEntityId
+		? activeProject$?.entities[selectedEntityId].type.get()
+		: null
+	const hasSelectedClip = selectedEntityType === 'clip'
 
 	return (
 		<header className="ve-toolbar">
@@ -20,20 +26,20 @@ export const Toolbar = observer(() => {
 				<button type="button" onClick={() => actions.createProject()}>
 					New project
 				</button>
-				<button type="button" onClick={() => actions.importSampleResource()} disabled={!activeProject}>
+				<button type="button" onClick={() => actions.importSampleResource()} disabled={!activeProjectId}>
 					Import sample
 				</button>
 				<button
 					type="button"
-					onClick={() => resources[0] && actions.addResourceToTimeline(resources[0].id)}
+					onClick={() => resources[0] && actions.addResourceToTimeline(resources[0])}
 					disabled={!resources[0]}
 				>
 					Add first resource
 				</button>
-				<button type="button" onClick={() => actions.splitSelectedClip()} disabled={!selectedClip}>
+				<button type="button" onClick={() => actions.splitSelectedClip()} disabled={!hasSelectedClip}>
 					Split selected clip
 				</button>
-				<button type="button" onClick={() => actions.nudgeSelectedClip(0.5)} disabled={!selectedClip}>
+				<button type="button" onClick={() => actions.nudgeSelectedClip(0.5)} disabled={!hasSelectedClip}>
 					Nudge +0.5s
 				</button>
 			</div>

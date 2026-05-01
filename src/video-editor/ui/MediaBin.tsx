@@ -1,11 +1,41 @@
 import { observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { getActiveProject, getResourceEntities, getResourceLabel } from '../domain/selectors'
+import type { ResourceAttrs } from '../domain/types'
+
+interface ResourceRowProps {
+	projectId: string
+	resourceId: string
+}
+
+const ResourceRow = observer(({ projectId, resourceId }: ResourceRowProps) => {
+	const { projects$, actions } = useVideoEditor()
+	const resource$ = projects$.projects[projectId].entities[resourceId]
+	const attrs = resource$.attrs.get() as unknown as ResourceAttrs
+
+	return (
+		<li>
+			<div>
+				<strong>{attrs.name}</strong>
+				<small>
+					{attrs.name} · {attrs.kind} · {attrs.duration.toFixed(1)}s
+				</small>
+			</div>
+			<button type="button" onClick={() => actions.addResourceToTimeline(resourceId)}>
+				Add to timeline
+			</button>
+		</li>
+	)
+})
 
 export const MediaBin = observer(() => {
-	const { projects$, session$, actions } = useVideoEditor()
-	const activeProject = getActiveProject(projects$.get(), session$.get())
-	const resources = activeProject ? getResourceEntities(activeProject) : []
+	const { projects$, session$ } = useVideoEditor()
+	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
+	const rootEntityId = activeProject$?.rootEntityId.get()
+	const resourceIds = rootEntityId
+		? activeProject$?.entities[rootEntityId].rels.resources.get()
+		: []
+	const resources = Array.isArray(resourceIds) ? resourceIds : []
 
 	return (
 		<section className="ve-panel" aria-label="Media bin">
@@ -13,25 +43,14 @@ export const MediaBin = observer(() => {
 				<h2>Media bin</h2>
 				<span>{resources.length}</span>
 			</div>
-			{!activeProject ? (
+			{!activeProjectId ? (
 				<p className="ve-empty">No active project.</p>
 			) : resources.length === 0 ? (
 				<p className="ve-empty">Import a sample asset to populate the bin.</p>
 			) : (
 				<ul className="ve-resource-list">
-					{resources.map((resource) => (
-						<li key={resource.id}>
-							<div>
-								<strong>{String(resource.attrs.name)}</strong>
-								<small>{getResourceLabel(resource)}</small>
-							</div>
-							<button
-								type="button"
-								onClick={() => actions.addResourceToTimeline(resource.id)}
-							>
-								Add to timeline
-							</button>
-						</li>
+					{resources.map((resourceId) => (
+						<ResourceRow key={resourceId} projectId={activeProjectId} resourceId={resourceId} />
 					))}
 				</ul>
 			)}

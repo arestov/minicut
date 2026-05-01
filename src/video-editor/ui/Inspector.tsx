@@ -1,14 +1,17 @@
 import { observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { getSelectedClip } from '../domain/selectors'
-import type { ClipAttrs } from '../domain/types'
 import { formatPercent, formatSeconds } from './format'
 
 export const Inspector = observer(() => {
 	const { projects$, session$, actions } = useVideoEditor()
-	const clip = getSelectedClip(projects$.get(), session$.get())
+	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const selectedEntityId = session$.selectedEntityId.get()
+	const selectedEntity$ = activeProjectId && selectedEntityId
+		? projects$.projects[activeProjectId].entities[selectedEntityId]
+		: null
+	const isClip = selectedEntity$?.type.get() === 'clip'
 
-	if (!clip) {
+	if (!selectedEntity$ || !isClip) {
 		return (
 			<aside className="ve-panel" aria-label="Inspector">
 				<div className="ve-panel__header">
@@ -19,27 +22,30 @@ export const Inspector = observer(() => {
 		)
 	}
 
-	const attrs = clip.attrs as ClipAttrs
-	const opacityPercent = Math.round(attrs.opacity * 100)
+	const name = String(selectedEntity$.attrs.name.get())
+	const start = Number(selectedEntity$.attrs.start.get())
+	const duration = Number(selectedEntity$.attrs.duration.get())
+	const opacity = Number(selectedEntity$.attrs.opacity.get())
+	const opacityPercent = Math.round(opacity * 100)
 
 	return (
 		<aside className="ve-panel" aria-label="Inspector">
 			<div className="ve-panel__header">
 				<h2>Inspector</h2>
-				<span>{String(attrs.name)}</span>
+				<span>{name}</span>
 			</div>
 			<dl className="ve-inspector-grid">
 				<div>
 					<dt>Start</dt>
-					<dd>{formatSeconds(attrs.start)}</dd>
+					<dd>{formatSeconds(start)}</dd>
 				</div>
 				<div>
 					<dt>Duration</dt>
-					<dd>{formatSeconds(attrs.duration)}</dd>
+					<dd>{formatSeconds(duration)}</dd>
 				</div>
 				<div>
 					<dt>Opacity</dt>
-					<dd>{formatPercent(attrs.opacity)}</dd>
+					<dd>{formatPercent(opacity)}</dd>
 				</div>
 			</dl>
 			<label className="ve-slider-field">

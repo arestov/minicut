@@ -1,27 +1,30 @@
 import { observer } from '@legendapp/state/react'
-import type { Entity } from '../domain/types'
-import { getClipLabel } from '../domain/selectors'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { formatPercent } from './format'
+import { formatPercent, formatSeconds } from './format'
 
 interface ClipItemProps {
-	clip: Entity
+	projectId: string
+	clipId: string
 	selected: boolean
 }
 
-export const ClipItem = observer(({ clip, selected }: ClipItemProps) => {
-	const { actions } = useVideoEditor()
-	const opacity = Number(clip.attrs.opacity)
+export const ClipItem = observer(({ projectId, clipId, selected }: ClipItemProps) => {
+	const { projects$, actions } = useVideoEditor()
+	const clip$ = projects$.projects[projectId].entities[clipId]
+	const name = String(clip$.attrs.name.get())
+	const start = Number(clip$.attrs.start.get())
+	const duration = Number(clip$.attrs.duration.get())
+	const opacity = Number(clip$.attrs.opacity.get())
 
 	return (
 		<button
 			type="button"
 			className={`ve-clip${selected ? ' is-selected' : ''}`}
-			onClick={() => actions.selectEntity(clip.id)}
+			onClick={() => actions.selectEntity(clipId)}
 		>
-			<span>{String(clip.attrs.name)}</span>
+			<span>{name}</span>
 			<small>
-				{getClipLabel(clip)} · opacity {formatPercent(opacity)}
+				{name} · {formatSeconds(start)} / {formatSeconds(duration)} · opacity {formatPercent(opacity)}
 			</small>
 		</button>
 	)
