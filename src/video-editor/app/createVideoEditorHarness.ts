@@ -12,7 +12,12 @@ import type {
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
-import { createBrowserVideoExportRenderer, type ExportRenderer, type ExportRenderResult } from '../render/exportRenderer'
+import {
+	createBrowserVideoExportRenderer,
+	type ExportProgressEvent,
+	type ExportRenderer,
+	type ExportRenderResult,
+} from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createAuthorityClient } from '../worker/createAuthorityClient'
 
@@ -619,7 +624,9 @@ export const createVideoEditorHarness = (
 			})
 		},
 
-		async queueSelectedClipExport(): Promise<ExportRenderResult | null> {
+		async queueSelectedClipExport(
+			onProgress?: (event: ExportProgressEvent) => void,
+		): Promise<ExportRenderResult | null> {
 			const registry = projects$.get()
 			const session = session$.get()
 			const project = getActiveProject(registry, session)
@@ -628,13 +635,16 @@ export const createVideoEditorHarness = (
 				return null
 			}
 
-			const result = await exportRenderer.render({
+			const request = {
 				registry,
 				projectId: project.id,
-				range: { type: 'clip', clipId: clip.id },
-				format: 'video-webm',
+				range: { type: 'clip' as const, clipId: clip.id },
+				format: 'video-webm' as const,
 				fps: 30,
-			})
+			}
+			const result = onProgress
+				? await exportRenderer.render(request, onProgress)
+				: await exportRenderer.render(request)
 			if (typeof URL.createObjectURL === 'function') {
 				const downloadUrl = URL.createObjectURL(result.blob)
 				exportObjectUrls.add(downloadUrl)
@@ -644,20 +654,25 @@ export const createVideoEditorHarness = (
 			return result
 		},
 
-		async queueProjectExport(): Promise<ExportRenderResult | null> {
+		async queueProjectExport(
+			onProgress?: (event: ExportProgressEvent) => void,
+		): Promise<ExportRenderResult | null> {
 			const registry = projects$.get()
 			const project = getActiveProject(registry, session$.get())
 			if (!project) {
 				return null
 			}
 
-			const result = await exportRenderer.render({
+			const request = {
 				registry,
 				projectId: project.id,
-				range: { type: 'project' },
-				format: 'video-webm',
+				range: { type: 'project' as const },
+				format: 'video-webm' as const,
 				fps: 30,
-			})
+			}
+			const result = onProgress
+				? await exportRenderer.render(request, onProgress)
+				: await exportRenderer.render(request)
 			if (typeof URL.createObjectURL === 'function') {
 				const downloadUrl = URL.createObjectURL(result.blob)
 				exportObjectUrls.add(downloadUrl)

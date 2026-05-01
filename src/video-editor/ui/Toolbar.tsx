@@ -2,19 +2,36 @@ import { observer } from '@legendapp/state/react'
 import { useState } from 'react'
 import { Download, FolderPlus, Redo2, Undo2 } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import type { ExportProgressEvent } from '../render/exportRenderer'
 import { IconButton } from './ControlPrimitives'
 import { ProjectDropdown } from './ProjectDropdown'
+
+const exportStageLabel: Record<ExportProgressEvent['stage'], string> = {
+	queued: 'queued',
+	rendering: 'rendering',
+	finalizing: 'finalizing',
+	done: 'done',
+}
+
+const formatExportProgress = (event: ExportProgressEvent): string => {
+	const progressPercent = Math.round(Math.max(0, Math.min(1, event.progress)) * 100)
+	return `Export ${exportStageLabel[event.stage]} ${progressPercent}%`
+}
 
 export const Toolbar = observer(() => {
 	const { projects$, session$, history$, actions } = useVideoEditor()
 	const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'ready' | 'error'>('idle')
+	const [exportProgress, setExportProgress] = useState<ExportProgressEvent>({ stage: 'queued', progress: 0 })
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const canUndo = history$.canUndo.get()
 	const canRedo = history$.canRedo.get()
 
 	const exportProject = (): void => {
 		setExportStatus('rendering')
-		actions.queueProjectExport()
+		setExportProgress({ stage: 'queued', progress: 0 })
+		actions.queueProjectExport((event) => {
+			setExportProgress(event)
+		})
 			.then((result) => {
 				if (!result) {
 					setExportStatus('error')
@@ -70,6 +87,7 @@ export const Toolbar = observer(() => {
 				>
 					Export
 				</IconButton>
+				{exportStatus === 'rendering' ? <span className="ve-toolbar__status">{formatExportProgress(exportProgress)}</span> : null}
 				{exportStatus === 'ready' ? <span className="ve-toolbar__status" role="status">Export ready</span> : null}
 				{exportStatus === 'error' ? <span className="ve-toolbar__status is-error" role="status">Export failed</span> : null}
 			</div>

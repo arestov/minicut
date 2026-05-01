@@ -3,8 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { VideoEditorHarnessApp } from '../app/VideoEditorHarnessApp'
 import { createVideoEditorHarness } from '../app/createVideoEditorHarness'
 
-export const renderVideoEditor = () => {
-	const harness = createVideoEditorHarness()
+type RenderVideoEditorOptions = Parameters<typeof createVideoEditorHarness>[1]
+
+export const renderVideoEditor = (options: RenderVideoEditorOptions = {}) => {
+	const harness = createVideoEditorHarness(undefined, options)
 	const rendered = render(<VideoEditorHarnessApp harness={harness} />)
 	const user = userEvent.setup()
 	const originalUnmount = rendered.unmount

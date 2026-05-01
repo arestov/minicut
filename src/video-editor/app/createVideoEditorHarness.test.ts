@@ -4,6 +4,7 @@ import { getActiveProject, getAudioTrack, getClipIdsForTrack, getResourceEntitie
 import { CMD, type ResourceAttrs } from '../domain/types'
 import { createEmptyRegistry } from '../domain/createProject'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
+import type { ExportProgressEvent, ExportRenderRequest } from '../render/exportRenderer'
 
 const flushMicrotasks = async () => {
 	for (let index = 0; index < 8; index += 1) {
@@ -548,6 +549,57 @@ describe('createVideoEditorHarness actions', () => {
 		try {
 			expect(() => harness.actions.moveClipById('clip:noop', 0)).not.toThrow()
 			expect(dispatch).not.toHaveBeenCalled()
+		} finally {
+			harness.destroy()
+		}
+	})
+
+	it('forwards project export progress updates to callback', async () => {
+		const exportRenderer = {
+			render: vi.fn(async (_request: ExportRenderRequest, onProgress?: (event: ExportProgressEvent) => void) => {
+				onProgress?.({ stage: 'queued', progress: 0 })
+				onProgress?.({ stage: 'rendering', progress: 0.5 })
+				onProgress?.({ stage: 'finalizing', progress: 0.9 })
+				onProgress?.({ stage: 'done', progress: 1 })
+
+				return {
+					id: 'export:test',
+					fileName: 'test.webm',
+					mimeType: 'video/webm',
+					blob: new Blob(['test'], { type: 'video/webm' }),
+					size: 4,
+					duration: 1,
+					frameCount: 30,
+					manifest: {
+						format: 'video-webm',
+						projectId: 'project:1',
+						range: { type: 'project' },
+						start: 0,
+						duration: 1,
+						fps: 30,
+						frameCount: 30,
+						clips: [],
+						frames: [],
+					},
+				}
+			}),
+		}
+		const harness = createVideoEditorHarness(new MemoryWorkerAuthority(), { exportRenderer })
+		const progressEvents: ExportProgressEvent[] = []
+
+		try {
+			await settleHarness()
+			await harness.actions.queueProjectExport((event) => {
+				progressEvents.push(event)
+			})
+
+			expect(exportRenderer.render).toHaveBeenCalledTimes(1)
+			expect(progressEvents).toEqual([
+				{ stage: 'queued', progress: 0 },
+				{ stage: 'rendering', progress: 0.5 },
+				{ stage: 'finalizing', progress: 0.9 },
+				{ stage: 'done', progress: 1 },
+			])
 		} finally {
 			harness.destroy()
 		}

@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, within } from '@testing-library/react'
 import { getActiveProject, getResourceEntities } from '../domain/selectors'
+import type { ExportProgressEvent, ExportRenderRequest, ExportRenderResult } from '../render/exportRenderer'
 import { renderVideoEditor } from './renderVideoEditor'
 
 const createProjectFromMenu = async (user: ReturnType<typeof renderVideoEditor>['user']) => {
@@ -27,6 +28,41 @@ const importSampleResource = async (harness: ReturnType<typeof renderVideoEditor
 		await Promise.resolve()
 	})
 }
+
+const createDeferred = <T,>() => {
+	let resolve: ((value: T) => void) | null = null
+	const promise = new Promise<T>((resolvePromise) => {
+		resolve = resolvePromise
+	})
+
+	return {
+		promise,
+		resolve: (value: T) => {
+			resolve?.(value)
+		},
+	}
+}
+
+const createMockExportResult = (): ExportRenderResult => ({
+	id: 'export:mock',
+	fileName: 'mock.webm',
+	mimeType: 'video/webm',
+	blob: new Blob(['mock'], { type: 'video/webm' }),
+	size: 4,
+	duration: 1,
+	frameCount: 30,
+	manifest: {
+		format: 'video-webm',
+		projectId: 'project:1',
+		range: { type: 'project' },
+		start: 0,
+		duration: 1,
+		fps: 30,
+		frameCount: 30,
+		clips: [],
+		frames: [],
+	},
+})
 
 describe('video editor harness', () => {
 	it('runs the happy path: project -> import -> clip -> inspect -> split -> nudge', async () => {
@@ -106,6 +142,30 @@ describe('video editor harness', () => {
 			expect(rightWidth).toBeCloseTo(210, 0)
 		}
 		finally {
+			unmount()
+		}
+	})
+
+	it('shows project export progress in toolbar while rendering', async () => {
+		const exportDeferred = createDeferred<ExportRenderResult>()
+		const exportRenderer = {
+			render: vi.fn(async (_request: ExportRenderRequest, onProgress?: (event: ExportProgressEvent) => void) => {
+				onProgress?.({ stage: 'queued', progress: 0 })
+				onProgress?.({ stage: 'rendering', progress: 0.42 })
+				return exportDeferred.promise
+			}),
+		}
+		const { user, unmount } = renderVideoEditor({ exportRenderer })
+
+		try {
+			await createProjectFromMenu(user)
+
+			await user.click(screen.getByRole('button', { name: 'Export project' }))
+			expect(screen.getByText('Export rendering 42%')).toBeInTheDocument()
+
+			exportDeferred.resolve(createMockExportResult())
+			expect(await screen.findByText('Export ready')).toBeInTheDocument()
+		} finally {
 			unmount()
 		}
 	})

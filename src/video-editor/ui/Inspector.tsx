@@ -12,7 +12,7 @@ import {
 	getActiveProjectId$,
 	resourceAttrs$,
 } from '../legend/observableSelectors'
-import type { ExportRenderResult } from '../render/exportRenderer'
+import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRenderer'
 import { Button, IconButton } from './ControlPrimitives'
 import { formatPercent, formatSeconds } from './format'
 
@@ -20,9 +20,21 @@ type InspectorTab = 'edit' | 'color' | 'audio' | 'export'
 
 type ExportStatus =
 	| { state: 'idle' }
-	| { state: 'rendering' }
+	| { state: 'rendering'; progress: ExportProgressEvent }
 	| { state: 'ready'; result: ExportRenderResult }
 	| { state: 'error'; message: string }
+
+const exportStageLabel: Record<ExportProgressEvent['stage'], string> = {
+	queued: 'queued',
+	rendering: 'rendering',
+	finalizing: 'finalizing',
+	done: 'done',
+}
+
+const formatExportProgress = (event: ExportProgressEvent): string => {
+	const progressPercent = Math.round(Math.max(0, Math.min(1, event.progress)) * 100)
+	return `${exportStageLabel[event.stage]} ${progressPercent}%`
+}
 
 const inspectorTabs: Array<{ id: InspectorTab, label: string }> = [
 	{ id: 'edit', label: 'Edit' },
@@ -348,8 +360,12 @@ export const Inspector = observer(() => {
 							variant="default"
 							disabled={exportStatus.state === 'rendering'}
 							onClick={() => {
-								setExportStatus({ state: 'rendering' })
-								actions.queueSelectedClipExport().then((result) => {
+								setExportStatus({ state: 'rendering', progress: { stage: 'queued', progress: 0 } })
+								actions.queueSelectedClipExport((progress) => {
+									setExportStatus((current) => current.state === 'rendering'
+										? { state: 'rendering', progress }
+										: current)
+								}).then((result) => {
 									setExportStatus(result
 										? { state: 'ready', result }
 										: { state: 'error', message: 'Select a clip before exporting.' })
@@ -358,10 +374,14 @@ export const Inspector = observer(() => {
 								})
 							}}
 						>
-							{exportStatus.state === 'rendering' ? 'Rendering export' : 'Queue clip export'}
+							{exportStatus.state === 'rendering'
+								? `Rendering ${formatExportProgress(exportStatus.progress)}`
+								: 'Queue clip export'}
 						</IconButton>
 						{exportStatus.state === 'rendering' ? (
-							<p className="ve-preview__summary" role="status">Rendering export file for {name}</p>
+							<p className="ve-preview__summary" aria-live="polite">
+								Rendering export file for {name}: {formatExportProgress(exportStatus.progress)}
+							</p>
 						) : null}
 						{exportStatus.state === 'ready' ? (
 							<p className="ve-preview__summary" role="status">
