@@ -172,6 +172,33 @@ export const getActiveClipRefsAtCursor = (
 	return activeClips
 }
 
+const sameTimelineClipInterval = (
+	left: TimelineClipInterval,
+	right: TimelineClipInterval,
+): boolean =>
+	left.id === right.id
+	&& left.trackId === right.trackId
+	&& left.trackKind === right.trackKind
+	&& left.start === right.start
+	&& left.end === right.end
+
+const sameTimelineClipIntervalList = (
+	left: TimelineClipInterval[],
+	right: TimelineClipInterval[],
+): boolean => {
+	if (left.length !== right.length) {
+		return false
+	}
+
+	for (let index = 0; index < left.length; index += 1) {
+		if (!sameTimelineClipInterval(left[index], right[index])) {
+			return false
+		}
+	}
+
+	return true
+}
+
 const getEffectFilter$ = (
 	projects$: Observable<ProjectRegistry>,
 	effectId: EntityId,
@@ -223,6 +250,7 @@ const getRenderedClip$ = (
 	projects$: Observable<ProjectRegistry>,
 	clipRef: TimelineClipInterval,
 	cursor: number,
+	resolveKeyframe: (id: EntityId) => ScalarKeyframe | null,
 ): RenderedClip => {
 	const clip$ = clipAttrs$(projects$, clipRef.id)
 	const clipRels = clipRels$(projects$, clipRef.id)
@@ -242,7 +270,6 @@ const getRenderedClip$ = (
 				.map((effectId) => getEffectFilter$(projects$, effectId))
 				.filter((filter): filter is string => Boolean(filter))
 		: []
-	const resolveKeyframe = createKeyframeResolver(projects$)
 	const opacity = clip$.opacity.get()
 	const transform = clip$.transform.get()
 	const baseOpacity = evaluateKeyframedScalar(
@@ -285,33 +312,48 @@ export const createPreviewScene$ = (
 	session$: Observable<EditorSessionState>,
 ): Observable<PreviewScene> => {
 	const clipIntervals$ = createTimelineClipIntervals$(projects$, session$)
-	const activeClipRefs$ = computed(() =>
-		getActiveClipRefsAtCursor(clipIntervals$.get(), session$.cursor.get()),
-	)
+	let previousActiveClipRefs: TimelineClipInterval[] = []
+	const activeClipRefs$ = computed(() => {
+		const nextClipRefs = getActiveClipRefsAtCursor(clipIntervals$.get(), session$.cursor.get())
+		if (sameTimelineClipIntervalList(previousActiveClipRefs, nextClipRefs)) {
+			return previousActiveClipRefs
+		}
+
+		previousActiveClipRefs = nextClipRefs
+		return nextClipRefs
+	})
 	const renderedClips$ = computed(() => {
 		const cursor = session$.cursor.get()
-		return activeClipRefs$.get().map((clipRef) => getRenderedClip$(projects$, clipRef, cursor))
+		const resolveKeyframe = createKeyframeResolver(projects$)
+		return activeClipRefs$.get().map((clipRef) =>
+			getRenderedClip$(projects$, clipRef, cursor, resolveKeyframe),
+		)
 	})
+	const visualRenderedClips$ = computed(() =>
+		renderedClips$.get().filter((clip) => clip.resourceKind !== 'audio'),
+	)
+	const audioRenderedClips$ = computed(() =>
+		renderedClips$.get().filter((clip) => clip.resourceKind === 'audio'),
+	)
+	const activeClipNames$ = computed(() => renderedClips$.get().map((clip) => clip.name))
+	const canvasClips$ = computed(() =>
+		renderedClips$.get().map((clip) => ({
+			name: clip.name,
+			color: clip.color,
+			kind: clip.resourceKind,
+			opacity: clip.opacity,
+		})),
+	)
 
 	return computed(() => {
-		const cursor = session$.cursor.get()
-		const renderedClips = renderedClips$.get()
-		const visualRenderedClips = renderedClips.filter((clip) => clip.resourceKind !== 'audio')
-		const audioRenderedClips = renderedClips.filter((clip) => clip.resourceKind === 'audio')
-
 		return {
-			cursor,
+			cursor: session$.cursor.get(),
 			isPlaying: session$.isPlaying.get(),
-			renderedClips,
-			visualRenderedClips,
-			audioRenderedClips,
-			activeClipNames: renderedClips.map((clip) => clip.name),
-			canvasClips: renderedClips.map((clip) => ({
-				name: clip.name,
-				color: clip.color,
-				kind: clip.resourceKind,
-				opacity: clip.opacity,
-			})),
+			renderedClips: renderedClips$.get(),
+			visualRenderedClips: visualRenderedClips$.get(),
+			audioRenderedClips: audioRenderedClips$.get(),
+			activeClipNames: activeClipNames$.get(),
+			canvasClips: canvasClips$.get(),
 		}
 	})
 }
