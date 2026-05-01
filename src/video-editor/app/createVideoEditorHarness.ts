@@ -20,6 +20,8 @@ const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value))
 
+const getClipEnd = (attrs: ClipAttrs): number => attrs.start + attrs.duration
+
 const getActiveProjectId = (
 	projects$: Observable<ProjectRegistry>,
 	session$: Observable<EditorSessionState>,
@@ -134,6 +136,96 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			})
 		},
 
+		updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			const attrs = clip.attrs as ClipAttrs
+			dispatch({
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					projectId: getActiveProjectId(projects$, session$),
+					clipId: clip.id,
+					attrs: {
+						transform: {
+							x: { value: partial.x ?? attrs.transform.x.value },
+							y: { value: partial.y ?? attrs.transform.y.value },
+							scale: { value: partial.scale ?? attrs.transform.scale.value },
+							rotation: { value: partial.rotation ?? attrs.transform.rotation.value },
+						},
+					},
+				},
+			})
+		},
+
+		trimSelectedClip(edge: 'start' | 'end', delta: number): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			const attrs = clip.attrs as ClipAttrs
+			const clipEnd = getClipEnd(attrs)
+			const nextAttrs = edge === 'start'
+				? (() => {
+						const nextStart = clamp(roundToTenths(attrs.start + delta), 0, clipEnd - 0.5)
+						return {
+							start: nextStart,
+							in: roundToTenths(attrs.in + (nextStart - attrs.start)),
+							duration: roundToTenths(clipEnd - nextStart),
+						}
+					})()
+				: {
+						duration: clamp(roundToTenths(attrs.duration + delta), 0.5, 120),
+					}
+
+			dispatch({
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					projectId: getActiveProjectId(projects$, session$),
+					clipId: clip.id,
+					attrs: nextAttrs,
+				},
+			})
+		},
+
+		addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			dispatch({
+				c: CMD.EFFECT_ADD,
+				p: {
+					projectId: getActiveProjectId(projects$, session$),
+					clipId: clip.id,
+					name: `${kind[0].toUpperCase()}${kind.slice(1)}`,
+					kind,
+					amount: kind === 'tint' ? 0.35 : 0.25,
+				},
+			})
+		},
+
+		deleteSelectedClip(): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			dispatch({
+				c: CMD.TIMELINE_DELETE_CLIP,
+				p: {
+					projectId: getActiveProjectId(projects$, session$),
+					clipId: clip.id,
+				},
+			}).then(() => {
+				session$.selectedEntityId.set(null)
+			})
+		},
+
 		splitSelectedClip(): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {
@@ -177,6 +269,14 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 
 		setCursor(value: number): void {
 			session$.cursor.set(roundToTenths(value))
+		},
+
+		tickPlayback(deltaSeconds: number): void {
+			if (!session$.isPlaying.get()) {
+				return
+			}
+
+			session$.cursor.set(roundToTenths((session$.cursor.get() + deltaSeconds) % 20))
 		},
 
 		zoomTimeline(delta: number): void {

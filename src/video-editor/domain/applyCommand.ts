@@ -23,6 +23,14 @@ const makeEntityId = (prefix: string) => `${prefix}:${nanoid(6)}`
 
 const scalar = (value: number): AnimatedScalar => ({ value })
 
+const findClipTrack = (registry: ProjectRegistry, clipId: EntityId): Entity | null =>
+	Object.values(registry.entitiesById).find(
+		(entity) =>
+			entity.type === 'track' &&
+			Array.isArray(entity.rels.clips) &&
+			entity.rels.clips.includes(clipId),
+	) ?? null
+
 export const buildDispatchResult = (
 	registry: ProjectRegistry,
 	command: Command,
@@ -206,12 +214,7 @@ export const buildDispatchResult = (
 				},
 			}
 
-			const track = Object.values(registry.entitiesById).find(
-				(entity) =>
-					entity.type === 'track' &&
-					Array.isArray(entity.rels.clips) &&
-					entity.rels.clips.includes(clip.id),
-			)
+			const track = findClipTrack(registry, clip.id)
 
 			if (!track) {
 				throw new Error(`Unable to find parent track for clip ${clip.id}`)
@@ -251,6 +254,41 @@ export const buildDispatchResult = (
 			}
 		}
 
+		case CMD.TIMELINE_DELETE_CLIP: {
+			const project = assertProject(registry, command.p.projectId)
+			const clip = assertEntity(registry, command.p.clipId)
+			const track = findClipTrack(registry, clip.id)
+			if (!track) {
+				throw new Error(`Unable to find parent track for clip ${clip.id}`)
+			}
+
+			const clipIds = getClipIdsForTrack(registry, track.id)
+			const clipIndex = clipIds.indexOf(clip.id)
+			const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [
+						{
+							c: PATCH.REL_SPLICE,
+							p: {
+								id: track.id,
+								rel: 'clips',
+								index: clipIndex,
+								deleteCount: 1,
+								insert: [],
+							},
+						},
+						...effectIds.map((id) => ({ c: PATCH.ENTITY_DELETE, p: { id } }) as const),
+						{ c: PATCH.ENTITY_DELETE, p: { id: clip.id } },
+					],
+				},
+				deletedIds: [clip.id, ...effectIds],
+			}
+		}
+
 		case CMD.CLIP_UPDATE_ATTRS: {
 			const project = assertProject(registry, command.p.projectId)
 			assertEntity(registry, command.p.clipId)
@@ -269,6 +307,46 @@ export const buildDispatchResult = (
 						},
 					],
 				},
+			}
+		}
+
+		case CMD.EFFECT_ADD: {
+			const project = assertProject(registry, command.p.projectId)
+			const clip = assertEntity(registry, command.p.clipId)
+			const effectId = makeEntityId('effect')
+			const effects = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+			const effect: Entity = {
+				id: effectId,
+				type: 'effect',
+				attrs: {
+					name: command.p.name,
+					kind: command.p.kind,
+					amount: command.p.amount,
+				},
+				rels: {
+					clip: clip.id,
+				},
+			}
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [
+						{ c: PATCH.ENTITY_SET, p: { entity: effect } },
+						{
+							c: PATCH.REL_SPLICE,
+							p: {
+								id: clip.id,
+								rel: 'effects',
+								index: effects.length,
+								deleteCount: 0,
+								insert: [effectId],
+							},
+						},
+					],
+				},
+				createdIds: { effectId },
 			}
 		}
 

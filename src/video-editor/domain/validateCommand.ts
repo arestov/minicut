@@ -1,4 +1,4 @@
-import { getEntity, getProjectEntity } from './selectors'
+import { getClipIdsForTrack, getEntity, getProjectEntity, getTracks } from './selectors'
 import { CMD, type ClipAttrs, type Command, type Entity, type ProjectGraph, type ProjectRegistry } from './types'
 
 const assert = (condition: unknown, message: string): asserts condition => {
@@ -8,6 +8,13 @@ const assert = (condition: unknown, message: string): asserts condition => {
 }
 
 const isFinitePositive = (value: number): boolean => Number.isFinite(value) && value > 0
+
+const assertClipInProject = (registry: ProjectRegistry, project: ProjectGraph, clipId: string): void => {
+	assert(
+		getTracks(registry, project).some((track) => getClipIdsForTrack(registry, track.id).includes(clipId)),
+		`Clip ${clipId} is not linked from project ${project.id}`,
+	)
+}
 
 export const assertProject = (registry: ProjectRegistry, projectId: string): ProjectGraph => {
 	const project = registry.projects[projectId]
@@ -72,6 +79,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.TIMELINE_MOVE_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
 			assertEntityType(registry, command.p.clipId, 'clip')
+			assertClipInProject(registry, project, command.p.clipId)
 			assert(Number.isFinite(command.p.delta), 'Move delta must be finite')
 			return
 		}
@@ -79,6 +87,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.TIMELINE_SPLIT_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
 			const clip = assertEntityType(registry, command.p.clipId, 'clip')
+			assertClipInProject(registry, project, command.p.clipId)
 			const attrs = clip.attrs as unknown as ClipAttrs
 			assert(Number.isFinite(command.p.time), 'Split time must be finite')
 			assert(
@@ -88,13 +97,44 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			return
 		}
 
+		case CMD.TIMELINE_DELETE_CLIP: {
+			const project = assertProject(registry, command.p.projectId)
+			assertEntityType(registry, command.p.clipId, 'clip')
+			assertClipInProject(registry, project, command.p.clipId)
+			return
+		}
+
 		case CMD.CLIP_UPDATE_ATTRS: {
 			const project = assertProject(registry, command.p.projectId)
 			assertEntityType(registry, command.p.clipId, 'clip')
+			assertClipInProject(registry, project, command.p.clipId)
 			if (command.p.attrs.opacity) {
 				const opacity = command.p.attrs.opacity.value
 				assert(opacity >= 0 && opacity <= 1, 'Opacity must be between 0 and 1')
 			}
+			if (command.p.attrs.duration !== undefined) {
+				assert(isFinitePositive(command.p.attrs.duration), 'Clip duration must be positive')
+			}
+			if (command.p.attrs.start !== undefined) {
+				assert(Number.isFinite(command.p.attrs.start) && command.p.attrs.start >= 0, 'Clip start must be non-negative')
+			}
+			if (command.p.attrs.in !== undefined) {
+				assert(Number.isFinite(command.p.attrs.in) && command.p.attrs.in >= 0, 'Clip in point must be non-negative')
+			}
+			const transform = command.p.attrs.transform
+			if (transform) {
+				assert(transform.scale.value > 0, 'Transform scale must be positive')
+			}
+			return
+		}
+
+		case CMD.EFFECT_ADD: {
+			const project = assertProject(registry, command.p.projectId)
+			assertEntityType(registry, command.p.clipId, 'clip')
+			assertClipInProject(registry, project, command.p.clipId)
+			assert(command.p.name.trim().length > 0, 'Effect name is required')
+			assert(['blur', 'sharpen', 'tint'].includes(command.p.kind), 'Effect kind is invalid')
+			assert(command.p.amount >= 0 && command.p.amount <= 1, 'Effect amount must be between 0 and 1')
 			return
 		}
 

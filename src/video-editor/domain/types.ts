@@ -120,12 +120,15 @@ export const CMD = {
 	TIMELINE_ADD_CLIP: -120,
 	TIMELINE_MOVE_CLIP: -121,
 	TIMELINE_SPLIT_CLIP: -122,
+	TIMELINE_DELETE_CLIP: -123,
 	CLIP_UPDATE_ATTRS: -130,
+	EFFECT_ADD: -140,
 } as const
 
 export const PATCH = {
 	PROJECT_SET: -200,
 	ENTITY_SET: -210,
+	ENTITY_DELETE: -211,
 	ATTRS_MERGE: -220,
 	REL_SPLICE: -231,
 	WORKSPACE_ACTIVE_PROJECT_SET: -240,
@@ -174,11 +177,28 @@ export type Command =
 			}
 	  }
 	| {
+			c: typeof CMD.TIMELINE_DELETE_CLIP
+			p: {
+				projectId: ProjectId
+				clipId: EntityId
+			}
+	  }
+	| {
 			c: typeof CMD.CLIP_UPDATE_ATTRS
 			p: {
 				projectId: ProjectId
 				clipId: EntityId
 				attrs: Partial<ClipAttrs>
+			}
+	  }
+	| {
+			c: typeof CMD.EFFECT_ADD
+			p: {
+				projectId: ProjectId
+				clipId: EntityId
+				name: string
+				kind: 'blur' | 'sharpen' | 'tint'
+				amount: number
 			}
 	  }
 
@@ -190,6 +210,10 @@ export type Patch =
 	| {
 			c: typeof PATCH.ENTITY_SET
 			p: { entity: Entity }
+	  }
+	| {
+			c: typeof PATCH.ENTITY_DELETE
+			p: { id: EntityId }
 	  }
 	| {
 			c: typeof PATCH.ATTRS_MERGE
@@ -212,7 +236,8 @@ export type Patch =
 
 export interface DispatchResult {
 	envelope: PatchEnvelope
-	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId', EntityId>>
+	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId' | 'effectId', EntityId>>
+	deletedIds?: EntityId[]
 }
 
 export interface WireMessage<Payload = unknown> {

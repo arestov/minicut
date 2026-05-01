@@ -1,6 +1,8 @@
 import { buildDispatchResult } from './applyCommand'
+import { applyPatchEnvelopeInPlace } from './applyPatchInPlace'
 import { applyPatchEnvelopeToRegistry } from './applyPatch'
 import { createEmptyRegistry } from './createProject'
+import { getClipIdsForTrack, getVideoTrack } from './selectors'
 import { CMD, type Command } from './types'
 
 describe('command validation', () => {
@@ -52,5 +54,40 @@ describe('command validation', () => {
 				},
 			}),
 		).toThrow('Opacity must be between 0 and 1')
+	})
+
+	it('keeps immutable and in-place patch pipelines consistent for clip deletion', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Source', kind: 'video', duration: 5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		const deleteResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_DELETE_CLIP,
+			p: { projectId, clipId: String(clipResult.createdIds?.clipId) },
+		})
+
+		const immutableNext = applyPatchEnvelopeToRegistry(registry, deleteResult.envelope)
+		const inPlaceNext = structuredClone(registry)
+		applyPatchEnvelopeInPlace(inPlaceNext, deleteResult.envelope)
+
+		expect(inPlaceNext).toEqual(immutableNext)
+		expect(immutableNext.entitiesById[String(clipResult.createdIds?.clipId)]).toBeUndefined()
+		const project = immutableNext.projects[projectId]
+		const track = getVideoTrack(immutableNext, project)
+		expect(track).not.toBeNull()
+		expect(getClipIdsForTrack(immutableNext, track!.id)).toEqual([])
 	})
 })

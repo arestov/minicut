@@ -30,6 +30,10 @@ export const applyPatchEnvelope = (
 					projects$.entitiesById[patch.p.entity.id].set(patch.p.entity)
 					break
 
+				case PATCH.ENTITY_DELETE:
+					projects$.entitiesById[patch.p.id].delete()
+					break
+
 				case PATCH.ATTRS_MERGE:
 					projects$.entitiesById[patch.p.id].attrs.assign(patch.p.attrs)
 					break

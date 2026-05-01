@@ -1,12 +1,14 @@
 /// <reference lib="webworker" />
 
 import { buildDispatchResult } from '../domain/applyCommand'
-import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
+import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
 import { createEmptyRegistry } from '../domain/createProject'
 import { MSG, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { buildWorkerDerivedIndexes } from './derivedIndexes'
 
 const ports = new Set<MessagePort>()
 let registry: ProjectRegistry = createEmptyRegistry()
+let indexes = buildWorkerDerivedIndexes(registry)
 
 const post = <Payload>(port: MessagePort, message: WireMessage<Payload>): void => {
 	port.postMessage(message)
@@ -28,7 +30,8 @@ const cleanupPort = (port: MessagePort): void => {
 const handleCommand = (port: MessagePort, requestId: string | undefined, command: Command): void => {
 	try {
 		const result: DispatchResult = buildDispatchResult(registry, command)
-		registry = applyPatchEnvelopeToRegistry(registry, result.envelope)
+		applyPatchEnvelopeInPlace(registry, result.envelope)
+		indexes = buildWorkerDerivedIndexes(registry)
 		broadcastPatch(result.envelope)
 		post(port, { m: MSG.DISPATCH_RESULT, requestId, p: result })
 	} catch (error) {
