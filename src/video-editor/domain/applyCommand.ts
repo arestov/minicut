@@ -237,6 +237,7 @@ export const buildDispatchResult = (
 			const clipAttrs = clip.attrs as ClipAttrs
 			const splitTime = command.p.time
 			const clipEnd = clipAttrs.start + clipAttrs.duration
+			const leftDuration = splitTime - clipAttrs.start
 
 			if (splitTime <= clipAttrs.start || splitTime >= clipEnd) {
 				throw new Error('Split time must be inside clip bounds')
@@ -250,6 +251,7 @@ export const buildDispatchResult = (
 					...clipAttrs,
 					start: splitTime,
 					duration: clipEnd - splitTime,
+					in: clipAttrs.in + leftDuration,
 				},
 				rels: {
 					...clip.rels,
@@ -275,7 +277,7 @@ export const buildDispatchResult = (
 							p: {
 								id: clip.id,
 								attrs: {
-									duration: splitTime - clipAttrs.start,
+									duration: leftDuration,
 								},
 							},
 						},
