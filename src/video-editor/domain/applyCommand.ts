@@ -392,6 +392,39 @@ export const buildDispatchResult = (
 			}
 		}
 
+		case CMD.EFFECT_REMOVE: {
+			const project = assertProjectForEntity(registry, command.p.id)
+			const clip = assertEntity(registry, command.p.id)
+			assertEntity(registry, command.p.effectId)
+			const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+			const effectIndex = effectIds.indexOf(command.p.effectId)
+
+			if (effectIndex < 0) {
+				throw new Error(`Effect ${command.p.effectId} is not attached to clip ${clip.id}`)
+			}
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [
+						{
+							c: PATCH.REL_SPLICE,
+							p: {
+								id: clip.id,
+								rel: 'effects',
+								index: effectIndex,
+								deleteCount: 1,
+								insert: [],
+							},
+						},
+						{ c: PATCH.ENTITY_DELETE, p: { id: command.p.effectId } },
+					],
+				},
+				deletedIds: [command.p.effectId],
+			}
+		}
+
 		default: {
 			throw new Error(`Unsupported command code ${(command as { c: number }).c}`)
 		}

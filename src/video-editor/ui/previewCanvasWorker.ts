@@ -10,6 +10,7 @@ interface PreviewCanvasRenderMessage {
 	cursor: number
 	clips: Array<{
 		name: string
+		color: string
 		kind: string
 		opacity: number
 	}>
@@ -55,7 +56,7 @@ const drawPreview = (
 	clips.forEach((clip, index) => {
 		const y = 54 + index * 28
 		ctx.globalAlpha = Math.max(0.2, clip.opacity)
-		ctx.fillStyle = clip.kind === 'audio' ? '#cffafe' : clip.kind === 'video' ? '#dbeafe' : '#dcfce7'
+		ctx.fillStyle = clip.color
 		ctx.fillRect(22, y, Math.min(width - 44, 260), 20)
 		ctx.globalAlpha = 1
 		ctx.fillStyle = '#18181b'

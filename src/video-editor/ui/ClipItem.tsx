@@ -18,13 +18,14 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom }:
 	const start = Number(clip$.attrs.start.get())
 	const duration = Number(clip$.attrs.duration.get())
 	const opacity = Number(clip$.attrs.opacity.value.get())
-	const width = Math.max(160, duration * timelineZoom)
+	const color = String(clip$.attrs.color.get() ?? '#2563eb')
+	const width = Math.max(36, duration * timelineZoom)
 
 	return (
 		<button
 			type="button"
 			className={`ve-clip${selected ? ' is-selected' : ''}`}
-			style={{ width: `${width}px` }}
+			style={{ width: `${width}px`, borderLeft: `4px solid ${color}` }}
 			onClick={() => actions.selectEntity(clipId)}
 			onPointerDown={(event) => {
 				dragStartX.current = event.clientX

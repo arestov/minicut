@@ -129,6 +129,7 @@ export const CMD = {
 	TIMELINE_DELETE_CLIP: -123,
 	CLIP_UPDATE_ATTRS: -130,
 	EFFECT_ADD: -140,
+	EFFECT_REMOVE: -141,
 } as const
 
 export const PATCH = {
@@ -202,6 +203,12 @@ export type Command =
 				name: string
 				kind: 'blur' | 'sharpen' | 'tint'
 				amount: number
+			}
+	  }
+	| {
+			c: typeof CMD.EFFECT_REMOVE
+			p: CommandTargetRef & {
+				effectId: EntityId
 			}
 	  }
 

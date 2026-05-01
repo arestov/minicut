@@ -36,6 +36,7 @@ const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
 
 export const Inspector = observer(() => {
 	const [activeTab, setActiveTab] = useState<InspectorTab>('edit')
+	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const selectedEntityId = session$.selectedEntityId.get()
@@ -73,6 +74,20 @@ export const Inspector = observer(() => {
 	}
 	const effectIds = selectedEntity$.rels.effects.get()
 	const effects = Array.isArray(effectIds) ? effectIds : []
+	const effectEntries = effects
+		.map((effectId) => {
+			const effect$ = projects$.entitiesById[effectId]
+			if (!effect$) {
+				return null
+			}
+
+			return {
+				id: effectId,
+				name: String(effect$.attrs.name.get()),
+				kind: String(effect$.attrs.kind.get()),
+			}
+		})
+		.filter((entry): entry is { id: string, name: string, kind: string } => entry !== null)
 	const opacityPercent = Math.round(opacity * 100)
 
 	return (
@@ -152,7 +167,44 @@ export const Inspector = observer(() => {
 							<button type="button" onClick={() => actions.addEffectToSelectedClip('sharpen')}>Sharpen</button>
 							<button type="button" onClick={() => actions.addEffectToSelectedClip('tint')}>Tint</button>
 						</div>
-						<small>{effects.length} effects</small>
+						<div className="ve-effects-toolbar">
+							<small>{effects.length} effects</small>
+							{effectEntries.length > 0 ? (
+								<div className="ve-effects-menu">
+									<button
+										type="button"
+										className="ve-effects-menu__trigger"
+										aria-label="Manage effects"
+										aria-expanded={isEffectsMenuOpen}
+										onClick={() => setIsEffectsMenuOpen((value) => !value)}
+									>
+										Manage
+									</button>
+									{isEffectsMenuOpen ? (
+										<ul className="ve-effects-menu__list" aria-label="Active effects">
+											{effectEntries.map((effect) => (
+												<li key={effect.id}>
+													<span>{effect.name} ({effect.kind})</span>
+													<button
+														type="button"
+														className="ve-effects-menu__remove"
+														aria-label={`Remove effect ${effect.name}`}
+														onClick={() => {
+															actions.removeEffectFromSelectedClip(effect.id)
+															if (effectEntries.length <= 1) {
+																setIsEffectsMenuOpen(false)
+															}
+														}}
+													>
+														x
+													</button>
+												</li>
+											))}
+										</ul>
+									) : null}
+								</div>
+							) : null}
+						</div>
 					</div>
 					<div className="ve-inline-actions">
 						<button type="button" onClick={() => actions.splitSelectedClip()}>Split clip</button>

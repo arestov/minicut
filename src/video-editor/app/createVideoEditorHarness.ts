@@ -42,6 +42,7 @@ const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
+const minimumSplitOffset = 0.01
 
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value))
@@ -385,7 +386,12 @@ export const createVideoEditorHarness = (
 			}
 
 			const attrs = clip.attrs as ClipAttrs
-			const splitTime = attrs.start + attrs.duration / 2
+			const clipEnd = attrs.start + attrs.duration
+			const splitTime = clamp(
+				roundToHundredths(session$.cursor.get()),
+				attrs.start + minimumSplitOffset,
+				clipEnd - minimumSplitOffset,
+			)
 			dispatch({
 				c: CMD.TIMELINE_SPLIT_CLIP,
 				p: {
@@ -395,6 +401,21 @@ export const createVideoEditorHarness = (
 			}).then((result) => {
 				const newClipId = String(result.createdIds?.clipId)
 				session$.selectedEntityId.set(newClipId)
+			})
+		},
+
+		removeEffectFromSelectedClip(effectId: string): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			dispatch({
+				c: CMD.EFFECT_REMOVE,
+				p: {
+					id: clip.id,
+					effectId,
+				},
 			})
 		},
 

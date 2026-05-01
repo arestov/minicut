@@ -9,6 +9,7 @@ const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()
 interface RenderedClip {
 	id: string
 	name: string
+	color: string
 	resourceName: string
 	resourceKind: ResourceAttrs['kind']
 	resourceUrl: string
@@ -74,7 +75,7 @@ const drawFallbackPreview = (
 	clips.forEach((clip, index) => {
 		const y = 54 + index * 28
 		context.globalAlpha = Math.max(0.2, clip.opacity)
-		context.fillStyle = clip.resourceKind === 'audio' ? '#cffafe' : clip.resourceKind === 'video' ? '#dbeafe' : '#dcfce7'
+		context.fillStyle = clip.color
 		context.fillRect(22, y, Math.min(width - 44, 260), 20)
 		context.globalAlpha = 1
 		context.fillStyle = '#18181b'
@@ -126,6 +127,7 @@ export const RendererStage = observer(() => {
 				renderedClips.push({
 					id: clipId,
 					name: attrs.name,
+					color: String(attrs.color ?? '#2563eb'),
 					resourceName: resourceAttrs?.name ?? attrs.name,
 					resourceKind: resourceAttrs?.kind ?? 'image',
 					resourceUrl: resourceAttrs?.url ?? '',
@@ -142,6 +144,7 @@ export const RendererStage = observer(() => {
 		cursor,
 		clips: renderedClips.map((clip) => ({
 			name: clip.name,
+			color: clip.color,
 			kind: clip.resourceKind,
 			opacity: clip.opacity,
 		})),
@@ -201,6 +204,8 @@ export const RendererStage = observer(() => {
 								style={{
 									opacity: clip.opacity,
 									filter: clip.filters.join(' '),
+									borderColor: clip.color,
+									boxShadow: `0 0 0 2px ${clip.color}, 0 20px 45px rgba(0, 0, 0, 0.3)`,
 									transform: `translate(${clip.transform.x.value}px, ${clip.transform.y.value}px) scale(${clip.transform.scale.value}) rotate(${clip.transform.rotation.value}deg)`,
 								}}
 							>

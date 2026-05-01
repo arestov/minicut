@@ -37,13 +37,13 @@ const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 			<ResourceThumbnail attrs={attrs} />
 			<div className="ve-resource-row__content">
 				<strong>{attrs.name}</strong>
-				<div className="ve-resource-row__meta-line">
-					<small>
-						{attrs.kind} · {attrs.mime} · {attrs.duration.toFixed(1)}s
-					</small>
-					<button type="button" onClick={() => actions.addResourceToTimeline(resourceId)}>
-						Add to timeline
-					</button>
+				<div className="ve-resource-row__meta">
+					<small>{attrs.kind} · {attrs.mime} · {attrs.duration.toFixed(1)}s</small>
+					<div className="ve-resource-row__action-line">
+						<button type="button" onClick={() => actions.addResourceToTimeline(resourceId)}>
+							Add to timeline
+						</button>
+					</div>
 				</div>
 			</div>
 		</li>

@@ -152,6 +152,16 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			return
 		}
 
+		case CMD.EFFECT_REMOVE: {
+			const clip = assertClipTarget(registry, command.p)
+			assertProjectForEntity(registry, command.p.id)
+			const effect = assertEntityType(registry, command.p.effectId, 'effect')
+			const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+			assert(effectIds.includes(command.p.effectId), 'Effect must belong to the target clip')
+			assert(String(effect.rels.clip) === clip.id, 'Effect clip relation must match target clip')
+			return
+		}
+
 		default:
 			throw new Error(`Unsupported command code ${(command as { c: number }).c}`)
 	}
