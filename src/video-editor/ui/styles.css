@@ -237,10 +237,11 @@ button:disabled {
 
 .ve-toolbar__actions {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	gap: 8px;
 	align-items: center;
 	justify-content: flex-end;
+	min-width: 0;
 }
 
 .ve-toolbar__history {
@@ -1382,9 +1383,38 @@ button:disabled {
 	color: #18181b;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
+	.ve-toolbar {
+		height: auto;
+		min-height: var(--ve-toolbar-height);
+		align-items: flex-start;
+		flex-wrap: wrap;
+	}
+
+	.ve-toolbar__actions {
+		justify-content: flex-start;
+		flex-wrap: wrap;
+		width: 100%;
+	}
+
+	.ve-toolbar__history {
+		padding-right: 0;
+		border-right: 0;
+	}
+
 	.ve-main__top {
 		grid-template-columns: 1fr;
+		height: auto;
+		min-height: 0;
+	}
+
+	.ve-main__top > .ve-panel {
+		overflow: visible;
+	}
+
+	.ve-main__top > .ve-panel[aria-label='Inspector'] {
+		max-height: none;
+		overflow-y: visible;
 	}
 
 	.ve-track-row {
@@ -1401,6 +1431,10 @@ button:disabled {
 	.ve-resource-list li {
 		align-items: flex-start;
 		flex-direction: column;
+	}
+
+	.ve-media-controls {
+		grid-template-columns: 1fr;
 	}
 
 	.ve-button-grid,
