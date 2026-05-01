@@ -4,6 +4,7 @@ const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
 	const projectsRegion = page.getByLabel('Projects')
 	await projectsRegion.getByRole('button').click()
 	await projectsRegion.getByRole('button', { name: 'New project' }).click()
+	await expect(projectsRegion.getByRole('button', { name: /Project \d+/i })).toBeVisible()
 }
 
 test('shared worker synchronizes project patches across browser pages', async ({ context }) => {
@@ -15,7 +16,11 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await expect(secondPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
 
 	await createProjectFromMenu(firstPage)
-	await expect(secondPage.getByRole('button', { name: /Project 1/i })).toBeVisible()
+	const sourceProjectName = (await firstPage.getByLabel('Projects').getByRole('button').innerText()).trim()
+	await expect(secondPage.getByRole('button', { name: /Project \d+/i })).toBeVisible()
+	const secondProjectsRegion = secondPage.getByLabel('Projects')
+	await secondProjectsRegion.getByRole('button').click()
+	await secondProjectsRegion.getByRole('button', { name: new RegExp(sourceProjectName, 'i') }).click()
 
 	await firstPage.getByRole('button', { name: 'Import sample' }).click()
 	await expect(

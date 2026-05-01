@@ -129,7 +129,7 @@ describe('createVideoEditorHarness actions', () => {
 			subscribe: () => () => {},
 			dispatch,
 		}
-		const harness = createVideoEditorHarness(authority)
+		const harness = createVideoEditorHarness(authority, { autoCreateInitialProject: false })
 
 		try {
 			expect(() => harness.actions.moveClipById('clip:noop', 0)).not.toThrow()

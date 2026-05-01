@@ -13,7 +13,7 @@ describe('video editor harness', () => {
 
 		try {
 			await createProjectFromMenu(user)
-			expect(screen.getByRole('button', { name: /Project 1/i })).toBeInTheDocument()
+			expect(screen.getByRole('button', { name: /Project \d+/i })).toBeInTheDocument()
 
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
 			const mediaBin = screen.getByLabelText('Media bin')
@@ -77,25 +77,24 @@ describe('video editor harness', () => {
 
 		try {
 			await createProjectFromMenu(user)
+			const projectsRegion = screen.getByLabelText('Projects')
+			const sourceProjectName = within(projectsRegion).getByRole('button').textContent?.trim() ?? 'Project 1'
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
 			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 
 			await createProjectFromMenu(user)
 			// Open project switcher to inspect all projects (trigger shows active "Project 2")
-			const projectsRegion = screen.getByLabelText('Projects')
-			await user.click(within(projectsRegion).getByRole('button', { name: /Project 2/i }))
+			await user.click(within(projectsRegion).getByRole('button', { name: /Project \d+/i }))
 			const projectList = within(projectsRegion).getByRole('list')
-			const projectButtons = within(projectList).getAllByRole('button', {
-				name: /Project [12]/i,
-			})
-			expect(projectButtons).toHaveLength(2)
+			const projectButtons = within(projectList).getAllByRole('button', { name: /Project \d+/i })
+			expect(projectButtons.length).toBeGreaterThanOrEqual(2)
 			expect(screen.queryByRole('button', { name: /Sample asset 1/i })).not.toBeInTheDocument()
 
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
 			const mediaBin = screen.getByLabelText('Media bin')
 			expect(within(mediaBin).getByText('Sample asset 1', { selector: 'strong' })).toBeInTheDocument()
 
-			await user.click(within(projectList).getByRole('button', { name: /Project 1/i }))
+			await user.click(within(projectList).getByRole('button', { name: new RegExp(sourceProjectName, 'i') }))
 			expect(screen.getByRole('button', { name: /Sample asset 1 · 0.0s/i })).toBeInTheDocument()
 		} finally {
 			unmount()
@@ -110,7 +109,7 @@ describe('video editor harness', () => {
 			await createProjectFromMenu(user)
 
 			const projectsRegion = screen.getByLabelText('Projects')
-			await user.click(within(projectsRegion).getByRole('button', { name: /Project 2/i }))
+			await user.click(within(projectsRegion).getByRole('button', { name: /Project \d+/i }))
 
 			const projectList = within(projectsRegion).getByRole('list')
 			expect(within(projectList).getByRole('button', { name: /Project 1/i })).toBeVisible()
@@ -159,7 +158,7 @@ describe('video editor harness', () => {
 			const cursorSlider = within(timeline).getByRole('slider', { name: 'Cursor' })
 			fireEvent.change(cursorSlider, { target: { value: '4.5' } })
 
-			expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.5s')
+			expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.50s')
 			expect(within(timeline).getAllByLabelText('Current step')).toHaveLength(1)
 			expect(within(screen.getByLabelText('Preview panel')).queryByRole('slider', { name: 'Cursor' })).toBeNull()
 			expect(within(screen.getByLabelText('Preview panel')).getByText('Cursor at 4.5s')).toBeVisible()

@@ -22,9 +22,10 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	await page.goto('/')
 
 	await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
+	await expect(page.getByLabel('Projects').getByRole('button', { name: /Project \d+/i })).toBeVisible()
 
 	await createProjectFromMenu(page)
-	await expect(page.getByRole('button', { name: /Project 1/i })).toBeVisible()
+	await expect(page.getByRole('button', { name: /Project \d+/i })).toBeVisible()
 
 	await page.getByRole('button', { name: 'Import sample' }).click()
 	await expect(
@@ -59,7 +60,7 @@ test('project dropdown shows items when opened', async ({ page }) => {
 	await createProjectFromMenu(page)
 
 	const projectsRegion = page.getByLabel('Projects')
-	await projectsRegion.getByRole('button', { name: /Project 2/i }).click()
+	await projectsRegion.getByRole('button', { name: /Project \d+/i }).click()
 	const projectList = projectsRegion.getByRole('list')
 
 	await expect(projectList.getByRole('button', { name: /Project 1/i })).toBeVisible()
@@ -122,7 +123,7 @@ test('timeline uses one shared current step and keeps many tracks scrollable', a
 	await expect(timeline.getByText('22 tracks')).toBeVisible()
 	await timeline.getByRole('slider', { name: 'Cursor' }).fill('8')
 	await expect(timeline.getByLabel('Current step')).toHaveCount(1)
-	await expect(timeline.getByLabel('Current time')).toHaveText('8.0s')
+	await expect(timeline.getByLabel('Current time')).toHaveText('8.00s')
 
 	const scrollMetrics = await timeline.locator('.ve-timeline-scroll-area').evaluate((element) => ({
 		clientHeight: element.clientHeight,
@@ -201,10 +202,17 @@ test('playback toggle advances timeline cursor over time', async ({ page }) => {
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	const currentTime = timeline.getByLabel('Current time')
-	await expect(currentTime).toHaveText('0.0s')
+	await expect(currentTime).toHaveText('0.00s')
 
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
 	await page.waitForTimeout(700)
-	await expect(currentTime).not.toHaveText('0.0s')
+	await expect(currentTime).not.toHaveText('0.00s')
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
+})
+
+test('creates an initial project automatically on startup', async ({ page }) => {
+	await page.goto('/')
+	const projectsRegion = page.getByLabel('Projects')
+	await expect(projectsRegion.getByRole('button', { name: /Project \d+/i })).toBeVisible()
+	await expect(page.getByLabel('Media bin')).not.toContainText('No active project.')
 })
