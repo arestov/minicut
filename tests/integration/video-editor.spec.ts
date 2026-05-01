@@ -25,6 +25,175 @@ const importFixtureVideo = async (page: import('@playwright/test').Page) => {
 	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
 }
 
+const createSolidPngFile = async (
+	page: import('@playwright/test').Page,
+	name: string,
+	fillStyle: string,
+): Promise<{ name: string; mimeType: string; buffer: Buffer }> => {
+	const bytes = await page.evaluate(async (color) => {
+		const canvas = document.createElement('canvas')
+		canvas.width = 80
+		canvas.height = 80
+		const context = canvas.getContext('2d')
+		if (!context) {
+			throw new Error('Unable to create PNG fixture canvas')
+		}
+		context.fillStyle = color
+		context.fillRect(0, 0, canvas.width, canvas.height)
+		const blob = await new Promise<Blob>((resolve, reject) => {
+			canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Unable to encode PNG fixture')), 'image/png')
+		})
+		return Array.from(new Uint8Array(await blob.arrayBuffer()))
+	}, fillStyle)
+
+	return { name, mimeType: 'image/png', buffer: Buffer.from(bytes) }
+}
+
+const createSolidVideoFile = async (
+	page: import('@playwright/test').Page,
+): Promise<{ name: string; mimeType: string; buffer: Buffer }> => {
+	const result = await page.evaluate(async () => {
+		const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8', 'video/webm']
+			.find((candidate) => MediaRecorder.isTypeSupported(candidate))
+		if (!mimeType) {
+			throw new Error('MediaRecorder WebM is not supported in this browser')
+		}
+
+		const canvas = document.createElement('canvas')
+		canvas.width = 80
+		canvas.height = 80
+		const context = canvas.getContext('2d')
+		if (!context) {
+			throw new Error('Unable to create video fixture canvas')
+		}
+		const stream = canvas.captureStream(8)
+		const videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
+		const audioContext = new AudioContext()
+		await audioContext.resume().catch(() => undefined)
+		const oscillator = audioContext.createOscillator()
+		const gain = audioContext.createGain()
+		const destination = audioContext.createMediaStreamDestination()
+		oscillator.frequency.value = 220
+		gain.gain.value = 0.02
+		oscillator.connect(gain).connect(destination)
+		for (const track of destination.stream.getAudioTracks()) {
+			stream.addTrack(track)
+		}
+
+		const chunks: BlobPart[] = []
+		const recorder = new MediaRecorder(stream, { mimeType })
+		const stopped = new Promise<void>((resolve, reject) => {
+			recorder.addEventListener('dataavailable', (event) => {
+				if (event.data.size > 0) {
+					chunks.push(event.data)
+				}
+			})
+			recorder.addEventListener('stop', () => resolve())
+			recorder.addEventListener('error', () => reject(recorder.error ?? new Error('Fixture recorder failed')))
+		})
+
+		recorder.start()
+		oscillator.start()
+		for (let frame = 0; frame < 12; frame += 1) {
+			context.fillStyle = '#e11d48'
+			context.fillRect(0, 0, canvas.width, canvas.height)
+			videoTrack?.requestFrame?.()
+			await new Promise((resolve) => setTimeout(resolve, 125))
+		}
+		oscillator.stop()
+		recorder.stop()
+		await stopped
+		for (const track of stream.getTracks()) {
+			track.stop()
+		}
+		await audioContext.close().catch(() => undefined)
+
+		const blob = new Blob(chunks, { type: recorder.mimeType || mimeType })
+		return { mimeType: blob.type || 'video/webm', bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) }
+	})
+
+	return { name: 'solid-red-video.webm', mimeType: result.mimeType, buffer: Buffer.from(result.bytes) }
+}
+
+const createToneWavFile = (name = 'solid-tone.wav'): { name: string; mimeType: string; buffer: Buffer } => {
+	const sampleRate = 44_100
+	const durationSeconds = 1
+	const sampleCount = sampleRate * durationSeconds
+	const bytesPerSample = 2
+	const buffer = Buffer.alloc(44 + sampleCount * bytesPerSample)
+	buffer.write('RIFF', 0)
+	buffer.writeUInt32LE(36 + sampleCount * bytesPerSample, 4)
+	buffer.write('WAVE', 8)
+	buffer.write('fmt ', 12)
+	buffer.writeUInt32LE(16, 16)
+	buffer.writeUInt16LE(1, 20)
+	buffer.writeUInt16LE(1, 22)
+	buffer.writeUInt32LE(sampleRate, 24)
+	buffer.writeUInt32LE(sampleRate * bytesPerSample, 28)
+	buffer.writeUInt16LE(bytesPerSample, 32)
+	buffer.writeUInt16LE(16, 34)
+	buffer.write('data', 36)
+	buffer.writeUInt32LE(sampleCount * bytesPerSample, 40)
+
+	for (let index = 0; index < sampleCount; index += 1) {
+		const sample = Math.round(Math.sin((index / sampleRate) * Math.PI * 2 * 440) * 0x1fff)
+		buffer.writeInt16LE(sample, 44 + index * bytesPerSample)
+	}
+
+	return { name, mimeType: 'audio/wav', buffer }
+}
+
+const sampleWebmFrame = async (
+	page: import('@playwright/test').Page,
+	buffer: Buffer,
+): Promise<{ duration: number; rgba: [number, number, number, number] }> =>
+	page.evaluate(async (bytes) => {
+		const blob = new Blob([new Uint8Array(bytes)], { type: 'video/webm' })
+		const url = URL.createObjectURL(blob)
+		const video = document.createElement('video')
+		video.muted = true
+		video.playsInline = true
+		video.preload = 'auto'
+		video.src = url
+		video.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:80px;height:80px;'
+		document.body.append(video)
+
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const timeout = window.setTimeout(() => reject(new Error('Exported video metadata timed out')), 3000)
+				video.addEventListener('loadedmetadata', () => {
+					window.clearTimeout(timeout)
+					resolve()
+				}, { once: true })
+				video.addEventListener('error', () => reject(new Error('Exported video failed to load')), { once: true })
+			})
+			const duration = Number.isFinite(video.duration) ? video.duration : 0
+			const targetTime = Math.max(0, duration - 0.25)
+			await new Promise<void>((resolve) => {
+				const timeout = window.setTimeout(() => resolve(), 1500)
+				video.addEventListener('seeked', () => {
+					window.clearTimeout(timeout)
+					resolve()
+				}, { once: true })
+				video.currentTime = targetTime
+			})
+
+			const canvas = document.createElement('canvas')
+			canvas.width = 80
+			canvas.height = 80
+			const context = canvas.getContext('2d')
+			if (!context) {
+				throw new Error('Unable to sample exported video frame')
+			}
+			context.drawImage(video, 0, 0, canvas.width, canvas.height)
+			const data = Array.from(context.getImageData(40, 40, 1, 1).data) as [number, number, number, number]
+			return { duration, rgba: data }
+		} finally {
+			video.remove()
+			URL.revokeObjectURL(url)
+		}
+	}, Array.from(buffer))
+
 const setTimelineCursor = async (
 	page: import('@playwright/test').Page,
 	seconds: number,
@@ -160,6 +329,75 @@ test('video resources add linked audio clips that play, inspect, and export sett
 	expect(downloadPath).toBeTruthy()
 	const videoBytes = await fs.readFile(downloadPath as string)
 	expect(videoBytes.length).toBeGreaterThan(1000)
+})
+
+test('exports generated solid video, trailing image, and audio through MediaRecorder', async ({ page }) => {
+	await page.addInitScript(() => {
+		const OriginalMediaRecorder = window.MediaRecorder
+		if (!OriginalMediaRecorder) {
+			return
+		}
+		class InstrumentedMediaRecorder extends OriginalMediaRecorder {
+			constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+				super(stream, options)
+				const target = window as Window & { __minicutMediaRecorderCount?: number }
+				target.__minicutMediaRecorderCount = (target.__minicutMediaRecorderCount ?? 0) + 1
+			}
+		}
+		Object.defineProperty(InstrumentedMediaRecorder, 'isTypeSupported', {
+			value: OriginalMediaRecorder.isTypeSupported.bind(OriginalMediaRecorder),
+		})
+		window.MediaRecorder = InstrumentedMediaRecorder as typeof MediaRecorder
+	})
+
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const videoFile = await createSolidVideoFile(page)
+	const imageFile = await createSolidPngFile(page, 'solid-green-image.png', '#16a34a')
+	const audioFile = createToneWavFile()
+
+	await page.getByLabel('Import media files').setInputFiles(videoFile)
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const mediaBin = page.getByLabel('Media bin')
+	const videoClip = timeline.getByRole('button', { name: /solid-red-video.webm/i }).first()
+	await expect(videoClip).toBeVisible()
+	await expect(timeline.getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+
+	await page.getByLabel('Import media files').setInputFiles([imageFile, audioFile])
+	await expect(mediaBin.locator('strong').filter({ hasText: 'solid-green-image.png' })).toBeVisible()
+	await expect(mediaBin.locator('strong').filter({ hasText: 'solid-tone.wav' })).toBeVisible()
+	await mediaBin.locator('.ve-resource-row').filter({ hasText: 'solid-green-image.png' }).getByRole('button', { name: 'Add to timeline' }).click()
+	await mediaBin.locator('.ve-resource-row').filter({ hasText: 'solid-tone.wav' }).getByRole('button', { name: 'Add to timeline' }).click()
+	await expect(timeline.getByRole('button', { name: /solid-green-image.png/i })).toBeVisible()
+	await expect(timeline.getByRole('button', { name: /solid-tone.wav/i })).toBeVisible()
+
+	await videoClip.click()
+	await page.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Start +0.5s' }).click()
+	await expect(videoClip).toHaveText(/0\.5s/)
+	await page.evaluate(() => {
+		const target = window as Window & { __minicutMediaRecorderCount?: number }
+		target.__minicutMediaRecorderCount = 0
+	})
+
+	const downloadPromise = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export project' }).click()
+	const download = await downloadPromise
+	const downloadPath = await download.path()
+	expect(downloadPath).toBeTruthy()
+	const exportedBytes = await fs.readFile(downloadPath as string)
+	expect(exportedBytes.length).toBeGreaterThan(1000)
+	await expect.poll(async () => page.evaluate(() => {
+		const target = window as Window & { __minicutMediaRecorderCount?: number }
+		return target.__minicutMediaRecorderCount ?? 0
+	})).toBeGreaterThan(0)
+
+	const sample = await sampleWebmFrame(page, exportedBytes)
+	expect(sample.duration).toBeGreaterThan(1.4)
+	expect(sample.duration).toBeLessThan(3.2)
+	expect(sample.rgba[1]).toBeGreaterThan(120)
+	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[0] + 30)
+	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[2] + 30)
 })
 
 test('preview playback lets video decode forward without seeking every cursor tick', async ({ page }) => {
