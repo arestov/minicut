@@ -391,8 +391,8 @@ button:disabled {
 	display: grid;
 	grid-template-columns: 280px minmax(0, 1fr) 280px;
 	gap: 0;
-	height: calc(100vh - 56px - 346px);
-	min-height: 420px;
+	height: calc(100vh - var(--ve-toolbar-height) - var(--ve-timeline-height));
+	min-height: 360px;
 }
 
 .ve-panel {
@@ -407,7 +407,7 @@ button:disabled {
 }
 
 .ve-main__top > .ve-panel[aria-label='Inspector'] {
-	max-height: calc(100vh - 56px - 346px);
+	max-height: calc(100vh - var(--ve-toolbar-height) - var(--ve-timeline-height));
 	overflow-y: auto;
 }
 
@@ -418,7 +418,7 @@ button:disabled {
 
 .ve-timeline {
 	border-bottom: 0;
-	height: 346px;
+	height: var(--ve-timeline-height);
 	overflow: hidden;
 }
 
@@ -448,7 +448,7 @@ button:disabled {
 	flex-direction: column;
 	gap: 6px;
 	min-height: 0;
-	height: calc(100% - 44px);
+	height: calc(100% - 52px);
 }
 
 .ve-timeline__tools {
@@ -457,6 +457,10 @@ button:disabled {
 	justify-content: flex-end;
 	gap: 8px;
 	min-width: 0;
+}
+
+.ve-timeline-tool-mode {
+	margin-right: 2px;
 }
 
 .ve-timeline__tools span {
@@ -497,7 +501,7 @@ button:disabled {
 .ve-timeline-ruler {
 	position: relative;
 	height: 28px;
-	margin-left: 151px;
+	margin-left: 167px;
 	cursor: ew-resize;
 	overflow: hidden;
 	border-radius: 8px;
@@ -520,11 +524,20 @@ button:disabled {
 	position: relative;
 	flex: 1 1 auto;
 	min-height: 0;
-	max-height: 256px;
+	max-height: none;
 	cursor: ew-resize;
 	overflow-y: auto;
 	overflow-x: hidden;
 	padding-right: 2px;
+}
+
+.ve-timeline-scroll-area[data-tool='hand'] {
+	cursor: grab;
+}
+
+.ve-timeline-scroll-area[data-tool='trim'],
+.ve-timeline-scroll-area[data-tool='split'] {
+	cursor: crosshair;
 }
 
 .ve-track-list {
@@ -863,7 +876,7 @@ button:disabled {
 
 .ve-track-row {
 	display: grid;
-	grid-template-columns: 128px minmax(0, 1fr);
+	grid-template-columns: 144px minmax(0, 1fr);
 	align-items: stretch;
 	padding: 12px;
 	border: 1px solid #ececef;
@@ -884,14 +897,29 @@ button:disabled {
 	border: 1px solid #ececef;
 }
 
+.ve-track-row__label > div:first-child {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ve-track-row__controls {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	width: 100%;
+}
+
+.ve-track-row__controls .ve-button {
+	width: 26px;
+	height: 26px;
+}
+
 .ve-track-row__rail {
 	position: relative;
-	display: flex;
-	flex-direction: row;
-	align-items: stretch;
+	display: block;
 	min-height: 78px;
 	overflow-x: auto;
-	gap: 8px;
 	padding: 10px;
 	border-radius: 8px;
 	background:
@@ -900,11 +928,19 @@ button:disabled {
 	border: 1px solid #e4e4e7;
 }
 
+.ve-track-row__timeline {
+	position: relative;
+	height: 58px;
+	min-width: 100%;
+}
+
 .ve-clip {
+	position: absolute;
+	top: 0;
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
-	height: auto;
+	height: 58px;
 	padding: 12px;
 	min-width: 36px;
 	background: #ffffff;
