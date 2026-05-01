@@ -28,7 +28,6 @@ const TrackListItem = observer(({ item$, projectId, timelineZoom }: TrackListIte
 })
 
 const timelineTicks = Array.from({ length: 7 }, (_, index) => index * 5)
-const cursorRangeMax = 20
 const timelineTimeOriginPx = 167
 
 const timelineTools: Array<{ id: TimelineTool, label: string, icon: typeof MousePointer2 }> = [
@@ -37,8 +36,6 @@ const timelineTools: Array<{ id: TimelineTool, label: string, icon: typeof Mouse
 	{ id: 'split', label: 'Split tool', icon: Scissors },
 	{ id: 'hand', label: 'Hand tool', icon: Hand },
 ]
-
-const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
 export const TimelineView = observer(() => {
 	const [activeTool, setActiveTool] = useState<TimelineTool>('select')
@@ -80,7 +77,7 @@ export const TimelineView = observer(() => {
 			return
 		}
 
-		actions.setCursor(clamp(timelineX / timelineZoom, 0, cursorRangeMax))
+		actions.setCursor(Math.max(0, timelineX / timelineZoom))
 		event.preventDefault()
 	}
 

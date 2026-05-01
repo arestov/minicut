@@ -512,6 +512,16 @@ button:disabled {
 	padding-right: 2px;
 }
 
+.ve-timeline-scroll-area,
+.ve-timeline-ruler,
+.ve-timeline-ruler span,
+.ve-track-list,
+.ve-track-row__rail,
+.ve-clip {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
 .ve-timeline-scroll-area[data-tool='hand'] {
 	cursor: grab;
 }
