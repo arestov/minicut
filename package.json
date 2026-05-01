@@ -1,12 +1,33 @@
 {
   "name": "minicut",
   "version": "1.0.0",
-  "description": "",
+  "description": "Video editor harness built from the Linkkraft plan slice",
   "license": "ISC",
   "author": "",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest --run --config vitest.video-editor.config.js",
+    "test:video-editor": "vitest --run --config vitest.video-editor.config.js",
+    "video-editor:dev": "vite --config vite.video-editor.config.js",
+    "video-editor:build": "vite build --config vite.video-editor.config.js"
+  },
+  "dependencies": {
+    "@legendapp/state": "^3.0.0-beta.47",
+    "nanoid": "^5.1.6",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "jsdom": "^29.0.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10",
+    "vitest": "^4.1.0"
   }
 }

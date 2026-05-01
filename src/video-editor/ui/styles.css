@@ -1,0 +1,246 @@
+:root {
+	color-scheme: light;
+	font-family: Inter, "Segoe UI", sans-serif;
+	background: #f4f4f5;
+	color: #18181b;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: #f4f4f5;
+	color: #18181b;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+button {
+	border: 1px solid #d4d4d8;
+	border-radius: 10px;
+	background: #ffffff;
+	color: #18181b;
+	padding: 0 12px;
+	height: 36px;
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.ve-shell {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+	padding: 24px;
+	gap: 16px;
+}
+
+.ve-toolbar,
+.ve-panel {
+	background: #ffffff;
+	border: 1px solid #e4e4e7;
+	border-radius: 16px;
+	box-shadow: 0 12px 40px rgba(24, 24, 27, 0.05);
+}
+
+.ve-toolbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	padding: 20px 24px;
+	gap: 16px;
+}
+
+.ve-toolbar h1,
+.ve-panel__header h2 {
+	margin: 0;
+	font-size: 18px;
+}
+
+.ve-toolbar p,
+.ve-empty,
+.ve-resource-list small,
+.ve-project-list small,
+.ve-track-row__label small,
+.ve-preview__summary,
+.ve-inspector-grid dt,
+.ve-inspector-grid dd {
+	margin: 0;
+	color: #52525b;
+}
+
+.ve-toolbar__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+.ve-layout {
+	display: grid;
+	grid-template-columns: 280px minmax(0, 1fr);
+	gap: 16px;
+	min-height: 0;
+}
+
+.ve-sidebar,
+.ve-main,
+.ve-main__top,
+.ve-track-row,
+.ve-track-row__clips,
+.ve-resource-list,
+.ve-project-list,
+.ve-inline-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.ve-main {
+	gap: 16px;
+}
+
+.ve-main__top {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 16px;
+}
+
+.ve-panel {
+	padding: 16px;
+}
+
+.ve-panel__header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+	gap: 12px;
+}
+
+.ve-project-list,
+.ve-resource-list,
+.ve-track-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.ve-project-list button,
+.ve-resource-list li,
+.ve-track-row {
+	width: 100%;
+	align-items: stretch;
+}
+
+.ve-project-list button {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	height: auto;
+	padding: 12px;
+	gap: 4px;
+}
+
+.ve-project-list button.is-active,
+.ve-clip.is-selected {
+	border-color: #2563eb;
+	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+	background: #eff6ff;
+}
+
+.ve-resource-list li {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	padding: 12px;
+	border: 1px solid #ececef;
+	border-radius: 12px;
+	background: #fafafa;
+}
+
+.ve-track-row {
+	padding: 12px;
+	border: 1px solid #ececef;
+	border-radius: 12px;
+	background: #fafafa;
+	gap: 10px;
+}
+
+.ve-track-row__label {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+}
+
+.ve-track-row__clips {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.ve-clip {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	height: auto;
+	padding: 12px;
+	min-width: 220px;
+	background: #ffffff;
+	gap: 4px;
+}
+
+.ve-inspector-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+	margin: 0 0 16px;
+}
+
+.ve-inspector-grid div {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 12px;
+	border-radius: 12px;
+	background: #fafafa;
+	border: 1px solid #ececef;
+}
+
+.ve-slider-field {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+.ve-preview__summary {
+	padding: 12px;
+	border-radius: 12px;
+	background: #fafafa;
+	border: 1px solid #ececef;
+}
+
+@media (max-width: 1200px) {
+	.ve-layout {
+		grid-template-columns: 1fr;
+	}
+
+	.ve-main__top {
+		grid-template-columns: 1fr;
+	}
+}
