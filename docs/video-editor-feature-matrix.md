@@ -20,7 +20,7 @@
 | Color labeling | Change clip label/accent color. | Inspector color picker and swatches. | Set a preset color and verify clip/inspector color state. |
 | Effects | Add blur, sharpen, and tint effects. | Inspector effect buttons, filter mapping in preview. | Add effects and verify count plus renderer filter. |
 | Audio controls | Expose audio edit controls for selected clips. | Inspector Audio tab placeholders for gain/pan. | Open Audio tab and verify controls are reachable. |
-| Export controls | Expose clip export intent. | Inspector Export tab placeholder. | Open Export tab and verify queue action exists. |
+| Export controls | Export selected clips through a renderer abstraction. | Inspector Export tab queues `ExportRenderer` and produces a downloadable render manifest. | Open Export tab, queue export, and verify ready status. |
 | Playback cursor | Play/pause advances preview cursor. | Preview play button, session playback tick hook. | Toggle playback and verify current time changes. |
 | OffscreenCanvas preview | Preview uses OffscreenCanvas worker rendering with fallback. | Canvas worker draws frame backdrop and clip labels behind media layers. | Verify renderer canvas is nonblank and reports offscreen/fallback mode. |
 
@@ -48,4 +48,4 @@
 | `Inspector` | Delete clip | `actions.deleteSelectedClip()` | Removes clip. |
 | `Inspector` | Color picker/swatches | `actions.colorSelectedClip(color)` | Label/accent color. |
 | `Inspector` | Audio tab controls | Read-only gain/pan placeholders | UI scaffold only. |
-| `Inspector` | Export tab queue | Button scaffold | UI scaffold only. |
+| `Inspector` | Export tab queue | `actions.queueSelectedClipExport()` | Produces a render manifest with evaluated frame operations. |

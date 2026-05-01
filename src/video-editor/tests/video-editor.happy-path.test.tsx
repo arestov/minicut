@@ -269,7 +269,7 @@ describe('video editor harness', () => {
 			await user.click(within(inspector).getByRole('tab', { name: 'Export' }))
 			expect(within(inspector).getByLabelText('Export inspector')).toHaveTextContent('Queue clip export')
 			await user.click(within(inspector).getByRole('button', { name: 'Queue clip export' }))
-			expect(within(inspector).getByRole('status')).toHaveTextContent('Queued export for Sample asset 1')
+			expect(await within(inspector).findByRole('status')).toHaveTextContent(/Export ready: \d+ frames/)
 
 			await user.click(within(inspector).getByRole('tab', { name: 'Edit' }))
 			expect(within(inspector).getByLabelText('Transform controls')).toBeVisible()

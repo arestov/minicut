@@ -183,6 +183,34 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('exports the selected clip as a render manifest and revokes its download URL', async () => {
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:export-manifest')
+		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			const result = await harness.actions.queueSelectedClipExport()
+
+			expect(result).not.toBeNull()
+			expect(result?.downloadUrl).toBe('blob:export-manifest')
+			expect(result?.manifest.range).toEqual({ type: 'clip', clipId: String(harness.session$.selectedEntityId.get()) })
+			expect(result?.manifest.frames.length).toBeGreaterThan(0)
+			expect(createObjectURL).toHaveBeenCalledWith(result?.blob)
+		} finally {
+			harness.destroy()
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-manifest')
+			createObjectURL.mockRestore()
+			revokeObjectURL.mockRestore()
+		}
+	})
+
 	it('tracks in-point and clamps trim start to keep positive duration', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)

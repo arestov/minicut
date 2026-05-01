@@ -227,6 +227,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	const exportButton = inspector.getByRole('button', { name: 'Queue clip export' })
 	await expect(exportButton).toBeVisible()
 	await exportButton.click()
+	await expect(inspector.getByRole('status')).toHaveText(/Export ready: \d+ frames/)
 
 	await inspector.getByRole('tab', { name: 'Edit' }).click()
 	const overflowingInspectorButtons = await inspector.locator('.ve-button-grid button, .ve-inline-actions button').evaluateAll((buttons) =>

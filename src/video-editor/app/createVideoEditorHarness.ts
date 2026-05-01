@@ -10,6 +10,7 @@ import type {
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
+import { createManifestExportRenderer, type ExportRenderer, type ExportRenderResult } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createAuthorityClient } from '../worker/createAuthorityClient'
 
@@ -157,6 +158,7 @@ const isProjectTimelineEmpty = (registry: ProjectRegistry, projectId: string): b
 
 interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
+	exportRenderer?: ExportRenderer
 }
 
 export const createVideoEditorHarness = (
@@ -164,9 +166,11 @@ export const createVideoEditorHarness = (
 	options: CreateVideoEditorHarnessOptions = {},
 ) => {
 	const autoCreateInitialProject = options.autoCreateInitialProject ?? true
+	const exportRenderer = options.exportRenderer ?? createManifestExportRenderer()
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const importedObjectUrls = new Set<string>()
+	const exportObjectUrls = new Set<string>()
 	let importFilesQueue = Promise.resolve()
 	let initialBootstrapChecked = false
 	let projectBootstrapInFlight = false
@@ -539,6 +543,31 @@ export const createVideoEditorHarness = (
 			})
 		},
 
+		async queueSelectedClipExport(): Promise<ExportRenderResult | null> {
+			const registry = projects$.get()
+			const session = session$.get()
+			const project = getActiveProject(registry, session)
+			const clip = getSelectedClip(registry, session)
+			if (!project || !clip) {
+				return null
+			}
+
+			const result = await exportRenderer.render({
+				registry,
+				projectId: project.id,
+				range: { type: 'clip', clipId: clip.id },
+				format: 'json-manifest',
+				fps: 30,
+			})
+			if (typeof URL.createObjectURL === 'function') {
+				const downloadUrl = URL.createObjectURL(result.blob)
+				exportObjectUrls.add(downloadUrl)
+				return { ...result, downloadUrl }
+			}
+
+			return result
+		},
+
 		nudgeSelectedClip(delta: number): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {
@@ -596,6 +625,9 @@ export const createVideoEditorHarness = (
 				URL.revokeObjectURL(url)
 			}
 			authority.destroy?.()
+			for (const url of exportObjectUrls) {
+				URL.revokeObjectURL(url)
+			}
 		},
 	}
 }

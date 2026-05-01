@@ -3,10 +3,17 @@ import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Trash2, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import type { ExportRenderResult } from '../render/exportRenderer'
 import { Button, IconButton } from './ControlPrimitives'
 import { formatPercent, formatSeconds } from './format'
 
 type InspectorTab = 'edit' | 'color' | 'audio' | 'export'
+
+type ExportStatus =
+	| { state: 'idle' }
+	| { state: 'rendering' }
+	| { state: 'ready'; result: ExportRenderResult }
+	| { state: 'error'; message: string }
 
 const inspectorTabs: Array<{ id: InspectorTab, label: string }> = [
 	{ id: 'edit', label: 'Edit' },
@@ -60,7 +67,7 @@ const InspectorSection = ({
 export const Inspector = observer(() => {
 	const [activeTab, setActiveTab] = useState<InspectorTab>('edit')
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
-	const [queuedExportName, setQueuedExportName] = useState<string | null>(null)
+	const [exportStatus, setExportStatus] = useState<ExportStatus>({ state: 'idle' })
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const selectedEntityId = session$.selectedEntityId.get()
@@ -299,9 +306,38 @@ export const Inspector = observer(() => {
 							<div><dt>Format</dt><dd>MP4</dd></div>
 							<div><dt>Quality</dt><dd>High</dd></div>
 						</dl>
-						<IconButton type="button" icon={Download} label="Queue clip export" variant="default" onClick={() => setQueuedExportName(name)}>Queue clip export</IconButton>
-						{queuedExportName ? (
-							<p className="ve-preview__summary" role="status">Queued export for {queuedExportName}</p>
+						<IconButton
+							type="button"
+							icon={Download}
+							label="Queue clip export"
+							variant="default"
+							disabled={exportStatus.state === 'rendering'}
+							onClick={() => {
+								setExportStatus({ state: 'rendering' })
+								actions.queueSelectedClipExport().then((result) => {
+									setExportStatus(result
+										? { state: 'ready', result }
+										: { state: 'error', message: 'Select a clip before exporting.' })
+								}).catch((error: unknown) => {
+									setExportStatus({ state: 'error', message: error instanceof Error ? error.message : String(error) })
+								})
+							}}
+						>
+							{exportStatus.state === 'rendering' ? 'Rendering export' : 'Queue clip export'}
+						</IconButton>
+						{exportStatus.state === 'rendering' ? (
+							<p className="ve-preview__summary" role="status">Rendering export manifest for {name}</p>
+						) : null}
+						{exportStatus.state === 'ready' ? (
+							<p className="ve-preview__summary" role="status">
+								Export ready: {exportStatus.result.frameCount} frames · {exportStatus.result.size} bytes
+								{exportStatus.result.downloadUrl ? (
+									<> · <a href={exportStatus.result.downloadUrl} download={exportStatus.result.fileName}>Download manifest</a></>
+								) : null}
+							</p>
+						) : null}
+						{exportStatus.state === 'error' ? (
+							<p className="ve-preview__summary" role="status">Export failed: {exportStatus.message}</p>
 						) : null}
 					</InspectorSection>
 				</div>
