@@ -940,10 +940,55 @@ button:disabled {
 	justify-content: center;
 	text-align: left;
 	touch-action: pan-y;
+	cursor: grab;
+	overflow: hidden;
 }
 
 .ve-clip:active {
 	cursor: grabbing;
+}
+
+.ve-clip__resize-handle {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	z-index: 1;
+	width: 10px;
+	cursor: ew-resize;
+	touch-action: none;
+}
+
+.ve-clip__resize-handle::after {
+	content: '';
+	position: absolute;
+	top: 12px;
+	bottom: 12px;
+	width: 2px;
+	border-radius: 999px;
+	background: rgba(24, 24, 27, 0.16);
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+
+.ve-clip:hover .ve-clip__resize-handle::after,
+.ve-clip:focus-visible .ve-clip__resize-handle::after {
+	opacity: 1;
+}
+
+.ve-clip__resize-handle--start {
+	left: 0;
+}
+
+.ve-clip__resize-handle--start::after {
+	left: 4px;
+}
+
+.ve-clip__resize-handle--end {
+	right: 0;
+}
+
+.ve-clip__resize-handle--end::after {
+	right: 4px;
 }
 
 .ve-inspector-tabs {

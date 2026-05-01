@@ -331,6 +331,47 @@ test('dragging a clip changes its timeline start position', async ({ page }) => 
 	await expect(clip).not.toHaveText(/0\.0s \/ 5\.0s/)
 })
 
+test('resizing a clip from the right edge changes its duration', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+
+	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	await expect(clip).toHaveText(/0\.0s \/ 5\.0s/)
+	const handle = clip.locator('.ve-clip__resize-handle--end')
+	const box = await handle.boundingBox()
+	if (!box) {
+		throw new Error('Clip end resize handle bounding box is unavailable')
+	}
+
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2)
+	await page.mouse.up()
+
+	await expect(clip).toHaveText(/0\.0s \/ 5\.5s/)
+})
+
+test('resizing a clip from the left edge trims its start and duration', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+
+	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	const handle = clip.locator('.ve-clip__resize-handle--start')
+	const box = await handle.boundingBox()
+	if (!box) {
+		throw new Error('Clip start resize handle bounding box is unavailable')
+	}
+
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2)
+	await page.mouse.up()
+
+	await expect(clip).toHaveText(/0\.5s \/ 4\.5s/)
+})
+
 test('dragging a clip before the timeline start clamps to zero', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)

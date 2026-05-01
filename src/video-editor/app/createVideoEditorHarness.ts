@@ -91,6 +91,23 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const getClipEnd = (attrs: ClipAttrs): number => attrs.start + attrs.duration
 
+const getResizedClipAttrs = (attrs: ClipAttrs, edge: 'start' | 'end', delta: number): Pick<ClipAttrs, 'start' | 'in' | 'duration'> | Pick<ClipAttrs, 'duration'> => {
+	if (edge === 'end') {
+		return {
+			duration: clamp(roundToTenths(attrs.duration + delta), 0.5, 120),
+		}
+	}
+
+	const clipEnd = getClipEnd(attrs)
+	const minStart = Math.max(0, attrs.start - attrs.in)
+	const nextStart = clamp(roundToTenths(attrs.start + delta), minStart, clipEnd - 0.5)
+	return {
+		start: nextStart,
+		in: roundToTenths(attrs.in + (nextStart - attrs.start)),
+		duration: roundToTenths(clipEnd - nextStart),
+	}
+}
+
 const resolveActiveProjectId = (
 	registry: ProjectRegistry,
 	session: Pick<EditorSessionState, 'activeProjectId'>,
@@ -482,25 +499,32 @@ export const createVideoEditorHarness = (
 			}
 
 			const attrs = clip.attrs as ClipAttrs
-			const clipEnd = getClipEnd(attrs)
-			const nextAttrs = edge === 'start'
-				? (() => {
-						const nextStart = clamp(roundToTenths(attrs.start + delta), 0, clipEnd - 0.5)
-						return {
-							start: nextStart,
-							in: roundToTenths(attrs.in + (nextStart - attrs.start)),
-							duration: roundToTenths(clipEnd - nextStart),
-						}
-					})()
-				: {
-						duration: clamp(roundToTenths(attrs.duration + delta), 0.5, 120),
-					}
+			const nextAttrs = getResizedClipAttrs(attrs, edge, delta)
 
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
 					id: clip.id,
 					attrs: nextAttrs,
+				},
+			})
+		},
+
+		resizeClipById(clipId: string, edge: 'start' | 'end', delta: number): void {
+			if (delta === 0) {
+				return
+			}
+
+			const clip = projects$.get().entitiesById[clipId]
+			if (!clip || clip.type !== 'clip') {
+				return
+			}
+
+			dispatch({
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					id: clipId,
+					attrs: getResizedClipAttrs(clip.attrs as ClipAttrs, edge, delta),
 				},
 			})
 		},

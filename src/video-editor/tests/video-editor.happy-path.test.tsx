@@ -104,6 +104,31 @@ describe('video editor harness', () => {
 		}
 	})
 
+	it('resizes a clip from its timeline edges', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+
+			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			const endHandle = clipButton.querySelector('.ve-clip__resize-handle--end') as HTMLElement | null
+			const startHandle = clipButton.querySelector('.ve-clip__resize-handle--start') as HTMLElement | null
+			expect(endHandle).not.toBeNull()
+			expect(startHandle).not.toBeNull()
+
+			fireEvent.pointerDown(endHandle as HTMLElement, { clientX: 100, buttons: 1 })
+			fireEvent.pointerUp(endHandle as HTMLElement, { clientX: 128, buttons: 0 })
+			expect(clipButton).toHaveTextContent(/0\.0s \/ 5\.5s/)
+
+			fireEvent.pointerDown(startHandle as HTMLElement, { clientX: 100, buttons: 1 })
+			fireEvent.pointerUp(startHandle as HTMLElement, { clientX: 128, buttons: 0 })
+			expect(clipButton).toHaveTextContent(/0\.5s \/ 5\.0s/)
+		} finally {
+			unmount()
+		}
+	})
+
 	it('deletes selected clips through the inspector', async () => {
 		const { user, unmount } = renderVideoEditor()
 
