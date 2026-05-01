@@ -68,9 +68,6 @@ const drawFallbackPreview = (
 	context.fillText(`Cursor ${cursor.toFixed(1)}s`, 22, 32)
 
 	if (clips.length === 0) {
-		context.textAlign = 'center'
-		context.fillText('No frame at cursor', width / 2, height / 2)
-		context.textAlign = 'left'
 		return
 	}
 

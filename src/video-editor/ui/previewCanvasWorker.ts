@@ -49,11 +49,6 @@ const drawPreview = (
 	ctx.fillText(`Cursor ${cursor.toFixed(1)}s`, 22, 32)
 
 	if (clips.length === 0) {
-		ctx.fillStyle = '#d4d4d8'
-		ctx.font = '500 16px Inter, Segoe UI, sans-serif'
-		ctx.textAlign = 'center'
-		ctx.fillText('No frame at cursor', width / 2, height / 2)
-		ctx.textAlign = 'left'
 		return
 	}
 
