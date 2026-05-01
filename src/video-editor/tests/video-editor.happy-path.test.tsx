@@ -1,4 +1,5 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { act, fireEvent, screen, within } from '@testing-library/react'
+import { getActiveProject, getResourceEntities } from '../domain/selectors'
 import { renderVideoEditor } from './renderVideoEditor'
 
 const createProjectFromMenu = async (user: ReturnType<typeof renderVideoEditor>['user']) => {
@@ -257,6 +258,35 @@ describe('video editor harness', () => {
 			expect(within(timeline).getAllByLabelText('Current step')).toHaveLength(1)
 			expect(within(screen.getByLabelText('Preview panel')).queryByRole('slider', { name: 'Cursor' })).toBeNull()
 			expect(within(screen.getByLabelText('Preview panel')).getByText('Cursor at 4.5s')).toBeVisible()
+		} finally {
+			unmount()
+		}
+	})
+
+	it('handles empty timeline and renders a large number of clips without UI breakage', async () => {
+		const { harness, user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			expect(screen.getAllByText('Drop clips here.')).toHaveLength(2)
+
+			for (let index = 0; index < 100; index += 1) {
+				await act(async () => {
+					harness.actions.importSampleResource()
+					await Promise.resolve()
+					await Promise.resolve()
+					const registry = harness.projects$.get()
+					const project = getActiveProject(registry, harness.session$.get())
+					expect(project).not.toBeNull()
+					const resources = getResourceEntities(registry, project!)
+					harness.actions.addResourceToTimeline(resources[resources.length - 1].id)
+					await Promise.resolve()
+					await Promise.resolve()
+				})
+			}
+
+			expect(screen.getAllByRole('button', { name: /Sample asset/i }).length).toBeGreaterThanOrEqual(100)
+			expect(screen.getByLabelText('Timeline')).toBeVisible()
 		} finally {
 			unmount()
 		}
