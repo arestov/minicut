@@ -439,6 +439,47 @@ describe('command validation', () => {
 		expect(registry.entitiesById[clipId].attrs.opacity).toEqual({ value: 0.6, keyframes: ['kf:1'] })
 	})
 
+	it('uses scalar transform patches and preserves transform keyframes', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Transform source', kind: 'video', duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const clipId = String(clipResult.createdIds?.clipId)
+		registry.entitiesById[clipId].attrs.transform = {
+			x: { value: 0, keyframes: ['kf:x'] },
+			y: { value: 0, keyframes: ['kf:y'] },
+			scale: { value: 1 },
+			rotation: { value: 0 },
+		}
+
+		const updateResult = buildDispatchResult(registry, {
+			c: CMD.CLIP_UPDATE_ATTRS,
+			p: { id: clipId, attrs: { transform: { y: { value: 42 } } } },
+		})
+		expect(updateResult.envelope.patches).toEqual([
+			{ c: PATCH.SCALAR_SET, p: { id: clipId, path: 'transform.y.value', value: 42 } },
+		])
+		registry = applyPatchEnvelopeToRegistry(registry, updateResult.envelope)
+
+		expect(registry.entitiesById[clipId].attrs.transform).toEqual({
+			x: { value: 0, keyframes: ['kf:x'] },
+			y: { value: 42, keyframes: ['kf:y'] },
+			scale: { value: 1 },
+			rotation: { value: 0 },
+		})
+	})
+
 	it('rejects clip duration updates when duration is not positive', () => {
 		let registry = createEmptyRegistry()
 		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })

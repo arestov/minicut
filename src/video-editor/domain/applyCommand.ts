@@ -370,9 +370,47 @@ export const buildDispatchResult = (
 
 		case CMD.CLIP_UPDATE_ATTRS: {
 			const project = assertProjectForEntity(registry, command.p.id)
-			assertEntity(registry, command.p.id)
-			const { opacity, ...attrs } = command.p.attrs
+			const clip = assertEntity(registry, command.p.id)
+			const { opacity, transform, ...attrs } = command.p.attrs
 			const patches: Patch[] = []
+			const clipAttrs = clip.attrs as ClipAttrs
+
+			const transformMergeAttrs: Record<string, unknown> = {}
+			if (transform) {
+				for (const key of ['x', 'y', 'scale', 'rotation'] as const) {
+					const incoming = transform[key]
+					if (!incoming) {
+						continue
+					}
+
+					if (incoming.value !== undefined) {
+						patches.push({
+							c: PATCH.SCALAR_SET,
+							p: {
+								id: command.p.id,
+								path: `transform.${key}.value`,
+								value: incoming.value,
+							},
+						})
+					}
+
+					const incomingRest = { ...incoming }
+					delete incomingRest.value
+					if (Object.keys(incomingRest).length > 0) {
+						transformMergeAttrs[key] = {
+							...(clipAttrs.transform[key] as Record<string, unknown>),
+							...incomingRest,
+						}
+					}
+				}
+			}
+
+			if (Object.keys(transformMergeAttrs).length > 0) {
+				attrs.transform = {
+					...clipAttrs.transform,
+					...transformMergeAttrs,
+				}
+			}
 
 			if (Object.keys(attrs).length > 0) {
 				patches.push({

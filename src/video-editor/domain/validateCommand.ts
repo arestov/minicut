@@ -138,7 +138,9 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			}
 			const transform = command.p.attrs.transform
 			if (transform) {
-				assert(transform.scale.value > 0, 'Transform scale must be positive')
+				if (transform.scale?.value !== undefined) {
+					assert(transform.scale.value > 0, 'Transform scale must be positive')
+				}
 			}
 			return
 		}
