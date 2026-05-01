@@ -21,10 +21,10 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	const inspector = page.getByLabel('Inspector')
 	const opacitySlider = inspector.getByLabel('Opacity')
 	await opacitySlider.focus()
-	await opacitySlider.press('ArrowLeft')
-	await opacitySlider.press('ArrowLeft')
-	await opacitySlider.press('ArrowLeft')
-	await opacitySlider.press('ArrowLeft')
+	for (const value of ['90', '80', '70', '60']) {
+		await opacitySlider.press('ArrowLeft')
+		await expect(opacitySlider).toHaveValue(value)
+	}
 	await expect(inspector.getByText('60%')).toBeVisible()
 
 	await inspector.getByRole('button', { name: 'Split clip' }).click()

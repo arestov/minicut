@@ -10,7 +10,8 @@ import type {
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
-import { MemoryWorkerAuthority } from '../worker/memoryWorker'
+import type { EditorAuthorityClient } from '../worker/authorityClient'
+import { createAuthorityClient } from '../worker/createAuthorityClient'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 
@@ -31,14 +32,15 @@ const getActiveProjectId = (
 	return projectId
 }
 
-export const createVideoEditorHarness = () => {
-	const worker = new MemoryWorkerAuthority()
+export const createVideoEditorHarness = (authority: EditorAuthorityClient = createAuthorityClient()) => {
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 
-	applySnapshot(projects$, worker.getSnapshot())
+	Promise.resolve(authority.getSnapshot()).then((snapshot) => {
+		applySnapshot(projects$, snapshot)
+	})
 
-	const unsubscribe = worker.subscribe((envelope) => {
+	const unsubscribe = authority.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
 		const activeProjectId = projects$.activeProjectId.get()
 		if (activeProjectId) {
@@ -46,16 +48,17 @@ export const createVideoEditorHarness = () => {
 		}
 	})
 
-	const dispatch = (command: Command): DispatchResult => worker.dispatch(command)
+	const dispatch = (command: Command): Promise<DispatchResult> =>
+		Promise.resolve(authority.dispatch(command))
 
 	const actions = {
-		createProject(title?: string): string {
-			const result = dispatch({ c: CMD.PROJECT_CREATE, p: { title } })
+		createProject(title?: string): void {
+			dispatch({ c: CMD.PROJECT_CREATE, p: { title } }).then((result) => {
 			const projectId = String(result.createdIds?.projectId)
 			session$.activeProjectId.set(projectId)
 			session$.selectedEntityId.set(null)
 			session$.cursor.set(0)
-			return projectId
+			})
 		},
 
 		setActiveProject(projectId: string): void {
@@ -65,7 +68,7 @@ export const createVideoEditorHarness = () => {
 			session$.cursor.set(0)
 		},
 
-		importSampleResource(): string {
+		importSampleResource(): void {
 			const projectId = getActiveProjectId(projects$, session$)
 			const project = getActiveProject(projects$.get(), session$.get())
 			const resourceOrdinal = project
@@ -75,7 +78,7 @@ export const createVideoEditorHarness = () => {
 					})[0].resourceCount + 1
 				: 1
 			const kind = sampleKindCycle[(resourceOrdinal - 1) % sampleKindCycle.length]
-			const result = dispatch({
+			dispatch({
 				c: CMD.RESOURCE_IMPORT,
 				p: {
 					projectId,
@@ -88,11 +91,9 @@ export const createVideoEditorHarness = () => {
 					height: kind === 'audio' ? undefined : 1080,
 				},
 			})
-
-			return String(result.createdIds?.resourceId)
 		},
 
-		addResourceToTimeline(resourceId: string): string {
+		addResourceToTimeline(resourceId: string): void {
 			const projectId = getActiveProjectId(projects$, session$)
 			const project = getActiveProject(projects$.get(), session$.get())
 			if (!project) {
@@ -104,13 +105,13 @@ export const createVideoEditorHarness = () => {
 				throw new Error('No video track available')
 			}
 
-			const result = dispatch({
+			dispatch({
 				c: CMD.TIMELINE_ADD_CLIP,
 				p: { projectId, resourceId, trackId: track.id },
+			}).then((result) => {
+				const clipId = String(result.createdIds?.clipId)
+				session$.selectedEntityId.set(clipId)
 			})
-			const clipId = String(result.createdIds?.clipId)
-			session$.selectedEntityId.set(clipId)
-			return clipId
 		},
 
 		selectEntity(entityId: string | null): void {
@@ -133,25 +134,25 @@ export const createVideoEditorHarness = () => {
 			})
 		},
 
-		splitSelectedClip(): string | null {
+		splitSelectedClip(): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {
-				return null
+				return
 			}
 
 			const attrs = clip.attrs as ClipAttrs
 			const splitTime = attrs.start + attrs.duration / 2
-			const result = dispatch({
+			dispatch({
 				c: CMD.TIMELINE_SPLIT_CLIP,
 				p: {
 					projectId: getActiveProjectId(projects$, session$),
 					clipId: clip.id,
 					time: splitTime,
 				},
+			}).then((result) => {
+				const newClipId = String(result.createdIds?.clipId)
+				session$.selectedEntityId.set(newClipId)
 			})
-			const newClipId = String(result.createdIds?.clipId)
-			session$.selectedEntityId.set(newClipId)
-			return newClipId
 		},
 
 		nudgeSelectedClip(delta: number): void {
@@ -184,7 +185,7 @@ export const createVideoEditorHarness = () => {
 	}
 
 	return {
-		worker,
+		worker: authority,
 		projects$,
 		session$,
 		actions,

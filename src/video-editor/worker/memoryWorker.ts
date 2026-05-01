@@ -2,10 +2,11 @@ import { buildDispatchResult } from '../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
 import type { Command, DispatchResult, PatchEnvelope, ProjectRegistry } from '../domain/types'
+import type { EditorAuthorityClient } from './authorityClient'
 
 type PatchListener = (envelope: PatchEnvelope) => void
 
-export class MemoryWorkerAuthority {
+export class MemoryWorkerAuthority implements EditorAuthorityClient {
 	#registry: ProjectRegistry = createEmptyRegistry()
 
 	#listeners = new Set<PatchListener>()

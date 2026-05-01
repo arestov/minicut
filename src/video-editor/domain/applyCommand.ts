@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
 import { createProjectGraph } from './createProject'
+import { assertEntity, assertProject, validateCommand } from './validateCommand'
 import {
 	getClipIdsForTrack,
 	getEntity,
@@ -24,28 +25,12 @@ const makeEntityId = (prefix: string) => `${prefix}:${nanoid(6)}`
 
 const scalar = (value: number): AnimatedScalar => ({ value })
 
-const assertProject = (registry: ProjectRegistry, projectId: string): ProjectGraph => {
-	const project = registry.projects[projectId]
-	if (!project) {
-		throw new Error(`Unknown project ${projectId}`)
-	}
-
-	return project
-}
-
-const assertEntity = (project: ProjectGraph, entityId: EntityId): Entity => {
-	const entity = getEntity(project, entityId)
-	if (!entity) {
-		throw new Error(`Unknown entity ${entityId}`)
-	}
-
-	return entity
-}
-
 export const buildDispatchResult = (
 	registry: ProjectRegistry,
 	command: Command,
 ): DispatchResult => {
+	validateCommand(registry, command)
+
 	switch (command.c) {
 		case CMD.PROJECT_CREATE: {
 			const project = createProjectGraph(

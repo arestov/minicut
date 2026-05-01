@@ -102,9 +102,12 @@ export interface PatchEnvelope {
 }
 
 export const MSG = {
+	SNAPSHOT_REQUEST: -1,
 	SNAPSHOT: -2,
+	COMMAND: -3,
 	PATCHES: -4,
 	ERROR: -5,
+	DISPATCH_RESULT: -6,
 } as const
 
 export const CMD = {
@@ -206,4 +209,10 @@ export type Patch =
 export interface DispatchResult {
 	envelope: PatchEnvelope
 	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId', EntityId>>
+}
+
+export interface WireMessage<Payload = unknown> {
+	m: (typeof MSG)[keyof typeof MSG]
+	requestId?: string
+	p?: Payload
 }
