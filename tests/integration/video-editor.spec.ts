@@ -47,7 +47,6 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 		page.getByLabel('Media bin').locator('strong').filter({ hasText: 'Sample asset 1' }),
 	).toBeVisible()
 
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
 	await expect(clip).toBeVisible()
 
@@ -73,7 +72,6 @@ test('split clip follows playhead and reflects resulting durations in timeline w
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	const clip = timeline.getByRole('button', { name: /Sample asset 1/i }).first()
@@ -107,16 +105,13 @@ test('project dropdown shows items when opened', async ({ page }) => {
 	await expect(projectList.getByRole('button', { name: /Project 2/i })).toBeVisible()
 })
 
-test('add first resource button toggles from disabled to enabled after import', async ({ page }) => {
+test('importing into an empty timeline auto-adds the first resource', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
 
-	const addFirstResource = page.getByRole('button', { name: 'Add first resource' })
-	await expect(addFirstResource).toBeDisabled()
+	await expect(page.getByRole('button', { name: 'Add first resource' })).toHaveCount(0)
 
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await expect(addFirstResource).toBeEnabled()
-	await addFirstResource.click()
 
 	await expect(page.getByRole('button', { name: /Sample asset 1/i }).first()).toBeVisible()
 })
@@ -135,11 +130,13 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	await expect(mediaBin.locator('img[alt="fixture-image.png thumbnail"]')).toBeVisible()
 	await expect(mediaBin.getByLabel('audio thumbnail')).toBeVisible()
 
-	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(0).click()
-	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(1).click()
-	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(2).click()
-
 	const timeline = page.getByRole('region', { name: 'Timeline' })
+	for (const resourceName of ['fixture-video.webm', 'fixture-image.png', 'fixture-audio.wav']) {
+		if (await timeline.getByRole('button', { name: new RegExp(resourceName, 'i') }).count() === 0) {
+			await mediaBin.locator('.ve-resource-row').filter({ hasText: resourceName }).getByRole('button', { name: 'Add to timeline' }).click()
+		}
+	}
+
 	await expect(timeline.getByRole('button', { name: /fixture-video.webm/i })).toBeVisible()
 	await expect(timeline.getByRole('button', { name: /fixture-image.png/i })).toBeVisible()
 	await expect(timeline.getByRole('button', { name: /fixture-audio.wav/i })).toBeVisible()
@@ -199,7 +196,6 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 
 	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
 	await clip.click()
@@ -247,7 +243,6 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
@@ -318,7 +313,6 @@ test('dragging a clip changes its timeline start position', async ({ page }) => 
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 
 	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
 	await expect(clip).toHaveText(/0\.0s \/ 5\.0s/)
@@ -340,7 +334,6 @@ test('dragging a clip before the timeline start clamps to zero', async ({ page }
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 
 	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
 	const box = await clip.boundingBox()
@@ -360,7 +353,6 @@ test('playback toggle advances timeline cursor over time', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	const currentTime = timeline.getByLabel('Current time')

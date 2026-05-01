@@ -1,7 +1,7 @@
 import type { Observable } from '@legendapp/state'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
 import { createSessionStore, TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from '../legend/sessionStore'
-import { getActiveProject, getAudioTrack, getProjectMetaList, getSelectedClip, getVideoTrack } from '../domain/selectors'
+import { getActiveProject, getAudioTrack, getClipIdsForTrack, getProjectMetaList, getSelectedClip, getTracks, getVideoTrack } from '../domain/selectors'
 import type {
 	ClipAttrs,
 	Command,
@@ -146,6 +146,15 @@ const getPlaybackDuration = (registry: ProjectRegistry, session: EditorSessionSt
 	return clipEnd > 0 ? clipEnd : 20
 }
 
+const isProjectTimelineEmpty = (registry: ProjectRegistry, projectId: string): boolean => {
+	const project = registry.projects[projectId]
+	if (!project) {
+		return false
+	}
+
+	return getTracks(registry, project).every((track) => getClipIdsForTrack(registry, track.id).length === 0)
+}
+
 interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
 }
@@ -231,6 +240,14 @@ export const createVideoEditorHarness = (
 	const dispatch = (command: Command): Promise<DispatchResult> =>
 		Promise.resolve(authority.dispatch(command))
 
+	const addResourceToTimelineIfEmpty = (projectId: string, resourceId: string): void => {
+		if (isDestroyed || !isProjectTimelineEmpty(projects$.get(), projectId)) {
+			return
+		}
+
+		actions.addResourceToTimeline(resourceId)
+	}
+
 	const actions = {
 		createProject(title?: string): void {
 			dispatch({ c: CMD.PROJECT_CREATE, p: { title } }).then((result) => {
@@ -268,6 +285,11 @@ export const createVideoEditorHarness = (
 					width: kind === 'audio' ? undefined : 1920,
 					height: kind === 'audio' ? undefined : 1080,
 				},
+			}).then((result) => {
+				const resourceId = result.createdIds?.resourceId
+				if (resourceId) {
+					addResourceToTimelineIfEmpty(projectId, String(resourceId))
+				}
 			})
 		},
 
@@ -299,6 +321,11 @@ export const createVideoEditorHarness = (
 							width: kind === 'audio' ? undefined : 1920,
 							height: kind === 'audio' ? undefined : 1080,
 						},
+					}).then((result) => {
+						const resourceId = result.createdIds?.resourceId
+						if (resourceId) {
+							addResourceToTimelineIfEmpty(projectId, String(resourceId))
+						}
 					})
 				})
 			}

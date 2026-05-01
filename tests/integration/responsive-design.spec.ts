@@ -6,7 +6,6 @@ const prepareEditor = async (page: import('@playwright/test').Page) => {
 	await projectsRegion.getByRole('button').click()
 	await projectsRegion.getByRole('button', { name: 'New project' }).click()
 	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: 'Add first resource' }).click()
 	await page.getByRole('button', { name: /Sample asset 1/i }).first().click()
 }
 

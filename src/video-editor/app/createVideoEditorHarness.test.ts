@@ -149,6 +149,40 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('auto-adds an imported sample only when the timeline is empty', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			let registry = harness.projects$.get()
+			let project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			let videoTrack = getVideoTrack(registry, project!)
+			expect(videoTrack).not.toBeNull()
+			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
+
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			registry = harness.projects$.get()
+			project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			videoTrack = getVideoTrack(registry, project!)
+			expect(videoTrack).not.toBeNull()
+			expect(getResourceEntities(registry, project!)).toHaveLength(2)
+			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
+		} finally {
+			harness.destroy()
+		}
+	})
+
 	it('tracks in-point and clamps trim start to keep positive duration', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)
@@ -158,10 +192,6 @@ describe('createVideoEditorHarness actions', () => {
 			harness.actions.createProject()
 			await settleHarness()
 			harness.actions.importSampleResource()
-			await settleHarness()
-			harness.actions.addResourceToTimeline(
-				String(getResourceEntities(harness.projects$.get(), getActiveProject(harness.projects$.get(), harness.session$.get())!)[0].id),
-			)
 			await settleHarness()
 
 			harness.actions.trimSelectedClip('start', 10)
@@ -195,9 +225,6 @@ describe('createVideoEditorHarness actions', () => {
 
 			const project = getActiveProject(harness.projects$.get(), harness.session$.get())
 			expect(project).not.toBeNull()
-			const resources = getResourceEntities(harness.projects$.get(), project!)
-			harness.actions.addResourceToTimeline(String(resources[0].id))
-			await settleHarness()
 
 			const clipId = String(harness.session$.selectedEntityId.get())
 			harness.actions.setCursor(1.25)
@@ -237,9 +264,6 @@ describe('createVideoEditorHarness actions', () => {
 
 			const project = getActiveProject(harness.projects$.get(), harness.session$.get())
 			expect(project).not.toBeNull()
-			const resources = getResourceEntities(harness.projects$.get(), project!)
-			harness.actions.addResourceToTimeline(String(resources[0].id))
-			await settleHarness()
 
 			harness.actions.addEffectToSelectedClip('blur')
 			harness.actions.addEffectToSelectedClip('sharpen')

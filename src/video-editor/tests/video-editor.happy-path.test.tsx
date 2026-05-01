@@ -34,7 +34,6 @@ describe('video editor harness', () => {
 			const mediaBin = screen.getByLabelText('Media bin')
 			expect(within(mediaBin).getByText('Sample asset 1', { selector: 'strong' })).toBeInTheDocument()
 
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			expect(clipButton).toBeInTheDocument()
 
@@ -84,7 +83,6 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
@@ -112,7 +110,6 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
@@ -130,7 +127,6 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
@@ -154,7 +150,6 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
@@ -190,7 +185,6 @@ describe('video editor harness', () => {
 			const projectsRegion = screen.getByLabelText('Projects')
 			const sourceProjectName = within(projectsRegion).getByRole('button').textContent?.trim() ?? 'Project 1'
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 
 			await createProjectFromMenu(user)
 			// Open project switcher to inspect all projects (trigger shows active "Project 2")
@@ -235,7 +229,6 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
@@ -264,7 +257,6 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
-			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 
 			const timeline = screen.getByLabelText('Timeline')
 			setTimelineCursor(timeline, 4.5)
@@ -284,19 +276,22 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			expect(screen.getAllByText('Drop clips here.')).toHaveLength(2)
+			expect(screen.queryByRole('button', { name: 'Add first resource' })).not.toBeInTheDocument()
 
 			for (let index = 0; index < 100; index += 1) {
 				await act(async () => {
 					harness.actions.importSampleResource()
 					await Promise.resolve()
 					await Promise.resolve()
-					const registry = harness.projects$.get()
-					const project = getActiveProject(registry, harness.session$.get())
-					expect(project).not.toBeNull()
-					const resources = getResourceEntities(registry, project!)
-					harness.actions.addResourceToTimeline(resources[resources.length - 1].id)
-					await Promise.resolve()
-					await Promise.resolve()
+					if (index > 0) {
+						const registry = harness.projects$.get()
+						const project = getActiveProject(registry, harness.session$.get())
+						expect(project).not.toBeNull()
+						const resources = getResourceEntities(registry, project!)
+						harness.actions.addResourceToTimeline(resources[resources.length - 1].id)
+						await Promise.resolve()
+						await Promise.resolve()
+					}
 				})
 			}
 

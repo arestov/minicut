@@ -7,7 +7,7 @@
 | Project creation and switching | Create projects from a compact top-left menu and keep project data isolated. | `ProjectDropdown`, `PROJECT_CREATE`, active project session state. | Create two projects, switch through menu, verify isolated media/timeline state. |
 | Media import | Import video, image, and audio through the real interface. | `MediaBin` file input, `RESOURCE_IMPORT`, blob URLs, fixture media. | Upload video/image/audio fixtures, verify all resources appear. |
 | Resource thumbnails | Show a small visual preview for each resource in the media bin. | Thumbnail slot in each resource row for image/video/audio/sample kinds. | Upload fixtures, verify image/video/audio thumbnails are visible and typed. |
-| Add resources to timeline | Add resources to compatible tracks. | `TIMELINE_ADD_CLIP`, video/image to V1, audio to A1. | Add imported resources and verify clips are present on timeline tracks. |
+| Add resources to timeline | Add resources to compatible tracks; the first imported resource is inserted automatically when the timeline is empty. | `TIMELINE_ADD_CLIP`, video/image to V1, audio to A1, empty-timeline auto-add in the harness. | Add imported resources and verify clips are present on timeline tracks. |
 | Shared current step | Timeline has one global vertical current step/playhead across all tracks. | Single overlay playhead in `TimelineView`, no per-track cursor duplication. | Move cursor and verify exactly one timeline playhead spans ruler and tracks. |
 | Timeline overflow | Tracks remain visible and reachable when timeline content grows. | Scrollable timeline body and track list. | Populate many clips/tracks equivalent content and verify timeline body scrolls without clipping. |
 | Clip selection | Select clips from timeline and open inspector state. | `ClipItem`, `selectedEntityId`, `Inspector`. | Click a clip and verify inspector controls are enabled. |
@@ -29,7 +29,6 @@
 | Component | Control or scaffold | Connected action/state | Notes |
 | --- | --- | --- | --- |
 | `Toolbar` | Import sample | `actions.importSampleResource()` | Creates sample resource without file picker. |
-| `Toolbar` | Add first resource | `actions.addResourceToTimeline(resources[0])` | Fast path for first media item. |
 | `ProjectDropdown` | New project | `actions.createProject()` | Compact top-left project creation. |
 | `ProjectDropdown` | Project list items | `actions.setActiveProject(projectId)` | Switches active project. |
 | `MediaBin` | Import file input | `actions.importFiles(files)` | Real media import. |

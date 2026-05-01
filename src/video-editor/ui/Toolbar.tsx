@@ -1,5 +1,5 @@
 import { observer } from '@legendapp/state/react'
-import { Download, FolderPlus, Plus, Redo2, Undo2, Upload } from 'lucide-react'
+import { Download, FolderPlus, Redo2, Undo2, Upload } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { IconButton } from './ControlPrimitives'
 import { ProjectDropdown } from './ProjectDropdown'
@@ -7,12 +7,6 @@ import { ProjectDropdown } from './ProjectDropdown'
 export const Toolbar = observer(() => {
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
-	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
-	const rootEntityId = activeProject$?.rootEntityId.get()
-	const resourceIds = rootEntityId
-		? projects$.entitiesById[rootEntityId].rels.resources.get()
-		: []
-	const resources = Array.isArray(resourceIds) ? resourceIds : []
 
 	return (
 		<header className="ve-toolbar">
@@ -47,16 +41,6 @@ export const Toolbar = observer(() => {
 					disabled={!activeProjectId}
 				>
 					Import sample
-				</IconButton>
-				<IconButton
-					type="button"
-					icon={Plus}
-					label="Add first resource"
-					variant="secondary"
-					onClick={() => resources[0] && actions.addResourceToTimeline(resources[0])}
-					disabled={!resources[0]}
-				>
-					Add first resource
 				</IconButton>
 				<IconButton type="button" icon={Download} label="Export project" variant="default" disabled>
 					Export
