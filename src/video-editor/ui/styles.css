@@ -294,6 +294,68 @@ button:disabled {
 	border: 1px solid #ececef;
 }
 
+.ve-renderer {
+	width: 100%;
+	aspect-ratio: 16 / 9;
+	min-height: 160px;
+	margin-bottom: 12px;
+	padding: 12px;
+	border-radius: 8px;
+	border: 1px solid #d4d4d8;
+	background: #18181b;
+	overflow: hidden;
+}
+
+.ve-renderer__safe-area {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	border: 1px dashed rgba(244, 244, 245, 0.28);
+	background:
+		linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 45%),
+		#27272a;
+}
+
+.ve-renderer__empty,
+.ve-renderer__layer {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+}
+
+.ve-renderer__empty {
+	color: #d4d4d8;
+}
+
+.ve-renderer__layer {
+	position: absolute;
+	left: 18%;
+	top: 18%;
+	width: 64%;
+	height: 64%;
+	flex-direction: column;
+	gap: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.4);
+	background: linear-gradient(135deg, #dbeafe, #f8fafc 52%, #bfdbfe);
+	color: #18181b;
+	transform-origin: center;
+	box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
+}
+
+.ve-renderer__layer strong,
+.ve-renderer__layer span {
+	max-width: 90%;
+	overflow-wrap: anywhere;
+}
+
+.ve-renderer__layer span {
+	color: #3f3f46;
+}
+
 .ve-tool-group {
 	margin-bottom: 16px;
 	padding: 12px;

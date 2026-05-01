@@ -1,6 +1,7 @@
 import { observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { formatSeconds } from './format'
+import { RendererStage } from './RendererStage'
 
 const getActiveClipNames = (
 	projects$: ReturnType<typeof useVideoEditor>['projects$'],
@@ -69,6 +70,7 @@ export const PreviewPanel = observer(() => {
 					onChange={(event) => actions.setCursor(Number(event.currentTarget.value))}
 				/>
 			</label>
+			<RendererStage />
 			<p className="ve-preview__summary">Cursor at {formatSeconds(cursor)}</p>
 			<p className="ve-preview__summary">
 				Active clips at cursor: {activeClipNames.length > 0 ? activeClipNames.join(', ') : 'none'}

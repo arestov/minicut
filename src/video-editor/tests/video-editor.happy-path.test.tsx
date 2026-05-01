@@ -18,21 +18,25 @@ describe('video editor harness', () => {
 			expect(clipButton).toBeInTheDocument()
 
 			await user.click(clipButton)
+			expect(screen.getByLabelText('Renderer stage')).toHaveTextContent('Sample asset 1')
 			const inspector = screen.getByLabelText('Inspector')
 			const opacitySlider = within(inspector).getByRole('slider', { name: 'Opacity' })
 			expect(opacitySlider).toBeInTheDocument()
 			fireEvent.change(opacitySlider, { target: { value: '60' } })
 
 			expect(screen.getByText('60%', { selector: 'dd' })).toBeInTheDocument()
+			await user.click(within(inspector).getByRole('button', { name: 'Blur' }))
+			expect(within(inspector).getByText('1 effects')).toBeInTheDocument()
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+				filter: 'blur(3px)',
+			})
+
 			await user.click(within(inspector).getByRole('button', { name: 'Start +0.5s' }))
 			expect(screen.getByText('0.5s', { selector: 'dd' })).toBeInTheDocument()
 
 			const transformControls = within(inspector).getByLabelText('Transform controls')
 			fireEvent.change(within(transformControls).getByLabelText('X'), { target: { value: '24' } })
 			expect(within(transformControls).getByLabelText('X')).toHaveValue(24)
-
-			await user.click(within(inspector).getByRole('button', { name: 'Blur' }))
-			expect(within(inspector).getByText('1 effects')).toBeInTheDocument()
 
 			await user.click(within(inspector).getByRole('button', { name: 'Split clip' }))
 			expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2)
