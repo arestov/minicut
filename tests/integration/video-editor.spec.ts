@@ -92,6 +92,20 @@ test('project dropdown shows items when opened', async ({ page }) => {
 	await expect(projectList.getByRole('button', { name: /Project 2/i })).toBeVisible()
 })
 
+test('add first resource button toggles from disabled to enabled after import', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const addFirstResource = page.getByRole('button', { name: 'Add first resource' })
+	await expect(addFirstResource).toBeDisabled()
+
+	await page.getByRole('button', { name: 'Import sample' }).click()
+	await expect(addFirstResource).toBeEnabled()
+	await addFirstResource.click()
+
+	await expect(page.getByRole('button', { name: /Sample asset 1/i }).first()).toBeVisible()
+})
+
 test('imports real media files, edits timeline clips, and previews actual media elements', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
