@@ -51,6 +51,39 @@ export interface RenderedClip {
 	filters: string[]
 }
 
+export interface ResolvedAnimatedScalar {
+	value: number
+	keyframes?: ScalarKeyframe[]
+}
+
+export interface PreviewClipSource {
+	id: string
+	name: string
+	color: string
+	resourceName: string
+	resourceKind: ResourceAttrs['kind']
+	resourceUrl: string
+	mime: string
+	inPoint: number
+	start: number
+	duration: number
+	fadeIn: number
+	fadeOut: number
+	opacity: ResolvedAnimatedScalar
+	transform: {
+		x: ResolvedAnimatedScalar
+		y: ResolvedAnimatedScalar
+		scale: ResolvedAnimatedScalar
+		rotation: ResolvedAnimatedScalar
+	}
+	audio: { gain: number; pan: number }
+	filters: string[]
+}
+
+export interface PreviewStructure {
+	clipSources: PreviewClipSource[]
+}
+
 export interface PreviewScene {
 	cursor: number
 	isPlaying: boolean
@@ -172,33 +205,6 @@ export const getActiveClipRefsAtCursor = (
 	return activeClips
 }
 
-const sameTimelineClipInterval = (
-	left: TimelineClipInterval,
-	right: TimelineClipInterval,
-): boolean =>
-	left.id === right.id
-	&& left.trackId === right.trackId
-	&& left.trackKind === right.trackKind
-	&& left.start === right.start
-	&& left.end === right.end
-
-const sameTimelineClipIntervalList = (
-	left: TimelineClipInterval[],
-	right: TimelineClipInterval[],
-): boolean => {
-	if (left.length !== right.length) {
-		return false
-	}
-
-	for (let index = 0; index < left.length; index += 1) {
-		if (!sameTimelineClipInterval(left[index], right[index])) {
-			return false
-		}
-	}
-
-	return true
-}
-
 const getEffectFilter$ = (
 	projects$: Observable<ProjectRegistry>,
 	effectId: EntityId,
@@ -246,17 +252,30 @@ const createKeyframeResolver = (
 const scalarValue = (scalar: AnimatedScalar | undefined, fallback: number): AnimatedScalar =>
 	scalar ?? { value: fallback }
 
-const getRenderedClip$ = (
+const resolveAnimatedScalar$ = (
+	resolveKeyframe: (id: EntityId) => ScalarKeyframe | null,
+	scalar: AnimatedScalar | undefined,
+	fallback: number,
+): ResolvedAnimatedScalar => {
+	const normalizedScalar = scalarValue(scalar, fallback)
+	const keyframes = normalizedScalar.keyframes
+		?.map((keyframeId) => resolveKeyframe(keyframeId))
+		.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null)
+
+	return keyframes && keyframes.length > 0
+		? { value: Number(normalizedScalar.value), keyframes }
+		: { value: Number(normalizedScalar.value) }
+}
+
+const getPreviewClipSource$ = (
 	projects$: Observable<ProjectRegistry>,
 	clipRef: TimelineClipInterval,
-	cursor: number,
-	resolveKeyframe: (id: EntityId) => ScalarKeyframe | null,
-): RenderedClip => {
+): PreviewClipSource => {
 	const clip$ = clipAttrs$(projects$, clipRef.id)
 	const clipRels = clipRels$(projects$, clipRef.id)
+	const resolveKeyframe = createKeyframeResolver(projects$)
 	const start = Number(clip$.start.get())
 	const duration = Number(clip$.duration.get())
-	const localTime = Math.max(0, cursor - start)
 	const resourceId = clipRels.resource.get()
 	const resource$ = typeof resourceId === 'string'
 		? resourceAttrs$(projects$, resourceId)
@@ -272,11 +291,6 @@ const getRenderedClip$ = (
 		: []
 	const opacity = clip$.opacity.get()
 	const transform = clip$.transform.get()
-	const baseOpacity = evaluateKeyframedScalar(
-		scalarValue(opacity, 1),
-		localTime,
-		resolveKeyframe,
-	)
 
 	return {
 		id: clipRef.id,
@@ -288,47 +302,76 @@ const getRenderedClip$ = (
 		mime: resource$ ? String(resource$.mime.get()) : '',
 		inPoint: Number(clip$.in.get()),
 		start,
-		opacity: evaluateFadeOpacity(
-			cursor,
-			start,
-			duration,
-			baseOpacity,
-			Number(clip$.fadeIn.get() ?? 0),
-			Number(clip$.fadeOut.get() ?? 0),
-		),
+		duration,
+		fadeIn: Number(clip$.fadeIn.get() ?? 0),
+		fadeOut: Number(clip$.fadeOut.get() ?? 0),
+		opacity: resolveAnimatedScalar$(resolveKeyframe, opacity, 1),
 		transform: {
-			x: evaluateKeyframedScalar(scalarValue(transform?.x, 0), localTime, resolveKeyframe),
-			y: evaluateKeyframedScalar(scalarValue(transform?.y, 0), localTime, resolveKeyframe),
-			scale: evaluateKeyframedScalar(scalarValue(transform?.scale, 1), localTime, resolveKeyframe),
-			rotation: evaluateKeyframedScalar(scalarValue(transform?.rotation, 0), localTime, resolveKeyframe),
+			x: resolveAnimatedScalar$(resolveKeyframe, transform?.x, 0),
+			y: resolveAnimatedScalar$(resolveKeyframe, transform?.y, 0),
+			scale: resolveAnimatedScalar$(resolveKeyframe, transform?.scale, 1),
+			rotation: resolveAnimatedScalar$(resolveKeyframe, transform?.rotation, 0),
 		},
 		audio: clip$.audio.get() ?? { gain: 1, pan: 0 },
 		filters,
 	}
 }
 
+export const renderPreviewClipSourceAtCursor = (
+	clip: PreviewClipSource,
+	cursor: number,
+): RenderedClip | null => {
+	if (cursor < clip.start || cursor >= clip.start + clip.duration) {
+		return null
+	}
+
+	const localTime = Math.max(0, cursor - clip.start)
+	const baseOpacity = evaluateKeyframedScalar(clip.opacity, localTime)
+
+	return {
+		id: clip.id,
+		name: clip.name,
+		color: clip.color,
+		resourceName: clip.resourceName,
+		resourceKind: clip.resourceKind,
+		resourceUrl: clip.resourceUrl,
+		mime: clip.mime,
+		inPoint: clip.inPoint,
+		start: clip.start,
+		opacity: evaluateFadeOpacity(
+			cursor,
+			clip.start,
+			clip.duration,
+			baseOpacity,
+			clip.fadeIn,
+			clip.fadeOut,
+		),
+		transform: {
+			x: evaluateKeyframedScalar(clip.transform.x, localTime),
+			y: evaluateKeyframedScalar(clip.transform.y, localTime),
+			scale: evaluateKeyframedScalar(clip.transform.scale, localTime),
+			rotation: evaluateKeyframedScalar(clip.transform.rotation, localTime),
+		},
+		audio: clip.audio,
+		filters: clip.filters,
+	}
+}
+
+export const renderPreviewStructureAtCursor = (
+	structure: PreviewStructure,
+	cursor: number,
+): RenderedClip[] => structure.clipSources
+	.map((clip) => renderPreviewClipSourceAtCursor(clip, cursor))
+	.filter((clip): clip is RenderedClip => clip !== null)
+
 export const createPreviewScene$ = (
 	projects$: Observable<ProjectRegistry>,
 	session$: Observable<EditorSessionState>,
 ): Observable<PreviewScene> => {
-	const clipIntervals$ = createTimelineClipIntervals$(projects$, session$)
-	let previousActiveClipRefs: TimelineClipInterval[] = []
-	const activeClipRefs$ = computed(() => {
-		const nextClipRefs = getActiveClipRefsAtCursor(clipIntervals$.get(), session$.cursor.get())
-		if (sameTimelineClipIntervalList(previousActiveClipRefs, nextClipRefs)) {
-			return previousActiveClipRefs
-		}
-
-		previousActiveClipRefs = nextClipRefs
-		return nextClipRefs
-	})
-	const renderedClips$ = computed(() => {
-		const cursor = session$.cursor.get()
-		const resolveKeyframe = createKeyframeResolver(projects$)
-		return activeClipRefs$.get().map((clipRef) =>
-			getRenderedClip$(projects$, clipRef, cursor, resolveKeyframe),
-		)
-	})
+	const previewStructure$ = createPreviewStructure$(projects$, session$)
+	const renderedClips$ = computed(() =>
+		renderPreviewStructureAtCursor(previewStructure$.get(), session$.cursor.get()),
+	)
 	const visualRenderedClips$ = computed(() =>
 		renderedClips$.get().filter((clip) => clip.resourceKind !== 'audio'),
 	)
@@ -356,6 +399,17 @@ export const createPreviewScene$ = (
 			canvasClips: canvasClips$.get(),
 		}
 	})
+}
+
+export const createPreviewStructure$ = (
+	projects$: Observable<ProjectRegistry>,
+	session$: Observable<EditorSessionState>,
+): Observable<PreviewStructure> => {
+	const clipIntervals$ = createTimelineClipIntervals$(projects$, session$)
+
+	return computed(() => ({
+		clipSources: clipIntervals$.get().map((clipRef) => getPreviewClipSource$(projects$, clipRef)),
+	}))
 }
 
 export const createTrackEnd$ = (
