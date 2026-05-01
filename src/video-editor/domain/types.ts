@@ -82,6 +82,10 @@ export interface AnimatedScalar {
 	keyframes?: EntityId[]
 }
 
+export interface CommandTargetRef {
+	id: EntityId
+}
+
 export interface TransformAttrs {
 	x: AnimatedScalar
 	y: AnimatedScalar
@@ -163,40 +167,29 @@ export type Command =
 	  }
 	| {
 			c: typeof CMD.TIMELINE_MOVE_CLIP
-			p: {
-				projectId: ProjectId
-				clipId: EntityId
+			p: CommandTargetRef & {
 				delta: number
 			}
 	  }
 	| {
 			c: typeof CMD.TIMELINE_SPLIT_CLIP
-			p: {
-				projectId: ProjectId
-				clipId: EntityId
+			p: CommandTargetRef & {
 				time: number
 			}
 	  }
 	| {
 			c: typeof CMD.TIMELINE_DELETE_CLIP
-			p: {
-				projectId: ProjectId
-				clipId: EntityId
-			}
+			p: CommandTargetRef
 	  }
 	| {
 			c: typeof CMD.CLIP_UPDATE_ATTRS
-			p: {
-				projectId: ProjectId
-				clipId: EntityId
+			p: CommandTargetRef & {
 				attrs: Partial<ClipAttrs>
 			}
 	  }
 	| {
 			c: typeof CMD.EFFECT_ADD
-			p: {
-				projectId: ProjectId
-				clipId: EntityId
+			p: CommandTargetRef & {
 				name: string
 				kind: 'blur' | 'sharpen' | 'tint'
 				amount: number

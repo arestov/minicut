@@ -129,8 +129,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 					attrs: { name },
 				},
 			})
@@ -145,8 +144,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 					attrs: { color },
 				},
 			})
@@ -161,8 +159,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 					attrs: { opacity: { value: roundToTenths(opacityPercent / 100) } },
 				},
 			})
@@ -178,8 +175,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 					attrs: {
 						transform: {
 							x: { value: partial.x ?? attrs.transform.x.value },
@@ -216,8 +212,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 					attrs: nextAttrs,
 				},
 			})
@@ -232,8 +227,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.EFFECT_ADD,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 					name: `${kind[0].toUpperCase()}${kind.slice(1)}`,
 					kind,
 					amount: kind === 'tint' ? 0.35 : 0.25,
@@ -250,8 +244,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.TIMELINE_DELETE_CLIP,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 				},
 			}).then(() => {
 				session$.selectedEntityId.set(null)
@@ -269,8 +262,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.TIMELINE_SPLIT_CLIP,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId: clip.id,
+					id: clip.id,
 					time: splitTime,
 				},
 			}).then((result) => {
@@ -293,8 +285,7 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			dispatch({
 				c: CMD.TIMELINE_MOVE_CLIP,
 				p: {
-					projectId: getActiveProjectId(projects$, session$),
-					clipId,
+					id: clipId,
 					delta,
 				},
 			})

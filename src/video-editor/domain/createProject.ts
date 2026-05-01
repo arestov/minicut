@@ -1,10 +1,8 @@
-import { nanoid } from 'nanoid'
 import type { Entity, ProjectGraph, ProjectRegistry, TrackAttrs } from './types'
-
-const makeEntityId = (prefix: string) => `${prefix}:${nanoid(6)}`
+import { createEntityId, createProjectId } from './id'
 
 const createTrack = (kind: TrackAttrs['kind'], name: string, height: number): Entity => ({
-	id: makeEntityId('track'),
+	id: createEntityId(),
 	type: 'track',
 	attrs: {
 		kind,
@@ -30,9 +28,9 @@ export interface ProjectCreationResult {
 }
 
 export const createProjectGraph = (title: string, ordinal: number): ProjectCreationResult => {
-	const projectId = `project-${nanoid(6)}`
-	const projectEntityId = makeEntityId('project')
-	const timelineId = makeEntityId('timeline')
+	const projectId = createProjectId()
+	const projectEntityId = createEntityId()
+	const timelineId = createEntityId()
 	const videoTrack = createTrack('video', 'V1', 72)
 	const audioTrack = createTrack('audio', 'A1', 64)
 	const now = Date.now()

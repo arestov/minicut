@@ -1,4 +1,4 @@
-import { getClipIdsForTrack, getEntity, getProjectEntity, getTracks } from './selectors'
+import { getEntity, getProjectEntity, getProjectForEntity } from './selectors'
 import { CMD, type ClipAttrs, type Command, type Entity, type ProjectGraph, type ProjectRegistry } from './types'
 
 const assert = (condition: unknown, message: string): asserts condition => {
@@ -9,16 +9,18 @@ const assert = (condition: unknown, message: string): asserts condition => {
 
 const isFinitePositive = (value: number): boolean => Number.isFinite(value) && value > 0
 
-const assertClipInProject = (registry: ProjectRegistry, project: ProjectGraph, clipId: string): void => {
-	assert(
-		getTracks(registry, project).some((track) => getClipIdsForTrack(registry, track.id).includes(clipId)),
-		`Clip ${clipId} is not linked from project ${project.id}`,
-	)
-}
-
 export const assertProject = (registry: ProjectRegistry, projectId: string): ProjectGraph => {
 	const project = registry.projects[projectId]
 	assert(project, `Unknown project ${projectId}`)
+	return project
+}
+
+export const assertProjectForEntity = (
+	registry: ProjectRegistry,
+	entityId: string,
+): ProjectGraph => {
+	const project = getProjectForEntity(registry, entityId)
+	assert(project, `Unable to resolve project for entity ${entityId}`)
 	return project
 }
 
@@ -45,6 +47,13 @@ const assertProjectGraphShape = (registry: ProjectRegistry, project: ProjectGrap
 	assert(Array.isArray(root.rels.timelines), 'project.rels.timelines must be an array')
 	assert(typeof root.rels.activeTimeline === 'string', 'project.rels.activeTimeline must be an id')
 	assertEntityType(registry, String(root.rels.activeTimeline), 'timeline')
+}
+
+const assertClipTarget = (
+	registry: ProjectRegistry,
+	target: { id: string },
+): Entity => {
+	return assertEntityType(registry, target.id, 'clip')
 }
 
 export const validateCommand = (registry: ProjectRegistry, command: Command): void => {
@@ -77,17 +86,15 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		}
 
 		case CMD.TIMELINE_MOVE_CLIP: {
-			const project = assertProject(registry, command.p.projectId)
-			assertEntityType(registry, command.p.clipId, 'clip')
-			assertClipInProject(registry, project, command.p.clipId)
+			assertClipTarget(registry, command.p)
+			assertProjectForEntity(registry, command.p.id)
 			assert(Number.isFinite(command.p.delta), 'Move delta must be finite')
 			return
 		}
 
 		case CMD.TIMELINE_SPLIT_CLIP: {
-			const project = assertProject(registry, command.p.projectId)
-			const clip = assertEntityType(registry, command.p.clipId, 'clip')
-			assertClipInProject(registry, project, command.p.clipId)
+			const clip = assertClipTarget(registry, command.p)
+			assertProjectForEntity(registry, command.p.id)
 			const attrs = clip.attrs as unknown as ClipAttrs
 			assert(Number.isFinite(command.p.time), 'Split time must be finite')
 			assert(
@@ -98,16 +105,14 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		}
 
 		case CMD.TIMELINE_DELETE_CLIP: {
-			const project = assertProject(registry, command.p.projectId)
-			assertEntityType(registry, command.p.clipId, 'clip')
-			assertClipInProject(registry, project, command.p.clipId)
+			assertClipTarget(registry, command.p)
+			assertProjectForEntity(registry, command.p.id)
 			return
 		}
 
 		case CMD.CLIP_UPDATE_ATTRS: {
-			const project = assertProject(registry, command.p.projectId)
-			assertEntityType(registry, command.p.clipId, 'clip')
-			assertClipInProject(registry, project, command.p.clipId)
+			assertClipTarget(registry, command.p)
+			assertProjectForEntity(registry, command.p.id)
 			if (command.p.attrs.opacity) {
 				const opacity = command.p.attrs.opacity.value
 				assert(opacity >= 0 && opacity <= 1, 'Opacity must be between 0 and 1')
@@ -129,9 +134,8 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		}
 
 		case CMD.EFFECT_ADD: {
-			const project = assertProject(registry, command.p.projectId)
-			assertEntityType(registry, command.p.clipId, 'clip')
-			assertClipInProject(registry, project, command.p.clipId)
+			assertClipTarget(registry, command.p)
+			assertProjectForEntity(registry, command.p.id)
 			assert(command.p.name.trim().length > 0, 'Effect name is required')
 			assert(['blur', 'sharpen', 'tint'].includes(command.p.kind), 'Effect kind is invalid')
 			assert(command.p.amount >= 0 && command.p.amount <= 1, 'Effect amount must be between 0 and 1')

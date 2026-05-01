@@ -13,6 +13,14 @@ import type {
 const asArray = (value: Entity['rels'][string]): EntityId[] =>
 	Array.isArray(value) ? value : []
 
+const asEntityIds = (value: Entity['rels'][string]): EntityId[] => {
+	if (Array.isArray(value)) {
+		return value
+	}
+
+	return value ? [value] : []
+}
+
 export const getProjectEntity = (registry: ProjectRegistry, project: ProjectGraph): Entity =>
 	registry.entitiesById[project.rootEntityId]
 
@@ -68,6 +76,49 @@ export const getVideoTrack = (registry: ProjectRegistry, project: ProjectGraph):
 
 export const getEntity = (registry: ProjectRegistry, entityId: EntityId | null): Entity | null =>
 	entityId ? registry.entitiesById[entityId] ?? null : null
+
+const isEntityReachableFromProject = (
+	registry: ProjectRegistry,
+	project: ProjectGraph,
+	entityId: EntityId,
+): boolean => {
+	const visited = new Set<EntityId>()
+	const queue: EntityId[] = [project.rootEntityId]
+
+	while (queue.length > 0) {
+		const currentId = queue.pop() as EntityId
+		if (currentId === entityId) {
+			return true
+		}
+		if (visited.has(currentId)) {
+			continue
+		}
+
+		visited.add(currentId)
+		const entity = registry.entitiesById[currentId]
+		if (!entity) {
+			continue
+		}
+
+		for (const relValue of Object.values(entity.rels)) {
+			for (const relId of asEntityIds(relValue)) {
+				if (!visited.has(relId)) {
+					queue.push(relId)
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+export const getProjectForEntity = (
+	registry: ProjectRegistry,
+	entityId: EntityId,
+): ProjectGraph | null =>
+	Object.values(registry.projects).find((project) =>
+		isEntityReachableFromProject(registry, project, entityId),
+	) ?? null
 
 export const getResourceEntities = (registry: ProjectRegistry, project: ProjectGraph): Entity[] =>
 	asArray(getProjectEntity(registry, project).rels.resources).map(

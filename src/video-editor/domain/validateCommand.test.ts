@@ -48,8 +48,7 @@ describe('command validation', () => {
 			buildDispatchResult(registry, {
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					projectId,
-					clipId: String(clipResult.createdIds?.clipId),
+					id: String(clipResult.createdIds?.clipId),
 					attrs: { opacity: { value: 1.5 } },
 				},
 			}),
@@ -76,7 +75,7 @@ describe('command validation', () => {
 
 		const deleteResult = buildDispatchResult(registry, {
 			c: CMD.TIMELINE_DELETE_CLIP,
-			p: { projectId, clipId: String(clipResult.createdIds?.clipId) },
+			p: { id: String(clipResult.createdIds?.clipId) },
 		})
 
 		const immutableNext = applyPatchEnvelopeToRegistry(registry, deleteResult.envelope)

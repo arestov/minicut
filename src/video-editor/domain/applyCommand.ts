@@ -1,6 +1,6 @@
-import { nanoid } from 'nanoid'
 import { createProjectGraph } from './createProject'
-import { assertEntity, assertProject, validateCommand } from './validateCommand'
+import { assertEntity, assertProject, assertProjectForEntity, validateCommand } from './validateCommand'
+import { createEntityId } from './id'
 import {
 	getClipIdsForTrack,
 	getProjectEntity,
@@ -18,8 +18,6 @@ import {
 	CMD,
 	PATCH,
 } from './types'
-
-const makeEntityId = (prefix: string) => `${prefix}:${nanoid(6)}`
 
 const scalar = (value: number): AnimatedScalar => ({ value })
 
@@ -64,7 +62,7 @@ export const buildDispatchResult = (
 		case CMD.RESOURCE_IMPORT: {
 			const project = assertProject(registry, command.p.projectId)
 			const projectEntity = getProjectEntity(registry, project)
-			const resourceId = makeEntityId('resource')
+			const resourceId = createEntityId()
 			const resource: Entity = {
 				id: resourceId,
 				type: 'resource',
@@ -118,7 +116,7 @@ export const buildDispatchResult = (
 				throw new Error('No video track available for clip insertion')
 			}
 
-			const clipId = makeEntityId('clip')
+			const clipId = createEntityId()
 			const clipStart = getTrackEnd(registry, targetTrack.id)
 			const clipDuration = Number(resource.attrs.duration) || 1
 			const clip: Entity = {
@@ -166,8 +164,8 @@ export const buildDispatchResult = (
 		}
 
 		case CMD.TIMELINE_MOVE_CLIP: {
-			const project = assertProject(registry, command.p.projectId)
-			const clip = assertEntity(registry, command.p.clipId)
+			const project = assertProjectForEntity(registry, command.p.id)
+			const clip = assertEntity(registry, command.p.id)
 			const clipAttrs = clip.attrs as ClipAttrs
 
 			return {
@@ -190,8 +188,8 @@ export const buildDispatchResult = (
 		}
 
 		case CMD.TIMELINE_SPLIT_CLIP: {
-			const project = assertProject(registry, command.p.projectId)
-			const clip = assertEntity(registry, command.p.clipId)
+			const project = assertProjectForEntity(registry, command.p.id)
+			const clip = assertEntity(registry, command.p.id)
 			const clipAttrs = clip.attrs as ClipAttrs
 			const splitTime = command.p.time
 			const clipEnd = clipAttrs.start + clipAttrs.duration
@@ -200,7 +198,7 @@ export const buildDispatchResult = (
 				throw new Error('Split time must be inside clip bounds')
 			}
 
-			const rightClipId = makeEntityId('clip')
+			const rightClipId = createEntityId()
 			const rightClip: Entity = {
 				id: rightClipId,
 				type: 'clip',
@@ -255,8 +253,8 @@ export const buildDispatchResult = (
 		}
 
 		case CMD.TIMELINE_DELETE_CLIP: {
-			const project = assertProject(registry, command.p.projectId)
-			const clip = assertEntity(registry, command.p.clipId)
+			const project = assertProjectForEntity(registry, command.p.id)
+			const clip = assertEntity(registry, command.p.id)
 			const track = findClipTrack(registry, clip.id)
 			if (!track) {
 				throw new Error(`Unable to find parent track for clip ${clip.id}`)
@@ -290,8 +288,8 @@ export const buildDispatchResult = (
 		}
 
 		case CMD.CLIP_UPDATE_ATTRS: {
-			const project = assertProject(registry, command.p.projectId)
-			assertEntity(registry, command.p.clipId)
+			const project = assertProjectForEntity(registry, command.p.id)
+			assertEntity(registry, command.p.id)
 
 			return {
 				envelope: {
@@ -301,7 +299,7 @@ export const buildDispatchResult = (
 						{
 							c: PATCH.ATTRS_MERGE,
 							p: {
-								id: command.p.clipId,
+								id: command.p.id,
 								attrs: command.p.attrs,
 							},
 						},
@@ -311,9 +309,9 @@ export const buildDispatchResult = (
 		}
 
 		case CMD.EFFECT_ADD: {
-			const project = assertProject(registry, command.p.projectId)
-			const clip = assertEntity(registry, command.p.clipId)
-			const effectId = makeEntityId('effect')
+			const project = assertProjectForEntity(registry, command.p.id)
+			const clip = assertEntity(registry, command.p.id)
+			const effectId = createEntityId()
 			const effects = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
 			const effect: Entity = {
 				id: effectId,

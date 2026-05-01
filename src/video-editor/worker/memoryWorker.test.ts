@@ -17,7 +17,7 @@ const createClipWithEffect = () => {
 	const clipId = String(clipResult.createdIds?.clipId)
 	const effectResult = worker.dispatch({
 		c: CMD.EFFECT_ADD,
-		p: { projectId, clipId, name: 'Blur', kind: 'blur', amount: 0.25 },
+		p: { id: clipId, name: 'Blur', kind: 'blur', amount: 0.25 },
 	})
 
 	return { worker, projectId, clipId, effectId: String(effectResult.createdIds?.effectId) }
@@ -37,7 +37,7 @@ describe('MemoryWorkerAuthority', () => {
 
 		const deleteResult = worker.dispatch({
 			c: CMD.TIMELINE_DELETE_CLIP,
-			p: { projectId, clipId },
+			p: { id: clipId },
 		})
 
 		expect(deleteResult.deletedIds).toEqual([clipId, effectId])
@@ -50,7 +50,7 @@ describe('MemoryWorkerAuthority', () => {
 
 	it('keeps project roots intact after deleting a clip node', () => {
 		const { worker, projectId, clipId } = createClipWithEffect()
-		worker.dispatch({ c: CMD.TIMELINE_DELETE_CLIP, p: { projectId, clipId } })
+		worker.dispatch({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } })
 
 		const snapshot = worker.getSnapshot()
 		const project = snapshot.projects[projectId]
