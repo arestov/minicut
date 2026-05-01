@@ -16,6 +16,9 @@ const sampleKindCycle = ['video', 'audio', 'image'] as const
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 
+const clamp = (value: number, min: number, max: number): number =>
+	Math.min(max, Math.max(min, value))
+
 const getActiveProjectId = (
 	projects$: Observable<ProjectRegistry>,
 	session$: Observable<EditorSessionState>,
@@ -169,6 +172,10 @@ export const createVideoEditorHarness = () => {
 
 		setCursor(value: number): void {
 			session$.cursor.set(roundToTenths(value))
+		},
+
+		zoomTimeline(delta: number): void {
+			session$.timelineZoom.set(clamp(session$.timelineZoom.get() + delta, 32, 112))
 		},
 	}
 

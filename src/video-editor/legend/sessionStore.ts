@@ -8,6 +8,7 @@ export const createInitialSession = (): EditorSessionState => ({
 	selectedEntityId: null,
 	cursor: 0,
 	isPlaying: false,
+	timelineZoom: 56,
 })
 
 export const createSessionStore = (): Observable<EditorSessionState> =>

@@ -37,6 +37,7 @@ export interface EditorSessionState {
 	selectedEntityId: EntityId | null
 	cursor: number
 	isPlaying: boolean
+	timelineZoom: number
 }
 
 export interface ResourceAttrs {

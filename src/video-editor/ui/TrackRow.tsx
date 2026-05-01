@@ -5,9 +5,10 @@ import { ClipItem } from './ClipItem'
 interface TrackRowProps {
 	projectId: string
 	trackId: string
+	timelineZoom: number
 }
 
-export const TrackRow = observer(({ projectId, trackId }: TrackRowProps) => {
+export const TrackRow = observer(({ projectId, trackId, timelineZoom }: TrackRowProps) => {
 	const { projects$, session$ } = useVideoEditor()
 	const track$ = projects$.projects[projectId].entities[trackId]
 	const clipIds = track$.rels.clips.get()
@@ -20,7 +21,7 @@ export const TrackRow = observer(({ projectId, trackId }: TrackRowProps) => {
 				<strong>{String(track$.attrs.name.get())}</strong>
 				<small>{String(track$.attrs.kind.get())}</small>
 			</div>
-			<div className="ve-track-row__clips">
+			<div className="ve-track-row__rail">
 				{clips.length === 0 ? (
 					<p className="ve-empty">Drop clips here.</p>
 				) : (
@@ -30,6 +31,7 @@ export const TrackRow = observer(({ projectId, trackId }: TrackRowProps) => {
 							projectId={projectId}
 							clipId={clipId}
 							selected={clipId === selectedEntityId}
+							timelineZoom={timelineZoom}
 						/>
 					))
 				)}
