@@ -1,5 +1,5 @@
 import { observer } from '@legendapp/state/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ClipAttrs, Entity, ResourceAttrs, TransformAttrs } from '../domain/types'
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
@@ -14,6 +14,8 @@ interface RenderedClip {
 	resourceKind: ResourceAttrs['kind']
 	resourceUrl: string
 	mime: string
+	inPoint: number
+	start: number
 	opacity: number
 	transform: TransformAttrs
 	filters: string[]
@@ -84,10 +86,24 @@ const drawFallbackPreview = (
 	})
 }
 
+const getClipLocalMediaTime = (clip: RenderedClip, cursor: number): number =>
+	Math.max(0, clip.inPoint + cursor - clip.start)
+
+const seekMediaElement = (element: HTMLMediaElement, localTime: number): void => {
+	if (Number.isFinite(localTime) && Math.abs(element.currentTime - localTime) > 0.05) {
+		try {
+			element.currentTime = localTime
+		} catch {
+			// Some browsers reject seeking before metadata is ready; metadata handlers retry.
+		}
+	}
+}
+
 export const RendererStage = observer(() => {
 	const { projects$, session$ } = useVideoEditor()
 	const canvasRef = useRef<HTMLCanvasElement | null>(null)
 	const workerRef = useRef<Worker | null>(null)
+	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
 	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>('fallback')
 	const cursor = session$.cursor.get()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
@@ -97,7 +113,7 @@ export const RendererStage = observer(() => {
 	const trackIds = typeof timelineId === 'string'
 		? projects$.entitiesById[timelineId].rels.tracks.get()
 		: []
-	const renderedClips: RenderedClip[] = []
+	const activeClipIds: string[] = []
 
 	if (Array.isArray(trackIds)) {
 		for (const trackId of trackIds) {
@@ -108,47 +124,44 @@ export const RendererStage = observer(() => {
 
 			for (const clipId of clipIds) {
 				const clip$ = projects$.entitiesById[clipId]
-				const attrs = clip$.attrs.get() as unknown as ClipAttrs
-				if (cursor < attrs.start || cursor >= attrs.start + attrs.duration) {
-					continue
+				const start = Number(clip$.attrs.start.get())
+				const duration = Number(clip$.attrs.duration.get())
+				if (cursor >= start && cursor < start + duration) {
+					activeClipIds.push(clipId)
 				}
-
-				const resourceId = clip$.rels.resource.get()
-				const resourceAttrs = typeof resourceId === 'string'
-					? projects$.entitiesById[resourceId].attrs.get() as unknown as ResourceAttrs
-					: null
-				const effectIds = clip$.rels.effects.get()
-				const filters = Array.isArray(effectIds)
-					? effectIds
-						.map((effectId) => getEffectFilter(projects$.entitiesById[effectId].get() as Entity))
-						.filter((filter): filter is string => Boolean(filter))
-					: []
-
-				renderedClips.push({
-					id: clipId,
-					name: attrs.name,
-					color: String(attrs.color ?? '#2563eb'),
-					resourceName: resourceAttrs?.name ?? attrs.name,
-					resourceKind: resourceAttrs?.kind ?? 'image',
-					resourceUrl: resourceAttrs?.url ?? '',
-					mime: resourceAttrs?.mime ?? '',
-					opacity: attrs.opacity.value,
-					transform: attrs.transform,
-					filters,
-				})
 			}
 		}
 	}
 
-	const renderPayload = useMemo(() => ({
-		cursor,
-		clips: renderedClips.map((clip) => ({
-			name: clip.name,
-			color: clip.color,
-			kind: clip.resourceKind,
-			opacity: clip.opacity,
-		})),
-	}), [cursor, renderedClips])
+	const renderedClips: RenderedClip[] = activeClipIds.map((clipId) => {
+		const clip$ = projects$.entitiesById[clipId]
+		const attrs = clip$.attrs.get() as unknown as ClipAttrs
+		const resourceId = clip$.rels.resource.get()
+		const resourceAttrs = typeof resourceId === 'string'
+			? projects$.entitiesById[resourceId].attrs.get() as unknown as ResourceAttrs
+			: null
+		const effectIds = clip$.rels.effects.get()
+		const filters = Array.isArray(effectIds)
+			? effectIds
+				.map((effectId) => getEffectFilter(projects$.entitiesById[effectId].get() as Entity))
+				.filter((filter): filter is string => Boolean(filter))
+			: []
+
+		return {
+			id: clipId,
+			name: attrs.name,
+			color: String(attrs.color ?? '#2563eb'),
+			resourceName: resourceAttrs?.name ?? attrs.name,
+			resourceKind: resourceAttrs?.kind ?? 'image',
+			resourceUrl: resourceAttrs?.url ?? '',
+			mime: resourceAttrs?.mime ?? '',
+			inPoint: attrs.in,
+			start: attrs.start,
+			opacity: attrs.opacity.value,
+			transform: attrs.transform,
+			filters,
+		}
+	})
 
 	useEffect(() => {
 		const canvas = canvasRef.current
@@ -174,14 +187,35 @@ export const RendererStage = observer(() => {
 
 		const width = canvas.clientWidth || 640
 		const height = canvas.clientHeight || 360
+		const clips = renderedClips.map((clip) => ({
+			name: clip.name,
+			color: clip.color,
+			kind: clip.resourceKind,
+			opacity: clip.opacity,
+		}))
 		if (workerRef.current) {
-			workerRef.current.postMessage({ type: 'render', width, height, ...renderPayload })
+			workerRef.current.postMessage({ type: 'render', width, height, cursor, clips })
 			return
 		}
 
 		setRenderMode('fallback')
-		drawFallbackPreview(canvas, renderPayload.cursor, renderedClips)
-	}, [renderPayload, renderedClips])
+		drawFallbackPreview(canvas, cursor, renderedClips)
+	}, [cursor, renderedClips])
+
+	useEffect(() => {
+		for (const clip of renderedClips) {
+			if (clip.resourceKind !== 'video' && clip.resourceKind !== 'audio') {
+				continue
+			}
+
+			const element = mediaElementsRef.current.get(clip.id)
+			if (!element) {
+				continue
+			}
+
+			seekMediaElement(element, getClipLocalMediaTime(clip, cursor))
+		}
+	}, [cursor, renderedClips])
 
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">
@@ -213,12 +247,37 @@ export const RendererStage = observer(() => {
 									<img src={clip.resourceUrl} alt={clip.resourceName} />
 								) : null}
 								{hasMedia && clip.resourceKind === 'video' ? (
-									<video src={clip.resourceUrl} muted playsInline preload="metadata" />
+									<video
+										ref={(element) => {
+											if (element) {
+												mediaElementsRef.current.set(clip.id, element)
+												return
+											}
+											mediaElementsRef.current.delete(clip.id)
+										}}
+										src={clip.resourceUrl}
+										muted
+										playsInline
+										preload="metadata"
+										onLoadedMetadata={(event) => seekMediaElement(event.currentTarget, getClipLocalMediaTime(clip, cursor))}
+									/>
 								) : null}
 								{hasMedia && clip.resourceKind === 'audio' ? (
 									<div className="ve-renderer__audio" aria-label="Audio preview">
 										<span>{clip.resourceName}</span>
-										<audio src={clip.resourceUrl} preload="metadata" controls />
+										<audio
+											ref={(element) => {
+												if (element) {
+													mediaElementsRef.current.set(clip.id, element)
+													return
+												}
+												mediaElementsRef.current.delete(clip.id)
+											}}
+											src={clip.resourceUrl}
+											preload="metadata"
+											controls
+											onLoadedMetadata={(event) => seekMediaElement(event.currentTarget, getClipLocalMediaTime(clip, cursor))}
+										/>
 									</div>
 								) : null}
 								{!hasMedia ? (

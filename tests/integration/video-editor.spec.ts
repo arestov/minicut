@@ -140,6 +140,9 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	const renderer = page.getByLabel('Renderer stage')
 	await expect(renderer.getByLabel('Offscreen preview canvas')).toHaveAttribute('data-render-mode', 'offscreen')
 	await expect(renderer.locator('video')).toHaveCount(1)
+	await expect.poll(async () =>
+		renderer.locator('video').evaluate((element) => (element as HTMLVideoElement).currentTime),
+	).toBeGreaterThan(0.4)
 
 	const imageClipText = await timeline.getByRole('button', { name: /fixture-image.png/i }).innerText()
 	const imageClipStart = Number(imageClipText.match(/· (\d+(?:\.\d+)?)s \//)?.[1] ?? 0)
