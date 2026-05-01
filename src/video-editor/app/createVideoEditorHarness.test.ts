@@ -183,6 +183,63 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('uses session activeProjectId over registry activeProjectId when both are valid', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject('Session preferred')
+			await settleHarness()
+			harness.actions.createProject('Registry fallback')
+			await settleHarness()
+
+			const projectIds = Object.keys(harness.projects$.projects.get())
+			expect(projectIds.length).toBeGreaterThanOrEqual(2)
+			const sessionProjectId = String(projectIds[0])
+			const registryProjectId = String(projectIds[1])
+
+			harness.session$.activeProjectId.set(sessionProjectId)
+			harness.projects$.activeProjectId.set(registryProjectId)
+
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			const registry = harness.projects$.get()
+			const sessionProject = registry.projects[sessionProjectId]
+			const registryProject = registry.projects[registryProjectId]
+			expect(getResourceEntities(registry, sessionProject)).toHaveLength(1)
+			expect(getResourceEntities(registry, registryProject)).toHaveLength(0)
+		} finally {
+			harness.destroy()
+		}
+	})
+
+	it('falls back to registry activeProjectId when session activeProjectId is stale', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject('Fallback project')
+			await settleHarness()
+
+			const projectId = String(harness.session$.activeProjectId.get())
+			harness.session$.activeProjectId.set('project:missing')
+			harness.projects$.activeProjectId.set(projectId)
+
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			const registry = harness.projects$.get()
+			const project = registry.projects[projectId]
+			expect(getResourceEntities(registry, project)).toHaveLength(1)
+			expect(harness.session$.activeProjectId.get()).toBe(projectId)
+		} finally {
+			harness.destroy()
+		}
+	})
+
 	it('exports the selected clip as a render manifest and revokes its download URL', async () => {
 		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:export-manifest')
 		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})

@@ -91,11 +91,30 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const getClipEnd = (attrs: ClipAttrs): number => attrs.start + attrs.duration
 
+const resolveActiveProjectId = (
+	registry: ProjectRegistry,
+	session: Pick<EditorSessionState, 'activeProjectId'>,
+): string | null => {
+	// Contract: session.activeProjectId is the tab-local source of truth when valid.
+	const sessionProjectId = session.activeProjectId
+	if (sessionProjectId && registry.projects[sessionProjectId]) {
+		return sessionProjectId
+	}
+
+	// registry.activeProjectId remains a cross-tab hint and fallback.
+	const registryProjectId = registry.activeProjectId
+	if (registryProjectId && registry.projects[registryProjectId]) {
+		return registryProjectId
+	}
+
+	return Object.keys(registry.projects)[0] ?? null
+}
+
 const getActiveProjectId = (
 	projects$: Observable<ProjectRegistry>,
 	session$: Observable<EditorSessionState>,
 ): string => {
-	const projectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const projectId = resolveActiveProjectId(projects$.get(), session$.get())
 	if (!projectId) {
 		throw new Error('No active project selected')
 	}
@@ -178,21 +197,18 @@ export const createVideoEditorHarness = (
 
 	const syncActiveProjectSelection = (): void => {
 		const registry = projects$.get()
-		const sessionActiveProjectId = session$.activeProjectId.get()
-		if (sessionActiveProjectId && registry.projects[sessionActiveProjectId]) {
+		const resolvedProjectId = resolveActiveProjectId(registry, session$.get())
+		if (!resolvedProjectId) {
 			return
 		}
 
-		const fallbackProjectId = registry.activeProjectId ?? Object.keys(registry.projects)[0] ?? null
-		if (!fallbackProjectId) {
-			return
+		const registryActiveProjectId = projects$.activeProjectId.get()
+		if (!registryActiveProjectId || !registry.projects[registryActiveProjectId]) {
+			projects$.activeProjectId.set(resolvedProjectId)
 		}
 
-		if (projects$.activeProjectId.get() !== fallbackProjectId) {
-			projects$.activeProjectId.set(fallbackProjectId)
-		}
-		if (session$.activeProjectId.get() !== fallbackProjectId) {
-			session$.activeProjectId.set(fallbackProjectId)
+		if (session$.activeProjectId.get() !== resolvedProjectId) {
+			session$.activeProjectId.set(resolvedProjectId)
 		}
 	}
 
