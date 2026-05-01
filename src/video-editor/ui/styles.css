@@ -479,26 +479,6 @@ button:disabled {
 	padding: 5px 8px;
 }
 
-.ve-timeline-cursor-control {
-	display: grid;
-	grid-template-columns: 139px minmax(0, 1fr);
-	align-items: center;
-	gap: 10px;
-	height: 28px;
-	margin: 0;
-}
-
-.ve-timeline-cursor-control span {
-	color: #71717a;
-	font-size: 12px;
-	font-weight: 600;
-}
-
-.ve-timeline-cursor-control input {
-	width: 100%;
-	accent-color: #dc2626;
-}
-
 .ve-timeline-ruler {
 	position: relative;
 	height: 28px;

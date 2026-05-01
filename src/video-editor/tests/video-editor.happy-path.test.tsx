@@ -8,6 +8,20 @@ const createProjectFromMenu = async (user: ReturnType<typeof renderVideoEditor>[
 	await user.click(within(projectsRegion).getByRole('button', { name: 'New project' }))
 }
 
+const timelineTimeOriginPx = 167
+
+const setTimelineCursor = (timeline: HTMLElement, seconds: number): void => {
+	const scrollArea = timeline.querySelector('.ve-timeline-scroll-area') as HTMLDivElement | null
+	expect(scrollArea).not.toBeNull()
+
+	const zoomText = within(timeline).getByText(/px\/s$/i).textContent ?? '56'
+	const zoom = Number.parseFloat(zoomText)
+	fireEvent.pointerDown(scrollArea as HTMLDivElement, {
+		buttons: 1,
+		clientX: timelineTimeOriginPx + seconds * zoom,
+	})
+}
+
 describe('video editor harness', () => {
 	it('runs the happy path: project -> import -> clip -> inspect -> split -> nudge', async () => {
 		const { user, unmount } = renderVideoEditor()
@@ -52,8 +66,7 @@ describe('video editor harness', () => {
 			expect(within(transformControls).getByLabelText('X')).toHaveValue(24)
 
 			const timeline = screen.getByLabelText('Timeline')
-			const cursorSlider = within(timeline).getByRole('slider', { name: 'Cursor' })
-			fireEvent.change(cursorSlider, { target: { value: '2.75' } })
+			setTimelineCursor(timeline, 2.75)
 
 			await user.click(within(inspector).getByRole('button', { name: 'Split clip' }))
 			expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2)
@@ -77,8 +90,7 @@ describe('video editor harness', () => {
 			await user.click(clipButton)
 
 			const timeline = screen.getByLabelText('Timeline')
-			const cursorSlider = within(timeline).getByRole('slider', { name: 'Cursor' })
-			fireEvent.change(cursorSlider, { target: { value: '1.25' } })
+			setTimelineCursor(timeline, 1.25)
 
 			await user.click(within(screen.getByLabelText('Inspector')).getByRole('button', { name: 'Split clip' }))
 
@@ -255,8 +267,7 @@ describe('video editor harness', () => {
 			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 
 			const timeline = screen.getByLabelText('Timeline')
-			const cursorSlider = within(timeline).getByRole('slider', { name: 'Cursor' })
-			fireEvent.change(cursorSlider, { target: { value: '4.5' } })
+			setTimelineCursor(timeline, 4.5)
 
 			expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.50s')
 			expect(within(timeline).getAllByLabelText('Current step')).toHaveLength(1)

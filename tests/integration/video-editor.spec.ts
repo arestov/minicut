@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
+const timelineTimeOriginPx = 167
+
 const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
 	const projectsRegion = page.getByLabel('Projects')
 	await projectsRegion.getByRole('button').click()
@@ -16,6 +18,19 @@ const importFixtureMedia = async (page: import('@playwright/test').Page) => {
 		path.resolve('tests/fixtures/media/fixture-image.png'),
 		path.resolve('tests/fixtures/media/fixture-audio.wav'),
 	])
+}
+
+const setTimelineCursor = async (
+	page: import('@playwright/test').Page,
+	seconds: number,
+): Promise<void> => {
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const zoomText = await timeline.getByText(/px\/s$/i).first().textContent()
+	const zoom = Number.parseFloat((zoomText ?? '56').replace(/[^0-9.]/g, '')) || 56
+	const scrollArea = timeline.locator('.ve-timeline-scroll-area')
+	await scrollArea.click({
+		position: { x: timelineTimeOriginPx + seconds * zoom, y: 10 },
+	})
 }
 
 test('user can finish the harness happy path in the browser', async ({ page }) => {
@@ -45,7 +60,7 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 		await expect(opacitySlider).toHaveValue(value)
 	}
 	await expect(inspector.getByText('60%')).toBeVisible()
-	await page.getByRole('region', { name: 'Timeline' }).getByRole('slider', { name: 'Cursor' }).fill('2.75')
+	await setTimelineCursor(page, 2.75)
 
 	await inspector.getByRole('button', { name: 'Split clip' }).click()
 	await expect(page.getByRole('button', { name: /Sample asset 1/i })).toHaveCount(2)
@@ -63,7 +78,7 @@ test('split clip follows playhead and reflects resulting durations in timeline w
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	const clip = timeline.getByRole('button', { name: /Sample asset 1/i }).first()
 	await clip.click()
-	await timeline.getByRole('slider', { name: 'Cursor' }).fill('1.25')
+	await setTimelineCursor(page, 1.25)
 
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('button', { name: 'Split clip' }).click()
@@ -135,8 +150,7 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	await inspector.getByLabel('X').fill('24')
 	await expect(inspector.getByText('60%')).toBeVisible()
 
-	const cursor = timeline.getByRole('slider', { name: 'Cursor' })
-	await cursor.fill('0.5')
+	await setTimelineCursor(page, 0.5)
 	const renderer = page.getByLabel('Renderer stage')
 	await expect(renderer.getByLabel('Offscreen preview canvas')).toHaveAttribute('data-render-mode', 'offscreen')
 	await expect(renderer.locator('video')).toHaveCount(1)
@@ -146,11 +160,11 @@ test('imports real media files, edits timeline clips, and previews actual media 
 
 	const imageClipText = await timeline.getByRole('button', { name: /fixture-image.png/i }).innerText()
 	const imageClipStart = Number(imageClipText.match(/· (\d+(?:\.\d+)?)s \//)?.[1] ?? 0)
-	await cursor.fill(String(imageClipStart + 0.5))
+	await setTimelineCursor(page, imageClipStart + 0.5)
 	await expect(renderer.locator('img[alt="fixture-image.png"]')).toBeVisible()
 	await expect(renderer.locator('.ve-renderer__layer--image')).toHaveCSS('opacity', '0.6')
 
-	await cursor.fill('0.5')
+	await setTimelineCursor(page, 0.5)
 	await expect(renderer.locator('audio')).toHaveCount(1)
 })
 
@@ -165,7 +179,7 @@ test('timeline uses one shared current step and keeps many tracks scrollable', a
 	}
 
 	await expect(timeline.getByText('22 tracks')).toBeVisible()
-	await timeline.getByRole('slider', { name: 'Cursor' }).fill('8')
+	await setTimelineCursor(page, 8)
 	await expect(timeline.getByLabel('Current step')).toHaveCount(1)
 	await expect(timeline.getByLabel('Current time')).toHaveText('8.00s')
 
@@ -194,7 +208,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
 	await inspector.getByRole('button', { name: 'End -0.5s' }).click()
 	await expect(inspector.locator('dd').filter({ hasText: '0.5s' })).toBeVisible()
-	await page.getByRole('region', { name: 'Timeline' }).getByRole('slider', { name: 'Cursor' }).fill('0.5')
+	await setTimelineCursor(page, 0.5)
 
 	await inspector.getByRole('button', { name: 'Tint' }).click()
 	await expect(inspector.getByText('1 effects')).toBeVisible()

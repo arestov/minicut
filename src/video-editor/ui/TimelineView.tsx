@@ -124,17 +124,6 @@ export const TimelineView = observer(() => {
 				<p className="ve-empty">Create a project to allocate timeline tracks.</p>
 			) : (
 				<div className="ve-timeline__body">
-					<label className="ve-timeline-cursor-control">
-						<span>Cursor</span>
-						<input
-							type="range"
-							min="0"
-							max={String(cursorRangeMax)}
-							step="0.01"
-							value={cursorSeconds}
-							onChange={(event) => actions.setCursor(Number(event.currentTarget.value))}
-						/>
-					</label>
 					<div
 						className="ve-timeline-scroll-area"
 						data-tool={activeTool}
