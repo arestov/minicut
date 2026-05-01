@@ -658,6 +658,7 @@ test('export project button downloads a webm video file', async ({ page }) => {
 		}
 	}, Array.from(videoBytes))
 	expect(videoProbe.duration).toBeGreaterThan(0.5)
+	expect(videoProbe.duration).toBeLessThan(1.5)
 	expect(videoProbe.width).toBe(1280)
 	expect(videoProbe.height).toBe(720)
 	await expect(page.getByRole('status').filter({ hasText: 'Export ready' })).toBeVisible()

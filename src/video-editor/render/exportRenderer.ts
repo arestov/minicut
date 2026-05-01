@@ -1,3 +1,5 @@
+import fixWebmDuration from 'fix-webm-duration'
+import { ArrayBufferTarget, Muxer } from 'webm-muxer'
 import { getProjectEntity, getTrackEnd, getTracks } from '../domain/selectors'
 import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
 import { compileEditframeClips, compileFrameOperations, type ClipFrameOperation, type EditframeClip } from './renderPlan'
@@ -67,6 +69,11 @@ const webmMimeCandidates = [
 	'video/webm;codecs=vp9',
 	'video/webm;codecs=vp8',
 	'video/webm',
+]
+
+const webCodecsVideoCandidates: Array<{ encoderCodec: string; muxerCodec: 'V_VP8' | 'V_VP9' }> = [
+	{ encoderCodec: 'vp8', muxerCodec: 'V_VP8' },
+	{ encoderCodec: 'vp09.00.10.08', muxerCodec: 'V_VP9' },
 ]
 
 interface BrowserVideoExportRendererOptions {
@@ -201,6 +208,11 @@ const isVideoExportSupported = (): boolean =>
 	&& typeof HTMLCanvasElement.prototype.captureStream === 'function'
 	&& getWebmMimeType() !== null
 
+const isWebCodecsExportSupported = (): boolean =>
+	typeof VideoEncoder !== 'undefined'
+	&& typeof VideoFrame !== 'undefined'
+	&& typeof document !== 'undefined'
+
 const waitForDuration = async (milliseconds: number): Promise<void> =>
 	new Promise((resolve) => {
 		globalThis.setTimeout(resolve, Math.max(0, milliseconds))
@@ -210,6 +222,37 @@ const waitForRecorderData = async (): Promise<void> =>
 	new Promise((resolve) => {
 		globalThis.requestAnimationFrame?.(() => resolve()) ?? globalThis.setTimeout(resolve, 0)
 	})
+
+const getWebCodecsConfig = async (
+	width: number,
+	height: number,
+	fps: number,
+	bitrate: number,
+): Promise<{ encoderConfig: VideoEncoderConfig; muxerCodec: 'V_VP8' | 'V_VP9' } | null> => {
+	if (!isWebCodecsExportSupported()) {
+		return null
+	}
+
+	for (const candidate of webCodecsVideoCandidates) {
+		const encoderConfig: VideoEncoderConfig = {
+			codec: candidate.encoderCodec,
+			width,
+			height,
+			bitrate,
+			framerate: fps,
+		}
+		try {
+			const support = await VideoEncoder.isConfigSupported(encoderConfig)
+			if (support.supported) {
+				return { encoderConfig: support.config ?? encoderConfig, muxerCodec: candidate.muxerCodec }
+			}
+		} catch {
+			// Try the next codec candidate.
+		}
+	}
+
+	return null
+}
 
 const clampTimeToDuration = (time: number, duration: number): number => {
 	if (!Number.isFinite(duration) || duration <= 0) {
@@ -407,6 +450,100 @@ const drawPreparedFrameOperations = (
 	}
 }
 
+const renderWebCodecsVideoBlob = async ({
+	registry,
+	projectId,
+	range,
+	start,
+	fps,
+	frameCount,
+	width,
+	height,
+	backgroundColor,
+	videoBitsPerSecond,
+	onProgress,
+	onFrame,
+}: {
+	registry: ProjectRegistry
+	projectId: string
+	range: ExportRange
+	start: number
+	fps: number
+	frameCount: number
+	width: number
+	height: number
+	backgroundColor: string
+	videoBitsPerSecond: number
+	onProgress?: (event: ExportProgressEvent) => void
+	onFrame: (frame: ExportFrameSample) => void
+}): Promise<Blob | null> => {
+	const config = await getWebCodecsConfig(width, height, fps, videoBitsPerSecond)
+	if (!config) {
+		return null
+	}
+
+	const canvas = document.createElement('canvas')
+	canvas.width = width
+	canvas.height = height
+	const context = canvas.getContext('2d')
+	if (!context) {
+		throw new Error('Unable to acquire export canvas context')
+	}
+
+	const target = new ArrayBufferTarget()
+	const muxer = new Muxer({
+		target,
+		video: {
+			codec: config.muxerCodec,
+			width,
+			height,
+			frameRate: fps,
+		},
+		firstTimestampBehavior: 'strict',
+	})
+	const encoder = new VideoEncoder({
+		output: (chunk, metadata) => muxer.addVideoChunk(chunk, metadata),
+		error: (error) => {
+			throw error
+		},
+	})
+	encoder.configure(config.encoderConfig)
+
+	const resourceCache = createResourceCache(registry)
+	try {
+		for (let index = 0; index < frameCount; index += 1) {
+			const time = start + index / fps
+			const operations = filterClipsForRange(
+				compileFrameOperations(registry, projectId, time),
+				range,
+			)
+			const preparedOperations = await prepareFrameOperations(operations, resourceCache, width, height)
+			const timestamp = Math.round((index / fps) * 1_000_000)
+			const duration = Math.round((1 / fps) * 1_000_000)
+			const frameSample = { index, time, operations }
+			onFrame(frameSample)
+			drawPreparedFrameOperations(context, preparedOperations, width, height, backgroundColor)
+			const frame = new VideoFrame(canvas, { timestamp, duration })
+			encoder.encode(frame, { keyFrame: index % Math.max(1, Math.round(fps)) === 0 })
+			frame.close()
+			onProgress?.({ stage: 'rendering', progress: (index + 1) / frameCount })
+		}
+
+		await encoder.flush()
+		muxer.finalize()
+		return new Blob([target.buffer], { type: videoMimeType })
+	} finally {
+		encoder.close()
+		for (const resource of resourceCache.values()) {
+			if (resource.video) {
+				resource.video.pause()
+				resource.video.removeAttribute('src')
+				resource.video.load()
+			}
+		}
+	}
+}
+
 const buildFileName = (
 	rangeName: string,
 	format: ExportFormat,
@@ -504,14 +641,6 @@ export const createBrowserVideoExportRenderer = (
 				throw new Error(`Unsupported export format ${format}`)
 			}
 
-			if (!isVideoExportSupported()) {
-				if (fallbackToManifestOnUnsupported) {
-					return fallbackRenderer.render({ ...request, format: 'json-manifest' }, onProgress)
-				}
-
-				throw new Error('Video export is not supported in this environment')
-			}
-
 			const fps = request.fps ?? 30
 			if (!Number.isFinite(fps) || fps <= 0) {
 				throw new Error('Export fps must be positive')
@@ -527,6 +656,60 @@ export const createBrowserVideoExportRenderer = (
 			const width = options.width ?? defaultExportWidth
 			const height = options.height ?? defaultExportHeight
 			const backgroundColor = options.backgroundColor ?? '#09090b'
+			const videoBitsPerSecond = options.videoBitsPerSecond ?? 4_000_000
+			const frames: ExportFrameSample[] = []
+
+			const webCodecsBlob = await renderWebCodecsVideoBlob({
+				registry: request.registry,
+				projectId: request.projectId,
+				range: request.range,
+				start,
+				fps,
+				frameCount,
+				width,
+				height,
+				backgroundColor,
+				videoBitsPerSecond,
+				onProgress,
+				onFrame: (frame) => frames.push(frame),
+			})
+
+			if (webCodecsBlob) {
+				onProgress?.({ stage: 'finalizing', progress: 1 })
+				const manifest: ExportManifest = {
+					format,
+					projectId: request.projectId,
+					range: request.range,
+					start,
+					duration,
+					fps,
+					frameCount,
+					clips: getRangeClips(request.registry, request.projectId, request.range),
+					frames,
+				}
+				const rangeName = getRangeName(request.registry, request.projectId, request.range)
+				const result: ExportRenderResult = {
+					id: createExportId(),
+					fileName: buildFileName(rangeName, format),
+					mimeType: videoMimeType,
+					blob: webCodecsBlob,
+					size: webCodecsBlob.size,
+					duration,
+					frameCount,
+					manifest,
+				}
+				onProgress?.({ stage: 'done', progress: 1 })
+
+				return result
+			}
+
+			if (!isVideoExportSupported()) {
+				if (fallbackToManifestOnUnsupported) {
+					return fallbackRenderer.render({ ...request, format: 'json-manifest' }, onProgress)
+				}
+
+				throw new Error('Video export is not supported in this environment')
+			}
 
 			const canvas = document.createElement('canvas')
 			canvas.width = width
@@ -548,7 +731,7 @@ export const createBrowserVideoExportRenderer = (
 			const mimeType = getWebmMimeType() ?? videoMimeType
 			const recorder = new MediaRecorder(stream, {
 				mimeType,
-				videoBitsPerSecond: options.videoBitsPerSecond ?? 4_000_000,
+				videoBitsPerSecond,
 			})
 			const chunks: BlobPart[] = []
 			const stopPromise = new Promise<void>((resolve, reject) => {
@@ -562,7 +745,6 @@ export const createBrowserVideoExportRenderer = (
 			})
 
 			const resourceCache = createResourceCache(request.registry)
-			const frames: ExportFrameSample[] = []
 			recorder.start(Math.max(100, Math.round(1000 / fps)))
 
 			try {
@@ -608,7 +790,8 @@ export const createBrowserVideoExportRenderer = (
 				clips: getRangeClips(request.registry, request.projectId, request.range),
 				frames,
 			}
-			const blob = new Blob(chunks, { type: mimeType })
+			const recordedBlob = new Blob(chunks, { type: mimeType })
+			const blob = await fixWebmDuration(recordedBlob, duration * 1000, { logger: false })
 			const rangeName = getRangeName(request.registry, request.projectId, request.range)
 			const result: ExportRenderResult = {
 				id: createExportId(),

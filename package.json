@@ -17,10 +17,12 @@
   },
   "dependencies": {
     "@legendapp/state": "^3.0.0-beta.47",
+    "fix-webm-duration": "^1.0.6",
     "lucide-react": "^1.14.0",
     "nanoid": "^5.1.6",
     "react": "^19.2.5",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "webm-muxer": "^5.1.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
