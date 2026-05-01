@@ -146,7 +146,7 @@ const createToneWavFile = (name = 'solid-tone.wav'): { name: string; mimeType: s
 const sampleWebmFrame = async (
 	page: import('@playwright/test').Page,
 	buffer: Buffer,
-): Promise<{ duration: number; rgba: [number, number, number, number] }> =>
+): Promise<{ duration: number; rgba: [number, number, number, number]; audioTrackCount: number; audioRms: number }> =>
 	page.evaluate(async (bytes) => {
 		const blob = new Blob([new Uint8Array(bytes)], { type: 'video/webm' })
 		const url = URL.createObjectURL(blob)
@@ -168,6 +168,28 @@ const sampleWebmFrame = async (
 				video.addEventListener('error', () => reject(new Error('Exported video failed to load')), { once: true })
 			})
 			const duration = Number.isFinite(video.duration) ? video.duration : 0
+			const capturedStream = 'captureStream' in video ? video.captureStream() : null
+			const audioTrackCount = capturedStream?.getAudioTracks().length ?? 0
+			let audioRms = 0
+			if (audioTrackCount > 0) {
+				const AudioContextConstructor = window.AudioContext ?? window.webkitAudioContext
+				if (AudioContextConstructor) {
+					const audioContext = new AudioContextConstructor()
+					const decodedAudio = await audioContext.decodeAudioData(new Uint8Array(bytes).buffer.slice(0)).catch(() => null)
+					if (decodedAudio) {
+						const channel = decodedAudio.getChannelData(0)
+						const step = Math.max(1, Math.floor(channel.length / 20_000))
+						let sum = 0
+						let count = 0
+						for (let index = 0; index < channel.length; index += step) {
+							sum += channel[index] * channel[index]
+							count += 1
+						}
+						audioRms = count > 0 ? Math.sqrt(sum / count) : 0
+					}
+					await audioContext.close().catch(() => undefined)
+				}
+			}
 			const targetTime = Math.max(0, duration - 0.25)
 			await new Promise<void>((resolve) => {
 				const timeout = window.setTimeout(() => resolve(), 1500)
@@ -187,7 +209,10 @@ const sampleWebmFrame = async (
 			}
 			context.drawImage(video, 0, 0, canvas.width, canvas.height)
 			const data = Array.from(context.getImageData(40, 40, 1, 1).data) as [number, number, number, number]
-			return { duration, rgba: data }
+			for (const track of capturedStream?.getTracks() ?? []) {
+				track.stop()
+			}
+			return { duration, rgba: data, audioTrackCount, audioRms }
 		} finally {
 			video.remove()
 			URL.revokeObjectURL(url)
@@ -395,6 +420,9 @@ test('exports generated solid video, trailing image, and audio through MediaReco
 	const sample = await sampleWebmFrame(page, exportedBytes)
 	expect(sample.duration).toBeGreaterThan(1.4)
 	expect(sample.duration).toBeLessThan(3.2)
+	expect(sample.audioTrackCount).toBeGreaterThan(0)
+	expect(sample.audioRms).toBeGreaterThan(0.001)
+	expect(exportedBytes.includes(Buffer.from('A_OPUS')) || exportedBytes.includes(Buffer.from('A_VORBIS'))).toBe(true)
 	expect(sample.rgba[1]).toBeGreaterThan(120)
 	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[0] + 30)
 	expect(sample.rgba[1]).toBeGreaterThan(sample.rgba[2] + 30)

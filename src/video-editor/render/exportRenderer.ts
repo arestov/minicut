@@ -110,6 +110,15 @@ interface AudioExportMixer {
 	stop(): Promise<void>
 }
 
+interface DecodedAudioExportClip {
+	buffer: AudioBuffer
+	start: number
+	duration: number
+	trimStart: number
+	gain: number
+	pan: number
+}
+
 const sanitizeFileNamePart = (value: string): string =>
 	value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'export'
 
@@ -235,23 +244,6 @@ const waitForDuration = async (milliseconds: number): Promise<void> =>
 const waitForRecorderData = async (): Promise<void> =>
 	new Promise((resolve) => {
 		globalThis.requestAnimationFrame?.(() => resolve()) ?? globalThis.setTimeout(resolve, 0)
-	})
-
-const waitForMediaMetadata = (element: HTMLMediaElement): Promise<void> =>
-	new Promise((resolve) => {
-		if (Number.isFinite(element.duration) && element.duration > 0) {
-			resolve()
-			return
-		}
-
-		const finish = (): void => {
-			element.removeEventListener('loadedmetadata', finish)
-			element.removeEventListener('error', finish)
-			resolve()
-		}
-		element.addEventListener('loadedmetadata', finish, { once: true })
-		element.addEventListener('error', finish, { once: true })
-		element.load()
 	})
 
 const getWebCodecsConfig = async (
@@ -537,37 +529,37 @@ const createAudioExportMixer = async (
 
 	const audioContext = new AudioContextConstructor()
 	const destination = audioContext.createMediaStreamDestination()
-	const timers: Array<ReturnType<typeof globalThis.setTimeout>> = []
-	const elements: HTMLMediaElement[] = []
+	const decodedClips: DecodedAudioExportClip[] = []
+	const sources: AudioBufferSourceNode[] = []
 
 	for (const clip of audioClips) {
-		const element = document.createElement('audio')
-		element.preload = 'auto'
-		element.src = clip.source
-		elements.push(element)
-		await waitForMediaMetadata(element)
-
-		const source = audioContext.createMediaElementSource(element)
-		const gain = audioContext.createGain()
-		gain.gain.value = Math.max(0, Math.min(1.5, Number(clip.gain ?? 1)))
-		const stereoPanner = 'createStereoPanner' in audioContext
-			? audioContext.createStereoPanner()
-			: null
-		if (stereoPanner) {
-			stereoPanner.pan.value = Math.max(-1, Math.min(1, Number(clip.pan ?? 0)))
-			source.connect(gain).connect(stereoPanner).connect(destination)
-		} else {
-			source.connect(gain).connect(destination)
+		const buffer = await fetch(clip.source)
+			.then((response) => response.arrayBuffer())
+			.then((audioData) => audioContext.decodeAudioData(audioData.slice(0)))
+			.catch(() => null)
+		if (!buffer) {
+			continue
 		}
+		decodedClips.push({
+			buffer,
+			start: clip.start,
+			duration: clip.duration,
+			trimStart: clip.trimStart,
+			gain: Math.max(0, Math.min(1.5, Number(clip.gain ?? 1))),
+			pan: Math.max(-1, Math.min(1, Number(clip.pan ?? 0))),
+		})
+	}
+	if (decodedClips.length === 0) {
+		await audioContext.close().catch(() => undefined)
+		return { stream: null, start: async () => undefined, stop: async () => undefined }
 	}
 
 	return {
 		stream: destination.stream,
 		async start() {
 			await audioContext.resume()
-			for (let index = 0; index < audioClips.length; index += 1) {
-				const clip = audioClips[index]
-				const element = elements[index]
+			const baseTime = audioContext.currentTime
+			for (const clip of decodedClips) {
 				const clipEnd = clip.start + clip.duration
 				const activeStart = Math.max(exportStart, clip.start)
 				const activeEnd = Math.min(exportStart + exportDuration, clipEnd)
@@ -575,27 +567,38 @@ const createAudioExportMixer = async (
 					continue
 				}
 
-				const delay = Math.max(0, (clip.start - exportStart) * 1000)
+				const delay = Math.max(0, clip.start - exportStart)
 				const offset = Math.max(0, exportStart - clip.start)
-				timers.push(globalThis.setTimeout(() => {
-					try {
-						element.currentTime = clip.trimStart + offset
-					} catch {
-						// Some media elements reject early seeks; playback still starts at the default position.
-					}
-					void element.play().catch(() => undefined)
-				}, delay))
-				timers.push(globalThis.setTimeout(() => element.pause(), Math.max(0, (activeEnd - exportStart) * 1000)))
+				const bufferOffset = clip.trimStart + offset
+				const activeDuration = Math.min(activeEnd - activeStart, Math.max(0, clip.buffer.duration - bufferOffset))
+				if (activeDuration <= 0) {
+					continue
+				}
+
+				const source = audioContext.createBufferSource()
+				source.buffer = clip.buffer
+				const gain = audioContext.createGain()
+				gain.gain.value = clip.gain
+				const stereoPanner = 'createStereoPanner' in audioContext
+					? audioContext.createStereoPanner()
+					: null
+				if (stereoPanner) {
+					stereoPanner.pan.value = clip.pan
+					source.connect(gain).connect(stereoPanner).connect(destination)
+				} else {
+					source.connect(gain).connect(destination)
+				}
+				source.start(baseTime + delay, bufferOffset, activeDuration)
+				sources.push(source)
 			}
 		},
 		async stop() {
-			for (const timer of timers) {
-				globalThis.clearTimeout(timer)
-			}
-			for (const element of elements) {
-				element.pause()
-				element.removeAttribute('src')
-				element.load()
+			for (const source of sources) {
+				try {
+					source.stop()
+				} catch {
+					// Buffer sources can already be stopped by their scheduled duration.
+				}
 			}
 			await audioContext.close().catch(() => undefined)
 		},
