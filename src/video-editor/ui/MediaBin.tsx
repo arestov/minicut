@@ -1,6 +1,9 @@
 import { observer } from '@legendapp/state/react'
+import { Grid2X2, List, Plus, Search, Upload } from 'lucide-react'
+import { useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
+import { IconButton } from './ControlPrimitives'
 
 interface ResourceRowProps {
 	resourceId: string
@@ -40,9 +43,15 @@ const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 				<div className="ve-resource-row__meta">
 					<small>{attrs.kind} · {attrs.mime} · {attrs.duration.toFixed(1)}s</small>
 					<div className="ve-resource-row__action-line">
-						<button type="button" onClick={() => actions.addResourceToTimeline(resourceId)}>
-							Add to timeline
-						</button>
+						<IconButton
+							type="button"
+							icon={Plus}
+							label="Add to timeline"
+							variant="secondary"
+							onClick={() => actions.addResourceToTimeline(resourceId)}
+						>
+							Add
+						</IconButton>
 					</div>
 				</div>
 			</div>
@@ -51,6 +60,9 @@ const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 })
 
 export const MediaBin = observer(() => {
+	const [query, setQuery] = useState('')
+	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
+	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
@@ -59,12 +71,23 @@ export const MediaBin = observer(() => {
 		? projects$.entitiesById[rootEntityId].rels.resources.get()
 		: []
 	const resources = Array.isArray(resourceIds) ? resourceIds : []
+	const normalizedQuery = query.trim().toLowerCase()
+	const filteredResources = resources.filter((resourceId) => {
+		const attrs = projects$.entitiesById[resourceId].attrs.get() as unknown as ResourceAttrs
+		const matchesKind = kindFilter === 'all' || attrs.kind === kindFilter
+		const matchesQuery = normalizedQuery.length === 0
+			|| attrs.name.toLowerCase().includes(normalizedQuery)
+			|| attrs.mime.toLowerCase().includes(normalizedQuery)
+
+		return matchesKind && matchesQuery
+	})
 
 	return (
 		<section className="ve-panel ve-media-bin" aria-label="Media bin">
 			<div className="ve-panel__header">
 				<h2>Media bin</h2>
 				<label className="ve-import-button">
+					<Upload size={14} aria-hidden="true" />
 					<span>Import</span>
 					<input
 						type="file"
@@ -81,15 +104,62 @@ export const MediaBin = observer(() => {
 					/>
 				</label>
 			</div>
-			<div className="ve-media-count">{resources.length} assets</div>
+			<div className="ve-media-controls" aria-label="Media filters">
+				<label className="ve-search-field">
+					<Search size={14} aria-hidden="true" />
+					<span className="ve-sr-only">Search media</span>
+					<input
+						type="search"
+						aria-label="Search media"
+						placeholder="Search assets"
+						value={query}
+						onChange={(event) => setQuery(event.currentTarget.value)}
+					/>
+				</label>
+				<select
+					className="ve-select"
+					aria-label="Filter media kind"
+					value={kindFilter}
+					onChange={(event) => setKindFilter(event.currentTarget.value as ResourceAttrs['kind'] | 'all')}
+				>
+					<option value="all">All media</option>
+					<option value="video">Video</option>
+					<option value="image">Images</option>
+					<option value="audio">Audio</option>
+				</select>
+				<div className="ve-segmented-control" aria-label="Media view">
+					<IconButton
+						type="button"
+						icon={List}
+						label="List view"
+						variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+						aria-pressed={viewMode === 'list'}
+						onClick={() => setViewMode('list')}
+					/>
+					<IconButton
+						type="button"
+						icon={Grid2X2}
+						label="Grid view"
+						variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+						aria-pressed={viewMode === 'grid'}
+						onClick={() => setViewMode('grid')}
+					/>
+				</div>
+			</div>
+			<div className="ve-media-count">{filteredResources.length} of {resources.length} assets</div>
 			<div className="ve-media-bin__body">
 				{!activeProjectId ? (
-					<p className="ve-empty">No active project.</p>
+					<div className="ve-empty-state">
+						<p className="ve-empty">No active project.</p>
+						<button type="button" onClick={() => actions.createProject()}>New project</button>
+					</div>
 				) : resources.length === 0 ? (
 					<p className="ve-empty">Import video, image, or audio files to populate the bin.</p>
+				) : filteredResources.length === 0 ? (
+					<p className="ve-empty">No assets match the current filters.</p>
 				) : (
-					<ul className="ve-resource-list">
-						{resources.map((resourceId) => (
+					<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
+						{filteredResources.map((resourceId) => (
 							<ResourceRow key={resourceId} resourceId={resourceId} />
 						))}
 					</ul>

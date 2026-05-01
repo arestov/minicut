@@ -1,6 +1,8 @@
 ﻿import { useState } from 'react'
 import { observer } from '@legendapp/state/react'
+import { Check, ChevronDown, Plus } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { Button, IconButton } from './ControlPrimitives'
 
 interface ProjectItemProps {
 	projectId: string
@@ -28,7 +30,10 @@ const ProjectItem = observer(({ projectId, activeProjectId, onSelect }: ProjectI
 				}}
 				aria-pressed={isActive}
 			>
-				<span>{String(projectEntity$.attrs.title.get())}</span>
+				<span className="ve-project-list__title">
+					{String(projectEntity$.attrs.title.get())}
+					{isActive ? <Check size={14} aria-hidden="true" /> : null}
+				</span>
 				<small>v{project$.version.get()} - {resourceCount} resources</small>
 			</button>
 		</li>
@@ -50,39 +55,35 @@ export const ProjectDropdown = observer(() => {
 
 	return (
 		<div aria-label="Projects" className="ve-project-dropdown">
-			<button
+			<Button
 				type="button"
 				className="ve-project-dropdown__trigger"
+				variant="secondary"
+				size="sm"
 				aria-expanded={isOpen}
 				aria-haspopup="menu"
 				onClick={() => setIsOpen((v) => !v)}
 			>
 				<span>{activeTitle}</span>
-				<svg
-					className="ve-project-dropdown__chevron"
-					width="12"
-					height="12"
-					viewBox="0 0 12 12"
-					fill="none"
-					aria-hidden="true"
-				>
-					<path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-				</svg>
-			</button>
+				<ChevronDown className="ve-project-dropdown__chevron" size={14} aria-hidden="true" />
+			</Button>
 			{isOpen && (
 				<div className="ve-project-dropdown__menu is-open">
 					<div className="ve-project-dropdown__header">
 						<span>Projects</span>
-						<button
+						<IconButton
 							type="button"
 							className="ve-project-dropdown__new"
+							variant="default"
+							icon={Plus}
+							label="New project"
 							onClick={() => {
 								actions.createProject()
 								close()
 							}}
 						>
 							New project
-						</button>
+						</IconButton>
 					</div>
 					{projectIds.length === 0 ? (
 						<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>

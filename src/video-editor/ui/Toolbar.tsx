@@ -1,5 +1,7 @@
 import { observer } from '@legendapp/state/react'
+import { Download, FolderPlus, Plus, Redo2, Undo2, Upload } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { IconButton } from './ControlPrimitives'
 import { ProjectDropdown } from './ProjectDropdown'
 
 export const Toolbar = observer(() => {
@@ -18,21 +20,47 @@ export const Toolbar = observer(() => {
 				<div className="ve-toolbar__mark" aria-hidden="true">M</div>
 				<div className="ve-toolbar__brand">
 					<h1>minicut</h1>
-					<p>Workspace</p>
+					<p>Video workspace</p>
 				</div>
 				<ProjectDropdown />
+				<IconButton
+					type="button"
+					icon={FolderPlus}
+					label="New project"
+					variant="ghost"
+					onClick={() => actions.createProject()}
+				>
+					New
+				</IconButton>
 			</div>
 			<div className="ve-toolbar__actions">
-				<button type="button" onClick={() => actions.importSampleResource()} disabled={!activeProjectId}>
-					Import sample
-				</button>
-				<button
+				<div className="ve-toolbar__history" aria-label="History controls">
+					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" disabled />
+					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" disabled />
+				</div>
+				<IconButton
 					type="button"
+					icon={Upload}
+					label="Import sample"
+					variant="outline"
+					onClick={() => actions.importSampleResource()}
+					disabled={!activeProjectId}
+				>
+					Import sample
+				</IconButton>
+				<IconButton
+					type="button"
+					icon={Plus}
+					label="Add first resource"
+					variant="secondary"
 					onClick={() => resources[0] && actions.addResourceToTimeline(resources[0])}
 					disabled={!resources[0]}
 				>
 					Add first resource
-				</button>
+				</IconButton>
+				<IconButton type="button" icon={Download} label="Export project" variant="default" disabled>
+					Export
+				</IconButton>
 			</div>
 		</header>
 	)

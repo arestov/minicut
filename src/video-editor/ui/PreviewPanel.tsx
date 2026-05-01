@@ -1,6 +1,8 @@
 import { observer } from '@legendapp/state/react'
+import { Gauge, Pause, Play, Timer } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { formatSeconds } from './format'
+import { IconButton } from './ControlPrimitives'
 import { RendererStage } from './RendererStage'
 
 const getActiveClipNames = (
@@ -52,18 +54,34 @@ export const PreviewPanel = observer(() => {
 	const activeClipNames = getActiveClipNames(projects$, activeProjectId, cursor)
 
 	return (
-		<section className="ve-panel" aria-label="Preview panel">
+		<section className="ve-panel ve-preview-panel" aria-label="Preview panel">
 			<div className="ve-panel__header">
 				<h2>Preview</h2>
-				<button type="button" onClick={() => actions.togglePlayback()}>
+				<IconButton
+					type="button"
+					icon={isPlaying ? Pause : Play}
+					label={isPlaying ? 'Pause' : 'Play'}
+					variant="default"
+					onClick={() => actions.togglePlayback()}
+				>
 					{isPlaying ? 'Pause' : 'Play'}
-				</button>
+				</IconButton>
 			</div>
 			<RendererStage />
-			<p className="ve-preview__summary">Cursor at {formatSeconds(cursor)}</p>
-			<p className="ve-preview__summary">
-				Active clips at cursor: {activeClipNames.length > 0 ? activeClipNames.join(', ') : 'none'}
-			</p>
+			<div className="ve-preview-transport" aria-label="Preview transport status">
+				<div>
+					<Timer size={15} aria-hidden="true" />
+					<span className="ve-sr-only">Cursor at {formatSeconds(cursor)}</span>
+					<span>{formatSeconds(cursor)}</span>
+				</div>
+				<div>
+					<Gauge size={15} aria-hidden="true" />
+					<span>Draft preview</span>
+				</div>
+				<div className="ve-preview-transport__active">
+					<span>{activeClipNames.length > 0 ? activeClipNames.join(', ') : 'No active clips'}</span>
+				</div>
+			</div>
 		</section>
 	)
 })
