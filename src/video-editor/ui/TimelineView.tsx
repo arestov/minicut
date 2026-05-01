@@ -80,6 +80,30 @@ const timelineTools: Array<{
 	{ id: 'hand', label: 'Hand tool', icon: Hand },
 ]
 
+const CurrentTimeLabel = observer(() => {
+	const { session$ } = useVideoEditor()
+	const cursorSeconds = session$.cursor.get()
+
+	return (
+		<span className="ve-timeline__time" aria-label="Current time">
+			{cursorSeconds.toFixed(2)}s
+		</span>
+	)
+})
+
+const TimelinePlayhead = observer(({ timelineZoom }: { timelineZoom: number }) => {
+	const { session$ } = useVideoEditor()
+	const cursorSeconds = session$.cursor.get()
+
+	return (
+		<div
+			className="ve-timeline-playhead"
+			aria-label="Current step"
+			style={{ left: `${cursorSeconds * timelineZoom}px` }}
+		/>
+	)
+})
+
 export const TimelineView = observer(() => {
 	const [activeTool, setActiveTool] = useState<TimelineTool>('select')
 	const [snappingEnabled, setSnappingEnabled] = useState(true)
@@ -90,7 +114,6 @@ export const TimelineView = observer(() => {
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = getActiveProjectId$(projects$, session$)
 	const timelineZoom = session$.timelineZoom.get()
-	const cursorSeconds = session$.cursor.get()
 	const timelineId = getActiveTimelineId$(projects$, activeProjectId)
 	const tracks = getTimelineTrackIds$(projects$, timelineId)
 	const trackIds$ = getTimelineTrackIdsNode$(projects$, timelineId)
@@ -203,9 +226,7 @@ export const TimelineView = observer(() => {
 							/>
 						))}
 					</div>
-					<span className="ve-timeline__time" aria-label="Current time">
-						{cursorSeconds.toFixed(2)}s
-					</span>
+					<CurrentTimeLabel />
 					<span>{tracks.length} tracks</span>
 					<IconButton
 						type="button"
@@ -279,11 +300,7 @@ export const TimelineView = observer(() => {
 											</span>
 										))}
 									</div>
-									<div
-										className="ve-timeline-playhead"
-										aria-label="Current step"
-										style={{ left: `${cursorSeconds * timelineZoom}px` }}
-									/>
+									<TimelinePlayhead timelineZoom={timelineZoom} />
 									<div className="ve-track-lane-list">
 										{trackIds$ ? (
 											<For

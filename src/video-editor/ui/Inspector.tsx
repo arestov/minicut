@@ -1,19 +1,16 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Trash2, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
+import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
 import {
 	clipAttrs$,
 	clipRels$,
 	effectAttrs$,
 	getActiveProjectId$,
-	getActiveTimelineId$,
-	getTimelineTrackIds$,
-	getTrackClipIds$,
 	resourceAttrs$,
-	trackAttrs$,
 } from '../legend/observableSelectors'
 import type { ExportRenderResult } from '../render/exportRenderer'
 import { Button, IconButton } from './ControlPrimitives'
@@ -81,6 +78,10 @@ export const Inspector = observer(() => {
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
 	const [exportStatus, setExportStatus] = useState<ExportStatus>({ state: 'idle' })
 	const { projects$, session$, actions } = useVideoEditor()
+	const selectedClipTrackPosition$ = useMemo(
+		() => createSelectedClipTrackPosition$(projects$, session$),
+		[projects$, session$],
+	)
 	const activeProjectId = getActiveProjectId$(projects$, session$)
 	const selectedEntityId = session$.selectedEntityId.get()
 	const selectedEntity$ = activeProjectId && selectedEntityId
@@ -136,25 +137,9 @@ export const Inspector = observer(() => {
 		})
 		.filter((entry): entry is { id: string, name: string, kind: string } => entry !== null)
 	const opacityPercent = Math.round(opacity * 100)
-	let selectedTrackName = 'Track'
-	let selectedClipOrdinal = 1
-	if (activeProjectId && selectedEntityId) {
-		const timelineId = getActiveTimelineId$(projects$, activeProjectId)
-		const trackIds = getTimelineTrackIds$(projects$, timelineId)
-
-		if (Array.isArray(trackIds)) {
-			for (const trackId of trackIds) {
-				const clipIds = getTrackClipIds$(projects$, trackId)
-
-				const clipIndex = clipIds.indexOf(selectedEntityId)
-				if (clipIndex >= 0) {
-					selectedTrackName = String(trackAttrs$(projects$, trackId).name.get())
-					selectedClipOrdinal = clipIndex + 1
-					break
-				}
-			}
-		}
-	}
+	const selectedClipTrackPosition = selectedClipTrackPosition$.get()
+	const selectedTrackName = selectedClipTrackPosition?.trackName ?? 'Track'
+	const selectedClipOrdinal = selectedClipTrackPosition?.ordinal ?? 1
 
 	return (
 		<aside className="ve-panel" aria-label="Inspector">

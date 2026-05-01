@@ -72,11 +72,14 @@ export const MediaBin = observer(() => {
 	const resources = getProjectResourceIds$(projects$, activeProjectId)
 	const normalizedQuery = query.trim().toLowerCase()
 	const filteredResources = resources.filter((resourceId) => {
-		const attrs = resourceAttrs$(projects$, resourceId).get()
-		const matchesKind = kindFilter === 'all' || attrs.kind === kindFilter
+		const resource$ = resourceAttrs$(projects$, resourceId)
+		const kind = resource$.kind.get()
+		const name = String(resource$.name.get())
+		const mime = String(resource$.mime.get())
+		const matchesKind = kindFilter === 'all' || kind === kindFilter
 		const matchesQuery = normalizedQuery.length === 0
-			|| attrs.name.toLowerCase().includes(normalizedQuery)
-			|| attrs.mime.toLowerCase().includes(normalizedQuery)
+			|| name.toLowerCase().includes(normalizedQuery)
+			|| mime.toLowerCase().includes(normalizedQuery)
 
 		return matchesKind && matchesQuery
 	})

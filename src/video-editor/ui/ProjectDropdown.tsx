@@ -45,10 +45,50 @@ const ProjectItem = observer(({ projectId, activeProjectId, onSelect }: ProjectI
 	)
 })
 
-export const ProjectDropdown = observer(() => {
-	const [isOpen, setIsOpen] = useState(false)
+const ProjectDropdownMenu = observer(({ onClose }: { onClose: () => void }) => {
 	const { projects$, session$, actions } = useVideoEditor()
 	const projectIds = Object.keys(projects$.projects.get())
+	const activeProjectId = getActiveProjectId$(projects$, session$)
+
+	return (
+		<div className="ve-project-dropdown__menu is-open">
+			<div className="ve-project-dropdown__header">
+				<span>Projects</span>
+				<IconButton
+					type="button"
+					className="ve-project-dropdown__new"
+					variant="default"
+					icon={Plus}
+					label="New project"
+					onClick={() => {
+						actions.createProject()
+						onClose()
+					}}
+				>
+					New project
+				</IconButton>
+			</div>
+			{projectIds.length === 0 ? (
+				<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
+			) : (
+				<ul className="ve-project-list ve-project-dropdown__list">
+					{projectIds.map((id) => (
+						<ProjectItem
+							key={id}
+							projectId={id}
+							activeProjectId={activeProjectId}
+							onSelect={onClose}
+						/>
+					))}
+				</ul>
+			)}
+		</div>
+	)
+})
+
+export const ProjectDropdown = observer(() => {
+	const [isOpen, setIsOpen] = useState(false)
+	const { projects$, session$ } = useVideoEditor()
 	const activeProjectId = getActiveProjectId$(projects$, session$)
 	const activeRootId = getProjectRootEntityId$(projects$, activeProjectId)
 	const activeTitle = activeRootId
@@ -71,40 +111,7 @@ export const ProjectDropdown = observer(() => {
 				<span>{activeTitle}</span>
 				<ChevronDown className="ve-project-dropdown__chevron" size={14} aria-hidden="true" />
 			</Button>
-			{isOpen && (
-				<div className="ve-project-dropdown__menu is-open">
-					<div className="ve-project-dropdown__header">
-						<span>Projects</span>
-						<IconButton
-							type="button"
-							className="ve-project-dropdown__new"
-							variant="default"
-							icon={Plus}
-							label="New project"
-							onClick={() => {
-								actions.createProject()
-								close()
-							}}
-						>
-							New project
-						</IconButton>
-					</div>
-					{projectIds.length === 0 ? (
-						<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
-					) : (
-						<ul className="ve-project-list ve-project-dropdown__list">
-							{projectIds.map((id) => (
-								<ProjectItem
-									key={id}
-									projectId={id}
-									activeProjectId={activeProjectId}
-									onSelect={close}
-								/>
-							))}
-						</ul>
-					)}
-				</div>
-			)}
+			{isOpen ? <ProjectDropdownMenu onClose={close} /> : null}
 		</div>
 	)
 })

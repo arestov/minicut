@@ -1,10 +1,10 @@
 import type { Observable } from '@legendapp/state'
 import { For, observer } from '@legendapp/state/react'
 import { Eye, Lock, Volume2 } from 'lucide-react'
+import { useMemo } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { createTrackEnd$ } from '../legend/derivedTimeline'
 import {
-	clipAttrs$,
-	getTrackClipIds$,
 	getTrackClipIdsNode$,
 	trackAttrs$,
 } from '../legend/observableSelectors'
@@ -91,13 +91,12 @@ export const TrackLane = observer(
 	({ projectId, trackId, timelineZoom, activeTool }: TrackRowProps) => {
 		const { projects$ } = useVideoEditor()
 		const clipIds$ = getTrackClipIdsNode$(projects$, trackId)
-		const clips = getTrackClipIds$(projects$, trackId)
-		const trackEnd = clips.reduce((maxEnd, clipId) => {
-			const clip$ = clipAttrs$(projects$, clipId)
-			const start = Number(clip$.start.get())
-			const duration = Number(clip$.duration.get())
-			return Math.max(maxEnd, start + duration)
-		}, 0)
+		const trackEnd$ = useMemo(
+			() => createTrackEnd$(projects$, trackId),
+			[projects$, trackId],
+		)
+		const clips = clipIds$.get()
+		const trackEnd = trackEnd$.get()
 		const trackWidth = Math.max(960, Math.ceil((trackEnd + 2) * timelineZoom))
 
 		return (
