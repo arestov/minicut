@@ -59,17 +59,6 @@ export const PreviewPanel = observer(() => {
 					{isPlaying ? 'Pause' : 'Play'}
 				</button>
 			</div>
-			<label className="ve-slider-field">
-				<span>Cursor</span>
-				<input
-					type="range"
-					min="0"
-					max="20"
-					step="0.5"
-					value={cursor}
-					onChange={(event) => actions.setCursor(Number(event.currentTarget.value))}
-				/>
-			</label>
 			<RendererStage />
 			<p className="ve-preview__summary">Cursor at {formatSeconds(cursor)}</p>
 			<p className="ve-preview__summary">
