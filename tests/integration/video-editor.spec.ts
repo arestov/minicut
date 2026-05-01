@@ -1,11 +1,17 @@
 import { expect, test } from '@playwright/test'
 
+const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
+	const projectsRegion = page.getByLabel('Projects')
+	await projectsRegion.getByRole('button').click()
+	await projectsRegion.getByRole('button', { name: 'New project' }).click()
+}
+
 test('user can finish the harness happy path in the browser', async ({ page }) => {
 	await page.goto('/')
 
-	await expect(page.getByRole('heading', { name: 'Video Editor Harness' })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
 
-	await page.getByRole('button', { name: 'New project' }).click()
+	await createProjectFromMenu(page)
 	await expect(page.getByRole('button', { name: /Project 1/i })).toBeVisible()
 
 	await page.getByRole('button', { name: 'Import sample' }).click()
@@ -37,8 +43,8 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 test('project dropdown shows items when opened', async ({ page }) => {
 	await page.goto('/')
 
-	await page.getByRole('button', { name: 'New project' }).click()
-	await page.getByRole('button', { name: 'New project' }).click()
+	await createProjectFromMenu(page)
+	await createProjectFromMenu(page)
 
 	const projectsRegion = page.getByLabel('Projects')
 	await projectsRegion.getByRole('button', { name: /Project 2/i }).click()

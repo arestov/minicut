@@ -14,15 +14,15 @@ export const Toolbar = observer(() => {
 
 	return (
 		<header className="ve-toolbar">
-			<div className="ve-toolbar__brand">
-				<h1>Video Editor Harness</h1>
-				<p>Legend-State projection + single-writer memory worker + Testing Library harness.</p>
+			<div className="ve-toolbar__left">
+				<div className="ve-toolbar__mark" aria-hidden="true">M</div>
+				<div className="ve-toolbar__brand">
+					<h1>minicut</h1>
+					<p>Workspace</p>
+				</div>
+				<ProjectDropdown />
 			</div>
 			<div className="ve-toolbar__actions">
-				<button type="button" onClick={() => actions.createProject()}>
-					New project
-				</button>
-				<ProjectDropdown />
 				<button type="button" onClick={() => actions.importSampleResource()} disabled={!activeProjectId}>
 					Import sample
 				</button>

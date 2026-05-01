@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test'
 
 const prepareEditor = async (page: import('@playwright/test').Page) => {
 	await page.goto('/')
-	await page.getByRole('button', { name: 'New project' }).click()
+	const projectsRegion = page.getByLabel('Projects')
+	await projectsRegion.getByRole('button').click()
+	await projectsRegion.getByRole('button', { name: 'New project' }).click()
 	await page.getByRole('button', { name: 'Import sample' }).click()
 	await page.getByRole('button', { name: 'Add first resource' }).click()
 	await page.getByRole('button', { name: /Sample asset 1/i }).first().click()
@@ -16,7 +18,7 @@ for (const viewport of [
 		await page.setViewportSize({ width: viewport.width, height: viewport.height })
 		await prepareEditor(page)
 
-		await expect(page.getByRole('heading', { name: 'Video Editor Harness' })).toBeVisible()
+		await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
 		await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible()
 		await expect(page.getByLabel('Inspector')).toBeVisible()
 		await expect(page.getByLabel('Transform controls')).toBeVisible()

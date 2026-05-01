@@ -39,7 +39,7 @@ button:disabled {
 	display: flex;
 	flex-direction: column;
 	min-height: 100vh;
-	padding: 24px;
+	padding: 16px;
 	gap: 16px;
 }
 
@@ -54,15 +54,53 @@ button:disabled {
 .ve-toolbar {
 	display: flex;
 	justify-content: space-between;
-	align-items: flex-start;
-	padding: 20px 24px;
+	align-items: center;
+	min-height: 56px;
+	padding: 12px 16px;
 	gap: 16px;
+}
+
+.ve-toolbar__left {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.ve-toolbar__mark {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background: #18181b;
+	color: #ffffff;
+	font-size: 14px;
+	font-weight: 700;
+	flex: 0 0 auto;
+}
+
+.ve-toolbar__brand {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 92px;
 }
 
 .ve-toolbar h1,
 .ve-panel__header h2 {
 	margin: 0;
-	font-size: 18px;
+	font-size: 16px;
+}
+
+.ve-toolbar h1 {
+	font-size: 14px;
+	line-height: 1.1;
+}
+
+.ve-toolbar p {
+	font-size: 12px;
+	line-height: 1.2;
 }
 
 .ve-toolbar p,
@@ -94,11 +132,11 @@ button:disabled {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	height: 36px;
+	height: 32px;
 	padding: 0 12px;
-	border: 1px solid #d4d4d8;
-	border-radius: 8px;
-	background: #ffffff;
+	border: 1px solid #e4e4e7;
+	border-radius: 6px;
+	background: #f4f4f5;
 	color: #18181b;
 	cursor: pointer;
 	white-space: nowrap;
@@ -133,12 +171,12 @@ button:disabled {
 	top: calc(100% + 6px);
 	left: 0;
 	z-index: 100;
-	min-width: 240px;
+	min-width: 264px;
 	max-height: 360px;
 	overflow-y: auto;
 	background: #ffffff;
 	border: 1px solid #e4e4e7;
-	border-radius: 10px;
+	border-radius: 8px;
 	box-shadow: 0 8px 32px rgba(24, 24, 27, 0.12);
 	padding: 8px;
 	display: none;
@@ -152,6 +190,34 @@ button:disabled {
 
 .ve-project-dropdown__list {
 	gap: 4px;
+}
+
+.ve-project-dropdown__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 4px 4px 8px;
+	border-bottom: 1px solid #f4f4f5;
+	margin-bottom: 4px;
+}
+
+.ve-project-dropdown__header span {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: #71717a;
+}
+
+.ve-project-dropdown__new {
+	height: 28px;
+	border-radius: 6px;
+	border-color: #18181b;
+	background: #18181b;
+	color: #ffffff;
+	font-size: 12px;
+	padding: 0 10px;
 }
 
 .ve-project-dropdown__empty {

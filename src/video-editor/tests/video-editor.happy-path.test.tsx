@@ -1,12 +1,18 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { renderVideoEditor } from './renderVideoEditor'
 
+const createProjectFromMenu = async (user: ReturnType<typeof renderVideoEditor>['user']) => {
+	const projectsRegion = screen.getByLabelText('Projects')
+	await user.click(within(projectsRegion).getByRole('button'))
+	await user.click(within(projectsRegion).getByRole('button', { name: 'New project' }))
+}
+
 describe('video editor harness', () => {
 	it('runs the happy path: project -> import -> clip -> inspect -> split -> nudge', async () => {
 		const { user, unmount } = renderVideoEditor()
 
 		try {
-			await user.click(screen.getByRole('button', { name: 'New project' }))
+			await createProjectFromMenu(user)
 			expect(screen.getByRole('button', { name: /Project 1/i })).toBeInTheDocument()
 
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
@@ -52,7 +58,7 @@ describe('video editor harness', () => {
 		const { user, unmount } = renderVideoEditor()
 
 		try {
-			await user.click(screen.getByRole('button', { name: 'New project' }))
+			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
 			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
@@ -70,11 +76,11 @@ describe('video editor harness', () => {
 		const { user, unmount } = renderVideoEditor()
 
 		try {
-			await user.click(screen.getByRole('button', { name: 'New project' }))
+			await createProjectFromMenu(user)
 			await user.click(screen.getByRole('button', { name: 'Import sample' }))
 			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 
-			await user.click(screen.getByRole('button', { name: 'New project' }))
+			await createProjectFromMenu(user)
 			// Open project switcher to inspect all projects (trigger shows active "Project 2")
 			const projectsRegion = screen.getByLabelText('Projects')
 			await user.click(within(projectsRegion).getByRole('button', { name: /Project 2/i }))
@@ -100,8 +106,8 @@ describe('video editor harness', () => {
 		const { user, unmount } = renderVideoEditor()
 
 		try {
-			await user.click(screen.getByRole('button', { name: 'New project' }))
-			await user.click(screen.getByRole('button', { name: 'New project' }))
+			await createProjectFromMenu(user)
+			await createProjectFromMenu(user)
 
 			const projectsRegion = screen.getByLabelText('Projects')
 			await user.click(within(projectsRegion).getByRole('button', { name: /Project 2/i }))
