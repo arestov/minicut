@@ -14,7 +14,7 @@
     "test:integration": "playwright test",
     "video-editor:dev": "vite --config vite.video-editor.config.js",
     "video-editor:build": "vite build --config vite.video-editor.config.js",
-    "deploy": "npm run video-editor:build && npx --yes wrangler@4 pages deploy dist-video-editor --project-name minicut-video-editor-20260502002959"
+    "deploy": "npm run video-editor:build && npx --yes wrangler@4 pages deploy dist-video-editor --project-name minicut-video-editor"
   },
   "dependencies": {
     "@legendapp/state": "^3.0.0-beta.47",

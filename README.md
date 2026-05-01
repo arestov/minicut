@@ -9,7 +9,7 @@ Video editor harness built from the Linkkraft plan slice.
 - `npm run video-editor:build` builds the production bundle into `dist-video-editor/`.
 - `npm run test:video-editor` runs the unit and jsdom video editor suite.
 - `npm run test:integration` runs the Playwright browser suite.
-- `npm run deploy` builds the app and deploys `dist-video-editor/` to the Cloudflare Pages project `minicut-video-editor-20260502002959`.
+- `npm run deploy` builds the app and deploys `dist-video-editor/` to the Cloudflare Pages project `minicut-video-editor`.
 
 ## Cloudflare
 
