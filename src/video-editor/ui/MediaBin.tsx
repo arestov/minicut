@@ -7,6 +7,27 @@ interface ResourceRowProps {
 	resourceId: string
 }
 
+const isPreviewableUrl = (url: string): boolean =>
+	url.startsWith('blob:') || url.startsWith('/') || url.startsWith('./') || url.startsWith('http') || url.startsWith('data:')
+
+const ResourceThumbnail = ({ attrs }: { attrs: ResourceAttrs }) => {
+	const canPreview = isPreviewableUrl(attrs.url)
+
+	if (canPreview && attrs.kind === 'image') {
+		return <img className="ve-resource-thumb" src={attrs.url} alt={`${attrs.name} thumbnail`} />
+	}
+
+	if (canPreview && attrs.kind === 'video') {
+		return <video className="ve-resource-thumb" src={attrs.url} aria-label={`${attrs.name} thumbnail`} muted playsInline preload="metadata" />
+	}
+
+	return (
+		<div className={`ve-resource-thumb ve-resource-thumb--${attrs.kind}`} aria-label={`${attrs.kind} thumbnail`}>
+			<span>{attrs.kind}</span>
+		</div>
+	)
+}
+
 const ResourceRow = observer(({ projectId, resourceId }: ResourceRowProps) => {
 	const { projects$, actions } = useVideoEditor()
 	const resource$ = projects$.entitiesById[resourceId]
@@ -14,6 +35,7 @@ const ResourceRow = observer(({ projectId, resourceId }: ResourceRowProps) => {
 
 	return (
 		<li>
+			<ResourceThumbnail attrs={attrs} />
 			<div>
 				<strong>{attrs.name}</strong>
 				<small>

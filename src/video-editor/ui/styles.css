@@ -505,7 +505,7 @@ button:disabled {
 
 .ve-resource-list li {
 	display: flex;
-	justify-content: space-between;
+	justify-content: flex-start;
 	align-items: center;
 	gap: 12px;
 	padding: 12px;
@@ -514,11 +514,46 @@ button:disabled {
 	background: #fafafa;
 }
 
+.ve-resource-thumb {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 56px;
+	height: 38px;
+	flex: 0 0 56px;
+	border-radius: 6px;
+	border: 1px solid #d4d4d8;
+	background: #18181b;
+	color: #ffffff;
+	object-fit: cover;
+	overflow: hidden;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.ve-resource-thumb--audio {
+	background:
+		linear-gradient(90deg, transparent 8px, rgba(8, 145, 178, 0.32) 8px 12px, transparent 12px 18px) 0 50% / 20px 22px repeat-x,
+		#ecfeff;
+	color: #155e75;
+}
+
+.ve-resource-thumb--video {
+	background: linear-gradient(135deg, #1d4ed8, #0f172a);
+}
+
+.ve-resource-thumb--image {
+	background: linear-gradient(135deg, #16a34a, #facc15);
+}
+
 .ve-resource-list li > div {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
 	min-width: 0;
+	flex: 1 1 auto;
 }
 
 .ve-resource-list strong,
