@@ -9,6 +9,30 @@ const cloneRelValue = (value: RelValue): RelValue => {
 	return value
 }
 
+const setNestedAttrValue = (
+	attrs: Record<string, unknown>,
+	path: string,
+	value: number,
+): Record<string, unknown> => {
+	const keys = path.split('.')
+	if (keys.length < 2) {
+		return { ...attrs, [path]: value }
+	}
+
+	const nextAttrs = { ...attrs }
+	let target: Record<string, unknown> = nextAttrs
+	for (let index = 0; index < keys.length - 1; index += 1) {
+		const key = keys[index]
+		const current = target[key]
+		const next = current && typeof current === 'object' ? { ...(current as Record<string, unknown>) } : {}
+		target[key] = next
+		target = next
+	}
+
+	target[keys[keys.length - 1]] = value
+	return nextAttrs
+}
+
 export const applyPatchEnvelopeInPlace = (
 	registry: ProjectRegistry,
 	envelope: PatchEnvelope,
@@ -47,6 +71,18 @@ export const applyPatchEnvelopeInPlace = (
 						...current.attrs,
 						...patch.p.attrs,
 					},
+				}
+				break
+			}
+
+			case PATCH.SCALAR_SET: {
+				if (!project) {
+					throw new Error(`Missing project ${envelope.projectId} for SCALAR_SET`)
+				}
+				const current = registry.entitiesById[patch.p.id]
+				registry.entitiesById[patch.p.id] = {
+					...current,
+					attrs: setNestedAttrValue(current.attrs, patch.p.path, patch.p.value),
 				}
 				break
 			}

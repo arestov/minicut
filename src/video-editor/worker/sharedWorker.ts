@@ -29,7 +29,7 @@ const cleanupPort = (port: MessagePort): void => {
 
 const handleCommand = (port: MessagePort, requestId: string | undefined, command: Command): void => {
 	try {
-		const result: DispatchResult = buildDispatchResult(registry, command)
+		const result: DispatchResult = buildDispatchResult(registry, command, indexes)
 		applyPatchEnvelopeInPlace(registry, result.envelope)
 		indexes = buildWorkerDerivedIndexes(registry)
 		broadcastPatch(result.envelope)

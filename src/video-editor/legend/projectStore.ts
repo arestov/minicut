@@ -38,6 +38,16 @@ export const applyPatchEnvelope = (
 					projects$.entitiesById[patch.p.id].attrs.assign(patch.p.attrs)
 					break
 
+				case PATCH.SCALAR_SET: {
+					const path = patch.p.path.split('.')
+					let node = projects$.entitiesById[patch.p.id].attrs
+					for (const key of path) {
+						node = node[key]
+					}
+					node.set(patch.p.value)
+					break
+				}
+
 				case PATCH.REL_SPLICE: {
 					const rel$ = projects$.entitiesById[patch.p.id].rels[patch.p.rel]
 					if (!Array.isArray(rel$.get())) {

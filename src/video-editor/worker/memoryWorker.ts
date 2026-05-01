@@ -25,7 +25,7 @@ export class MemoryWorkerAuthority implements EditorAuthorityClient {
 	}
 
 	dispatch(command: Command): DispatchResult {
-		const result = buildDispatchResult(this.#registry, command)
+		const result = buildDispatchResult(this.#registry, command, this.#indexes)
 		applyPatchEnvelopeInPlace(this.#registry, result.envelope)
 		this.#indexes = buildWorkerDerivedIndexes(this.#registry)
 

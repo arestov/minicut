@@ -3,7 +3,7 @@ import { applyPatchEnvelopeInPlace } from './applyPatchInPlace'
 import { applyPatchEnvelopeToRegistry } from './applyPatch'
 import { createEmptyRegistry } from './createProject'
 import { getAudioTrack, getClipIdsForTrack, getTracks, getVideoTrack } from './selectors'
-import { CMD, type Command } from './types'
+import { CMD, PATCH, type Command } from './types'
 
 describe('command validation', () => {
 	it('rejects a clip insertion with a missing resource before producing patches', () => {
@@ -120,6 +120,64 @@ describe('command validation', () => {
 		const videoTrack = getVideoTrack(registry, project)
 		expect(videoTrack).not.toBeNull()
 		expect(getClipIdsForTrack(registry, String(videoTrack?.id))).not.toContain(clipId)
+	})
+
+	it('routes audio resources into audio tracks when no trackId is provided', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const project = registry.projects[projectId]
+		const audioTrack = getAudioTrack(registry, project)
+		expect(audioTrack).not.toBeNull()
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Default route voice', kind: 'audio', duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		expect(getClipIdsForTrack(registry, String(audioTrack?.id))).toContain(String(clipResult.createdIds?.clipId))
+	})
+
+	it('rejects video resources targeting audio tracks and locked tracks', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const project = registry.projects[projectId]
+		const audioTrack = getAudioTrack(registry, project)
+		const videoTrack = getVideoTrack(registry, project)
+		expect(audioTrack).not.toBeNull()
+		expect(videoTrack).not.toBeNull()
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Video source', kind: 'video', duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		expect(() => buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId), trackId: String(audioTrack?.id) },
+		})).toThrow('Expected video resource to target a video track')
+
+		registry = applyPatchEnvelopeToRegistry(registry, {
+			projectId,
+			version: registry.projects[projectId].version + 1,
+			patches: [{ c: PATCH.ATTRS_MERGE, p: { id: String(videoTrack?.id), attrs: { locked: true } } }],
+		})
+
+		expect(() => buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId), trackId: String(videoTrack?.id) },
+		})).toThrow('Cannot add a clip to a locked track')
 	})
 
 	it('rejects split commands on clip boundaries', () => {
@@ -307,6 +365,78 @@ describe('command validation', () => {
 				p: { id: clipId, effectId: firstEffectId },
 			}),
 		).toThrow('Unknown entity')
+	})
+
+	it('splits clips with cloned effect entities owned by the right clip', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Split effect source', kind: 'video', duration: 4 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const clipId = String(clipResult.createdIds?.clipId)
+		const effectResult = buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: { id: clipId, name: 'Blur', kind: 'blur', amount: 0.25 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, effectResult.envelope)
+		const originalEffectId = String(effectResult.createdIds?.effectId)
+
+		const splitResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_SPLIT_CLIP,
+			p: { id: clipId, time: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, splitResult.envelope)
+		const rightClipId = String(splitResult.createdIds?.clipId)
+		const rightEffects = registry.entitiesById[rightClipId].rels.effects
+		expect(Array.isArray(rightEffects)).toBe(true)
+		expect(rightEffects).toHaveLength(1)
+		const clonedEffectId = String(rightEffects?.[0])
+
+		expect(clonedEffectId).not.toBe(originalEffectId)
+		expect(registry.entitiesById[clipId].rels.effects).toEqual([originalEffectId])
+		expect(registry.entitiesById[clonedEffectId].rels.clip).toBe(rightClipId)
+		expect(registry.entitiesById[originalEffectId].rels.clip).toBe(clipId)
+	})
+
+	it('uses scalar patches to preserve animated scalar siblings like keyframes', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Opacity source', kind: 'video', duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const clipId = String(clipResult.createdIds?.clipId)
+		registry.entitiesById[clipId].attrs.opacity = { value: 1, keyframes: ['kf:1'] }
+
+		const updateResult = buildDispatchResult(registry, {
+			c: CMD.CLIP_UPDATE_ATTRS,
+			p: { id: clipId, attrs: { opacity: { value: 0.6 } } },
+		})
+		expect(updateResult.envelope.patches).toEqual([
+			{ c: PATCH.SCALAR_SET, p: { id: clipId, path: 'opacity.value', value: 0.6 } },
+		])
+		registry = applyPatchEnvelopeToRegistry(registry, updateResult.envelope)
+
+		expect(registry.entitiesById[clipId].attrs.opacity).toEqual({ value: 0.6, keyframes: ['kf:1'] })
 	})
 
 	it('rejects clip duration updates when duration is not positive', () => {

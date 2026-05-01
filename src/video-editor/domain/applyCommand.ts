@@ -4,6 +4,7 @@ import { createEntityId } from './id'
 import {
 	getClipIdsForTrack,
 	getActiveTimeline,
+	getAudioTrack,
 	getProjectEntity,
 	getTracks,
 	getTrackEnd,
@@ -16,6 +17,7 @@ import {
 	type DispatchResult,
 	type Entity,
 	type EntityId,
+	type Patch,
 	type ProjectRegistry,
 	CMD,
 	PATCH,
@@ -23,17 +25,28 @@ import {
 
 const scalar = (value: number): AnimatedScalar => ({ value })
 
-const findClipTrack = (registry: ProjectRegistry, clipId: EntityId): Entity | null =>
-	Object.values(registry.entitiesById).find(
+export interface DispatchContext {
+	clipTrackById?: Record<EntityId, EntityId>
+}
+
+const findClipTrack = (registry: ProjectRegistry, clipId: EntityId, context?: DispatchContext): Entity | null => {
+	const indexedTrackId = context?.clipTrackById?.[clipId]
+	if (indexedTrackId) {
+		return registry.entitiesById[indexedTrackId] ?? null
+	}
+
+	return Object.values(registry.entitiesById).find(
 		(entity) =>
 			entity.type === 'track' &&
 			Array.isArray(entity.rels.clips) &&
 			entity.rels.clips.includes(clipId),
 	) ?? null
+}
 
 export const buildDispatchResult = (
 	registry: ProjectRegistry,
 	command: Command,
+	context?: DispatchContext,
 ): DispatchResult => {
 	validateCommand(registry, command)
 
@@ -152,12 +165,15 @@ export const buildDispatchResult = (
 		case CMD.TIMELINE_ADD_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
 			const resource = assertEntity(registry, command.p.resourceId)
+			const resourceKind = resource.attrs.kind
 			const targetTrack = command.p.trackId
 				? assertEntity(registry, command.p.trackId)
-				: getVideoTrack(registry, project)
+				: resourceKind === 'audio'
+					? getAudioTrack(registry, project)
+					: getVideoTrack(registry, project)
 
 			if (!targetTrack) {
-				throw new Error('No video track available for clip insertion')
+				throw new Error(`No ${resourceKind === 'audio' ? 'audio' : 'video'} track available for clip insertion`)
 			}
 
 			const clipId = createEntityId()
@@ -276,7 +292,7 @@ export const buildDispatchResult = (
 				},
 			}
 
-			const track = findClipTrack(registry, clip.id)
+			const track = findClipTrack(registry, clip.id, context)
 
 			if (!track) {
 				throw new Error(`Unable to find parent track for clip ${clip.id}`)
@@ -320,7 +336,7 @@ export const buildDispatchResult = (
 		case CMD.TIMELINE_DELETE_CLIP: {
 			const project = assertProjectForEntity(registry, command.p.id)
 			const clip = assertEntity(registry, command.p.id)
-			const track = findClipTrack(registry, clip.id)
+			const track = findClipTrack(registry, clip.id, context)
 			if (!track) {
 				throw new Error(`Unable to find parent track for clip ${clip.id}`)
 			}
@@ -355,20 +371,35 @@ export const buildDispatchResult = (
 		case CMD.CLIP_UPDATE_ATTRS: {
 			const project = assertProjectForEntity(registry, command.p.id)
 			assertEntity(registry, command.p.id)
+			const { opacity, ...attrs } = command.p.attrs
+			const patches: Patch[] = []
+
+			if (Object.keys(attrs).length > 0) {
+				patches.push({
+					c: PATCH.ATTRS_MERGE,
+					p: {
+						id: command.p.id,
+						attrs,
+					},
+				})
+			}
+
+			if (opacity?.value !== undefined) {
+				patches.push({
+					c: PATCH.SCALAR_SET,
+					p: {
+						id: command.p.id,
+						path: 'opacity.value',
+						value: opacity.value,
+					},
+				})
+			}
 
 			return {
 				envelope: {
 					projectId: project.id,
 					version: project.version + 1,
-					patches: [
-						{
-							c: PATCH.ATTRS_MERGE,
-							p: {
-								id: command.p.id,
-								attrs: command.p.attrs,
-							},
-						},
-					],
+					patches,
 				},
 			}
 		}

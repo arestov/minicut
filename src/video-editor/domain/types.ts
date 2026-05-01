@@ -137,6 +137,7 @@ export const PATCH = {
 	ENTITY_SET: -210,
 	ENTITY_DELETE: -211,
 	ATTRS_MERGE: -220,
+	SCALAR_SET: -225,
 	REL_SPLICE: -231,
 	WORKSPACE_ACTIVE_PROJECT_SET: -240,
 } as const
@@ -228,6 +229,10 @@ export type Patch =
 	| {
 			c: typeof PATCH.ATTRS_MERGE
 			p: { id: EntityId; attrs: Record<string, unknown> }
+	  }
+	| {
+			c: typeof PATCH.SCALAR_SET
+			p: { id: EntityId; path: string; value: number }
 	  }
 	| {
 			c: typeof PATCH.REL_SPLICE
