@@ -1,4 +1,5 @@
 import { observable, type Observable } from '@legendapp/state'
+import { createPlaybackDuration$ } from '../legend/derivedTimeline'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
 import { createSessionStore, TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from '../legend/sessionStore'
 import { getActiveProject, getAudioTrack, getClipIdsForTrack, getProjectMetaList, getSelectedClip, getTracks, getVideoTrack } from '../domain/selectors'
@@ -140,50 +141,6 @@ const getActiveProjectId = (
 	return projectId
 }
 
-const getPlaybackDuration = (registry: ProjectRegistry, session: EditorSessionState): number => {
-	const project = getActiveProject(registry, session)
-	if (!project) {
-		return 20
-	}
-
-	const projectAttrs = registry.entitiesById[project.rootEntityId]?.attrs as { duration?: number } | undefined
-	const declaredProjectDuration = Number(projectAttrs?.duration)
-	if (Number.isFinite(declaredProjectDuration) && declaredProjectDuration > 0) {
-		return declaredProjectDuration
-	}
-
-	const timelineId = registry.entitiesById[project.rootEntityId]?.rels.activeTimeline
-	const timeline = typeof timelineId === 'string' ? registry.entitiesById[timelineId] : undefined
-	const declaredTimelineDuration = Number((timeline?.attrs as { duration?: number } | undefined)?.duration)
-	if (Number.isFinite(declaredTimelineDuration) && declaredTimelineDuration > 0) {
-		return declaredTimelineDuration
-	}
-
-	const trackIds = timeline?.rels.tracks
-	if (!Array.isArray(trackIds)) {
-		return 20
-	}
-
-	let clipEnd = 0
-	for (const trackId of trackIds) {
-		const clipIds = registry.entitiesById[trackId]?.rels.clips
-		if (!Array.isArray(clipIds)) {
-			continue
-		}
-
-		for (const clipId of clipIds) {
-			const attrs = registry.entitiesById[clipId]?.attrs as Partial<ClipAttrs> | undefined
-			const start = Number(attrs?.start)
-			const duration = Number(attrs?.duration)
-			if (Number.isFinite(start) && Number.isFinite(duration)) {
-				clipEnd = Math.max(clipEnd, start + duration)
-			}
-		}
-	}
-
-	return clipEnd > 0 ? clipEnd : 20
-}
-
 const isProjectTimelineEmpty = (registry: ProjectRegistry, projectId: string): boolean => {
 	const project = registry.projects[projectId]
 	if (!project) {
@@ -206,6 +163,7 @@ export const createVideoEditorHarness = (
 	const exportRenderer = options.exportRenderer ?? createBrowserVideoExportRenderer()
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
+	const playbackDuration$ = createPlaybackDuration$(projects$, session$)
 	const history$ = observable<HistoryState>({ canUndo: false, canRedo: false })
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
@@ -745,7 +703,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const playbackDuration = getPlaybackDuration(projects$.get(), session$.get())
+			const playbackDuration = playbackDuration$.get()
 			session$.cursor.set((session$.cursor.get() + deltaSeconds) % playbackDuration)
 		},
 
