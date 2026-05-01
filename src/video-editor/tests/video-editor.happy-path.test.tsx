@@ -133,6 +133,40 @@ describe('video editor harness', () => {
 		}
 	})
 
+	it('applies every color preset button in inspector', async () => {
+		const { user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
+			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
+
+			const inspector = screen.getByLabelText('Inspector')
+			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
+
+			const presets: Array<{ hex: string, rgb: string }> = [
+				{ hex: '#2563eb', rgb: 'rgb(37, 99, 235)' },
+				{ hex: '#16a34a', rgb: 'rgb(22, 163, 74)' },
+				{ hex: '#dc2626', rgb: 'rgb(220, 38, 38)' },
+				{ hex: '#ca8a04', rgb: 'rgb(202, 138, 4)' },
+				{ hex: '#7c3aed', rgb: 'rgb(124, 58, 237)' },
+				{ hex: '#0891b2', rgb: 'rgb(8, 145, 178)' },
+			]
+
+			for (const preset of presets) {
+				await user.click(within(inspector).getByRole('button', { name: `Set color ${preset.hex}` }))
+				expect(within(inspector).getByLabelText('Color')).toHaveValue(preset.hex)
+				expect(screen.getByRole('button', { name: /Sample asset 1/i })).toHaveStyle({
+					borderLeftColor: preset.rgb,
+				})
+			}
+		}
+		finally {
+			unmount()
+		}
+	})
+
 	it('keeps projects isolated when switching active project', async () => {
 		const { user, unmount } = renderVideoEditor()
 
