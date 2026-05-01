@@ -4,6 +4,8 @@ import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ClipAttrs, Entity, ResourceAttrs, TransformAttrs } from '../domain/types'
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
 
+const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()
+
 interface RenderedClip {
 	id: string
 	name: string
@@ -157,10 +159,15 @@ export const RendererStage = observer(() => {
 			return
 		}
 
-		if (!workerRef.current && 'transferControlToOffscreen' in canvas) {
+		const existingWorker = offscreenWorkers.get(canvas)
+		if (existingWorker) {
+			workerRef.current = existingWorker
+			setRenderMode('offscreen')
+		} else if (!workerRef.current && 'transferControlToOffscreen' in canvas) {
 			const offscreen = canvas.transferControlToOffscreen()
 			const worker = new PreviewCanvasWorker()
 			worker.postMessage({ type: 'init', canvas: offscreen }, [offscreen])
+			offscreenWorkers.set(canvas, worker)
 			workerRef.current = worker
 			setRenderMode('offscreen')
 		}
@@ -175,11 +182,6 @@ export const RendererStage = observer(() => {
 		setRenderMode('fallback')
 		drawFallbackPreview(canvas, renderPayload.cursor, renderedClips)
 	}, [renderPayload, renderedClips])
-
-	useEffect(() => () => {
-		workerRef.current?.terminate()
-		workerRef.current = null
-	}, [])
 
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">

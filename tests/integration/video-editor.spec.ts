@@ -7,6 +7,14 @@ const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
 	await projectsRegion.getByRole('button', { name: 'New project' }).click()
 }
 
+const importFixtureMedia = async (page: import('@playwright/test').Page) => {
+	await page.getByLabel('Import media files').setInputFiles([
+		path.resolve('tests/fixtures/media/fixture-video.webm'),
+		path.resolve('tests/fixtures/media/fixture-image.png'),
+		path.resolve('tests/fixtures/media/fixture-audio.wav'),
+	])
+}
+
 test('user can finish the harness happy path in the browser', async ({ page }) => {
 	await page.goto('/')
 
@@ -59,16 +67,15 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	await page.goto('/')
 	await createProjectFromMenu(page)
 
-	await page.getByLabel('Import media files').setInputFiles([
-		path.resolve('tests/fixtures/media/fixture-video.webm'),
-		path.resolve('tests/fixtures/media/fixture-image.png'),
-		path.resolve('tests/fixtures/media/fixture-audio.wav'),
-	])
+	await importFixtureMedia(page)
 
 	const mediaBin = page.getByLabel('Media bin')
 	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible()
 	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-image.png' })).toBeVisible()
 	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-audio.wav' })).toBeVisible()
+	await expect(mediaBin.getByLabel('fixture-video.webm thumbnail')).toBeVisible()
+	await expect(mediaBin.locator('img[alt="fixture-image.png thumbnail"]')).toBeVisible()
+	await expect(mediaBin.getByLabel('audio thumbnail')).toBeVisible()
 
 	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(0).click()
 	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(1).click()
@@ -88,6 +95,7 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	const cursor = timeline.getByRole('slider', { name: 'Cursor' })
 	await cursor.fill('0.5')
 	const renderer = page.getByLabel('Renderer stage')
+	await expect(renderer.getByLabel('Offscreen preview canvas')).toHaveAttribute('data-render-mode', 'offscreen')
 	await expect(renderer.locator('video')).toHaveCount(1)
 
 	await cursor.fill('6.5')
@@ -96,4 +104,66 @@ test('imports real media files, edits timeline clips, and previews actual media 
 
 	await cursor.fill('0.5')
 	await expect(renderer.locator('audio')).toHaveCount(1)
+})
+
+test('timeline uses one shared current step and keeps many tracks scrollable', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	for (let index = 0; index < 10; index += 1) {
+		await timeline.getByRole('button', { name: 'Add video track' }).click()
+		await timeline.getByRole('button', { name: 'Add audio track' }).click()
+	}
+
+	await expect(timeline.getByText('22 tracks')).toBeVisible()
+	await timeline.getByRole('slider', { name: 'Cursor' }).fill('8')
+	await expect(timeline.getByLabel('Current step')).toHaveCount(1)
+	await expect(timeline.getByLabel('Current time')).toHaveText('8.0s')
+
+	const scrollMetrics = await timeline.locator('.ve-timeline-scroll-area').evaluate((element) => ({
+		clientHeight: element.clientHeight,
+		scrollHeight: element.scrollHeight,
+	}))
+	expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight)
+
+	await timeline.locator('.ve-timeline-scroll-area').evaluate((element) => {
+		element.scrollTop = element.scrollHeight
+	})
+	await expect(timeline.getByText('A11')).toBeVisible()
+})
+
+test('inspector feature controls combine trim, color, effects, audio, export, and delete', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+	await page.getByRole('button', { name: 'Add first resource' }).click()
+
+	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	await clip.click()
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+
+	await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
+	await inspector.getByRole('button', { name: 'End -0.5s' }).click()
+	await expect(inspector.locator('dd').filter({ hasText: '0.5s' })).toBeVisible()
+	await page.getByRole('region', { name: 'Timeline' }).getByRole('slider', { name: 'Cursor' }).fill('0.5')
+
+	await inspector.getByRole('button', { name: 'Tint' }).click()
+	await expect(inspector.getByText('1 effects')).toBeVisible()
+	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer')).toHaveCSS('filter', /sepia/)
+
+	await inspector.getByRole('tab', { name: 'Color' }).click()
+	await inspector.getByRole('button', { name: 'Set color #16a34a' }).click()
+	await expect(inspector.locator('.ve-inspector-thumb')).toHaveCSS('background-color', 'rgb(22, 163, 74)')
+
+	await inspector.getByRole('tab', { name: 'Audio' }).click()
+	await expect(inspector.getByLabel('Audio inspector').getByText('Gain')).toBeVisible()
+	await expect(inspector.getByLabel('Audio inspector').getByText('Pan')).toBeVisible()
+
+	await inspector.getByRole('tab', { name: 'Export' }).click()
+	await expect(inspector.getByRole('button', { name: 'Queue clip export' })).toBeVisible()
+
+	await inspector.getByRole('tab', { name: 'Edit' }).click()
+	await inspector.getByRole('button', { name: 'Delete clip' }).click()
+	await expect(page.getByText('Select a clip to edit opacity or split it.')).toBeVisible()
 })
