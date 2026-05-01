@@ -102,6 +102,50 @@ const getActiveProjectId = (
 	return projectId
 }
 
+const getPlaybackDuration = (registry: ProjectRegistry, session: EditorSessionState): number => {
+	const project = getActiveProject(registry, session)
+	if (!project) {
+		return 20
+	}
+
+	const projectAttrs = registry.entitiesById[project.rootEntityId]?.attrs as { duration?: number } | undefined
+	const declaredProjectDuration = Number(projectAttrs?.duration)
+	if (Number.isFinite(declaredProjectDuration) && declaredProjectDuration > 0) {
+		return declaredProjectDuration
+	}
+
+	const timelineId = registry.entitiesById[project.rootEntityId]?.rels.activeTimeline
+	const timeline = typeof timelineId === 'string' ? registry.entitiesById[timelineId] : undefined
+	const declaredTimelineDuration = Number((timeline?.attrs as { duration?: number } | undefined)?.duration)
+	if (Number.isFinite(declaredTimelineDuration) && declaredTimelineDuration > 0) {
+		return declaredTimelineDuration
+	}
+
+	const trackIds = timeline?.rels.tracks
+	if (!Array.isArray(trackIds)) {
+		return 20
+	}
+
+	let clipEnd = 0
+	for (const trackId of trackIds) {
+		const clipIds = registry.entitiesById[trackId]?.rels.clips
+		if (!Array.isArray(clipIds)) {
+			continue
+		}
+
+		for (const clipId of clipIds) {
+			const attrs = registry.entitiesById[clipId]?.attrs as Partial<ClipAttrs> | undefined
+			const start = Number(attrs?.start)
+			const duration = Number(attrs?.duration)
+			if (Number.isFinite(start) && Number.isFinite(duration)) {
+				clipEnd = Math.max(clipEnd, start + duration)
+			}
+		}
+	}
+
+	return clipEnd > 0 ? clipEnd : 20
+}
+
 interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
 }
@@ -504,7 +548,8 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			session$.cursor.set((session$.cursor.get() + deltaSeconds) % 20)
+			const playbackDuration = getPlaybackDuration(projects$.get(), session$.get())
+			session$.cursor.set((session$.cursor.get() + deltaSeconds) % playbackDuration)
 		},
 
 		zoomTimeline(delta: number): void {

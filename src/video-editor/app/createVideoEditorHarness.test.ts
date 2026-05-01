@@ -260,7 +260,7 @@ describe('createVideoEditorHarness actions', () => {
 			const clipIds = getClipIdsForTrack(registry, String(audioTrack?.id))
 			expect(clipIds).toHaveLength(1)
 
-			harness.session$.cursor.set(19.8)
+			harness.session$.cursor.set(2.3)
 			harness.session$.isPlaying.set(true)
 			harness.actions.tickPlayback(0.5)
 			expect(harness.session$.cursor.get()).toBeCloseTo(0.3, 5)

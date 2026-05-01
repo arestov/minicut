@@ -37,6 +37,7 @@ const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
 export const Inspector = observer(() => {
 	const [activeTab, setActiveTab] = useState<InspectorTab>('edit')
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
+	const [queuedExportName, setQueuedExportName] = useState<string | null>(null)
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const selectedEntityId = session$.selectedEntityId.get()
@@ -89,6 +90,31 @@ export const Inspector = observer(() => {
 		})
 		.filter((entry): entry is { id: string, name: string, kind: string } => entry !== null)
 	const opacityPercent = Math.round(opacity * 100)
+	let selectedTrackName = 'Track'
+	let selectedClipOrdinal = 1
+	if (activeProjectId && selectedEntityId) {
+		const rootEntityId = projects$.projects[activeProjectId]?.rootEntityId.get()
+		const timelineId = rootEntityId ? projects$.entitiesById[rootEntityId].rels.activeTimeline.get() : null
+		const trackIds = typeof timelineId === 'string'
+			? projects$.entitiesById[timelineId].rels.tracks.get()
+			: []
+
+		if (Array.isArray(trackIds)) {
+			for (const trackId of trackIds) {
+				const clipIds = projects$.entitiesById[trackId].rels.clips.get()
+				if (!Array.isArray(clipIds)) {
+					continue
+				}
+
+				const clipIndex = clipIds.indexOf(selectedEntityId)
+				if (clipIndex >= 0) {
+					selectedTrackName = String(projects$.entitiesById[trackId].attrs.name.get())
+					selectedClipOrdinal = clipIndex + 1
+					break
+				}
+			}
+		}
+	}
 
 	return (
 		<aside className="ve-panel" aria-label="Inspector">
@@ -101,7 +127,7 @@ export const Inspector = observer(() => {
 				<div className="ve-inspector-thumb" style={{ background: color }} />
 				<div>
 					<strong>{name}</strong>
-					<small>clip-18 - V1 - {formatSeconds(start)}</small>
+					<small>Clip {selectedClipOrdinal} - {selectedTrackName} - {formatSeconds(start)}</small>
 				</div>
 			</div>
 			{activeTab === 'edit' ? (
@@ -241,7 +267,10 @@ export const Inspector = observer(() => {
 						<div><dt>Format</dt><dd>MP4</dd></div>
 						<div><dt>Quality</dt><dd>High</dd></div>
 					</dl>
-					<button type="button">Queue clip export</button>
+					<button type="button" onClick={() => setQueuedExportName(name)}>Queue clip export</button>
+					{queuedExportName ? (
+						<p className="ve-preview__summary" role="status">Queued export for {queuedExportName}</p>
+					) : null}
 				</div>
 			) : null}
 		</aside>
