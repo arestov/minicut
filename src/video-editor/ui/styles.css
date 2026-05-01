@@ -1,8 +1,28 @@
 :root {
+	--ve-background: #f8fafc;
+	--ve-foreground: #18181b;
+	--ve-card: #ffffff;
+	--ve-card-foreground: #18181b;
+	--ve-muted: #f4f4f5;
+	--ve-muted-foreground: #52525b;
+	--ve-border: #e4e4e7;
+	--ve-input: #d4d4d8;
+	--ve-primary: #18181b;
+	--ve-primary-foreground: #ffffff;
+	--ve-secondary: #f4f4f5;
+	--ve-secondary-foreground: #18181b;
+	--ve-accent: #eff6ff;
+	--ve-accent-foreground: #1d4ed8;
+	--ve-destructive: #dc2626;
+	--ve-destructive-foreground: #ffffff;
+	--ve-ring: rgba(37, 99, 235, 0.2);
+	--ve-radius: 8px;
+	--ve-toolbar-height: 56px;
+	--ve-timeline-height: clamp(420px, 42vh, 540px);
 	color-scheme: light;
 	font-family: Inter, "Segoe UI", sans-serif;
-	background: #f4f4f5;
-	color: #18181b;
+	background: var(--ve-background);
+	color: var(--ve-foreground);
 }
 
 * {
@@ -11,8 +31,8 @@
 
 body {
 	margin: 0;
-	background: #f4f4f5;
-	color: #18181b;
+	background: var(--ve-background);
+	color: var(--ve-foreground);
 }
 
 button,
@@ -21,10 +41,10 @@ input {
 }
 
 button {
-	border: 1px solid #d4d4d8;
-	border-radius: 8px;
-	background: #ffffff;
-	color: #18181b;
+	border: 1px solid var(--ve-input);
+	border-radius: var(--ve-radius);
+	background: var(--ve-card);
+	color: var(--ve-foreground);
 	padding: 0 12px;
 	height: 36px;
 	cursor: pointer;
@@ -37,7 +57,7 @@ button {
 
 button:not(:disabled):hover {
 	border-color: #a1a1aa;
-	background: #f4f4f5;
+	background: var(--ve-muted);
 }
 
 button:focus,
@@ -45,12 +65,90 @@ button:focus-visible,
 input:focus-visible {
 	outline: none;
 	border-color: #2563eb;
-	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+	box-shadow: 0 0 0 2px var(--ve-ring);
 }
 
 button:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+.ve-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	white-space: nowrap;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1;
+}
+
+.ve-button--default {
+	border-color: var(--ve-primary);
+	background: var(--ve-primary);
+	color: var(--ve-primary-foreground);
+}
+
+.ve-button--default:not(:disabled):hover {
+	border-color: #27272a;
+	background: #27272a;
+}
+
+.ve-button--secondary {
+	border-color: var(--ve-secondary);
+	background: var(--ve-secondary);
+	color: var(--ve-secondary-foreground);
+}
+
+.ve-button--outline {
+	border-color: var(--ve-input);
+	background: var(--ve-card);
+	color: var(--ve-foreground);
+}
+
+.ve-button--ghost {
+	border-color: transparent;
+	background: transparent;
+	color: var(--ve-foreground);
+}
+
+.ve-button--ghost:not(:disabled):hover {
+	border-color: transparent;
+	background: var(--ve-muted);
+}
+
+.ve-button--destructive {
+	border-color: var(--ve-destructive);
+	background: var(--ve-destructive);
+	color: var(--ve-destructive-foreground);
+}
+
+.ve-button--destructive:not(:disabled):hover {
+	border-color: #b91c1c;
+	background: #b91c1c;
+}
+
+.ve-button--sm {
+	height: 32px;
+	padding: 0 10px;
+}
+
+.ve-button--icon {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	flex: 0 0 auto;
+}
+
+.ve-icon-button svg {
+	flex: 0 0 auto;
+}
+
+.ve-icon-button--with-label span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .ve-shell {
