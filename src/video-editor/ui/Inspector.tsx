@@ -346,13 +346,13 @@ export const Inspector = observer(() => {
 							{exportStatus.state === 'rendering' ? 'Rendering export' : 'Queue clip export'}
 						</IconButton>
 						{exportStatus.state === 'rendering' ? (
-							<p className="ve-preview__summary" role="status">Rendering export manifest for {name}</p>
+							<p className="ve-preview__summary" role="status">Rendering export file for {name}</p>
 						) : null}
 						{exportStatus.state === 'ready' ? (
 							<p className="ve-preview__summary" role="status">
 								Export ready: {exportStatus.result.frameCount} frames · {exportStatus.result.size} bytes
 								{exportStatus.result.downloadUrl ? (
-									<> · <a href={exportStatus.result.downloadUrl} download={exportStatus.result.fileName}>Download manifest</a></>
+									<> · <a href={exportStatus.result.downloadUrl} download={exportStatus.result.fileName}>Download file</a></>
 								) : null}
 							</p>
 						) : null}

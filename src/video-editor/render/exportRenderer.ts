@@ -1,8 +1,8 @@
 import { getProjectEntity, getTrackEnd, getTracks } from '../domain/selectors'
-import type { ClipAttrs, Entity, ProjectRegistry } from '../domain/types'
+import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
 import { compileEditframeClips, compileFrameOperations, type ClipFrameOperation, type EditframeClip } from './renderPlan'
 
-export type ExportFormat = 'json-manifest'
+export type ExportFormat = 'json-manifest' | 'video-webm'
 
 export type ExportRange =
 	| { type: 'project' }
@@ -59,6 +59,30 @@ export interface ExportRenderer {
 }
 
 const manifestMimeType = 'application/vnd.minicut.export+json'
+const videoMimeType = 'video/webm'
+const defaultExportWidth = 1280
+const defaultExportHeight = 720
+
+const webmMimeCandidates = [
+	'video/webm;codecs=vp9',
+	'video/webm;codecs=vp8',
+	'video/webm',
+]
+
+interface BrowserVideoExportRendererOptions {
+	fallbackToManifestOnUnsupported?: boolean
+	width?: number
+	height?: number
+	videoBitsPerSecond?: number
+	backgroundColor?: string
+}
+
+interface RenderableResource {
+	attrs: ResourceAttrs
+	image?: HTMLImageElement
+	video?: HTMLVideoElement
+	loadPromise?: Promise<void>
+}
 
 const sanitizeFileNamePart = (value: string): string =>
 	value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'export'
@@ -118,6 +142,234 @@ const getProjectTitle = (registry: ProjectRegistry, projectId: string): string =
 	return String(getProjectEntity(registry, project).attrs.title ?? 'project')
 }
 
+const getRangeName = (registry: ProjectRegistry, projectId: string, range: ExportRange): string =>
+	range.type === 'clip'
+		? String(getClipEntity(registry, range.clipId).attrs.name ?? 'clip')
+		: getProjectTitle(registry, projectId)
+
+const getOperationValue = <Value>(
+	operations: ClipFrameOperation['operations'],
+	type: ClipFrameOperation['operations'][number]['type'],
+	fallback: Value,
+): Value => operations.find((operation) => operation.type === type)?.value as Value ?? fallback
+
+const getOperationEffects = (operations: ClipFrameOperation['operations']): string[] =>
+	operations
+		.filter((operation) => operation.type === 'effect')
+		.map((operation) => String(operation.value))
+
+const getEffectFilter = (effect: string): string => {
+	if (effect === 'blur') {
+		return 'blur(6px)'
+	}
+	if (effect === 'sharpen') {
+		return 'contrast(1.25) saturate(1.125)'
+	}
+	if (effect === 'tint') {
+		return 'sepia(0.35) saturate(1.35)'
+	}
+
+	return ''
+}
+
+const getWebmMimeType = (): string | null => {
+	if (typeof MediaRecorder === 'undefined') {
+		return null
+	}
+
+	for (const candidate of webmMimeCandidates) {
+		if (MediaRecorder.isTypeSupported(candidate)) {
+			return candidate
+		}
+	}
+
+	return null
+}
+
+const isVideoExportSupported = (): boolean =>
+	typeof document !== 'undefined'
+	&& typeof MediaRecorder !== 'undefined'
+	&& typeof HTMLCanvasElement !== 'undefined'
+	&& typeof HTMLCanvasElement.prototype.captureStream === 'function'
+	&& getWebmMimeType() !== null
+
+const waitForDuration = async (milliseconds: number): Promise<void> =>
+	new Promise((resolve) => {
+		globalThis.setTimeout(resolve, Math.max(0, milliseconds))
+	})
+
+const clampTimeToDuration = (time: number, duration: number): number => {
+	if (!Number.isFinite(duration) || duration <= 0) {
+		return Math.max(0, time)
+	}
+
+	return Math.min(Math.max(0, time), Math.max(0, duration - 0.001))
+}
+
+const loadImageResource = (url: string): Promise<HTMLImageElement> =>
+	new Promise((resolve, reject) => {
+		const image = new Image()
+		image.onload = () => resolve(image)
+		image.onerror = () => reject(new Error(`Failed to load image resource ${url}`))
+		image.src = url
+	})
+
+const loadVideoResource = (url: string): Promise<HTMLVideoElement> =>
+	new Promise((resolve, reject) => {
+		const video = document.createElement('video')
+		video.muted = true
+		video.playsInline = true
+		video.preload = 'auto'
+		video.onloadedmetadata = () => resolve(video)
+		video.onerror = () => reject(new Error(`Failed to load video resource ${url}`))
+		video.src = url
+		video.load()
+	})
+
+const seekVideo = (video: HTMLVideoElement, targetTime: number): Promise<void> =>
+	new Promise((resolve) => {
+		const finish = (): void => {
+			video.removeEventListener('seeked', onSeeked)
+			globalThis.clearTimeout(timeoutId)
+			resolve()
+		}
+
+		const onSeeked = (): void => {
+			finish()
+		}
+
+		const timeoutId = globalThis.setTimeout(finish, 250)
+		video.addEventListener('seeked', onSeeked, { once: true })
+
+		try {
+			const duration = Number.isFinite(video.duration) ? video.duration : 0
+			video.currentTime = clampTimeToDuration(targetTime, duration)
+		} catch {
+			finish()
+		}
+	})
+
+const createResourceCache = (registry: ProjectRegistry): Map<string, RenderableResource> => {
+	const cache = new Map<string, RenderableResource>()
+	for (const entityId of Object.keys(registry.entitiesById)) {
+		const entity = registry.entitiesById[entityId]
+		if (!entity || entity.type !== 'resource') {
+			continue
+		}
+
+		cache.set(entityId, {
+			attrs: entity.attrs as unknown as ResourceAttrs,
+		})
+	}
+
+	return cache
+}
+
+const ensureRenderableResource = async (
+	resource: RenderableResource,
+	kind: ClipFrameOperation['resourceKind'],
+): Promise<void> => {
+	if (kind === 'image') {
+		if (resource.image || resource.loadPromise) {
+			await resource.loadPromise
+			return
+		}
+
+		resource.loadPromise = loadImageResource(resource.attrs.url).then((image) => {
+			resource.image = image
+		})
+		await resource.loadPromise
+		return
+	}
+
+	if (kind === 'video') {
+		if (resource.video || resource.loadPromise) {
+			await resource.loadPromise
+			return
+		}
+
+		resource.loadPromise = loadVideoResource(resource.attrs.url).then((video) => {
+			resource.video = video
+		})
+		await resource.loadPromise
+	}
+}
+
+const drawFrameOperations = async (
+	context: CanvasRenderingContext2D,
+	operations: ClipFrameOperation[],
+	resourceCache: Map<string, RenderableResource>,
+	width: number,
+	height: number,
+	backgroundColor: string,
+): Promise<void> => {
+	context.save()
+	context.clearRect(0, 0, width, height)
+	context.fillStyle = backgroundColor
+	context.fillRect(0, 0, width, height)
+	context.restore()
+
+	for (const operation of operations) {
+		const resource = resourceCache.get(operation.resourceId)
+		if (!resource) {
+			continue
+		}
+
+		await ensureRenderableResource(resource, operation.resourceKind)
+		const transform = getOperationValue<{ x: number; y: number; scale: number; rotation: number }>(
+			operation.operations,
+			'transform',
+			{ x: 0, y: 0, scale: 1, rotation: 0 },
+		)
+		const opacity = Math.max(0, Math.min(1, Number(getOperationValue(operation.operations, 'opacity', 1)) || 0))
+		const filters = getOperationEffects(operation.operations)
+			.map((effect) => getEffectFilter(effect))
+			.filter(Boolean)
+			.join(' ')
+
+		context.save()
+		context.globalAlpha = opacity
+		context.filter = filters || 'none'
+		context.translate(width / 2 + transform.x, height / 2 + transform.y)
+		context.rotate((transform.rotation * Math.PI) / 180)
+		context.scale(transform.scale, transform.scale)
+
+		if (operation.resourceKind === 'image' && resource.image) {
+			const sourceWidth = resource.image.naturalWidth || Number(resource.attrs.width) || width
+			const sourceHeight = resource.image.naturalHeight || Number(resource.attrs.height) || height
+			const fitScale = Math.min(width / sourceWidth, height / sourceHeight)
+			const drawWidth = sourceWidth * fitScale
+			const drawHeight = sourceHeight * fitScale
+			context.drawImage(resource.image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+		} else if (operation.resourceKind === 'video' && resource.video) {
+			await seekVideo(resource.video, operation.sourceTime)
+			const sourceWidth = resource.video.videoWidth || Number(resource.attrs.width) || width
+			const sourceHeight = resource.video.videoHeight || Number(resource.attrs.height) || height
+			const fitScale = Math.min(width / sourceWidth, height / sourceHeight)
+			const drawWidth = sourceWidth * fitScale
+			const drawHeight = sourceHeight * fitScale
+			context.drawImage(resource.video, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+		} else {
+			context.fillStyle = '#e4e4e7'
+			context.fillRect(-220, -40, 440, 80)
+			context.fillStyle = '#18181b'
+			context.font = '600 24px Segoe UI, sans-serif'
+			context.textAlign = 'center'
+			context.fillText(operation.resourceKind.toUpperCase(), 0, 8)
+		}
+
+		context.restore()
+	}
+}
+
+const buildFileName = (
+	rangeName: string,
+	format: ExportFormat,
+): string => `${sanitizeFileNamePart(rangeName)}${format === 'video-webm' ? '.webm' : '.minicut-export.json'}`
+
+const renderManifestBlob = (manifest: ExportManifest): Blob =>
+	new Blob([`${JSON.stringify(manifest, null, 2)}\n`], { type: manifestMimeType })
+
 const createExportId = (): string => {
 	if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
 		return crypto.randomUUID()
@@ -172,13 +424,11 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 			clips: getRangeClips(request.registry, request.projectId, request.range),
 			frames,
 		}
-		const blob = new Blob([`${JSON.stringify(manifest, null, 2)}\n`], { type: manifestMimeType })
-		const rangeName = request.range.type === 'clip'
-			? String(getClipEntity(request.registry, request.range.clipId).attrs.name ?? 'clip')
-			: getProjectTitle(request.registry, request.projectId)
+		const blob = renderManifestBlob(manifest)
+		const rangeName = getRangeName(request.registry, request.projectId, request.range)
 		const result: ExportRenderResult = {
 			id: createExportId(),
-			fileName: `${sanitizeFileNamePart(rangeName)}.minicut-export.json`,
+			fileName: buildFileName(rangeName, format),
 			mimeType: manifestMimeType,
 			blob,
 			size: blob.size,
@@ -191,3 +441,132 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 		return result
 	},
 })
+
+export const createBrowserVideoExportRenderer = (
+	options: BrowserVideoExportRendererOptions = {},
+): ExportRenderer => {
+	const fallbackToManifestOnUnsupported = options.fallbackToManifestOnUnsupported ?? true
+	const fallbackRenderer = createManifestExportRenderer()
+
+	return {
+		async render(request, onProgress) {
+			const format = request.format ?? 'video-webm'
+			if (format === 'json-manifest') {
+				return fallbackRenderer.render(request, onProgress)
+			}
+
+			if (format !== 'video-webm') {
+				throw new Error(`Unsupported export format ${format}`)
+			}
+
+			if (!isVideoExportSupported()) {
+				if (fallbackToManifestOnUnsupported) {
+					return fallbackRenderer.render({ ...request, format: 'json-manifest' }, onProgress)
+				}
+
+				throw new Error('Video export is not supported in this environment')
+			}
+
+			const fps = request.fps ?? 30
+			if (!Number.isFinite(fps) || fps <= 0) {
+				throw new Error('Export fps must be positive')
+			}
+
+			if (!request.registry.projects[request.projectId]) {
+				throw new Error(`Unknown project ${request.projectId}`)
+			}
+
+			onProgress?.({ stage: 'queued', progress: 0 })
+			const { start, duration } = getExportBounds(request.registry, request.projectId, request.range)
+			const frameCount = getFrameCount(duration, fps)
+			const width = options.width ?? defaultExportWidth
+			const height = options.height ?? defaultExportHeight
+			const backgroundColor = options.backgroundColor ?? '#09090b'
+
+			const canvas = document.createElement('canvas')
+			canvas.width = width
+			canvas.height = height
+			const context = canvas.getContext('2d')
+			if (!context) {
+				throw new Error('Unable to acquire export canvas context')
+			}
+
+			const stream = canvas.captureStream(fps)
+			const mimeType = getWebmMimeType() ?? videoMimeType
+			const recorder = new MediaRecorder(stream, {
+				mimeType,
+				videoBitsPerSecond: options.videoBitsPerSecond ?? 4_000_000,
+			})
+			const chunks: BlobPart[] = []
+			const stopPromise = new Promise<void>((resolve, reject) => {
+				recorder.addEventListener('dataavailable', (event) => {
+					if (event.data.size > 0) {
+						chunks.push(event.data)
+					}
+				})
+				recorder.addEventListener('stop', () => resolve())
+				recorder.addEventListener('error', () => reject(recorder.error ?? new Error('Export recorder error')))
+			})
+
+			const resourceCache = createResourceCache(request.registry)
+			const frames: ExportFrameSample[] = []
+			recorder.start(Math.max(100, Math.round(1000 / fps)))
+
+			try {
+				for (let index = 0; index < frameCount; index += 1) {
+					const time = start + index / fps
+					const operations = filterClipsForRange(
+						compileFrameOperations(request.registry, request.projectId, time),
+						request.range,
+					)
+					frames.push({ index, time, operations })
+					await drawFrameOperations(context, operations, resourceCache, width, height, backgroundColor)
+					onProgress?.({ stage: 'rendering', progress: (index + 1) / frameCount })
+					await waitForDuration(1000 / fps)
+				}
+
+				onProgress?.({ stage: 'finalizing', progress: 1 })
+				recorder.stop()
+				await stopPromise
+			} finally {
+				for (const track of stream.getTracks()) {
+					track.stop()
+				}
+				for (const resource of resourceCache.values()) {
+					if (resource.video) {
+						resource.video.pause()
+						resource.video.removeAttribute('src')
+						resource.video.load()
+					}
+				}
+			}
+
+			const manifest: ExportManifest = {
+				format,
+				projectId: request.projectId,
+				range: request.range,
+				start,
+				duration,
+				fps,
+				frameCount,
+				clips: getRangeClips(request.registry, request.projectId, request.range),
+				frames,
+			}
+			const blob = new Blob(chunks, { type: mimeType })
+			const rangeName = getRangeName(request.registry, request.projectId, request.range)
+			const result: ExportRenderResult = {
+				id: createExportId(),
+				fileName: buildFileName(rangeName, format),
+				mimeType,
+				blob,
+				size: blob.size,
+				duration,
+				frameCount,
+				manifest,
+			}
+			onProgress?.({ stage: 'done', progress: 1 })
+
+			return result
+		},
+	}
+}

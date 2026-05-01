@@ -2,7 +2,7 @@ import { buildDispatchResult } from '../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
 import { CMD, type Entity, type ProjectRegistry, type ResourceAttrs } from '../domain/types'
-import { createManifestExportRenderer, type ExportRange } from './exportRenderer'
+import { createBrowserVideoExportRenderer, createManifestExportRenderer, type ExportRange } from './exportRenderer'
 
 const createProjectWithClip = (kind: ResourceAttrs['kind']): { registry: ProjectRegistry; projectId: string; clipId: string } => {
 	let registry = createEmptyRegistry()
@@ -106,5 +106,38 @@ describe('manifest export renderer', () => {
 		)
 
 		expect(frameOpacities).toEqual([0, 0.5, 1, 0.5])
+	})
+})
+
+describe('browser video export renderer', () => {
+	it('falls back to json manifest when video export is unsupported', async () => {
+		const { registry, projectId, clipId } = createProjectWithClip('video')
+		const renderer = createBrowserVideoExportRenderer({ fallbackToManifestOnUnsupported: true })
+
+		const result = await renderer.render({
+			registry,
+			projectId,
+			range: { type: 'clip', clipId },
+			format: 'video-webm',
+			fps: 2,
+		})
+
+		expect(result.mimeType).toBe('application/vnd.minicut.export+json')
+		expect(result.fileName).toMatch(/\.minicut-export\.json$/)
+		expect(result.manifest.format).toBe('json-manifest')
+		expect(result.manifest.frames.length).toBeGreaterThan(0)
+	})
+
+	it('throws when video export is unsupported and fallback is disabled', async () => {
+		const { registry, projectId } = createProjectWithClip('video')
+		const renderer = createBrowserVideoExportRenderer({ fallbackToManifestOnUnsupported: false })
+
+		await expect(renderer.render({
+			registry,
+			projectId,
+			range: { type: 'project' },
+			format: 'video-webm',
+			fps: 2,
+		})).rejects.toThrow('Video export is not supported in this environment')
 	})
 })

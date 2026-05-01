@@ -11,7 +11,7 @@ import type {
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
-import { createManifestExportRenderer, type ExportRenderer, type ExportRenderResult } from '../render/exportRenderer'
+import { createBrowserVideoExportRenderer, type ExportRenderer, type ExportRenderResult } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createAuthorityClient } from '../worker/createAuthorityClient'
 
@@ -203,7 +203,7 @@ export const createVideoEditorHarness = (
 	options: CreateVideoEditorHarnessOptions = {},
 ) => {
 	const autoCreateInitialProject = options.autoCreateInitialProject ?? true
-	const exportRenderer = options.exportRenderer ?? createManifestExportRenderer()
+	const exportRenderer = options.exportRenderer ?? createBrowserVideoExportRenderer()
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const history$ = observable<HistoryState>({ canUndo: false, canRedo: false })
@@ -653,7 +653,7 @@ export const createVideoEditorHarness = (
 				registry,
 				projectId: project.id,
 				range: { type: 'clip', clipId: clip.id },
-				format: 'json-manifest',
+				format: 'video-webm',
 				fps: 30,
 			})
 			if (typeof URL.createObjectURL === 'function') {
@@ -676,7 +676,7 @@ export const createVideoEditorHarness = (
 				registry,
 				projectId: project.id,
 				range: { type: 'project' },
-				format: 'json-manifest',
+				format: 'video-webm',
 				fps: 30,
 			})
 			if (typeof URL.createObjectURL === 'function') {

@@ -600,7 +600,7 @@ test('preview sends playhead renders through an OffscreenCanvas worker', async (
 	]))
 })
 
-test('export project button downloads a manifest file', async ({ page }) => {
+test('export project button downloads a webm video file', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
@@ -608,17 +608,10 @@ test('export project button downloads a manifest file', async ({ page }) => {
 	const downloadPromise = page.waitForEvent('download')
 	await page.getByRole('button', { name: 'Export project' }).click()
 	const download = await downloadPromise
-	expect(download.suggestedFilename()).toMatch(/\.minicut-export\.json$/)
+	expect(download.suggestedFilename()).toMatch(/\.webm$/)
 	const downloadPath = await download.path()
 	expect(downloadPath).toBeTruthy()
-	const manifest = JSON.parse(await fs.readFile(downloadPath as string, 'utf8')) as {
-		frames: unknown[]
-		clips: Array<{ type: string; source: string; start: number; duration: number }>
-	}
-	expect(manifest.frames.length).toBeGreaterThan(0)
-	expect(manifest.clips).toEqual(expect.arrayContaining([
-		expect.objectContaining({ type: 'ef-video', start: 0, duration: 1 }),
-	]))
-	expect(manifest.clips[0]?.source).toMatch(/^blob:/)
+	const videoFile = await fs.stat(downloadPath as string)
+	expect(videoFile.size).toBeGreaterThan(0)
 	await expect(page.getByRole('status').filter({ hasText: 'Export ready' })).toBeVisible()
 })

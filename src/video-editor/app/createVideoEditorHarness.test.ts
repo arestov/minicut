@@ -297,6 +297,55 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('requests video-webm format from project export renderer', async () => {
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:project-video-export')
+		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+		const render = vi.fn(async () => ({
+			id: 'export-video',
+			fileName: 'project.webm',
+			mimeType: 'video/webm',
+			blob: new Blob(['video'], { type: 'video/webm' }),
+			size: 5,
+			duration: 1,
+			frameCount: 30,
+			manifest: {
+				format: 'video-webm' as const,
+				projectId: 'project:1',
+				range: { type: 'project' as const },
+				start: 0,
+				duration: 1,
+				fps: 30,
+				frameCount: 30,
+				clips: [],
+				frames: [],
+			},
+		}))
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority, { exportRenderer: { render } })
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			const result = await harness.actions.queueProjectExport()
+
+			expect(result).not.toBeNull()
+			expect(result?.mimeType).toBe('video/webm')
+			expect(result?.downloadUrl).toBe('blob:project-video-export')
+			expect(render).toHaveBeenCalledWith(
+				expect.objectContaining({ format: 'video-webm', fps: 30, range: { type: 'project' } }),
+			)
+		} finally {
+			harness.destroy()
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:project-video-export')
+			createObjectURL.mockRestore()
+			revokeObjectURL.mockRestore()
+		}
+	})
+
 	it('undoes and redoes timeline edits through the harness', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)
