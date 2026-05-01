@@ -1,6 +1,6 @@
 import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
 import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
-import { evaluateAnimatedScalar } from './timing'
+import { evaluateAnimatedScalar, evaluateFadeOpacity } from './timing'
 
 export interface ClipFrameOperation {
 	clipId: string
@@ -50,6 +50,15 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 	const resource = registry.entitiesById[resourceId]
 	const resourceAttrs = resource.attrs as unknown as ResourceAttrs
 	const localTime = Math.max(0, (time ?? attrs.start) - attrs.start)
+	const baseOpacity = evaluateAnimatedScalar(registry, attrs.opacity, localTime)
+	const opacity = evaluateFadeOpacity(
+		time ?? attrs.start,
+		attrs.start,
+		attrs.duration,
+		baseOpacity,
+		attrs.fadeIn ?? 0,
+		attrs.fadeOut ?? 0,
+	)
 	const transform: EvaluatedTransformAttrs = {
 		x: evaluateAnimatedScalar(registry, attrs.transform.x, localTime),
 		y: evaluateAnimatedScalar(registry, attrs.transform.y, localTime),
@@ -68,7 +77,7 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 		operations: [
 			{ type: 'transform', value: transform },
 			...getEffectNames(registry, clip).map((effect) => ({ type: 'effect' as const, value: effect })),
-			{ type: 'opacity', value: evaluateAnimatedScalar(registry, attrs.opacity, localTime) },
+			{ type: 'opacity', value: opacity },
 		],
 	}
 }

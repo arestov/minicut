@@ -187,6 +187,8 @@ export const buildDispatchResult = (
 					start: clipStart,
 					duration: clipDuration,
 					in: 0,
+					fadeIn: 0,
+					fadeOut: 0,
 					opacity: scalar(1),
 					transform: {
 						x: scalar(0),

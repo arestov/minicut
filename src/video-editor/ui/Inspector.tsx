@@ -97,6 +97,8 @@ export const Inspector = observer(() => {
 	const duration = Number(selectedEntity$.attrs.duration.get())
 	const opacity = Number(selectedEntity$.attrs.opacity.value.get())
 	const inPoint = Number(selectedEntity$.attrs.in.get())
+	const fadeIn = Number(selectedEntity$.attrs.fadeIn.get() ?? 0)
+	const fadeOut = Number(selectedEntity$.attrs.fadeOut.get() ?? 0)
 	const transform = selectedEntity$.attrs.transform.get() as {
 		x: { value: number }
 		y: { value: number }
@@ -200,6 +202,24 @@ export const Inspector = observer(() => {
 								onChange={(event) => actions.updateSelectedClipOpacity(Number(event.currentTarget.value))}
 							/>
 						</label>
+					</InspectorSection>
+					<InspectorSection title="Fade" icon={Gauge} ariaLabel="Fade controls">
+						<dl className="ve-inspector-grid">
+							<div>
+								<dt>Fade in</dt>
+								<dd>{formatSeconds(fadeIn)}</dd>
+							</div>
+							<div>
+								<dt>Fade out</dt>
+								<dd>{formatSeconds(fadeOut)}</dd>
+							</div>
+						</dl>
+						<div className="ve-button-grid">
+							<Button type="button" variant="secondary" onClick={() => actions.updateSelectedClipFade('in', 0.5)}>Fade in +0.5s</Button>
+							<Button type="button" variant="secondary" onClick={() => actions.updateSelectedClipFade('in', -0.5)} disabled={fadeIn <= 0}>Fade in -0.5s</Button>
+							<Button type="button" variant="secondary" onClick={() => actions.updateSelectedClipFade('out', 0.5)}>Fade out +0.5s</Button>
+							<Button type="button" variant="secondary" onClick={() => actions.updateSelectedClipFade('out', -0.5)} disabled={fadeOut <= 0}>Fade out -0.5s</Button>
+						</div>
 					</InspectorSection>
 					<InspectorSection title="Trim" icon={Scissors} ariaLabel="Trim controls">
 						<div className="ve-button-grid">

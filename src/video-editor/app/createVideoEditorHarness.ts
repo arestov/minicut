@@ -433,6 +433,25 @@ export const createVideoEditorHarness = (
 			})
 		},
 
+		updateSelectedClipFade(edge: 'in' | 'out', delta: number): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			const attrs = clip.attrs as ClipAttrs
+			const key = edge === 'in' ? 'fadeIn' : 'fadeOut'
+			const current = Number(attrs[key] ?? 0)
+			const nextFade = clamp(roundToTenths(current + delta), 0, attrs.duration)
+			dispatch({
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					id: clip.id,
+					attrs: { [key]: nextFade },
+				},
+			})
+		},
+
 		updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {

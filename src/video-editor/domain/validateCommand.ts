@@ -136,6 +136,12 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			if (command.p.attrs.in !== undefined) {
 				assert(Number.isFinite(command.p.attrs.in) && command.p.attrs.in >= 0, 'Clip in point must be non-negative')
 			}
+			if (command.p.attrs.fadeIn !== undefined) {
+				assert(Number.isFinite(command.p.attrs.fadeIn) && command.p.attrs.fadeIn >= 0, 'Clip fade in must be non-negative')
+			}
+			if (command.p.attrs.fadeOut !== undefined) {
+				assert(Number.isFinite(command.p.attrs.fadeOut) && command.p.attrs.fadeOut >= 0, 'Clip fade out must be non-negative')
+			}
 			const transform = command.p.attrs.transform
 			if (transform) {
 				if (transform.scale?.value !== undefined) {

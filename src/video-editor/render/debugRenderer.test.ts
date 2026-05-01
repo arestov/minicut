@@ -8,6 +8,8 @@ interface ClipSpec {
 	start: number
 	duration: number
 	inPoint?: number
+	fadeIn?: number
+	fadeOut?: number
 	width?: number
 	height?: number
 	opacity?: AnimatedScalar
@@ -122,6 +124,8 @@ const createDebugProject = (spec: DebugProjectSpec): { registry: ProjectRegistry
 					start: clip.start,
 					duration: clip.duration,
 					in: clip.inPoint ?? 0,
+					fadeIn: clip.fadeIn ?? 0,
+					fadeOut: clip.fadeOut ?? 0,
 					opacity: clip.opacity ?? scalar(1),
 					transform: transform(clip.transform),
 				} satisfies ClipAttrs,
@@ -284,6 +288,20 @@ describe('debug renderer draw calls', () => {
 		expect(renderFrameDebug(registry, projectId, 1)[0].opacity).toBe(0)
 		expect(renderFrameDebug(registry, projectId, 2)[0].opacity).toBeGreaterThan(0)
 		expect(renderFrameDebug(registry, projectId, 3)[0].opacity).toBe(1)
+	})
+
+	it('applies fade in and fade out to draw call opacity', () => {
+		const { registry, projectId } = createDebugProject({
+			tracks: [{
+				id: 'track:1',
+				clips: [{ id: 'clip:fades', trackId: 'track:1', start: 1, duration: 4, fadeIn: 1, fadeOut: 1, opacity: scalar(0.8) }],
+			}],
+		})
+
+		expect(renderFrameDebug(registry, projectId, 1)[0].opacity).toBe(0)
+		expect(renderFrameDebug(registry, projectId, 1.5)[0].opacity).toBeCloseTo(0.4, 6)
+		expect(renderFrameDebug(registry, projectId, 3)[0].opacity).toBeCloseTo(0.8, 6)
+		expect(renderFrameDebug(registry, projectId, 4.5)[0].opacity).toBeCloseTo(0.4, 6)
 	})
 
 	it('preserves effects pipeline order', () => {

@@ -105,6 +105,8 @@ export interface ClipAttrs {
 	start: number
 	duration: number
 	in: number
+	fadeIn?: number
+	fadeOut?: number
 	opacity: AnimatedScalar
 	transform: TransformAttrs
 }

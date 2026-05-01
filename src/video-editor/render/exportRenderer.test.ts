@@ -89,4 +89,22 @@ describe('manifest export renderer', () => {
 		expect(transform).toMatchObject({ x: 10, y: 0, scale: 1, rotation: 0 })
 		expect(opacity).toBe(0.5)
 	})
+
+	it('writes fade-adjusted opacity into exported frame samples', async () => {
+		const { registry, projectId, clipId } = createProjectWithClip('video')
+		registry.entitiesById[clipId].attrs.fadeIn = 1
+		registry.entitiesById[clipId].attrs.fadeOut = 1
+
+		const result = await createManifestExportRenderer().render({
+			registry,
+			projectId,
+			range: { type: 'clip', clipId },
+			fps: 2,
+		})
+		const frameOpacities = result.manifest.frames.map((frame) =>
+			frame.operations[0].operations.find((operation) => operation.type === 'opacity')?.value,
+		)
+
+		expect(frameOpacities).toEqual([0, 0.5, 1, 0.5])
+	})
 })

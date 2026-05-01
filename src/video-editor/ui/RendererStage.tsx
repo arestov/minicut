@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ClipAttrs, Entity, EntityId, KeyframeAttrs, ResourceAttrs } from '../domain/types'
 import type { ScalarKeyframe } from '../render/timing'
-import { evaluateKeyframedScalar } from '../render/timing'
+import { evaluateFadeOpacity, evaluateKeyframedScalar } from '../render/timing'
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
 
 const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()
@@ -165,6 +165,8 @@ export const RendererStage = observer(() => {
 				.filter((filter): filter is string => Boolean(filter))
 			: []
 
+		const baseOpacity = evaluateKeyframedScalar(attrs.opacity, localTime, resolveKeyframe)
+
 		return {
 			id: clipId,
 			name: attrs.name,
@@ -175,7 +177,7 @@ export const RendererStage = observer(() => {
 			mime: resourceAttrs?.mime ?? '',
 			inPoint: attrs.in,
 			start: attrs.start,
-			opacity: evaluateKeyframedScalar(attrs.opacity, localTime, resolveKeyframe),
+			opacity: evaluateFadeOpacity(cursor, attrs.start, attrs.duration, baseOpacity, attrs.fadeIn ?? 0, attrs.fadeOut ?? 0),
 			transform: {
 				x: evaluateKeyframedScalar(attrs.transform.x, localTime, resolveKeyframe),
 				y: evaluateKeyframedScalar(attrs.transform.y, localTime, resolveKeyframe),

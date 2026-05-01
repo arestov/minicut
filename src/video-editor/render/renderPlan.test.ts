@@ -113,6 +113,20 @@ describe('render plan compiler', () => {
 		expect(opacity).toBeCloseTo(0.6, 6)
 	})
 
+	it('applies clip fades to evaluated opacity', () => {
+		const { registry, projectId, firstClipId } = createRenderedProject()
+		registry.entitiesById[firstClipId].attrs.fadeIn = 1
+		registry.entitiesById[firstClipId].attrs.fadeOut = 1
+
+		const fadeInOpacity = compileFrameOperations(registry, projectId, 0.5)[0].operations.find((item) => item.type === 'opacity')?.value
+		const middleOpacity = compileFrameOperations(registry, projectId, 2)[0].operations.find((item) => item.type === 'opacity')?.value
+		const fadeOutOpacity = compileFrameOperations(registry, projectId, 3.5)[0].operations.find((item) => item.type === 'opacity')?.value
+
+		expect(fadeInOpacity).toBeCloseTo(0.5, 6)
+		expect(middleOpacity).toBe(1)
+		expect(fadeOutOpacity).toBeCloseTo(0.5, 6)
+	})
+
 	it('exports valid editframe clip structure with timeline mapping', () => {
 		const { registry, projectId } = createRenderedProject()
 		const clips = compileEditframeClips(registry, projectId)

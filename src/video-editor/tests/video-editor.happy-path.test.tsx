@@ -171,6 +171,32 @@ describe('video editor harness', () => {
 		}
 	})
 
+	it('edits clip fade in and fade out controls and previews faded opacity', async () => {
+		const { harness, user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
+
+			const inspector = screen.getByLabelText('Inspector')
+			expect(within(inspector).getByRole('button', { name: 'Fade in -0.5s' })).toBeDisabled()
+			expect(within(inspector).getByRole('button', { name: 'Fade out -0.5s' })).toBeDisabled()
+			await user.click(within(inspector).getByRole('button', { name: 'Fade in +0.5s' }))
+			await user.click(within(inspector).getByRole('button', { name: 'Fade out +0.5s' }))
+			expect(within(inspector).getAllByText('0.5s', { selector: 'dd' })).toHaveLength(2)
+
+			act(() => harness.actions.setCursor(0))
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0' })
+			act(() => harness.actions.setCursor(0.25))
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0.5' })
+			act(() => harness.actions.setCursor(4.75))
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0.5' })
+		} finally {
+			unmount()
+		}
+	})
+
 	it('applies every color preset button in inspector', async () => {
 		const { user, unmount } = renderVideoEditor()
 
