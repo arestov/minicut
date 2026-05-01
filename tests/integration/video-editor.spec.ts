@@ -195,7 +195,9 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await expect(inspector.getByLabel('Audio inspector').getByText('Pan')).toBeVisible()
 
 	await inspector.getByRole('tab', { name: 'Export' }).click()
-	await expect(inspector.getByRole('button', { name: 'Queue clip export' })).toBeVisible()
+	const exportButton = inspector.getByRole('button', { name: 'Queue clip export' })
+	await expect(exportButton).toBeVisible()
+	await exportButton.click()
 
 	await inspector.getByRole('tab', { name: 'Edit' }).click()
 	const overflowingInspectorButtons = await inspector.locator('.ve-button-grid button, .ve-inline-actions button').evaluateAll((buttons) =>
@@ -206,6 +208,27 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	expect(overflowingInspectorButtons).toEqual([])
 	await inspector.getByRole('button', { name: 'Delete clip' }).click()
 	await expect(page.getByText('Select a clip to edit opacity or split it.')).toBeVisible()
+})
+
+test('timeline zoom controls and inspector trim boundary states behave correctly', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByRole('button', { name: 'Import sample' }).click()
+	await page.getByRole('button', { name: 'Add first resource' }).click()
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	await expect(timeline.getByText('56 px/s')).toBeVisible()
+	await timeline.getByRole('button', { name: 'Zoom in' }).click()
+	await expect(timeline.getByText('64 px/s')).toBeVisible()
+	await timeline.getByRole('button', { name: 'Zoom out' }).click()
+	await expect(timeline.getByText('56 px/s')).toBeVisible()
+
+	const clip = timeline.getByRole('button', { name: /Sample asset 1/i }).first()
+	await clip.click()
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await expect(inspector.getByRole('button', { name: 'Start -0.5s' })).toBeDisabled()
+	await inspector.getByRole('button', { name: 'End +0.5s' }).click()
+	await expect(inspector.locator('dd').filter({ hasText: '5.5s' })).toBeVisible()
 })
 
 test('media resources render metadata and action on separate lines', async ({ page }) => {
