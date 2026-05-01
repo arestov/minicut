@@ -1,4 +1,4 @@
-import type { Observable } from '@legendapp/state'
+import { computed, type Observable } from '@legendapp/state'
 import { For, observer } from '@legendapp/state/react'
 import { Eye, Lock, Volume2 } from 'lucide-react'
 import { useMemo } from 'react'
@@ -29,13 +29,17 @@ const ClipListItem = observer(
 	({ item$, projectId, timelineZoom, activeTool }: ClipListItemProps) => {
 		const { session$ } = useVideoEditor()
 		const clipId = item$.get()
-		const selectedEntityId = session$.selectedEntityId.get()
+		const isSelected$ = useMemo(
+			() => computed(() => session$.selectedEntityId.get() === clipId),
+			[session$, clipId],
+		)
+		const isSelected = isSelected$.get()
 
 		return (
 			<ClipItem
 				projectId={projectId}
 				clipId={clipId}
-				selected={clipId === selectedEntityId}
+				selected={isSelected}
 				timelineZoom={timelineZoom}
 				activeTool={activeTool}
 			/>

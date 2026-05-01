@@ -9,7 +9,8 @@ export const Toolbar = observer(() => {
 	const { projects$, session$, history$, actions } = useVideoEditor()
 	const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'ready' | 'error'>('idle')
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
-	const history = history$.get()
+	const canUndo = history$.canUndo.get()
+	const canRedo = history$.canRedo.get()
 
 	const exportProject = (): void => {
 		setExportStatus('rendering')
@@ -56,8 +57,8 @@ export const Toolbar = observer(() => {
 			</div>
 			<div className="ve-toolbar__actions">
 				<div className="ve-toolbar__history" aria-label="History controls">
-					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" onClick={() => actions.undo()} disabled={!history.canUndo} />
-					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" onClick={() => actions.redo()} disabled={!history.canRedo} />
+					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" onClick={() => actions.undo()} disabled={!canUndo} />
+					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" onClick={() => actions.redo()} disabled={!canRedo} />
 				</div>
 				<IconButton
 					type="button"

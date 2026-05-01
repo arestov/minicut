@@ -17,35 +17,48 @@ interface ResourceRowProps {
 const isPreviewableUrl = (url: string): boolean =>
 	url.startsWith('blob:') || url.startsWith('/') || url.startsWith('./') || url.startsWith('http') || url.startsWith('data:')
 
-const ResourceThumbnail = ({ attrs }: { attrs: ResourceAttrs }) => {
-	const canPreview = isPreviewableUrl(attrs.url)
+const ResourceThumbnail = ({
+	kind,
+	name,
+	url,
+}: {
+	kind: ResourceAttrs['kind']
+	name: string
+	url: string
+}) => {
+	const canPreview = isPreviewableUrl(url)
 
-	if (canPreview && attrs.kind === 'image') {
-		return <img className="ve-resource-thumb" src={attrs.url} alt={`${attrs.name} thumbnail`} />
+	if (canPreview && kind === 'image') {
+		return <img className="ve-resource-thumb" src={url} alt={`${name} thumbnail`} />
 	}
 
-	if (canPreview && attrs.kind === 'video') {
-		return <video className="ve-resource-thumb" src={attrs.url} aria-label={`${attrs.name} thumbnail`} muted playsInline preload="metadata" />
+	if (canPreview && kind === 'video') {
+		return <video className="ve-resource-thumb" src={url} aria-label={`${name} thumbnail`} muted playsInline preload="metadata" />
 	}
 
 	return (
-		<div className={`ve-resource-thumb ve-resource-thumb--${attrs.kind}`} aria-label={`${attrs.kind} thumbnail`}>
-			<span>{attrs.kind}</span>
+		<div className={`ve-resource-thumb ve-resource-thumb--${kind}`} aria-label={`${kind} thumbnail`}>
+			<span>{kind}</span>
 		</div>
 	)
 }
 
 const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 	const { projects$, actions } = useVideoEditor()
-	const attrs = resourceAttrs$(projects$, resourceId).get()
+	const resource$ = resourceAttrs$(projects$, resourceId)
+	const name = String(resource$.name.get())
+	const kind = resource$.kind.get()
+	const mime = String(resource$.mime.get())
+	const duration = Number(resource$.duration.get())
+	const url = String(resource$.url.get())
 
 	return (
 		<li className="ve-resource-row">
-			<ResourceThumbnail attrs={attrs} />
+			<ResourceThumbnail kind={kind} name={name} url={url} />
 			<div className="ve-resource-row__content">
-				<strong>{attrs.name}</strong>
+				<strong>{name}</strong>
 				<div className="ve-resource-row__meta">
-					<small>{attrs.kind} · {attrs.mime} · {attrs.duration.toFixed(1)}s</small>
+					<small>{kind} · {mime} · {duration.toFixed(1)}s</small>
 					<div className="ve-resource-row__action-line">
 						<IconButton
 							type="button"
