@@ -82,6 +82,12 @@ export interface AnimatedScalar {
 	keyframes?: EntityId[]
 }
 
+export interface KeyframeAttrs {
+	time: number
+	value: number
+	interpolation?: 'linear' | 'hold'
+}
+
 export interface CommandTargetRef {
 	id: EntityId
 }

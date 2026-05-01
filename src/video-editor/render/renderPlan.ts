@@ -1,5 +1,6 @@
 import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
 import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
+import { evaluateAnimatedScalar } from './timing'
 
 export interface ClipFrameOperation {
 	clipId: string
@@ -7,7 +8,16 @@ export interface ClipFrameOperation {
 	resourceKind: ResourceAttrs['kind']
 	start: number
 	duration: number
+	localTime: number
+	sourceTime: number
 	operations: Array<{ type: 'transform' | 'effect' | 'opacity', value: unknown }>
+}
+
+export interface EvaluatedTransformAttrs {
+	x: number
+	y: number
+	scale: number
+	rotation: number
 }
 
 export interface EditframeClip {
@@ -34,11 +44,18 @@ const getEditframeType = (kind: ResourceAttrs['kind']): EditframeClip['type'] =>
 	return 'ef-image'
 }
 
-export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entity): ClipFrameOperation => {
+export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entity, time?: number): ClipFrameOperation => {
 	const attrs = clip.attrs as unknown as ClipAttrs
 	const resourceId = String(clip.rels.resource)
 	const resource = registry.entitiesById[resourceId]
 	const resourceAttrs = resource.attrs as unknown as ResourceAttrs
+	const localTime = Math.max(0, (time ?? attrs.start) - attrs.start)
+	const transform: EvaluatedTransformAttrs = {
+		x: evaluateAnimatedScalar(registry, attrs.transform.x, localTime),
+		y: evaluateAnimatedScalar(registry, attrs.transform.y, localTime),
+		scale: evaluateAnimatedScalar(registry, attrs.transform.scale, localTime),
+		rotation: evaluateAnimatedScalar(registry, attrs.transform.rotation, localTime),
+	}
 
 	return {
 		clipId: clip.id,
@@ -46,10 +63,12 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 		resourceKind: resourceAttrs.kind,
 		start: attrs.start,
 		duration: attrs.duration,
+		localTime,
+		sourceTime: attrs.in + localTime,
 		operations: [
-			{ type: 'transform', value: attrs.transform },
+			{ type: 'transform', value: transform },
 			...getEffectNames(registry, clip).map((effect) => ({ type: 'effect' as const, value: effect })),
-			{ type: 'opacity', value: attrs.opacity.value },
+			{ type: 'opacity', value: evaluateAnimatedScalar(registry, attrs.opacity, localTime) },
 		],
 	}
 }
@@ -66,7 +85,7 @@ export const compileFrameOperations = (
 			const attrs = clip.attrs as unknown as ClipAttrs
 			return time >= attrs.start && time < attrs.start + attrs.duration
 		})
-		.map((clip) => compileClipFrameOperation(registry, clip))
+		.map((clip) => compileClipFrameOperation(registry, clip, time))
 }
 
 export const compileEditframeClips = (registry: ProjectRegistry, projectId: string): EditframeClip[] => {

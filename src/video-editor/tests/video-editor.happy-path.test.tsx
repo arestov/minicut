@@ -144,6 +144,33 @@ describe('video editor harness', () => {
 		}
 	})
 
+	it('interpolates keyframed opacity and transform values in the renderer', async () => {
+		const { harness, user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Import sample' }))
+			const clipId = String(harness.session$.selectedEntityId.get())
+			expect(clipId).not.toBe('null')
+
+			act(() => {
+				harness.projects$.entitiesById['keyframe:opacity-start'].set({ id: 'keyframe:opacity-start', type: 'keyframe', attrs: { time: 0, value: 1 }, rels: {} })
+				harness.projects$.entitiesById['keyframe:opacity-end'].set({ id: 'keyframe:opacity-end', type: 'keyframe', attrs: { time: 5, value: 0 }, rels: {} })
+				harness.projects$.entitiesById['keyframe:x-start'].set({ id: 'keyframe:x-start', type: 'keyframe', attrs: { time: 0, value: 0 }, rels: {} })
+				harness.projects$.entitiesById['keyframe:x-end'].set({ id: 'keyframe:x-end', type: 'keyframe', attrs: { time: 5, value: 100 }, rels: {} })
+				harness.projects$.entitiesById[clipId].attrs.opacity.set({ value: 1, keyframes: ['keyframe:opacity-start', 'keyframe:opacity-end'] })
+				harness.projects$.entitiesById[clipId].attrs.transform.x.set({ value: 0, keyframes: ['keyframe:x-start', 'keyframe:x-end'] })
+				harness.actions.setCursor(2.5)
+			})
+
+			const layer = screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')
+			expect(layer).toHaveStyle({ opacity: '0.5' })
+			expect(layer).toHaveStyle('transform: translate(50px, 0px) scale(1) rotate(0deg)')
+		} finally {
+			unmount()
+		}
+	})
+
 	it('applies every color preset button in inspector', async () => {
 		const { user, unmount } = renderVideoEditor()
 

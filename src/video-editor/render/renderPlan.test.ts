@@ -2,7 +2,7 @@ import { buildDispatchResult } from '../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
 import { getClipIdsForTrack, getTracks, getVideoTrack } from '../domain/selectors'
-import { CMD, type ProjectRegistry } from '../domain/types'
+import { CMD, type Entity, type ProjectRegistry } from '../domain/types'
 import { compileEditframeClips, compileFrameOperations } from './renderPlan'
 
 const createRenderedProject = (): { registry: ProjectRegistry, projectId: string, firstClipId: string, secondClipId: string } => {
@@ -79,6 +79,38 @@ describe('render plan compiler', () => {
 		expect(firstEffects).not.toContainEqual({ type: 'effect', value: 'tint' })
 		expect(secondEffects).toContainEqual({ type: 'effect', value: 'tint' })
 		expect(secondEffects).not.toContainEqual({ type: 'effect', value: 'blur' })
+	})
+
+	it('evaluates clip-local opacity and transform keyframes in frame operations', () => {
+		const { registry, projectId, firstClipId } = createRenderedProject()
+		const opacityStartId = 'keyframe:opacity-start'
+		const opacityEndId = 'keyframe:opacity-end'
+		const xStartId = 'keyframe:x-start'
+		const xEndId = 'keyframe:x-end'
+		const keyframes: Entity[] = [
+			{ id: opacityStartId, type: 'keyframe', attrs: { time: 0, value: 1 }, rels: {} },
+			{ id: opacityEndId, type: 'keyframe', attrs: { time: 4, value: 0.2 }, rels: {} },
+			{ id: xStartId, type: 'keyframe', attrs: { time: 0, value: 0 }, rels: {} },
+			{ id: xEndId, type: 'keyframe', attrs: { time: 4, value: 80 }, rels: {} },
+		]
+
+		for (const keyframe of keyframes) {
+			registry.entitiesById[keyframe.id] = keyframe
+		}
+		registry.entitiesById[firstClipId].attrs.opacity = { value: 1, keyframes: [opacityStartId, opacityEndId] }
+		registry.entitiesById[firstClipId].attrs.transform = {
+			...(registry.entitiesById[firstClipId].attrs.transform as object),
+			x: { value: 0, keyframes: [xStartId, xEndId] },
+		}
+
+		const [operation] = compileFrameOperations(registry, projectId, 2)
+		const transform = operation.operations.find((item) => item.type === 'transform')?.value
+		const opacity = operation.operations.find((item) => item.type === 'opacity')?.value
+
+		expect(operation.localTime).toBe(2)
+		expect(operation.sourceTime).toBe(2)
+		expect(transform).toMatchObject({ x: 40, y: 0, scale: 1, rotation: 0 })
+		expect(opacity).toBeCloseTo(0.6, 6)
 	})
 
 	it('exports valid editframe clip structure with timeline mapping', () => {

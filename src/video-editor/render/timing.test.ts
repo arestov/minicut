@@ -23,6 +23,24 @@ describe('render timing helpers', () => {
 		expect(evaluateKeyframedScalar({ value: 0.4 }, 10)).toBe(0.4)
 	})
 
+	it('supports hold interpolation and resolved keyframe ids', () => {
+		const resolved = new Map([
+			['kf:0', { time: 0, value: 4, interpolation: 'hold' as const }],
+			['kf:1', { time: 2, value: 12 }],
+		])
+
+		expect(evaluateKeyframedScalar(
+			{ value: 0, keyframes: ['kf:0', 'missing', 'kf:1'] },
+			1,
+			(id) => resolved.get(id) ?? null,
+		)).toBe(4)
+		expect(evaluateKeyframedScalar(
+			{ value: 0, keyframes: ['kf:0', 'kf:1'] },
+			2,
+			(id) => resolved.get(id) ?? null,
+		)).toBe(12)
+	})
+
 	it('evaluates fade in and fade out opacity over clip-local time', () => {
 		expect(evaluateFadeOpacity(-0.01, 0, 4, 1, 1, 1)).toBe(0)
 		expect(evaluateFadeOpacity(0, 0, 4, 1, 1, 1)).toBe(0)

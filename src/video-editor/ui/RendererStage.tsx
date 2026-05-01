@@ -1,7 +1,9 @@
 import { observer } from '@legendapp/state/react'
 import { useEffect, useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import type { ClipAttrs, Entity, ResourceAttrs, TransformAttrs } from '../domain/types'
+import type { ClipAttrs, Entity, EntityId, KeyframeAttrs, ResourceAttrs } from '../domain/types'
+import type { ScalarKeyframe } from '../render/timing'
+import { evaluateKeyframedScalar } from '../render/timing'
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
 
 const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()
@@ -17,7 +19,7 @@ interface RenderedClip {
 	inPoint: number
 	start: number
 	opacity: number
-	transform: TransformAttrs
+	transform: { x: number; y: number; scale: number; rotation: number }
 	filters: string[]
 }
 
@@ -89,6 +91,20 @@ const drawFallbackPreview = (
 const getClipLocalMediaTime = (clip: RenderedClip, cursor: number): number =>
 	Math.max(0, clip.inPoint + cursor - clip.start)
 
+const getKeyframeResolver = (
+	projects$: ReturnType<typeof useVideoEditor>['projects$'],
+): ((id: EntityId) => ScalarKeyframe | null) => (id) => {
+	const keyframe$ = projects$.entitiesById[id]
+	if (!keyframe$ || keyframe$.type.get() !== 'keyframe') {
+		return null
+	}
+
+	const attrs = keyframe$.attrs.get() as unknown as KeyframeAttrs
+	return Number.isFinite(attrs.time) && Number.isFinite(attrs.value)
+		? { time: attrs.time, value: attrs.value, interpolation: attrs.interpolation }
+		: null
+}
+
 const seekMediaElement = (element: HTMLMediaElement, localTime: number): void => {
 	if (Number.isFinite(localTime) && Math.abs(element.currentTime - localTime) > 0.05) {
 		try {
@@ -114,6 +130,7 @@ export const RendererStage = observer(() => {
 		? projects$.entitiesById[timelineId].rels.tracks.get()
 		: []
 	const activeClipIds: string[] = []
+	const resolveKeyframe = getKeyframeResolver(projects$)
 
 	if (Array.isArray(trackIds)) {
 		for (const trackId of trackIds) {
@@ -136,6 +153,7 @@ export const RendererStage = observer(() => {
 	const renderedClips: RenderedClip[] = activeClipIds.map((clipId) => {
 		const clip$ = projects$.entitiesById[clipId]
 		const attrs = clip$.attrs.get() as unknown as ClipAttrs
+		const localTime = Math.max(0, cursor - attrs.start)
 		const resourceId = clip$.rels.resource.get()
 		const resourceAttrs = typeof resourceId === 'string'
 			? projects$.entitiesById[resourceId].attrs.get() as unknown as ResourceAttrs
@@ -157,8 +175,13 @@ export const RendererStage = observer(() => {
 			mime: resourceAttrs?.mime ?? '',
 			inPoint: attrs.in,
 			start: attrs.start,
-			opacity: attrs.opacity.value,
-			transform: attrs.transform,
+			opacity: evaluateKeyframedScalar(attrs.opacity, localTime, resolveKeyframe),
+			transform: {
+				x: evaluateKeyframedScalar(attrs.transform.x, localTime, resolveKeyframe),
+				y: evaluateKeyframedScalar(attrs.transform.y, localTime, resolveKeyframe),
+				scale: evaluateKeyframedScalar(attrs.transform.scale, localTime, resolveKeyframe),
+				rotation: evaluateKeyframedScalar(attrs.transform.rotation, localTime, resolveKeyframe),
+			},
 			filters,
 		}
 	})
@@ -240,7 +263,7 @@ export const RendererStage = observer(() => {
 									filter: clip.filters.join(' '),
 									borderColor: clip.color,
 									boxShadow: `0 0 0 2px ${clip.color}, 0 20px 45px rgba(0, 0, 0, 0.3)`,
-									transform: `translate(${clip.transform.x.value}px, ${clip.transform.y.value}px) scale(${clip.transform.scale.value}) rotate(${clip.transform.rotation.value}deg)`,
+									transform: `translate(${clip.transform.x}px, ${clip.transform.y}px) scale(${clip.transform.scale}) rotate(${clip.transform.rotation}deg)`,
 								}}
 							>
 								{hasMedia && clip.resourceKind === 'image' ? (
