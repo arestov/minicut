@@ -1,6 +1,8 @@
 import { observer } from '@legendapp/state/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ClipAttrs, Entity, ResourceAttrs, TransformAttrs } from '../domain/types'
+import PreviewCanvasWorker from './previewCanvasWorker?worker'
 
 interface RenderedClip {
 	id: string
@@ -36,8 +38,57 @@ const getEffectFilter = (effect: Entity): string | null => {
 	return null
 }
 
+const drawFallbackPreview = (
+	canvas: HTMLCanvasElement,
+	cursor: number,
+	clips: RenderedClip[],
+): void => {
+	const context = canvas.getContext('2d')
+	if (!context) {
+		return
+	}
+
+	const width = canvas.clientWidth || 640
+	const height = canvas.clientHeight || 360
+	canvas.width = width
+	canvas.height = height
+	context.clearRect(0, 0, width, height)
+	context.fillStyle = '#27272a'
+	context.fillRect(0, 0, width, height)
+	context.fillStyle = 'rgba(37, 99, 235, 0.2)'
+	context.fillRect(0, 0, width, height)
+	context.strokeStyle = 'rgba(244,244,245,0.28)'
+	context.setLineDash([6, 6])
+	context.strokeRect(10, 10, width - 20, height - 20)
+	context.setLineDash([])
+	context.fillStyle = '#f4f4f5'
+	context.font = '600 14px Inter, Segoe UI, sans-serif'
+	context.fillText(`Cursor ${cursor.toFixed(1)}s`, 22, 32)
+
+	if (clips.length === 0) {
+		context.textAlign = 'center'
+		context.fillText('No frame at cursor', width / 2, height / 2)
+		context.textAlign = 'left'
+		return
+	}
+
+	clips.forEach((clip, index) => {
+		const y = 54 + index * 28
+		context.globalAlpha = Math.max(0.2, clip.opacity)
+		context.fillStyle = clip.resourceKind === 'audio' ? '#cffafe' : clip.resourceKind === 'video' ? '#dbeafe' : '#dcfce7'
+		context.fillRect(22, y, Math.min(width - 44, 260), 20)
+		context.globalAlpha = 1
+		context.fillStyle = '#18181b'
+		context.font = '600 12px Inter, Segoe UI, sans-serif'
+		context.fillText(`${clip.resourceKind}: ${clip.name}`, 30, y + 14)
+	})
+}
+
 export const RendererStage = observer(() => {
 	const { projects$, session$ } = useVideoEditor()
+	const canvasRef = useRef<HTMLCanvasElement | null>(null)
+	const workerRef = useRef<Worker | null>(null)
+	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>('fallback')
 	const cursor = session$.cursor.get()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const project$ = activeProjectId ? projects$.projects[activeProjectId] : null
@@ -88,9 +139,57 @@ export const RendererStage = observer(() => {
 		}
 	}
 
+	const renderPayload = useMemo(() => ({
+		cursor,
+		clips: renderedClips.map((clip) => ({
+			name: clip.name,
+			kind: clip.resourceKind,
+			opacity: clip.opacity,
+		})),
+	}), [cursor, renderedClips])
+
+	useEffect(() => {
+		const canvas = canvasRef.current
+		if (!canvas) {
+			return
+		}
+		if (navigator.userAgent.includes('jsdom')) {
+			return
+		}
+
+		if (!workerRef.current && 'transferControlToOffscreen' in canvas) {
+			const offscreen = canvas.transferControlToOffscreen()
+			const worker = new PreviewCanvasWorker()
+			worker.postMessage({ type: 'init', canvas: offscreen }, [offscreen])
+			workerRef.current = worker
+			setRenderMode('offscreen')
+		}
+
+		const width = canvas.clientWidth || 640
+		const height = canvas.clientHeight || 360
+		if (workerRef.current) {
+			workerRef.current.postMessage({ type: 'render', width, height, ...renderPayload })
+			return
+		}
+
+		setRenderMode('fallback')
+		drawFallbackPreview(canvas, renderPayload.cursor, renderedClips)
+	}, [renderPayload, renderedClips])
+
+	useEffect(() => () => {
+		workerRef.current?.terminate()
+		workerRef.current = null
+	}, [])
+
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">
 			<div className="ve-renderer__safe-area">
+				<canvas
+					ref={canvasRef}
+					className="ve-renderer__canvas"
+					aria-label="Offscreen preview canvas"
+					data-render-mode={renderMode}
+				/>
 				{renderedClips.length === 0 ? (
 					<div className="ve-renderer__empty">No frame at cursor</div>
 				) : (
