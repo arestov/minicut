@@ -74,6 +74,9 @@ export const getTracks = (registry: ProjectRegistry, project: ProjectGraph): Ent
 export const getVideoTrack = (registry: ProjectRegistry, project: ProjectGraph): Entity | null =>
 	getTracks(registry, project).find((entity) => entity.attrs.kind === 'video') ?? null
 
+export const getAudioTrack = (registry: ProjectRegistry, project: ProjectGraph): Entity | null =>
+	getTracks(registry, project).find((entity) => entity.attrs.kind === 'audio') ?? null
+
 export const getEntity = (registry: ProjectRegistry, entityId: EntityId | null): Entity | null =>
 	entityId ? registry.entitiesById[entityId] ?? null : null
 

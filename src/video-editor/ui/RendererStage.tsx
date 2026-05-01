@@ -6,10 +6,16 @@ interface RenderedClip {
 	id: string
 	name: string
 	resourceName: string
+	resourceKind: ResourceAttrs['kind']
+	resourceUrl: string
+	mime: string
 	opacity: number
 	transform: TransformAttrs
 	filters: string[]
 }
+
+const isRealMediaUrl = (url: string): boolean =>
+	url.startsWith('blob:') || url.startsWith('/') || url.startsWith('./') || url.startsWith('http') || url.startsWith('data:')
 
 const getEffectFilter = (effect: Entity): string | null => {
 	const kind = String(effect.attrs.kind)
@@ -71,6 +77,9 @@ export const RendererStage = observer(() => {
 					id: clipId,
 					name: attrs.name,
 					resourceName: resourceAttrs?.name ?? attrs.name,
+					resourceKind: resourceAttrs?.kind ?? 'image',
+					resourceUrl: resourceAttrs?.url ?? '',
+					mime: resourceAttrs?.mime ?? '',
 					opacity: attrs.opacity.value,
 					transform: attrs.transform,
 					filters,
@@ -85,20 +94,39 @@ export const RendererStage = observer(() => {
 				{renderedClips.length === 0 ? (
 					<div className="ve-renderer__empty">No frame at cursor</div>
 				) : (
-					renderedClips.map((clip) => (
-						<div
-							key={clip.id}
-							className="ve-renderer__layer"
-							style={{
-								opacity: clip.opacity,
-								filter: clip.filters.join(' '),
-								transform: `translate(${clip.transform.x.value}px, ${clip.transform.y.value}px) scale(${clip.transform.scale.value}) rotate(${clip.transform.rotation.value}deg)`,
-							}}
-						>
-							<strong>{clip.name}</strong>
-							<span>{clip.resourceName}</span>
-						</div>
-					))
+					renderedClips.map((clip) => {
+						const hasMedia = isRealMediaUrl(clip.resourceUrl)
+						return (
+							<div
+								key={clip.id}
+								className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
+								style={{
+									opacity: clip.opacity,
+									filter: clip.filters.join(' '),
+									transform: `translate(${clip.transform.x.value}px, ${clip.transform.y.value}px) scale(${clip.transform.scale.value}) rotate(${clip.transform.rotation.value}deg)`,
+								}}
+							>
+								{hasMedia && clip.resourceKind === 'image' ? (
+									<img src={clip.resourceUrl} alt={clip.resourceName} />
+								) : null}
+								{hasMedia && clip.resourceKind === 'video' ? (
+									<video src={clip.resourceUrl} muted playsInline preload="metadata" />
+								) : null}
+								{hasMedia && clip.resourceKind === 'audio' ? (
+									<div className="ve-renderer__audio" aria-label="Audio preview">
+										<span>{clip.resourceName}</span>
+										<audio src={clip.resourceUrl} preload="metadata" controls />
+									</div>
+								) : null}
+								{!hasMedia ? (
+									<>
+										<strong>{clip.name}</strong>
+										<span>{clip.resourceName}</span>
+									</>
+								) : null}
+							</div>
+						)
+					})
 				)}
 			</div>
 		</div>

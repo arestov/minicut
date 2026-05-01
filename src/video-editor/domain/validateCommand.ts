@@ -76,10 +76,12 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.TIMELINE_ADD_CLIP: {
 			const project = assertProject(registry, command.p.projectId)
 			assertProjectGraphShape(registry, project)
-			assertEntityType(registry, command.p.resourceId, 'resource')
+			const resource = assertEntityType(registry, command.p.resourceId, 'resource')
 			if (command.p.trackId) {
 				const track = assertEntityType(registry, command.p.trackId, 'track')
-				assert(track.attrs.kind === 'video', 'MVP clip insertion currently targets a video track')
+				const resourceKind = resource.attrs.kind
+				const expectedTrackKind = resourceKind === 'audio' ? 'audio' : 'video'
+				assert(track.attrs.kind === expectedTrackKind, `Expected ${resourceKind} resource to target a ${expectedTrackKind} track`)
 				assert(track.attrs.locked !== true, 'Cannot add a clip to a locked track')
 			}
 			return

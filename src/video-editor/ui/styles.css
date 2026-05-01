@@ -276,12 +276,24 @@ button:disabled {
 	display: grid;
 	grid-template-columns: 280px minmax(0, 1fr) 280px;
 	gap: 0;
+	height: calc(100vh - 56px - 346px);
+	min-height: 420px;
 }
 
 .ve-panel {
 	padding: 16px;
 	border-top: 0;
 	border-left: 0;
+	min-height: 0;
+}
+
+.ve-main__top > .ve-panel {
+	overflow: hidden;
+}
+
+.ve-main__top > .ve-panel[aria-label='Inspector'] {
+	max-height: calc(100vh - 56px - 346px);
+	overflow-y: auto;
 }
 
 .ve-main__top > .ve-panel:last-child,
@@ -291,6 +303,8 @@ button:disabled {
 
 .ve-timeline {
 	border-bottom: 0;
+	height: 346px;
+	overflow: hidden;
 }
 
 .ve-panel__header {
@@ -424,6 +438,35 @@ button:disabled {
 .ve-track-row {
 	width: 100%;
 	align-items: stretch;
+}
+
+.ve-import-button {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 32px;
+	padding: 0 12px;
+	border: 1px solid #d4d4d8;
+	border-radius: 6px;
+	background: #ffffff;
+	color: #18181b;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.ve-import-button input {
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.ve-media-count {
+	margin: -4px 0 12px;
+	color: #71717a;
+	font-size: 12px;
 }
 
 .ve-project-list button {
@@ -772,6 +815,36 @@ button:disabled {
 	color: #18181b;
 	transform-origin: center;
 	box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
+	overflow: hidden;
+}
+
+.ve-renderer__layer img,
+.ve-renderer__layer video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.ve-renderer__layer--audio {
+	left: 10%;
+	top: 34%;
+	width: 80%;
+	height: 32%;
+	background: linear-gradient(135deg, #ecfeff, #cffafe);
+}
+
+.ve-renderer__audio {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: center;
+	gap: 10px;
+	width: 90%;
+	color: #164e63;
+}
+
+.ve-renderer__audio audio {
+	width: 100%;
 }
 
 .ve-renderer__layer strong,

@@ -28,7 +28,7 @@ const ResourceRow = observer(({ projectId, resourceId }: ResourceRowProps) => {
 })
 
 export const MediaBin = observer(() => {
-	const { projects$, session$ } = useVideoEditor()
+	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
 	const rootEntityId = activeProject$?.rootEntityId.get()
@@ -41,12 +41,28 @@ export const MediaBin = observer(() => {
 		<section className="ve-panel" aria-label="Media bin">
 			<div className="ve-panel__header">
 				<h2>Media bin</h2>
-				<span>{resources.length}</span>
+				<label className="ve-import-button">
+					<span>Import</span>
+					<input
+						type="file"
+						aria-label="Import media files"
+						accept="video/*,image/*,audio/*"
+						multiple
+						disabled={!activeProjectId}
+						onChange={(event) => {
+							if (event.currentTarget.files) {
+								actions.importFiles(event.currentTarget.files)
+								event.currentTarget.value = ''
+							}
+						}}
+					/>
+				</label>
 			</div>
+			<div className="ve-media-count">{resources.length} assets</div>
 			{!activeProjectId ? (
 				<p className="ve-empty">No active project.</p>
 			) : resources.length === 0 ? (
-				<p className="ve-empty">Import a sample asset to populate the bin.</p>
+				<p className="ve-empty">Import video, image, or audio files to populate the bin.</p>
 			) : (
 				<ul className="ve-resource-list">
 					{resources.map((resourceId) => (

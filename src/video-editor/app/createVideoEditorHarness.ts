@@ -1,7 +1,7 @@
 import type { Observable } from '@legendapp/state'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
 import { createSessionStore } from '../legend/sessionStore'
-import { getActiveProject, getProjectMetaList, getSelectedClip, getVideoTrack } from '../domain/selectors'
+import { getActiveProject, getAudioTrack, getProjectMetaList, getSelectedClip, getVideoTrack } from '../domain/selectors'
 import type {
 	ClipAttrs,
 	Command,
@@ -14,6 +14,19 @@ import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createAuthorityClient } from '../worker/createAuthorityClient'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
+
+const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
+	if (file.type.startsWith('video/')) {
+		return 'video'
+	}
+	if (file.type.startsWith('audio/')) {
+		return 'audio'
+	}
+	if (file.type.startsWith('image/')) {
+		return 'image'
+	}
+	return null
+}
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 
@@ -37,6 +50,7 @@ const getActiveProjectId = (
 export const createVideoEditorHarness = (authority: EditorAuthorityClient = createAuthorityClient()) => {
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
+	const importedObjectUrls = new Set<string>()
 	let isDestroyed = false
 
 	Promise.resolve(authority.getSnapshot()).then((snapshot) => {
@@ -94,6 +108,32 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			})
 		},
 
+		importFiles(files: FileList | File[]): void {
+			const projectId = getActiveProjectId(projects$, session$)
+			for (const file of Array.from(files)) {
+				const kind = getFileKind(file)
+				if (!kind) {
+					continue
+				}
+
+				const url = URL.createObjectURL(file)
+				importedObjectUrls.add(url)
+				dispatch({
+					c: CMD.RESOURCE_IMPORT,
+					p: {
+						projectId,
+						name: file.name,
+						kind,
+						duration: kind === 'image' ? 5 : 6,
+						mime: file.type || `${kind}/unknown`,
+						url,
+						width: kind === 'audio' ? undefined : 1920,
+						height: kind === 'audio' ? undefined : 1080,
+					},
+				})
+			}
+		},
+
 		addResourceToTimeline(resourceId: string): void {
 			const projectId = getActiveProjectId(projects$, session$)
 			const registry = projects$.get()
@@ -102,9 +142,12 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 				throw new Error('No active project to add a clip into')
 			}
 
-			const track = getVideoTrack(registry, project)
+			const resource = registry.entitiesById[resourceId]
+			const track = resource?.attrs.kind === 'audio'
+				? getAudioTrack(registry, project)
+				: getVideoTrack(registry, project)
 			if (!track) {
-				throw new Error('No video track available')
+				throw new Error('No compatible track available')
 			}
 
 			dispatch({
@@ -320,6 +363,9 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 		destroy(): void {
 			isDestroyed = true
 			unsubscribe()
+			for (const url of importedObjectUrls) {
+				URL.revokeObjectURL(url)
+			}
 			authority.destroy?.()
 		},
 	}

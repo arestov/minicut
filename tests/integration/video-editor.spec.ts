@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import path from 'node:path'
 
 const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
 	const projectsRegion = page.getByLabel('Projects')
@@ -52,4 +53,47 @@ test('project dropdown shows items when opened', async ({ page }) => {
 
 	await expect(projectList.getByRole('button', { name: /Project 1/i })).toBeVisible()
 	await expect(projectList.getByRole('button', { name: /Project 2/i })).toBeVisible()
+})
+
+test('imports real media files, edits timeline clips, and previews actual media elements', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	await page.getByLabel('Import media files').setInputFiles([
+		path.resolve('tests/fixtures/media/fixture-video.webm'),
+		path.resolve('tests/fixtures/media/fixture-image.png'),
+		path.resolve('tests/fixtures/media/fixture-audio.wav'),
+	])
+
+	const mediaBin = page.getByLabel('Media bin')
+	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible()
+	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-image.png' })).toBeVisible()
+	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-audio.wav' })).toBeVisible()
+
+	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(0).click()
+	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(1).click()
+	await mediaBin.getByRole('button', { name: /Add to timeline/i }).nth(2).click()
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	await expect(timeline.getByRole('button', { name: /fixture-video.webm/i })).toBeVisible()
+	await expect(timeline.getByRole('button', { name: /fixture-image.png/i })).toBeVisible()
+	await expect(timeline.getByRole('button', { name: /fixture-audio.wav/i })).toBeVisible()
+
+	await timeline.getByRole('button', { name: /fixture-image.png/i }).click()
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByLabel('Opacity').fill('60')
+	await inspector.getByLabel('X').fill('24')
+	await expect(inspector.getByText('60%')).toBeVisible()
+
+	const cursor = timeline.getByRole('slider', { name: 'Cursor' })
+	await cursor.fill('0.5')
+	const renderer = page.getByLabel('Renderer stage')
+	await expect(renderer.locator('video')).toHaveCount(1)
+
+	await cursor.fill('6.5')
+	await expect(renderer.locator('img[alt="fixture-image.png"]')).toBeVisible()
+	await expect(renderer.locator('.ve-renderer__layer--image')).toHaveCSS('opacity', '0.6')
+
+	await cursor.fill('0.5')
+	await expect(renderer.locator('audio')).toHaveCount(1)
 })
