@@ -244,6 +244,23 @@ export const buildDispatchResult = (
 			}
 
 			const rightClipId = createEntityId()
+			const sourceEffectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+			const clonedEffects = sourceEffectIds.map((effectId) => {
+				const effect = assertEntity(registry, effectId)
+				const clonedEffectId = createEntityId()
+
+				return {
+					id: clonedEffectId,
+					entity: {
+						...effect,
+						id: clonedEffectId,
+						rels: {
+							...effect.rels,
+							clip: rightClipId,
+						},
+					},
+				}
+			})
 			const rightClip: Entity = {
 				id: rightClipId,
 				type: 'clip',
@@ -255,6 +272,7 @@ export const buildDispatchResult = (
 				},
 				rels: {
 					...clip.rels,
+					effects: clonedEffects.map((effect) => effect.id),
 				},
 			}
 
@@ -282,6 +300,7 @@ export const buildDispatchResult = (
 							},
 						},
 						{ c: PATCH.ENTITY_SET, p: { entity: rightClip } },
+						...clonedEffects.map((effect) => ({ c: PATCH.ENTITY_SET, p: { entity: effect.entity } }) as const),
 						{
 							c: PATCH.REL_SPLICE,
 							p: {
