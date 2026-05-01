@@ -415,6 +415,7 @@ button:disabled {
 	padding: 16px;
 	border-top: 0;
 	border-left: 0;
+	min-width: 0;
 	min-height: 0;
 }
 

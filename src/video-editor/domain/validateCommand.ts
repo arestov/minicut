@@ -85,6 +85,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			const project = assertProject(registry, command.p.projectId)
 			assertProjectGraphShape(registry, project)
 			const resource = assertEntityType(registry, command.p.resourceId, 'resource')
+			assert(command.p.includeLinkedAudio === undefined || typeof command.p.includeLinkedAudio === 'boolean', 'Linked audio flag must be boolean')
 			if (command.p.trackId) {
 				const track = assertEntityType(registry, command.p.trackId, 'track')
 				const resourceKind = resource.attrs.kind
@@ -141,6 +142,10 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			}
 			if (command.p.attrs.fadeOut !== undefined) {
 				assert(Number.isFinite(command.p.attrs.fadeOut) && command.p.attrs.fadeOut >= 0, 'Clip fade out must be non-negative')
+			}
+			if (command.p.attrs.audio !== undefined) {
+				assert(Number.isFinite(command.p.attrs.audio.gain) && command.p.attrs.audio.gain >= 0 && command.p.attrs.audio.gain <= 1.5, 'Audio gain must be between 0 and 1.5')
+				assert(Number.isFinite(command.p.attrs.audio.pan) && command.p.attrs.audio.pan >= -1 && command.p.attrs.audio.pan <= 1, 'Audio pan must be between -1 and 1')
 			}
 			const transform = command.p.attrs.transform
 			if (transform) {

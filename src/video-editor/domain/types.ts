@@ -102,11 +102,16 @@ export interface TransformAttrs {
 export interface ClipAttrs {
 	name: string
 	color?: string
+	mediaKind?: ResourceAttrs['kind']
 	start: number
 	duration: number
 	in: number
 	fadeIn?: number
 	fadeOut?: number
+	audio?: {
+		gain: number
+		pan: number
+	}
 	opacity: AnimatedScalar
 	transform: TransformAttrs
 }
@@ -187,6 +192,7 @@ export type Command =
 				projectId: ProjectId
 				resourceId: EntityId
 				trackId?: EntityId
+				includeLinkedAudio?: boolean
 			}
 	  }
 	| {
@@ -268,7 +274,7 @@ export type Patch =
 
 export interface DispatchResult {
 	envelope: PatchEnvelope
-	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId' | 'effectId', EntityId>>
+	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId' | 'audioClipId' | 'effectId', EntityId>>
 	deletedIds?: EntityId[]
 }
 

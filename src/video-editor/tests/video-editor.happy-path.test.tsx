@@ -418,7 +418,7 @@ describe('video editor harness', () => {
 			expect(within(inspector).getByLabelText('Color presets')).toBeVisible()
 
 			await user.click(within(inspector).getByRole('tab', { name: 'Audio' }))
-			expect(within(inspector).getByLabelText('Audio inspector')).toHaveTextContent('Audio controls')
+			expect(within(inspector).getByLabelText('Audio inspector')).toHaveTextContent('Select an audio clip')
 
 			await user.click(within(inspector).getByRole('tab', { name: 'Export' }))
 			expect(within(inspector).getByLabelText('Export inspector')).toHaveTextContent('Queue clip export')

@@ -99,6 +99,12 @@ interface PreparedFrameOperation {
 	drawSource?: CanvasImageSource
 }
 
+interface AudioExportMixer {
+	stream: MediaStream | null
+	start(): Promise<void>
+	stop(): Promise<void>
+}
+
 const sanitizeFileNamePart = (value: string): string =>
 	value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'export'
 
@@ -187,6 +193,9 @@ const getEffectFilter = (effect: string): string => {
 	return ''
 }
 
+const hasAudioExportClips = (registry: ProjectRegistry, projectId: string, range: ExportRange): boolean =>
+	getRangeClips(registry, projectId, range).some((clip) => clip.type === 'ef-audio')
+
 const getWebmMimeType = (): string | null => {
 	if (typeof MediaRecorder === 'undefined') {
 		return null
@@ -221,6 +230,23 @@ const waitForDuration = async (milliseconds: number): Promise<void> =>
 const waitForRecorderData = async (): Promise<void> =>
 	new Promise((resolve) => {
 		globalThis.requestAnimationFrame?.(() => resolve()) ?? globalThis.setTimeout(resolve, 0)
+	})
+
+const waitForMediaMetadata = (element: HTMLMediaElement): Promise<void> =>
+	new Promise((resolve) => {
+		if (Number.isFinite(element.duration) && element.duration > 0) {
+			resolve()
+			return
+		}
+
+		const finish = (): void => {
+			element.removeEventListener('loadedmetadata', finish)
+			element.removeEventListener('error', finish)
+			resolve()
+		}
+		element.addEventListener('loadedmetadata', finish, { once: true })
+		element.addEventListener('error', finish, { once: true })
+		element.load()
 	})
 
 const getWebCodecsConfig = async (
@@ -364,6 +390,15 @@ const prepareFrameOperations = async (
 		if (!resource) {
 			continue
 		}
+		if (operation.resourceKind === 'audio') {
+			prepared.push({
+				operation,
+				resource,
+				sourceWidth: width,
+				sourceHeight: height,
+			})
+			continue
+		}
 
 		await ensureRenderableResource(resource, operation.resourceKind)
 		if (operation.resourceKind === 'image' && resource.image) {
@@ -414,6 +449,10 @@ const drawPreparedFrameOperations = (
 	context.restore()
 
 	for (const { operation, resource, sourceWidth, sourceHeight, drawSource } of preparedOperations) {
+		if (operation.resourceKind === 'audio') {
+			continue
+		}
+
 		const transform = getOperationValue<{ x: number; y: number; scale: number; rotation: number }>(
 			operation.operations,
 			'transform',
@@ -447,6 +486,86 @@ const drawPreparedFrameOperations = (
 		}
 
 		context.restore()
+	}
+}
+
+const createAudioExportMixer = async (
+	registry: ProjectRegistry,
+	projectId: string,
+	range: ExportRange,
+	exportStart: number,
+	exportDuration: number,
+): Promise<AudioExportMixer> => {
+	const audioClips = getRangeClips(registry, projectId, range).filter((clip) => clip.type === 'ef-audio')
+	const AudioContextConstructor = globalThis.AudioContext ?? globalThis.webkitAudioContext
+	if (audioClips.length === 0 || !AudioContextConstructor) {
+		return { stream: null, start: async () => undefined, stop: async () => undefined }
+	}
+
+	const audioContext = new AudioContextConstructor()
+	const destination = audioContext.createMediaStreamDestination()
+	const timers: Array<ReturnType<typeof globalThis.setTimeout>> = []
+	const elements: HTMLMediaElement[] = []
+
+	for (const clip of audioClips) {
+		const element = document.createElement('audio')
+		element.preload = 'auto'
+		element.src = clip.source
+		elements.push(element)
+		await waitForMediaMetadata(element)
+
+		const source = audioContext.createMediaElementSource(element)
+		const gain = audioContext.createGain()
+		gain.gain.value = Math.max(0, Math.min(1.5, Number(clip.gain ?? 1)))
+		const stereoPanner = 'createStereoPanner' in audioContext
+			? audioContext.createStereoPanner()
+			: null
+		if (stereoPanner) {
+			stereoPanner.pan.value = Math.max(-1, Math.min(1, Number(clip.pan ?? 0)))
+			source.connect(gain).connect(stereoPanner).connect(destination)
+		} else {
+			source.connect(gain).connect(destination)
+		}
+	}
+
+	return {
+		stream: destination.stream,
+		async start() {
+			await audioContext.resume()
+			for (let index = 0; index < audioClips.length; index += 1) {
+				const clip = audioClips[index]
+				const element = elements[index]
+				const clipEnd = clip.start + clip.duration
+				const activeStart = Math.max(exportStart, clip.start)
+				const activeEnd = Math.min(exportStart + exportDuration, clipEnd)
+				if (activeEnd <= activeStart) {
+					continue
+				}
+
+				const delay = Math.max(0, (clip.start - exportStart) * 1000)
+				const offset = Math.max(0, exportStart - clip.start)
+				timers.push(globalThis.setTimeout(() => {
+					try {
+						element.currentTime = clip.trimStart + offset
+					} catch {
+						// Some media elements reject early seeks; playback still starts at the default position.
+					}
+					void element.play().catch(() => undefined)
+				}, delay))
+				timers.push(globalThis.setTimeout(() => element.pause(), Math.max(0, (activeEnd - exportStart) * 1000)))
+			}
+		},
+		async stop() {
+			for (const timer of timers) {
+				globalThis.clearTimeout(timer)
+			}
+			for (const element of elements) {
+				element.pause()
+				element.removeAttribute('src')
+				element.load()
+			}
+			await audioContext.close().catch(() => undefined)
+		},
 	}
 }
 
@@ -659,7 +778,8 @@ export const createBrowserVideoExportRenderer = (
 			const videoBitsPerSecond = options.videoBitsPerSecond ?? 4_000_000
 			const frames: ExportFrameSample[] = []
 
-			const webCodecsBlob = await renderWebCodecsVideoBlob({
+			const hasAudioClips = hasAudioExportClips(request.registry, request.projectId, request.range)
+			const webCodecsBlob = hasAudioClips ? null : await renderWebCodecsVideoBlob({
 				registry: request.registry,
 				projectId: request.projectId,
 				range: request.range,
@@ -719,13 +839,24 @@ export const createBrowserVideoExportRenderer = (
 				throw new Error('Unable to acquire export canvas context')
 			}
 
+			const audioMixer = await createAudioExportMixer(request.registry, request.projectId, request.range, start, duration)
 			let stream = canvas.captureStream(0)
+			if (audioMixer.stream) {
+				for (const audioTrack of audioMixer.stream.getAudioTracks()) {
+					stream.addTrack(audioTrack)
+				}
+			}
 			let videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
 			if (typeof videoTrack?.requestFrame !== 'function') {
 				for (const track of stream.getTracks()) {
 					track.stop()
 				}
 				stream = canvas.captureStream(fps)
+				if (audioMixer.stream) {
+					for (const audioTrack of audioMixer.stream.getAudioTracks()) {
+						stream.addTrack(audioTrack)
+					}
+				}
 				videoTrack = undefined
 			}
 			const mimeType = getWebmMimeType() ?? videoMimeType
@@ -746,6 +877,7 @@ export const createBrowserVideoExportRenderer = (
 
 			const resourceCache = createResourceCache(request.registry)
 			recorder.start(Math.max(100, Math.round(1000 / fps)))
+			await audioMixer.start()
 
 			try {
 				for (let index = 0; index < frameCount; index += 1) {
@@ -767,6 +899,7 @@ export const createBrowserVideoExportRenderer = (
 				recorder.stop()
 				await stopPromise
 			} finally {
+				await audioMixer.stop()
 				for (const track of stream.getTracks()) {
 					track.stop()
 				}

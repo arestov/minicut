@@ -119,6 +119,43 @@ test('importing into an empty timeline auto-adds the first resource', async ({ p
 	await importFixtureVideo(page)
 
 	await expect(page.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
+	await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+})
+
+test('video resources add linked audio clips that play, inspect, and export settings', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const audioClip = timeline.getByRole('button', { name: /Embedded audio/i })
+	await expect(audioClip).toContainText('0.0s / 1.0s')
+	await audioClip.click()
+
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('tab', { name: 'Audio' }).click()
+	await inspector.getByLabel('Gain').fill('65')
+	await inspector.getByLabel('Pan').fill('-40')
+	await expect(inspector.getByText('Gain 65% · Pan -40')).toBeVisible()
+
+	await setTimelineCursor(page, 0.5)
+	const renderer = page.getByLabel('Renderer stage')
+	const audio = renderer.locator('audio')
+	await expect(audio).toHaveCount(1)
+	await expect(audio).toHaveAttribute('data-gain', '0.65')
+	await expect(audio).toHaveAttribute('data-pan', '-0.4')
+	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).volume)).toBeCloseTo(0.65, 2)
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
+	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.5)
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
+
+	const downloadPromise = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export project' }).click()
+	const download = await downloadPromise
+	const downloadPath = await download.path()
+	expect(downloadPath).toBeTruthy()
+	const videoBytes = await fs.readFile(downloadPath as string)
+	expect(videoBytes.length).toBeGreaterThan(1000)
 })
 
 test('imports real media files, edits timeline clips, and previews actual media elements', async ({ page }) => {
@@ -212,7 +249,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 
 	await inspector.getByRole('button', { name: 'Tint' }).click()
 	await expect(inspector.getByText('1 effects')).toBeVisible()
-	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer')).toHaveCSS('filter', /sepia/)
+	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer--video')).toHaveCSS('filter', /sepia/)
 	await inspector.getByRole('button', { name: 'Manage effects' }).click()
 	await inspector.getByRole('button', { name: 'Remove effect Tint' }).click()
 	await expect(inspector.getByText('0 effects')).toBeVisible()
@@ -221,7 +258,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await inspector.getByRole('button', { name: 'Set color #16a34a' }).click()
 	await expect(inspector.locator('.ve-inspector-thumb')).toHaveCSS('background-color', 'rgb(22, 163, 74)')
 	await expect(clip).toHaveCSS('border-left-color', 'rgb(22, 163, 74)')
-	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer')).toHaveCSS('border-color', 'rgb(22, 163, 74)')
+	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer--video')).toHaveCSS('border-color', 'rgb(22, 163, 74)')
 
 	await inspector.getByRole('tab', { name: 'Audio' }).click()
 	await expect(inspector.getByLabel('Audio inspector').getByText('Gain')).toBeVisible()

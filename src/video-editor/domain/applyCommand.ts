@@ -25,6 +25,44 @@ import {
 
 const scalar = (value: number): AnimatedScalar => ({ value })
 
+const createClipEntity = ({
+	resource,
+	start,
+	duration,
+	mediaKind,
+	name,
+}: {
+	resource: Entity
+	start: number
+	duration: number
+	mediaKind?: 'video' | 'audio' | 'image'
+	name?: string
+}): Entity => ({
+	id: createEntityId(),
+	type: 'clip',
+	attrs: {
+		name: name ?? String(resource.attrs.name),
+		mediaKind,
+		start,
+		duration,
+		in: 0,
+		fadeIn: 0,
+		fadeOut: 0,
+		audio: { gain: 1, pan: 0 },
+		opacity: scalar(1),
+		transform: {
+			x: scalar(0),
+			y: scalar(0),
+			scale: scalar(1),
+			rotation: scalar(0),
+		},
+	},
+	rels: {
+		resource: resource.id,
+		effects: [],
+	},
+})
+
 export interface DispatchContext {
 	clipTrackById?: Record<EntityId, EntityId>
 }
@@ -176,52 +214,66 @@ export const buildDispatchResult = (
 				throw new Error(`No ${resourceKind === 'audio' ? 'audio' : 'video'} track available for clip insertion`)
 			}
 
-			const clipId = createEntityId()
 			const clipStart = getTrackEnd(registry, targetTrack.id)
 			const clipDuration = Number(resource.attrs.duration) || 1
-			const clip: Entity = {
-				id: clipId,
-				type: 'clip',
-				attrs: {
-					name: String(resource.attrs.name),
-					start: clipStart,
-					duration: clipDuration,
-					in: 0,
-					fadeIn: 0,
-					fadeOut: 0,
-					opacity: scalar(1),
-					transform: {
-						x: scalar(0),
-						y: scalar(0),
-						scale: scalar(1),
-						rotation: scalar(0),
+			const clip = createClipEntity({
+				resource,
+				start: clipStart,
+				duration: clipDuration,
+				mediaKind: resourceKind as 'video' | 'audio' | 'image',
+			})
+			const patches: Patch[] = [
+				{ c: PATCH.ENTITY_SET, p: { entity: clip } },
+				{
+					c: PATCH.REL_SPLICE,
+					p: {
+						id: targetTrack.id,
+						rel: 'clips',
+						index: getClipIdsForTrack(registry, targetTrack.id).length,
+						deleteCount: 0,
+						insert: [clip.id],
 					},
 				},
-				rels: {
-					resource: resource.id,
-					effects: [],
-				},
+			]
+			let audioClipId: EntityId | undefined
+
+			if (command.p.includeLinkedAudio && resourceKind === 'video') {
+				const audioTrack = getAudioTrack(registry, project)
+				if (!audioTrack) {
+					throw new Error('No audio track available for linked video audio')
+				}
+
+				const audioClip = createClipEntity({
+					resource,
+					start: clipStart,
+					duration: clipDuration,
+					mediaKind: 'audio',
+					name: 'Embedded audio',
+				})
+				audioClip.rels = { ...audioClip.rels, linkedVideoClip: clip.id }
+				audioClipId = audioClip.id
+				patches.push(
+					{ c: PATCH.ENTITY_SET, p: { entity: audioClip } },
+					{
+						c: PATCH.REL_SPLICE,
+						p: {
+							id: audioTrack.id,
+							rel: 'clips',
+							index: getClipIdsForTrack(registry, audioTrack.id).length,
+							deleteCount: 0,
+							insert: [audioClip.id],
+						},
+					},
+				)
 			}
 
 			return {
 				envelope: {
 					projectId: project.id,
 					version: project.version + 1,
-					patches: [
-						{ c: PATCH.ENTITY_SET, p: { entity: clip } },
-						{
-							c: PATCH.REL_SPLICE,
-							p: {
-								id: targetTrack.id,
-								rel: 'clips',
-								index: getClipIdsForTrack(registry, targetTrack.id).length,
-								deleteCount: 0,
-								insert: [clipId],
-							},
-						},
-					],
+					patches,
 				},
-				createdIds: { clipId },
+				createdIds: { clipId: clip.id, audioClipId },
 			}
 		}
 

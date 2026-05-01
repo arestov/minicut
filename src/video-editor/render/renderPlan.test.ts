@@ -1,7 +1,7 @@
 import { buildDispatchResult } from '../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
-import { getClipIdsForTrack, getTracks, getVideoTrack } from '../domain/selectors'
+import { getAudioTrack, getClipIdsForTrack, getTracks, getVideoTrack } from '../domain/selectors'
 import { CMD, type Entity, type ProjectRegistry } from '../domain/types'
 import { compileEditframeClips, compileFrameOperations } from './renderPlan'
 
@@ -135,5 +135,34 @@ describe('render plan compiler', () => {
 		expect(clips).toHaveLength(trackCount)
 		expect(clips[0]).toMatchObject({ type: 'ef-video', source: 'file:///video.webm', start: 0, duration: 4, trimStart: 0 })
 		expect(clips[1]).toMatchObject({ type: 'ef-image', source: 'file:///still.png', start: 4, duration: 1, trimStart: 0 })
+	})
+
+	it('compiles linked video audio clips with audio gain and pan for preview and export', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Camera take', kind: 'video', duration: 3, url: 'file:///camera.webm' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId), includeLinkedAudio: true },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const project = registry.projects[projectId]
+		const audioTrack = getAudioTrack(registry, project)
+		const audioClipId = getClipIdsForTrack(registry, String(audioTrack?.id))[0]
+		registry.entitiesById[audioClipId].attrs.audio = { gain: 0.65, pan: -0.4 }
+
+		const frameOperations = compileFrameOperations(registry, projectId, 0.5)
+		const audioOperation = frameOperations.find((operation) => operation.clipId === audioClipId)
+		expect(audioOperation).toMatchObject({ resourceKind: 'audio', sourceTime: 0.5 })
+		expect(audioOperation?.operations).toContainEqual({ type: 'audio', value: { gain: 0.65, pan: -0.4 } })
+
+		const editframeAudioClip = compileEditframeClips(registry, projectId).find((clip) => clip.id === audioClipId)
+		expect(editframeAudioClip).toMatchObject({ type: 'ef-audio', source: 'file:///camera.webm', gain: 0.65, pan: -0.4 })
 	})
 })

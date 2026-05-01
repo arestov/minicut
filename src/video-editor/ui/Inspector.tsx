@@ -3,6 +3,7 @@ import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Trash2, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import type { ResourceAttrs } from '../domain/types'
 import type { ExportRenderResult } from '../render/exportRenderer'
 import { Button, IconButton } from './ControlPrimitives'
 import { formatPercent, formatSeconds } from './format'
@@ -99,6 +100,7 @@ export const Inspector = observer(() => {
 	const inPoint = Number(selectedEntity$.attrs.in.get())
 	const fadeIn = Number(selectedEntity$.attrs.fadeIn.get() ?? 0)
 	const fadeOut = Number(selectedEntity$.attrs.fadeOut.get() ?? 0)
+	const audio = selectedEntity$.attrs.audio.get() as { gain: number; pan: number } | undefined
 	const transform = selectedEntity$.attrs.transform.get() as {
 		x: { value: number }
 		y: { value: number }
@@ -106,6 +108,12 @@ export const Inspector = observer(() => {
 		rotation: { value: number }
 	}
 	const effectIds = selectedEntity$.rels.effects.get()
+	const resourceId = selectedEntity$.rels.resource.get()
+	const resourceKind = typeof resourceId === 'string'
+		? (projects$.entitiesById[resourceId].attrs.kind.get() as ResourceAttrs['kind'])
+		: 'image'
+	const selectedMediaKind = (selectedEntity$.attrs.mediaKind.get() as ResourceAttrs['kind'] | undefined) ?? resourceKind
+	const isAudioClip = selectedMediaKind === 'audio'
 	const effects = Array.isArray(effectIds) ? effectIds : []
 	const effectEntries = effects
 		.map((effectId) => {
@@ -312,9 +320,31 @@ export const Inspector = observer(() => {
 			{activeTab === 'audio' ? (
 				<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Audio inspector">
 					<InspectorSection title="Clip audio" icon={Volume2}>
-						<label className="ve-slider-field"><span>Gain</span><input type="range" min="0" max="150" value="100" readOnly /></label>
-						<label className="ve-slider-field"><span>Pan</span><input type="range" min="-100" max="100" value="0" readOnly /></label>
-						<p className="ve-preview__summary">Audio controls are scoped to the selected clip state.</p>
+						<label className="ve-slider-field">
+							<span>Gain</span>
+							<input
+								type="range"
+								aria-label="Gain"
+								min="0"
+								max="150"
+								value={Math.round((audio?.gain ?? 1) * 100)}
+								disabled={!isAudioClip}
+								onChange={(event) => actions.updateSelectedClipAudio({ gain: Number(event.currentTarget.value) / 100 })}
+							/>
+						</label>
+						<label className="ve-slider-field">
+							<span>Pan</span>
+							<input
+								type="range"
+								aria-label="Pan"
+								min="-100"
+								max="100"
+								value={Math.round((audio?.pan ?? 0) * 100)}
+								disabled={!isAudioClip}
+								onChange={(event) => actions.updateSelectedClipAudio({ pan: Number(event.currentTarget.value) / 100 })}
+							/>
+						</label>
+						<p className="ve-preview__summary">{isAudioClip ? `Gain ${Math.round((audio?.gain ?? 1) * 100)}% · Pan ${Math.round((audio?.pan ?? 0) * 100)}` : 'Select an audio clip to edit playback settings.'}</p>
 					</InspectorSection>
 				</div>
 			) : null}

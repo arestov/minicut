@@ -146,6 +146,37 @@ describe('command validation', () => {
 		expect(getClipIdsForTrack(registry, String(audioTrack?.id))).toContain(String(clipResult.createdIds?.clipId))
 	})
 
+	it('adds linked audio clips for video resources in the same command envelope', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const project = registry.projects[projectId]
+		const videoTrack = getVideoTrack(registry, project)
+		const audioTrack = getAudioTrack(registry, project)
+		expect(videoTrack).not.toBeNull()
+		expect(audioTrack).not.toBeNull()
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Camera take', kind: 'video', duration: 3, url: 'file:///take.webm' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId), includeLinkedAudio: true },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		const videoClipId = String(clipResult.createdIds?.clipId)
+		const audioClipId = String(clipResult.createdIds?.audioClipId)
+		expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toContain(videoClipId)
+		expect(getClipIdsForTrack(registry, String(audioTrack?.id))).toContain(audioClipId)
+		expect(registry.entitiesById[audioClipId].attrs).toMatchObject({ mediaKind: 'audio', start: 0, duration: 3, audio: { gain: 1, pan: 0 } })
+		expect(registry.entitiesById[audioClipId].rels).toMatchObject({ resource: String(importResult.createdIds?.resourceId), linkedVideoClip: videoClipId })
+	})
+
 	it('rejects video resources targeting audio tracks and locked tracks', () => {
 		let registry = createEmptyRegistry()
 		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })

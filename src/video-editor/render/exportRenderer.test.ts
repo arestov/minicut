@@ -107,6 +107,35 @@ describe('manifest export renderer', () => {
 
 		expect(frameOpacities).toEqual([0, 0.5, 1, 0.5])
 	})
+
+	it('exports linked video audio clips with audio settings in project manifests', async () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: { title: 'linked audio export' } })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Camera take', kind: 'video', duration: 2, url: 'file:///camera.webm' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId), includeLinkedAudio: true },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const audioClipId = String(clipResult.createdIds?.audioClipId)
+		registry.entitiesById[audioClipId].attrs.audio = { gain: 0.7, pan: 0.25 }
+
+		const result = await createManifestExportRenderer().render({ registry, projectId, range: { type: 'project' }, fps: 2 })
+
+		expect(result.manifest.clips).toEqual(expect.arrayContaining([
+			expect.objectContaining({ type: 'ef-video', id: String(clipResult.createdIds?.clipId) }),
+			expect.objectContaining({ type: 'ef-audio', id: audioClipId, gain: 0.7, pan: 0.25 }),
+		]))
+		expect(result.manifest.frames[0].operations).toEqual(expect.arrayContaining([
+			expect.objectContaining({ clipId: audioClipId, resourceKind: 'audio' }),
+		]))
+	})
 })
 
 describe('browser video export renderer', () => {

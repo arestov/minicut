@@ -407,7 +407,7 @@ export const createVideoEditorHarness = (
 
 			dispatch({
 				c: CMD.TIMELINE_ADD_CLIP,
-				p: { projectId, resourceId, trackId: track.id },
+				p: { projectId, resourceId, trackId: track.id, includeLinkedAudio: resource?.attrs.kind === 'video' },
 			}).then((result) => {
 				const clipId = String(result.createdIds?.clipId)
 				session$.selectedEntityId.set(clipId)
@@ -507,6 +507,27 @@ export const createVideoEditorHarness = (
 							y: { value: partial.y ?? attrs.transform.y.value },
 							scale: { value: partial.scale ?? attrs.transform.scale.value },
 							rotation: { value: partial.rotation ?? attrs.transform.rotation.value },
+						},
+					},
+				},
+			})
+		},
+
+		updateSelectedClipAudio(partial: Partial<Record<'gain' | 'pan', number>>): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			const attrs = clip.attrs as ClipAttrs
+			dispatch({
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					id: clip.id,
+					attrs: {
+						audio: {
+							gain: partial.gain ?? attrs.audio?.gain ?? 1,
+							pan: partial.pan ?? attrs.audio?.pan ?? 0,
 						},
 					},
 				},

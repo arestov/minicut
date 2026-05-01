@@ -20,6 +20,7 @@ interface RenderedClip {
 	start: number
 	opacity: number
 	transform: { x: number; y: number; scale: number; rotation: number }
+	audio: { gain: number; pan: number }
 	filters: string[]
 }
 
@@ -91,6 +92,15 @@ const drawFallbackPreview = (
 const getClipLocalMediaTime = (clip: RenderedClip, cursor: number): number =>
 	Math.max(0, clip.inPoint + cursor - clip.start)
 
+const syncMediaPlayback = (element: HTMLMediaElement, shouldPlay: boolean): void => {
+	if (shouldPlay) {
+		void element.play().catch(() => undefined)
+		return
+	}
+
+	element.pause()
+}
+
 const getKeyframeResolver = (
 	projects$: ReturnType<typeof useVideoEditor>['projects$'],
 ): ((id: EntityId) => ScalarKeyframe | null) => (id) => {
@@ -122,6 +132,7 @@ export const RendererStage = observer(() => {
 	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
 	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>('fallback')
 	const cursor = session$.cursor.get()
+	const isPlaying = session$.isPlaying.get()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
 	const project$ = activeProjectId ? projects$.projects[activeProjectId] : null
 	const rootEntityId = project$?.rootEntityId.get()
@@ -129,11 +140,12 @@ export const RendererStage = observer(() => {
 	const trackIds = typeof timelineId === 'string'
 		? projects$.entitiesById[timelineId].rels.tracks.get()
 		: []
-	const activeClipIds: string[] = []
+	const activeClips: Array<{ id: string; trackKind: ResourceAttrs['kind'] }> = []
 	const resolveKeyframe = getKeyframeResolver(projects$)
 
 	if (Array.isArray(trackIds)) {
 		for (const trackId of trackIds) {
+			const trackKind = String(projects$.entitiesById[trackId].attrs.kind.get()) as ResourceAttrs['kind']
 			const clipIds = projects$.entitiesById[trackId].rels.clips.get()
 			if (!Array.isArray(clipIds)) {
 				continue
@@ -144,13 +156,13 @@ export const RendererStage = observer(() => {
 				const start = Number(clip$.attrs.start.get())
 				const duration = Number(clip$.attrs.duration.get())
 				if (cursor >= start && cursor < start + duration) {
-					activeClipIds.push(clipId)
+					activeClips.push({ id: clipId, trackKind })
 				}
 			}
 		}
 	}
 
-	const renderedClips: RenderedClip[] = activeClipIds.map((clipId) => {
+	const renderedClips: RenderedClip[] = activeClips.map(({ id: clipId, trackKind }) => {
 		const clip$ = projects$.entitiesById[clipId]
 		const attrs = clip$.attrs.get() as unknown as ClipAttrs
 		const localTime = Math.max(0, cursor - attrs.start)
@@ -158,6 +170,7 @@ export const RendererStage = observer(() => {
 		const resourceAttrs = typeof resourceId === 'string'
 			? projects$.entitiesById[resourceId].attrs.get() as unknown as ResourceAttrs
 			: null
+		const resourceKind = trackKind === 'audio' ? 'audio' : attrs.mediaKind ?? resourceAttrs?.kind ?? 'image'
 		const effectIds = clip$.rels.effects.get()
 		const filters = Array.isArray(effectIds)
 			? effectIds
@@ -172,7 +185,7 @@ export const RendererStage = observer(() => {
 			name: attrs.name,
 			color: String(attrs.color ?? '#2563eb'),
 			resourceName: resourceAttrs?.name ?? attrs.name,
-			resourceKind: resourceAttrs?.kind ?? 'image',
+			resourceKind,
 			resourceUrl: resourceAttrs?.url ?? '',
 			mime: resourceAttrs?.mime ?? '',
 			inPoint: attrs.in,
@@ -184,6 +197,7 @@ export const RendererStage = observer(() => {
 				scale: evaluateKeyframedScalar(attrs.transform.scale, localTime, resolveKeyframe),
 				rotation: evaluateKeyframedScalar(attrs.transform.rotation, localTime, resolveKeyframe),
 			},
+			audio: attrs.audio ?? { gain: 1, pan: 0 },
 			filters,
 		}
 	})
@@ -239,8 +253,11 @@ export const RendererStage = observer(() => {
 			}
 
 			seekMediaElement(element, getClipLocalMediaTime(clip, cursor))
+			element.volume = Math.min(1, Math.max(0, clip.audio.gain))
+			element.dataset.pan = String(clip.audio.pan)
+			syncMediaPlayback(element, isPlaying)
 		}
-	}, [cursor, renderedClips])
+	}, [cursor, isPlaying, renderedClips])
 
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">
@@ -288,7 +305,7 @@ export const RendererStage = observer(() => {
 									/>
 								) : null}
 								{hasMedia && clip.resourceKind === 'audio' ? (
-									<div className="ve-renderer__audio" aria-label="Audio preview">
+									<div className="ve-renderer__audio" aria-label="Audio preview" data-gain={clip.audio.gain} data-pan={clip.audio.pan}>
 										<span>{clip.resourceName}</span>
 										<audio
 											ref={(element) => {
@@ -299,6 +316,8 @@ export const RendererStage = observer(() => {
 												mediaElementsRef.current.delete(clip.id)
 											}}
 											src={clip.resourceUrl}
+											data-gain={clip.audio.gain}
+											data-pan={clip.audio.pan}
 											preload="metadata"
 											controls
 											onLoadedMetadata={(event) => seekMediaElement(event.currentTarget, getClipLocalMediaTime(clip, cursor))}

@@ -10,7 +10,7 @@ export interface ClipFrameOperation {
 	duration: number
 	localTime: number
 	sourceTime: number
-	operations: Array<{ type: 'transform' | 'effect' | 'opacity', value: unknown }>
+	operations: Array<{ type: 'transform' | 'effect' | 'opacity' | 'audio', value: unknown }>
 }
 
 export interface EvaluatedTransformAttrs {
@@ -27,6 +27,8 @@ export interface EditframeClip {
 	start: number
 	duration: number
 	trimStart: number
+	gain?: number
+	pan?: number
 }
 
 const getEffectNames = (registry: ProjectRegistry, clip: Entity): string[] => {
@@ -49,6 +51,7 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 	const resourceId = String(clip.rels.resource)
 	const resource = registry.entitiesById[resourceId]
 	const resourceAttrs = resource.attrs as unknown as ResourceAttrs
+	const resourceKind = attrs.mediaKind ?? resourceAttrs.kind
 	const localTime = Math.max(0, (time ?? attrs.start) - attrs.start)
 	const baseOpacity = evaluateAnimatedScalar(registry, attrs.opacity, localTime)
 	const opacity = evaluateFadeOpacity(
@@ -69,7 +72,7 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 	return {
 		clipId: clip.id,
 		resourceId,
-		resourceKind: resourceAttrs.kind,
+		resourceKind,
 		start: attrs.start,
 		duration: attrs.duration,
 		localTime,
@@ -78,6 +81,9 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 			{ type: 'transform', value: transform },
 			...getEffectNames(registry, clip).map((effect) => ({ type: 'effect' as const, value: effect })),
 			{ type: 'opacity', value: opacity },
+			...(resourceKind === 'audio'
+				? [{ type: 'audio' as const, value: attrs.audio ?? { gain: 1, pan: 0 } }]
+				: []),
 		],
 	}
 }
@@ -105,14 +111,16 @@ export const compileEditframeClips = (registry: ProjectRegistry, projectId: stri
 			const attrs = clip.attrs as unknown as ClipAttrs
 			const resourceId = String(clip.rels.resource)
 			const resourceAttrs = registry.entitiesById[resourceId].attrs as unknown as ResourceAttrs
+			const resourceKind = attrs.mediaKind ?? resourceAttrs.kind
 
 			return {
-				type: getEditframeType(resourceAttrs.kind),
+				type: getEditframeType(resourceKind),
 				id: clip.id,
 				source: resourceAttrs.url,
 				start: attrs.start,
 				duration: attrs.duration,
 				trimStart: attrs.in,
+				...(resourceKind === 'audio' ? { gain: attrs.audio?.gain ?? 1, pan: attrs.audio?.pan ?? 0 } : {}),
 			}
 		})
 }
