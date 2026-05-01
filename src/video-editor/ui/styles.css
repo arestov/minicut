@@ -257,6 +257,21 @@ button:disabled {
 	border-radius: 6px;
 }
 
+.ve-toolbar__status {
+	border-radius: 999px;
+	background: #ecfdf5;
+	color: #047857;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 5px 8px;
+	white-space: nowrap;
+}
+
+.ve-toolbar__status.is-error {
+	background: #fef2f2;
+	color: #b91c1c;
+}
+
 /* Project dropdown */
 .ve-project-dropdown {
 	position: relative;
@@ -460,6 +475,13 @@ button:disabled {
 	min-width: 0;
 }
 
+.ve-timeline__track-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
 .ve-timeline-tool-mode {
 	margin-right: 2px;
 }
@@ -539,7 +561,7 @@ button:disabled {
 .ve-timeline-playhead {
 	position: absolute;
 	top: 0;
-	bottom: 0;
+	height: max(100%, calc(28px + var(--ve-track-count, 0) * 102px));
 	width: 2px;
 	background: #dc2626;
 	pointer-events: none;

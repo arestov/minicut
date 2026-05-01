@@ -20,6 +20,10 @@ const importFixtureMedia = async (page: import('@playwright/test').Page) => {
 	])
 }
 
+const importFixtureVideo = async (page: import('@playwright/test').Page) => {
+	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
+}
+
 const setTimelineCursor = async (
 	page: import('@playwright/test').Page,
 	seconds: number,
@@ -42,12 +46,12 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	await createProjectFromMenu(page)
 	await expect(page.getByRole('button', { name: /Project \d+/i })).toBeVisible()
 
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 	await expect(
-		page.getByLabel('Media bin').locator('strong').filter({ hasText: 'Sample asset 1' }),
+		page.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' }),
 	).toBeVisible()
 
-	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	const clip = page.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await expect(clip).toBeVisible()
 
 	await clip.click()
@@ -59,36 +63,36 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 		await expect(opacitySlider).toHaveValue(value)
 	}
 	await expect(inspector.getByText('60%')).toBeVisible()
-	await setTimelineCursor(page, 2.75)
+	await setTimelineCursor(page, 0.5)
 
 	await inspector.getByRole('button', { name: 'Split clip' }).click()
-	await expect(page.getByRole('button', { name: /Sample asset 1/i })).toHaveCount(2)
+	await expect(page.getByRole('button', { name: /fixture-video.webm/i })).toHaveCount(2)
 
 	await inspector.getByRole('button', { name: 'Nudge +0.5s' }).click()
-	await expect(inspector.locator('dd').filter({ hasText: '3.3s' })).toBeVisible()
+	await expect(inspector.locator('dd').filter({ hasText: '1.0s' })).toBeVisible()
 })
 
 test('split clip follows playhead and reflects resulting durations in timeline widths', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
-	const clip = timeline.getByRole('button', { name: /Sample asset 1/i }).first()
+	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await clip.click()
-	await setTimelineCursor(page, 1.25)
+	await setTimelineCursor(page, 0.5)
 
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('button', { name: 'Split clip' }).click()
 
-	const clips = timeline.getByRole('button', { name: /Sample asset 1/i })
+	const clips = timeline.getByRole('button', { name: /fixture-video.webm/i })
 	await expect(clips).toHaveCount(2)
 	const leftWidth = await clips.nth(0).evaluate((element) => Number.parseFloat(getComputedStyle(element).width))
 	const rightWidth = await clips.nth(1).evaluate((element) => Number.parseFloat(getComputedStyle(element).width))
-	expect(leftWidth).toBeGreaterThan(60)
-	expect(leftWidth).toBeLessThan(90)
-	expect(rightWidth).toBeGreaterThan(190)
-	expect(rightWidth).toBeLessThan(230)
+	expect(leftWidth).toBeGreaterThan(34)
+	expect(leftWidth).toBeLessThan(42)
+	expect(rightWidth).toBeGreaterThan(34)
+	expect(rightWidth).toBeLessThan(42)
 })
 
 test('project dropdown shows items when opened', async ({ page }) => {
@@ -111,9 +115,9 @@ test('importing into an empty timeline auto-adds the first resource', async ({ p
 
 	await expect(page.getByRole('button', { name: 'Add first resource' })).toHaveCount(0)
 
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
-	await expect(page.getByRole('button', { name: /Sample asset 1/i }).first()).toBeVisible()
+	await expect(page.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
 })
 
 test('imports real media files, edits timeline clips, and previews actual media elements', async ({ page }) => {
@@ -195,15 +199,14 @@ test('timeline uses one shared current step and keeps many tracks scrollable', a
 test('inspector feature controls combine trim, color, effects, audio, export, and delete', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
-	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	const clip = page.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await clip.click()
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 
 	await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
-	await inspector.getByRole('button', { name: 'End -0.5s' }).click()
-	await expect(inspector.locator('dd').filter({ hasText: '0.5s' })).toBeVisible()
+	await expect(inspector.locator('dd').filter({ hasText: '0.5s' })).toHaveCount(2)
 	await setTimelineCursor(page, 0.5)
 
 	await inspector.getByRole('button', { name: 'Tint' }).click()
@@ -243,7 +246,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 test('timeline zoom controls and inspector trim boundary states behave correctly', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
@@ -277,18 +280,18 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	}
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
 
-	const clip = timeline.getByRole('button', { name: /Sample asset 1/i }).first()
+	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await clip.click()
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await expect(inspector.getByRole('button', { name: 'Start -0.5s' })).toBeDisabled()
 	await inspector.getByRole('button', { name: 'End +0.5s' }).click()
-	await expect(inspector.locator('dd').filter({ hasText: '5.5s' })).toBeVisible()
+	await expect(inspector.locator('dd').filter({ hasText: '1.5s' })).toBeVisible()
 })
 
 test('media resources render metadata and action on separate lines', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
 	const mediaBin = page.getByLabel('Media bin')
 	const firstResource = mediaBin.locator('.ve-resource-row').first()
@@ -313,10 +316,10 @@ test('media resources render metadata and action on separate lines', async ({ pa
 test('dragging a clip changes its timeline start position', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
-	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
-	await expect(clip).toHaveText(/0\.0s \/ 5\.0s/)
+	const clip = page.getByRole('button', { name: /fixture-video.webm/i }).first()
+	await expect(clip).toHaveText(/0\.0s \/ 1\.0s/)
 
 	const box = await clip.boundingBox()
 	if (!box) {
@@ -328,16 +331,16 @@ test('dragging a clip changes its timeline start position', async ({ page }) => 
 	await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2)
 	await page.mouse.up()
 
-	await expect(clip).not.toHaveText(/0\.0s \/ 5\.0s/)
+	await expect(clip).not.toHaveText(/0\.0s \/ 1\.0s/)
 })
 
 test('resizing a clip from the right edge changes its duration', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
-	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
-	await expect(clip).toHaveText(/0\.0s \/ 5\.0s/)
+	const clip = page.getByRole('button', { name: /fixture-video.webm/i }).first()
+	await expect(clip).toHaveText(/0\.0s \/ 1\.0s/)
 	const handle = clip.locator('.ve-clip__resize-handle--end')
 	const box = await handle.boundingBox()
 	if (!box) {
@@ -349,15 +352,15 @@ test('resizing a clip from the right edge changes its duration', async ({ page }
 	await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2)
 	await page.mouse.up()
 
-	await expect(clip).toHaveText(/0\.0s \/ 5\.5s/)
+	await expect(clip).toHaveText(/0\.0s \/ 1\.5s/)
 })
 
 test('resizing a clip from the left edge trims its start and duration', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
-	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	const clip = page.getByRole('button', { name: /fixture-video.webm/i }).first()
 	const handle = clip.locator('.ve-clip__resize-handle--start')
 	const box = await handle.boundingBox()
 	if (!box) {
@@ -369,15 +372,15 @@ test('resizing a clip from the left edge trims its start and duration', async ({
 	await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2)
 	await page.mouse.up()
 
-	await expect(clip).toHaveText(/0\.5s \/ 4\.5s/)
+	await expect(clip).toHaveText(/0\.5s \/ 0\.5s/)
 })
 
 test('dragging a clip before the timeline start clamps to zero', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
-	const clip = page.getByRole('button', { name: /Sample asset 1/i }).first()
+	const clip = page.getByRole('button', { name: /fixture-video.webm/i }).first()
 	const box = await clip.boundingBox()
 	if (!box) {
 		throw new Error('Clip bounding box is unavailable for drag simulation')
@@ -388,13 +391,13 @@ test('dragging a clip before the timeline start clamps to zero', async ({ page }
 	await page.mouse.move(box.x + box.width / 2 - 320, box.y + box.height / 2)
 	await page.mouse.up()
 
-	await expect(clip).toHaveText(/0\.0s \/ 5\.0s/)
+	await expect(clip).toHaveText(/0\.0s \/ 1\.0s/)
 })
 
 test('playback toggle advances timeline cursor over time', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await page.getByRole('button', { name: 'Import sample' }).click()
+	await importFixtureVideo(page)
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	const currentTime = timeline.getByLabel('Current time')

@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test'
+import path from 'node:path'
 
 const prepareEditor = async (page: import('@playwright/test').Page) => {
 	await page.goto('/')
 	const projectsRegion = page.getByLabel('Projects')
 	await projectsRegion.getByRole('button').click()
 	await projectsRegion.getByRole('button', { name: 'New project' }).click()
-	await page.getByRole('button', { name: 'Import sample' }).click()
-	await page.getByRole('button', { name: /Sample asset 1/i }).first().click()
+	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
+	await page.getByRole('button', { name: /fixture-video.webm/i }).first().click()
 }
 
 for (const viewport of [

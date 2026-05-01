@@ -1,7 +1,7 @@
 import type { Observable } from '@legendapp/state'
 import { For, observer } from '@legendapp/state/react'
-import { Hand, Magnet, MousePointer2, Music, Scissors, Video, ZoomIn, ZoomOut } from 'lucide-react'
-import { useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Hand, Magnet, MousePointer2, Music, Scissors, SquareSplitHorizontal, Video, ZoomIn, ZoomOut } from 'lucide-react'
+import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_STEP } from '../legend/sessionStore'
 import { IconButton } from './ControlPrimitives'
@@ -33,7 +33,7 @@ const timelineTimeOriginPx = 167
 const timelineTools: Array<{ id: TimelineTool, label: string, icon: typeof MousePointer2 }> = [
 	{ id: 'select', label: 'Select tool', icon: MousePointer2 },
 	{ id: 'trim', label: 'Trim tool', icon: Scissors },
-	{ id: 'split', label: 'Split tool', icon: Scissors },
+	{ id: 'split', label: 'Split tool', icon: SquareSplitHorizontal },
 	{ id: 'hand', label: 'Hand tool', icon: Hand },
 ]
 
@@ -84,7 +84,15 @@ export const TimelineView = observer(() => {
 	return (
 		<section className="ve-panel ve-timeline" aria-label="Timeline">
 			<div className="ve-panel__header">
-				<h2>Timeline</h2>
+				<div className="ve-timeline__track-actions">
+					<h2>Timeline</h2>
+					<IconButton type="button" icon={Video} label="Add video track" variant="outline" onClick={() => actions.addTrack('video')} disabled={!activeProjectId}>
+						Add video track
+					</IconButton>
+					<IconButton type="button" icon={Music} label="Add audio track" variant="outline" onClick={() => actions.addTrack('audio')} disabled={!activeProjectId}>
+						Add audio track
+					</IconButton>
+				</div>
 				<div className="ve-timeline__tools" aria-label="Timeline tools">
 					<div className="ve-segmented-control ve-timeline-tool-mode" aria-label="Timeline tool mode">
 						{timelineTools.map((tool) => (
@@ -101,12 +109,6 @@ export const TimelineView = observer(() => {
 					</div>
 					<span className="ve-timeline__time" aria-label="Current time">{cursorSeconds.toFixed(2)}s</span>
 					<span>{tracks.length} tracks</span>
-					<IconButton type="button" icon={Video} label="Add video track" variant="outline" onClick={() => actions.addTrack('video')} disabled={!activeProjectId}>
-						Add video track
-					</IconButton>
-					<IconButton type="button" icon={Music} label="Add audio track" variant="outline" onClick={() => actions.addTrack('audio')} disabled={!activeProjectId}>
-						Add audio track
-					</IconButton>
 					<IconButton
 						type="button"
 						icon={Magnet}
@@ -142,6 +144,7 @@ export const TimelineView = observer(() => {
 						className="ve-timeline-scroll-area"
 						data-tool={activeTool}
 						data-snapping={snappingEnabled ? 'on' : 'off'}
+						style={{ '--ve-track-count': tracks.length } as CSSProperties}
 						onPointerDown={updateCursorFromPointer}
 						onPointerMove={updateCursorFromPointer}
 					>
