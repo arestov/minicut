@@ -91,6 +91,7 @@ export interface TransformAttrs {
 
 export interface ClipAttrs {
 	name: string
+	color?: string
 	start: number
 	duration: number
 	in: number

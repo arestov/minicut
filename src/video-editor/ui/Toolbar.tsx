@@ -1,24 +1,20 @@
 import { observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { ProjectDropdown } from './ProjectDropdown'
 
 export const Toolbar = observer(() => {
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
-	const selectedEntityId = session$.selectedEntityId.get()
 	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
 	const rootEntityId = activeProject$?.rootEntityId.get()
 	const resourceIds = rootEntityId
 		? projects$.entitiesById[rootEntityId].rels.resources.get()
 		: []
 	const resources = Array.isArray(resourceIds) ? resourceIds : []
-	const selectedEntityType = selectedEntityId
-		? projects$.entitiesById[selectedEntityId].type.get()
-		: null
-	const hasSelectedClip = selectedEntityType === 'clip'
 
 	return (
 		<header className="ve-toolbar">
-			<div>
+			<div className="ve-toolbar__brand">
 				<h1>Video Editor Harness</h1>
 				<p>Legend-State projection + single-writer memory worker + Testing Library harness.</p>
 			</div>
@@ -26,6 +22,7 @@ export const Toolbar = observer(() => {
 				<button type="button" onClick={() => actions.createProject()}>
 					New project
 				</button>
+				<ProjectDropdown />
 				<button type="button" onClick={() => actions.importSampleResource()} disabled={!activeProjectId}>
 					Import sample
 				</button>
@@ -35,12 +32,6 @@ export const Toolbar = observer(() => {
 					disabled={!resources[0]}
 				>
 					Add first resource
-				</button>
-				<button type="button" onClick={() => actions.splitSelectedClip()} disabled={!hasSelectedClip}>
-					Split selected clip
-				</button>
-				<button type="button" onClick={() => actions.nudgeSelectedClip(0.5)} disabled={!hasSelectedClip}>
-					Nudge +0.5s
 				</button>
 			</div>
 		</header>

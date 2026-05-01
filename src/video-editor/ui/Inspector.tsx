@@ -23,6 +23,10 @@ export const Inspector = observer(() => {
 	}
 
 	const name = String(selectedEntity$.attrs.name.get())
+	const colorRaw = selectedEntity$.attrs.get()
+	const color = (colorRaw && typeof (colorRaw as Record<string, unknown>).color === 'string')
+		? (colorRaw as Record<string, unknown>).color as string
+		: '#2563eb'
 	const start = Number(selectedEntity$.attrs.start.get())
 	const duration = Number(selectedEntity$.attrs.duration.get())
 	const opacity = Number(selectedEntity$.attrs.opacity.value.get())
@@ -41,7 +45,23 @@ export const Inspector = observer(() => {
 		<aside className="ve-panel" aria-label="Inspector">
 			<div className="ve-panel__header">
 				<h2>Inspector</h2>
-				<span>{name}</span>
+				<div className="ve-inspector-clip-meta">
+					<input
+						className="ve-inspector-name"
+						type="text"
+						aria-label="Clip name"
+						value={name}
+						onChange={(event) => actions.renameSelectedClip(event.currentTarget.value)}
+					/>
+					<label className="ve-inspector-color" title="Clip color label">
+						<span className="ve-sr-only">Color</span>
+						<input
+							type="color"
+							value={color}
+							onChange={(event) => actions.colorSelectedClip(event.currentTarget.value)}
+						/>
+					</label>
+				</div>
 			</div>
 			<dl className="ve-inspector-grid">
 				<div>

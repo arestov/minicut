@@ -120,6 +120,38 @@ export const createVideoEditorHarness = (authority: EditorAuthorityClient = crea
 			session$.selectedEntityId.set(entityId)
 		},
 
+		renameSelectedClip(name: string): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			dispatch({
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					projectId: getActiveProjectId(projects$, session$),
+					clipId: clip.id,
+					attrs: { name },
+				},
+			})
+		},
+
+		colorSelectedClip(color: string): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			dispatch({
+				c: CMD.CLIP_UPDATE_ATTRS,
+				p: {
+					projectId: getActiveProjectId(projects$, session$),
+					clipId: clip.id,
+					attrs: { color },
+				},
+			})
+		},
+
 		updateSelectedClipOpacity(opacityPercent: number): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {

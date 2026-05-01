@@ -75,8 +75,11 @@ describe('video editor harness', () => {
 			await user.click(screen.getByRole('button', { name: 'Add to timeline' }))
 
 			await user.click(screen.getByRole('button', { name: 'New project' }))
+			// Open project switcher to inspect all projects (trigger shows active "Project 2")
 			const projectsRegion = screen.getByLabelText('Projects')
-			const projectButtons = within(projectsRegion).getAllByRole('button', {
+			await user.click(within(projectsRegion).getByRole('button', { name: /Project 2/i }))
+			const projectList = within(projectsRegion).getByRole('list')
+			const projectButtons = within(projectList).getAllByRole('button', {
 				name: /Project [12]/i,
 			})
 			expect(projectButtons).toHaveLength(2)
@@ -86,7 +89,7 @@ describe('video editor harness', () => {
 			const mediaBin = screen.getByLabelText('Media bin')
 			expect(within(mediaBin).getByText('Sample asset 1', { selector: 'strong' })).toBeInTheDocument()
 
-			await user.click(screen.getByRole('button', { name: /Project 1/i }))
+			await user.click(within(projectList).getByRole('button', { name: /Project 1/i }))
 			expect(screen.getByRole('button', { name: /Sample asset 1 · 0.0s/i })).toBeInTheDocument()
 		} finally {
 			unmount()
