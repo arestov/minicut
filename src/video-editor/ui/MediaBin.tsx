@@ -3,6 +3,11 @@ import { Grid2X2, List, Plus, Search, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
+import {
+	getActiveProjectId$,
+	getProjectResourceIds$,
+	resourceAttrs$,
+} from '../legend/observableSelectors'
 import { IconButton } from './ControlPrimitives'
 
 interface ResourceRowProps {
@@ -32,8 +37,7 @@ const ResourceThumbnail = ({ attrs }: { attrs: ResourceAttrs }) => {
 
 const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 	const { projects$, actions } = useVideoEditor()
-	const resource$ = projects$.entitiesById[resourceId]
-	const attrs = resource$.attrs.get() as unknown as ResourceAttrs
+	const attrs = resourceAttrs$(projects$, resourceId).get()
 
 	return (
 		<li className="ve-resource-row">
@@ -64,16 +68,11 @@ export const MediaBin = observer(() => {
 	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
 	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 	const { projects$, session$, actions } = useVideoEditor()
-	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
-	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
-	const rootEntityId = activeProject$?.rootEntityId.get()
-	const resourceIds = rootEntityId
-		? projects$.entitiesById[rootEntityId].rels.resources.get()
-		: []
-	const resources = Array.isArray(resourceIds) ? resourceIds : []
+	const activeProjectId = getActiveProjectId$(projects$, session$)
+	const resources = getProjectResourceIds$(projects$, activeProjectId)
 	const normalizedQuery = query.trim().toLowerCase()
 	const filteredResources = resources.filter((resourceId) => {
-		const attrs = projects$.entitiesById[resourceId].attrs.get() as unknown as ResourceAttrs
+		const attrs = resourceAttrs$(projects$, resourceId).get()
 		const matchesKind = kindFilter === 'all' || attrs.kind === kindFilter
 		const matchesQuery = normalizedQuery.length === 0
 			|| attrs.name.toLowerCase().includes(normalizedQuery)

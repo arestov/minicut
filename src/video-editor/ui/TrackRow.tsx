@@ -2,6 +2,12 @@ import type { Observable } from '@legendapp/state'
 import { For, observer } from '@legendapp/state/react'
 import { Eye, Lock, Volume2 } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import {
+	clipAttrs$,
+	getTrackClipIds$,
+	getTrackClipIdsNode$,
+	trackAttrs$,
+} from '../legend/observableSelectors'
 import { IconButton } from './ControlPrimitives'
 import { ClipItem } from './ClipItem'
 
@@ -39,20 +45,21 @@ const ClipListItem = observer(
 
 export const TrackLabel = observer(({ trackId }: { trackId: string }) => {
 	const { projects$ } = useVideoEditor()
-	const track$ = projects$.entitiesById[trackId]
-	const trackKind = String(track$.attrs.kind.get())
-	const isMuted = Boolean(track$.attrs.muted.get())
-	const isLocked = Boolean(track$.attrs.locked.get())
+	const track$ = trackAttrs$(projects$, trackId)
+	const trackName = String(track$.name.get())
+	const trackKind = String(track$.kind.get())
+	const isMuted = Boolean(track$.muted.get())
+	const isLocked = Boolean(track$.locked.get())
 
 	return (
 		<div className="ve-track-row__label">
 			<div>
-				<strong>{String(track$.attrs.name.get())}</strong>
+				<strong>{trackName}</strong>
 				<small>{trackKind}</small>
 			</div>
 			<div
 				className="ve-track-row__controls"
-				aria-label={`${String(track$.attrs.name.get())} controls`}
+				aria-label={`${trackName} controls`}
 			>
 				<IconButton
 					type="button"
@@ -83,15 +90,12 @@ export const TrackLabel = observer(({ trackId }: { trackId: string }) => {
 export const TrackLane = observer(
 	({ projectId, trackId, timelineZoom, activeTool }: TrackRowProps) => {
 		const { projects$ } = useVideoEditor()
-		const track$ = projects$.entitiesById[trackId]
-		const clipIds$ = track$.rels.clips as Observable<string[]>
-		const clipIds = clipIds$.get()
-		const clips = Array.isArray(clipIds) ? clipIds : []
+		const clipIds$ = getTrackClipIdsNode$(projects$, trackId)
+		const clips = getTrackClipIds$(projects$, trackId)
 		const trackEnd = clips.reduce((maxEnd, clipId) => {
-			const start = Number(projects$.entitiesById[clipId].attrs.start.get())
-			const duration = Number(
-				projects$.entitiesById[clipId].attrs.duration.get(),
-			)
+			const clip$ = clipAttrs$(projects$, clipId)
+			const start = Number(clip$.start.get())
+			const duration = Number(clip$.duration.get())
 			return Math.max(maxEnd, start + duration)
 		}, 0)
 		const trackWidth = Math.max(960, Math.ceil((trackEnd + 2) * timelineZoom))

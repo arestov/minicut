@@ -4,6 +4,17 @@ import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Trash2, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
+import {
+	clipAttrs$,
+	clipRels$,
+	effectAttrs$,
+	getActiveProjectId$,
+	getActiveTimelineId$,
+	getTimelineTrackIds$,
+	getTrackClipIds$,
+	resourceAttrs$,
+	trackAttrs$,
+} from '../legend/observableSelectors'
 import type { ExportRenderResult } from '../render/exportRenderer'
 import { Button, IconButton } from './ControlPrimitives'
 import { formatPercent, formatSeconds } from './format'
@@ -70,7 +81,7 @@ export const Inspector = observer(() => {
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
 	const [exportStatus, setExportStatus] = useState<ExportStatus>({ state: 'idle' })
 	const { projects$, session$, actions } = useVideoEditor()
-	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const activeProjectId = getActiveProjectId$(projects$, session$)
 	const selectedEntityId = session$.selectedEntityId.get()
 	const selectedEntity$ = activeProjectId && selectedEntityId
 		? projects$.entitiesById[selectedEntityId]
@@ -89,30 +100,24 @@ export const Inspector = observer(() => {
 		)
 	}
 
-	const name = String(selectedEntity$.attrs.name.get())
-	const colorRaw = selectedEntity$.attrs.get()
-	const color = (colorRaw && typeof (colorRaw as Record<string, unknown>).color === 'string')
-		? (colorRaw as Record<string, unknown>).color as string
-		: '#2563eb'
-	const start = Number(selectedEntity$.attrs.start.get())
-	const duration = Number(selectedEntity$.attrs.duration.get())
-	const opacity = Number(selectedEntity$.attrs.opacity.value.get())
-	const inPoint = Number(selectedEntity$.attrs.in.get())
-	const fadeIn = Number(selectedEntity$.attrs.fadeIn.get() ?? 0)
-	const fadeOut = Number(selectedEntity$.attrs.fadeOut.get() ?? 0)
-	const audio = selectedEntity$.attrs.audio.get() as { gain: number; pan: number } | undefined
-	const transform = selectedEntity$.attrs.transform.get() as {
-		x: { value: number }
-		y: { value: number }
-		scale: { value: number }
-		rotation: { value: number }
-	}
-	const effectIds = selectedEntity$.rels.effects.get()
-	const resourceId = selectedEntity$.rels.resource.get()
+	const selectedClip$ = clipAttrs$(projects$, selectedEntityId)
+	const selectedClipRels$ = clipRels$(projects$, selectedEntityId)
+	const name = String(selectedClip$.name.get())
+	const color = String(selectedClip$.color.get() ?? '#2563eb')
+	const start = Number(selectedClip$.start.get())
+	const duration = Number(selectedClip$.duration.get())
+	const opacity = Number(selectedClip$.opacity.value.get())
+	const inPoint = Number(selectedClip$.in.get())
+	const fadeIn = Number(selectedClip$.fadeIn.get() ?? 0)
+	const fadeOut = Number(selectedClip$.fadeOut.get() ?? 0)
+	const audio = selectedClip$.audio.get()
+	const transform = selectedClip$.transform.get()
+	const effectIds = selectedClipRels$.effects.get()
+	const resourceId = selectedClipRels$.resource.get()
 	const resourceKind = typeof resourceId === 'string'
-		? (projects$.entitiesById[resourceId].attrs.kind.get() as ResourceAttrs['kind'])
+		? resourceAttrs$(projects$, resourceId).kind.get()
 		: 'image'
-	const selectedMediaKind = (selectedEntity$.attrs.mediaKind.get() as ResourceAttrs['kind'] | undefined) ?? resourceKind
+	const selectedMediaKind = selectedClip$.mediaKind.get() ?? resourceKind
 	const isAudioClip = selectedMediaKind === 'audio'
 	const effects = Array.isArray(effectIds) ? effectIds : []
 	const effectEntries = effects
@@ -121,11 +126,12 @@ export const Inspector = observer(() => {
 			if (!effect$) {
 				return null
 			}
+			const attrs = effectAttrs$(projects$, effectId)
 
 			return {
 				id: effectId,
-				name: String(effect$.attrs.name.get()),
-				kind: String(effect$.attrs.kind.get()),
+				name: String(attrs.name.get()),
+				kind: String(attrs.kind.get()),
 			}
 		})
 		.filter((entry): entry is { id: string, name: string, kind: string } => entry !== null)
@@ -133,22 +139,16 @@ export const Inspector = observer(() => {
 	let selectedTrackName = 'Track'
 	let selectedClipOrdinal = 1
 	if (activeProjectId && selectedEntityId) {
-		const rootEntityId = projects$.projects[activeProjectId]?.rootEntityId.get()
-		const timelineId = rootEntityId ? projects$.entitiesById[rootEntityId].rels.activeTimeline.get() : null
-		const trackIds = typeof timelineId === 'string'
-			? projects$.entitiesById[timelineId].rels.tracks.get()
-			: []
+		const timelineId = getActiveTimelineId$(projects$, activeProjectId)
+		const trackIds = getTimelineTrackIds$(projects$, timelineId)
 
 		if (Array.isArray(trackIds)) {
 			for (const trackId of trackIds) {
-				const clipIds = projects$.entitiesById[trackId].rels.clips.get()
-				if (!Array.isArray(clipIds)) {
-					continue
-				}
+				const clipIds = getTrackClipIds$(projects$, trackId)
 
 				const clipIndex = clipIds.indexOf(selectedEntityId)
 				if (clipIndex >= 0) {
-					selectedTrackName = String(projects$.entitiesById[trackId].attrs.name.get())
+					selectedTrackName = String(trackAttrs$(projects$, trackId).name.get())
 					selectedClipOrdinal = clipIndex + 1
 					break
 				}

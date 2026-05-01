@@ -2,6 +2,12 @@
 import { observer } from '@legendapp/state/react'
 import { Check, ChevronDown, Plus } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import {
+	getActiveProjectId$,
+	getProjectResourceIds$,
+	getProjectRootEntityId$,
+	projectEntityAttrs$,
+} from '../legend/observableSelectors'
 import { Button, IconButton } from './ControlPrimitives'
 
 interface ProjectItemProps {
@@ -13,10 +19,9 @@ interface ProjectItemProps {
 const ProjectItem = observer(({ projectId, activeProjectId, onSelect }: ProjectItemProps) => {
  	const { projects$, actions } = useVideoEditor()
 	const project$ = projects$.projects[projectId]
-	const rootEntityId = project$.rootEntityId.get()
-	const projectEntity$ = projects$.entitiesById[rootEntityId]
-	const resourceIds = projectEntity$.rels.resources.get()
-	const resourceCount = Array.isArray(resourceIds) ? resourceIds.length : 0
+	const rootEntityId = getProjectRootEntityId$(projects$, projectId)
+	const projectTitle = rootEntityId ? String(projectEntityAttrs$(projects$, rootEntityId).title.get()) : 'Project'
+	const resourceCount = getProjectResourceIds$(projects$, projectId).length
 	const isActive = projectId === activeProjectId
 
 	return (
@@ -31,7 +36,7 @@ const ProjectItem = observer(({ projectId, activeProjectId, onSelect }: ProjectI
 				aria-pressed={isActive}
 			>
 				<span className="ve-project-list__title">
-					{String(projectEntity$.attrs.title.get())}
+					{projectTitle}
 					{isActive ? <Check size={14} aria-hidden="true" /> : null}
 				</span>
 				<small>v{project$.version.get()} - {resourceCount} resources</small>
@@ -44,11 +49,10 @@ export const ProjectDropdown = observer(() => {
 	const [isOpen, setIsOpen] = useState(false)
 	const { projects$, session$, actions } = useVideoEditor()
 	const projectIds = Object.keys(projects$.projects.get())
-	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
-	const activeProject$ = activeProjectId ? projects$.projects[activeProjectId] : null
-	const activeRootId = activeProject$?.rootEntityId.get()
+	const activeProjectId = getActiveProjectId$(projects$, session$)
+	const activeRootId = getProjectRootEntityId$(projects$, activeProjectId)
 	const activeTitle = activeRootId
-		? String(projects$.entitiesById[activeRootId].attrs.title.get())
+		? String(projectEntityAttrs$(projects$, activeRootId).title.get())
 		: 'No project'
 
 	const close = () => setIsOpen(false)

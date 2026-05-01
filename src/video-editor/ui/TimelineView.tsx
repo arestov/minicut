@@ -24,6 +24,12 @@ import {
 	TIMELINE_ZOOM_MIN,
 	TIMELINE_ZOOM_STEP,
 } from '../legend/sessionStore'
+import {
+	getActiveProjectId$,
+	getActiveTimelineId$,
+	getTimelineTrackIds$,
+	getTimelineTrackIdsNode$,
+} from '../legend/observableSelectors'
 import { IconButton } from './ControlPrimitives'
 import { TrackLabel, TrackLane } from './TrackRow'
 
@@ -82,26 +88,12 @@ export const TimelineView = observer(() => {
 		scrollLeft: number
 	} | null>(null)
 	const { projects$, session$, actions } = useVideoEditor()
-	const activeProjectId =
-		session$.activeProjectId.get() ?? projects$.activeProjectId.get()
+	const activeProjectId = getActiveProjectId$(projects$, session$)
 	const timelineZoom = session$.timelineZoom.get()
 	const cursorSeconds = session$.cursor.get()
-	const activeProject$ = activeProjectId
-		? projects$.projects[activeProjectId]
-		: null
-	const rootEntityId = activeProject$?.rootEntityId.get()
-	const timelineId = rootEntityId
-		? projects$.entitiesById[rootEntityId].rels.activeTimeline.get()
-		: null
-	const trackIds =
-		typeof timelineId === 'string'
-			? projects$.entitiesById[timelineId].rels.tracks.get()
-			: []
-	const tracks = Array.isArray(trackIds) ? trackIds : []
-	const trackIds$ =
-		typeof timelineId === 'string'
-			? (projects$.entitiesById[timelineId].rels.tracks as Observable<string[]>)
-			: null
+	const timelineId = getActiveTimelineId$(projects$, activeProjectId)
+	const tracks = getTimelineTrackIds$(projects$, timelineId)
+	const trackIds$ = getTimelineTrackIdsNode$(projects$, timelineId)
 	const canZoomOut = timelineZoom > TIMELINE_ZOOM_MIN
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 
