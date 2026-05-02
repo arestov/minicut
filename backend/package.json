@@ -1,0 +1,21 @@
+{
+  "name": "minicut-backend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cloudflare Worker backend for Minicut signaling",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
+    "dev:test": "wrangler dev --ip 127.0.0.1 --port 8787 --local",
+    "build": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.83.0"
+  }
+}
