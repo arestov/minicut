@@ -33,6 +33,8 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 		let destroyed = false
 		const knownPeers = new Set<string>()
 		let connected = false
+		let connectedNotified = false
+		let lastLeaderEpoch = -1
 		let retryCount = 0
 		let retryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -41,6 +43,24 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 			: `${signalUrl.replace(/\/$/, '')}/api/signal/${encodeURIComponent(roomId)}`
 
 		let ws: WebSocket | null = null
+
+		const notifyLeaderAssigned = (leaderPeerId: unknown, epoch: unknown): void => {
+			if (typeof leaderPeerId !== 'string' || leaderPeerId.length === 0) {
+				return
+			}
+
+			const nextEpoch = Number(epoch)
+			if (!Number.isFinite(nextEpoch)) {
+				return
+			}
+
+			if (nextEpoch < lastLeaderEpoch) {
+				return
+			}
+
+			lastLeaderEpoch = nextEpoch
+			events.onLeaderAssigned(leaderPeerId, nextEpoch)
+		}
 
 		const scheduleRetry = (): void => {
 			if (destroyed || retryCount >= MAX_CONNECT_RETRIES) {
@@ -89,13 +109,16 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 
 					connected = true
 					retryCount = 0
-					events.onLeaderAssigned(String(msg.leaderPeerId ?? ''), Number(msg.epoch ?? 0))
-					events.onConnected()
+						notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
+						if (!connectedNotified) {
+							connectedNotified = true
+							events.onConnected()
+						}
 					break
 				}
 
 				case 'leader-changed': {
-					events.onLeaderAssigned(String(msg.leaderPeerId ?? ''), Number(msg.epoch ?? 0))
+						notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
 					break
 				}
 
@@ -212,6 +235,7 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 				destroyed = true
 				if (retryTimer) {
 					clearTimeout(retryTimer)
+					retryTimer = null
 				}
 				ws?.close()
 				ws = null

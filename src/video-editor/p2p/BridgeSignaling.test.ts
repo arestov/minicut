@@ -113,6 +113,61 @@ describe('createDoSignalingFactory', () => {
 		expect(events.onConnected).toHaveBeenCalledTimes(1)
 	})
 
+	test('emits connected only once across repeated room-state updates', async () => {
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-1',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+		const ws = MockWebSocket.instances[0]
+		ws.simulateOpen()
+		ws.simulateMessage({
+			type: 'room-state',
+			epoch: 1,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a'],
+		})
+		ws.simulateMessage({
+			type: 'room-state',
+			epoch: 2,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a', 'peer-b'],
+		})
+
+		expect(events.onConnected).toHaveBeenCalledTimes(1)
+	})
+
+	test('ignores stale leader-changed epochs', async () => {
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-1',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+		const ws = MockWebSocket.instances[0]
+		ws.simulateOpen()
+
+		ws.simulateMessage({
+			type: 'room-state',
+			epoch: 3,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a', 'peer-b'],
+		})
+		ws.simulateMessage({
+			type: 'leader-changed',
+			epoch: 2,
+			leaderPeerId: 'peer-b',
+		})
+
+		expect(events.onLeaderAssigned).toHaveBeenCalledTimes(1)
+		expect(events.onLeaderAssigned).toHaveBeenCalledWith('peer-a', 3)
+	})
+
 	test('filters self and foreign targeted signals', async () => {
 		const { createDoSignalingFactory } = await import('./BridgeSignaling')
 		const events = createEvents()
@@ -207,6 +262,26 @@ describe('createDoSignalingFactory', () => {
 		}
 
 		expect(events.onError).toHaveBeenCalledTimes(1)
+	})
+
+	test('does not schedule duplicate retries when error is followed by close', async () => {
+		vi.useFakeTimers()
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-1',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+
+		const ws = MockWebSocket.instances[0]
+		ws.simulateError()
+		ws.simulateClose()
+
+		await vi.advanceTimersByTimeAsync(310)
+		expect(MockWebSocket.instances).toHaveLength(2)
+		expect(events.onError).not.toHaveBeenCalled()
 	})
 
 	test('ignores late events after destroy', async () => {

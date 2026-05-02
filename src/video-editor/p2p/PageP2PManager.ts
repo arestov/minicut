@@ -68,11 +68,22 @@ export const createPageP2PManager = (
 	let destroyed = false
 	let serverPeerId: string | null = null
 	let clientTransportReady = false
+	let currentLeaderEpoch = -1
 	let connectionWatchdog: ReturnType<typeof setTimeout> | null = null
 
 	const proxyConnections = new Map<string, ProxyEntry>()
 	const peerConnections = new Map<string, RTCPeerConnection>()
 	const dataChannels = new Map<string, RTCDataChannel>()
+
+	const closePeer = (remotePeerId: string): void => {
+		const pc = peerConnections.get(remotePeerId)
+		if (pc) {
+			pc.close()
+			peerConnections.delete(remotePeerId)
+		}
+		dataChannels.delete(remotePeerId)
+		cleanupProxy(remotePeerId)
+	}
 
 	const clearConnectionWatchdog = (): void => {
 		if (connectionWatchdog == null) {
@@ -117,19 +128,19 @@ export const createPageP2PManager = (
 					return
 				}
 
-				cleanupProxy(remotePeerId)
-				const pc = peerConnections.get(remotePeerId)
-				if (pc) {
-					pc.close()
-					peerConnections.delete(remotePeerId)
-				}
-				dataChannels.delete(remotePeerId)
+				closePeer(remotePeerId)
 			},
 
-			onLeaderAssigned(leaderPeerId) {
+			onLeaderAssigned(leaderPeerId, epoch) {
 				if (destroyed) {
 					return
 				}
+
+				if (!leaderPeerId || !Number.isFinite(epoch) || epoch < currentLeaderEpoch) {
+					return
+				}
+
+				currentLeaderEpoch = epoch
 
 				if (leaderPeerId === peerId) {
 					becomeServer()
@@ -301,6 +312,10 @@ export const createPageP2PManager = (
 			return
 		}
 
+		if (serverPeerId) {
+			closePeer(serverPeerId)
+		}
+
 		clientTransportReady = false
 		serverPeerId = null
 		role = 'server'
@@ -313,8 +328,12 @@ export const createPageP2PManager = (
 		}
 
 		role = 'client'
+		if (serverPeerId && serverPeerId !== targetPeerId) {
+			closePeer(serverPeerId)
+		}
 		serverPeerId = targetPeerId
 		clientTransportReady = false
+		closePeer(targetPeerId)
 
 		const pc = new RTCPeerConnection(rtcConfig)
 		peerConnections.set(targetPeerId, pc)
@@ -495,6 +514,15 @@ export const createPageP2PManager = (
 
 			destroyed = true
 			clearConnectionWatchdog()
+
+			if (role === 'server') {
+				signaling?.sendSignal({
+					kind: 'server-leaving',
+					roomId: config.roomId,
+					fromPeerId: peerId,
+					ts: Date.now(),
+				})
+			}
 
 			for (const remotePeerId of proxyConnections.keys()) {
 				cleanupProxy(remotePeerId)

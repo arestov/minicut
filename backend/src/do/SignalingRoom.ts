@@ -110,7 +110,21 @@ export class SignalingRoom {
       return
     }
 
-    if (type === 'offer' || type === 'answer' || type === 'ice-candidate') {
+    if (type === 'offer' || type === 'answer' || type === 'ice-candidate' || type === 'server-leaving') {
+      const from = String(msg.from ?? '')
+      if (!from) {
+        return
+      }
+
+      if (type === 'server-leaving') {
+        for (const peer of this.peers?.values() ?? []) {
+          if (peer.peerId !== from) {
+            this.sendTo(peer.socket, msg)
+          }
+        }
+        return
+      }
+
       const target = String(msg.to ?? '')
       if (!target) {
         return

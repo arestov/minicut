@@ -197,6 +197,32 @@ describe('PageP2PManager', () => {
 		manager.destroy()
 	})
 
+	test('ignores stale leader assignments by epoch', () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('server-a', 2)
+		expect(manager.role).toBe('client')
+		expect(MockRTCPeerConnection.instances).toHaveLength(1)
+
+		signaling.emitLeader('server-b', 1)
+		expect(MockRTCPeerConnection.instances).toHaveLength(1)
+		expect(events.onBecomeClient).not.toHaveBeenCalled()
+
+		manager.destroy()
+	})
+
 	test('becomes client and relays transport messages over data channel', async () => {
 		const signaling = createSignalingHarness()
 		const events = {
@@ -235,6 +261,33 @@ describe('PageP2PManager', () => {
 
 		dc.simulateClose()
 		expect(events.onSessionLost).toHaveBeenCalledWith('server-gone')
+
+		manager.destroy()
+	})
+
+	test('ignores signaling errors after client transport is healthy', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		await Promise.resolve()
+		const dc = MockRTCPeerConnection.instances[0].createdChannels[0]
+		dc.simulateOpen()
+
+		signaling.emitError(new Error('signaling closed'))
+		expect(events.onError).not.toHaveBeenCalled()
+		expect(events.onSessionLost).not.toHaveBeenCalled()
 
 		manager.destroy()
 	})
@@ -330,5 +383,31 @@ describe('PageP2PManager', () => {
 		signaling.emitError(new Error('signaling down'))
 		expect(manager.role).toBe('server')
 		expect(events.onBecomeServer).toHaveBeenCalledTimes(1)
+	})
+
+	test('announces server-leaving before destroy when acting as server', () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader(manager.peerId)
+		manager.destroy()
+
+		expect(signaling.sent[0]).toMatchObject({
+			kind: 'server-leaving',
+			roomId: 'room-1',
+			fromPeerId: manager.peerId,
+		})
+		expect(signaling.sendBye).toHaveBeenCalledTimes(1)
 	})
 })
