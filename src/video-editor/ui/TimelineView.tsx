@@ -195,14 +195,16 @@ export const TimelineView = observer(() => {
 			return
 		}
 
-		if (
-			event.type === 'pointermove' &&
-			panState.current &&
-			(event.buttons & 1) !== 0
-		) {
+		if (event.type === 'pointermove' && panState.current) {
 			const deltaX = event.clientX - panState.current.x
 			event.currentTarget.scrollLeft = panState.current.scrollLeft - deltaX
 			event.preventDefault()
+			return
+		}
+
+		if ((event.type === 'pointerup' || event.type === 'pointercancel') && panState.current) {
+			panState.current = null
+			event.currentTarget.releasePointerCapture?.(event.pointerId)
 		}
 	}
 

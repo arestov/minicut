@@ -296,9 +296,17 @@ const setTimelineCursor = async (
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	const zoomText = await timeline.getByText(/px\/s$/i).first().textContent()
 	const zoom = Number.parseFloat((zoomText ?? '56').replace(/[^0-9.]/g, '')) || 56
-	const scrollArea = timeline.locator('.ve-timeline-scroll-area')
-	await scrollArea.click({
-		position: { x: timelineTimeOriginPx + seconds * zoom, y: 10 },
+	const laneScroll = timeline.locator('.ve-track-lane-scroll')
+	const laneBox = await laneScroll.boundingBox()
+	if (!laneBox) {
+		throw new Error('Timeline lane scroll area is unavailable')
+	}
+
+	await laneScroll.click({
+		position: {
+			x: Math.max(8, seconds * zoom),
+			y: Math.max(12, laneBox.height - 12),
+		},
 	})
 }
 
@@ -778,7 +786,7 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await expect(inspector.getByRole('button', { name: 'Start -0.5s' })).toBeDisabled()
 	await inspector.getByRole('button', { name: 'End +0.5s' }).click()
-	await expect(inspector.locator('dd').filter({ hasText: '1.5s' })).toBeVisible()
+	await expect(inspector.getByText('Clip 1 - V1 - 0.0s - Duration 1.5s')).toBeVisible()
 })
 
 test('media resources render metadata and action on separate lines', async ({ page }) => {
@@ -944,7 +952,7 @@ test('timeline tools perform select, split, trim, and hand pan actions', async (
 	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await timeline.getByRole('button', { name: 'Select tool' }).click()
 	await clip.click()
-	await expect(page.getByRole('complementary', { name: 'Inspector' })).toContainText('fixture-video.webm')
+	await expect(page.getByRole('complementary', { name: 'Inspector' }).getByRole('textbox', { name: 'Clip name' })).toHaveValue('fixture-video.webm')
 
 	const trimTool = timeline.getByRole('button', { name: 'Trim tool' })
 	const splitTool = timeline.getByRole('button', { name: 'Split tool' })
@@ -972,9 +980,8 @@ test('timeline tools perform select, split, trim, and hand pan actions', async (
 	for (let index = 0; index < 8; index += 1) {
 		await timeline.getByRole('button', { name: 'Add video track' }).click()
 	}
-	const videoResource = page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 	for (let index = 0; index < 12; index += 1) {
-		await videoResource.getByRole('button', { name: 'Add to timeline' }).click()
+		await page.getByLabel('Media bin').getByRole('button', { name: 'Add to timeline' }).first().click()
 	}
 	for (let index = 0; index < 5; index += 1) {
 		await timeline.getByRole('button', { name: 'Zoom in' }).click()
@@ -991,15 +998,32 @@ test('timeline tools perform select, split, trim, and hand pan actions', async (
 	if (!scrollBox) {
 		throw new Error('Timeline lane scroll area is unavailable')
 	}
-	const visibleLaneY = scrollBox.y + 30
-	await page.mouse.move(scrollBox.x + scrollBox.width - 30, visibleLaneY)
-	await page.mouse.down()
-	await page.mouse.move(scrollBox.x + 20, visibleLaneY)
-	await page.mouse.up()
+	const visibleLaneY = scrollBox.y + 40
+	await laneScroll.dispatchEvent('pointerdown', {
+		clientX: scrollBox.x + scrollBox.width - 80,
+		clientY: visibleLaneY,
+		buttons: 1,
+		pointerId: 1,
+		pointerType: 'mouse',
+	})
+	await laneScroll.dispatchEvent('pointermove', {
+		clientX: scrollBox.x + 40,
+		clientY: visibleLaneY,
+		buttons: 1,
+		pointerId: 1,
+		pointerType: 'mouse',
+	})
+	await laneScroll.dispatchEvent('pointerup', {
+		clientX: scrollBox.x + 40,
+		clientY: visibleLaneY,
+		buttons: 0,
+		pointerId: 1,
+		pointerType: 'mouse',
+	})
 	await expect.poll(async () => laneScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
 	await expect.poll(async () => scrollArea.evaluate((element) => element.scrollLeft)).toBe(0)
 	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBe(0)
-	await expect(timeline.getByText('V1')).toBeVisible()
+	await expect(timeline.getByLabel('V1 controls')).toBeVisible()
 })
 
 test('timeline clip boxes align to the ruler and playhead origin', async ({ page }) => {

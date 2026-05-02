@@ -1704,6 +1704,26 @@ button:disabled {
 		overflow-y: visible;
 	}
 
+	.ve-timeline > .ve-panel__header {
+		grid-template-columns: 1fr;
+	}
+
+	.ve-timeline-clip-actions {
+		justify-self: start;
+		width: 100%;
+		flex-wrap: wrap;
+	}
+
+	.ve-timeline__tools {
+		justify-content: flex-start;
+		width: 100%;
+		flex-wrap: wrap;
+	}
+
+	.ve-timeline__tools span {
+		white-space: normal;
+	}
+
 	.ve-panel__header,
 	.ve-timeline__tools {
 		align-items: flex-start;
