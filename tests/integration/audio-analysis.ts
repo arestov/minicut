@@ -263,6 +263,40 @@ export const measureFrequencyPower = (
 	return (previous2 * previous2 + previous * previous - coefficient * previous * previous2) / frameCount
 }
 
+export const measureChannelFrequencyPower = (
+	samples: Float32Array,
+	channels: number,
+	sampleRate: number,
+	frequency: number,
+	channel: number,
+	options: { start?: number; end?: number } = {},
+): number => {
+	const window = slicePcmWindow(
+		samples,
+		channels,
+		sampleRate,
+		options.start ?? 0,
+		options.end ?? samples.length / channels / sampleRate,
+	)
+	const frameCount = Math.floor(window.length / channels)
+	if (frameCount <= 0 || channel < 0 || channel >= channels) {
+		return 0
+	}
+
+	const normalizedBin = Math.round((frameCount * frequency) / sampleRate)
+	const omega = (2 * Math.PI * normalizedBin) / frameCount
+	const coefficient = 2 * Math.cos(omega)
+	let previous = 0
+	let previous2 = 0
+	for (let frame = 0; frame < frameCount; frame += 1) {
+		const value = (window[frame * channels + channel] ?? 0) + coefficient * previous - previous2
+		previous2 = previous
+		previous = value
+	}
+
+	return (previous2 * previous2 + previous * previous - coefficient * previous * previous2) / frameCount
+}
+
 export const expectToneEnergy = (
 	samples: Float32Array,
 	options: {

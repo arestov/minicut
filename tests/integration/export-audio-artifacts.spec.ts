@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import {
 	analyzeExportedAudio,
 	expectToneEnergy,
+	measureChannelFrequencyPower,
 	measureFrequencyPower,
 	probeMedia,
 	sampleVideoFramePixelRgba,
@@ -456,6 +457,55 @@ test.describe('exported audio artifacts', () => {
 		expect(power880).toBeGreaterThan(0.001)
 	})
 
+	test('overlapping audio clips preserve independent gain and pan in one mixed export', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const imageFile = await createSolidPngFile(page, 'combo-green.png', '#16a34a')
+		const toneA = createToneWavFile({
+			name: 'combo-tone-left-440.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 440 }],
+		})
+		const toneB = createToneWavFile({
+			name: 'combo-tone-right-880.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 880 }],
+		})
+		await importMediaFiles(page, [imageFile, toneA, toneB])
+		await addResourceToTimeline(page, toneA.name)
+		await addResourceToTimeline(page, toneB.name)
+
+		await selectTimelineClip(page, /combo-tone-left-440\.wav/i)
+		await setSelectedAudio(page, { gain: 0.8, pan: -1 })
+		await selectTimelineClip(page, /combo-tone-right-880\.wav/i)
+		await setSelectedAudio(page, { gain: 0.5, pan: 1 })
+
+		const rightClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /combo-tone-right-880\.wav/i }).first()
+		const box = await rightClip.boundingBox()
+		expect(box).not.toBeNull()
+		if (!box) {
+			return
+		}
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+		await page.mouse.down()
+		await page.mouse.move(box.x + box.width / 2 - timelineZoomPxPerSecond * 0.75, box.y + box.height / 2, { steps: 6 })
+		await page.mouse.up()
+		await expect(rightClip).toContainText(/0\.3s/)
+
+		const exportPath = await exportProject(page)
+		const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
+		expect(analysis.peak).toBeLessThanOrEqual(1)
+		const left440 = measureChannelFrequencyPower(samples, 2, 48_000, 440, 0, { start: 0.35, end: 0.9 })
+		const right440 = measureChannelFrequencyPower(samples, 2, 48_000, 440, 1, { start: 0.35, end: 0.9 })
+		const left880 = measureChannelFrequencyPower(samples, 2, 48_000, 880, 0, { start: 0.35, end: 0.9 })
+		const right880 = measureChannelFrequencyPower(samples, 2, 48_000, 880, 1, { start: 0.35, end: 0.9 })
+		expect(left440).toBeGreaterThan(0.001)
+		expect(right880).toBeGreaterThan(0.001)
+		expect(left440).toBeGreaterThan(right440 * 3)
+		expect(right880).toBeGreaterThan(left880 * 3)
+	})
+
 	test('overlapping visual clips preserve layer order and opacity in exported frames', async ({ page }) => {
 		await page.goto('/')
 		await createProjectFromMenu(page)
@@ -566,6 +616,48 @@ test.describe('exported audio artifacts', () => {
 		expect(Math.max(...activeA.map((window) => window.rms))).toBeGreaterThan(0.01)
 		expect(Math.max(...gap.map((window) => window.rms))).toBeLessThan(0.002)
 		expect(Math.max(...activeB.map((window) => window.rms))).toBeGreaterThan(0.01)
+	})
+
+	test('multiple separated audio regions keep every inactive window silent', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const image = await createSolidPngFile(page, 'multi-gap-green.png', '#16a34a')
+		const firstTone = createToneWavFile({
+			name: 'multi-gap-tone-a.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 330 }],
+		})
+		const secondTone = createToneWavFile({
+			name: 'multi-gap-tone-b.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 550 }],
+		})
+		const thirdTone = createToneWavFile({
+			name: 'multi-gap-tone-c.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 770 }],
+		})
+		await importMediaFiles(page, [image, firstTone, secondTone, thirdTone])
+		await addResourceToTimeline(page, firstTone.name)
+		await addResourceToTimeline(page, secondTone.name)
+		await addResourceToTimeline(page, thirdTone.name)
+		await selectTimelineClip(page, /multi-gap-tone-b\.wav/i)
+		await nudgeSelectedClip(page, 1)
+		await selectTimelineClip(page, /multi-gap-tone-c\.wav/i)
+		await nudgeSelectedClip(page, 2)
+
+		const exportPath = await exportProject(page)
+		const { analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.1 })
+		const windowPeak = (start: number, end: number): number => Math.max(...analysis.windows
+			.filter((window) => window.start >= start && window.end <= end)
+			.map((window) => window.rms))
+
+		expect(windowPeak(0.2, 0.8)).toBeGreaterThan(0.01)
+		expect(windowPeak(1.1, 1.4)).toBeLessThan(0.002)
+		expect(windowPeak(1.7, 2.3)).toBeGreaterThan(0.01)
+		expect(windowPeak(2.6, 2.9)).toBeLessThan(0.002)
+		expect(windowPeak(3.2, 3.8)).toBeGreaterThan(0.01)
 	})
 
 	test('selected audio clip export excludes unrelated timeline audio', async ({ page }) => {
