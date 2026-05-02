@@ -47,6 +47,34 @@ const mockMediaElementDuration = (options: { duration?: number, fail?: boolean }
 }
 
 describe('createVideoEditorHarness actions', () => {
+	it('does not auto-create an initial project when authority is already a p2p client', async () => {
+		const authority = new MemoryWorkerAuthority() as MemoryWorkerAuthority & { role?: 'server' | 'client' | 'undecided' }
+		authority.role = 'client'
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			expect(Object.keys(harness.projects$.get().projects)).toHaveLength(0)
+			expect(harness.session$.activeProjectId.get()).toBeNull()
+		} finally {
+			harness.destroy()
+		}
+	})
+
+	it('auto-creates exactly one initial project when authority is server', async () => {
+		const authority = new MemoryWorkerAuthority() as MemoryWorkerAuthority & { role?: 'server' | 'client' | 'undecided' }
+		authority.role = 'server'
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			expect(Object.keys(harness.projects$.get().projects)).toHaveLength(1)
+			expect(harness.session$.activeProjectId.get()).not.toBeNull()
+		} finally {
+			harness.destroy()
+		}
+	})
+
 	it('filters unsupported files and imports real media duration from metadata', async () => {
 		const createElement = mockMediaElementDuration({ duration: 12.75 })
 		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {

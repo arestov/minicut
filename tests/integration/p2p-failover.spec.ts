@@ -157,6 +157,7 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 	const afterFailoverTitle = `after-failover-${roomId}`
 
 	const baselineCount = await waitForSyncedProjectCount(currentServer.page, currentClient.page)
+	expect(baselineCount).toBe(1)
 	await createProject(currentServer.page, beforeFailoverTitle)
 	await expect.poll(() => getProjectCount(currentServer.page), {
 		timeout: 20_000,
