@@ -640,7 +640,6 @@ export const createVideoEditorHarness = (
 				projectId: project.id,
 				range: { type: 'clip' as const, clipId: clip.id },
 				format: 'video-webm' as const,
-				fps: 30,
 			}
 			const result = onProgress
 				? await exportRenderer.render(request, onProgress)
@@ -668,7 +667,6 @@ export const createVideoEditorHarness = (
 				projectId: project.id,
 				range: { type: 'project' as const },
 				format: 'video-webm' as const,
-				fps: 30,
 			}
 			const result = onProgress
 				? await exportRenderer.render(request, onProgress)

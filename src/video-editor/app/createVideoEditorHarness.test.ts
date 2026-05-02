@@ -337,8 +337,9 @@ describe('createVideoEditorHarness actions', () => {
 			expect(result?.mimeType).toBe('video/webm')
 			expect(result?.downloadUrl).toBe('blob:project-video-export')
 			expect(render).toHaveBeenCalledWith(
-				expect.objectContaining({ format: 'video-webm', fps: 30, range: { type: 'project' } }),
+				expect.objectContaining({ format: 'video-webm', range: { type: 'project' } }),
 			)
+			expect(render.mock.calls[0][0]).not.toHaveProperty('fps')
 		} finally {
 			harness.destroy()
 			expect(revokeObjectURL).toHaveBeenCalledWith('blob:project-video-export')

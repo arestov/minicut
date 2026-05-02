@@ -1,7 +1,7 @@
 import fixWebmDuration from 'fix-webm-duration'
 import { ArrayBufferTarget, Muxer } from 'webm-muxer'
 import { getProjectEntity, getTrackEnd, getTracks } from '../domain/selectors'
-import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
+import type { ClipAttrs, Entity, ProjectAttrs, ProjectRegistry, ResourceAttrs } from '../domain/types'
 import { compileEditframeClips, compileFrameOperations, type ClipFrameOperation, type EditframeClip } from './renderPlan'
 
 export type ExportFormat = 'json-manifest' | 'video-webm'
@@ -286,6 +286,20 @@ const getProjectTitle = (registry: ProjectRegistry, projectId: string): string =
 	}
 
 	return String(getProjectEntity(registry, project).attrs.title ?? 'project')
+}
+
+const getProjectExportDefaults = (registry: ProjectRegistry, projectId: string): Pick<ProjectAttrs, 'fps' | 'width' | 'height'> => {
+	const project = registry.projects[projectId]
+	if (!project) {
+		return { fps: 30, width: defaultExportWidth, height: defaultExportHeight }
+	}
+
+	const attrs = getProjectEntity(registry, project).attrs as unknown as Partial<ProjectAttrs>
+	return {
+		fps: Number.isFinite(attrs.fps) && Number(attrs.fps) > 0 ? Number(attrs.fps) : 30,
+		width: Number.isFinite(attrs.width) && Number(attrs.width) > 0 ? Number(attrs.width) : defaultExportWidth,
+		height: Number.isFinite(attrs.height) && Number(attrs.height) > 0 ? Number(attrs.height) : defaultExportHeight,
+	}
 }
 
 const getRangeName = (registry: ProjectRegistry, projectId: string, range: ExportRange): string =>
@@ -1139,7 +1153,8 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 			throw new Error(`Unsupported export format ${format}`)
 		}
 
-		const fps = request.fps ?? 30
+		const projectDefaults = getProjectExportDefaults(request.registry, request.projectId)
+		const fps = request.fps ?? projectDefaults.fps
 		if (!Number.isFinite(fps) || fps <= 0) {
 			throw new Error('Export fps must be positive')
 		}
@@ -1217,7 +1232,8 @@ export const createBrowserVideoExportRenderer = (
 				throw new Error(`Unsupported export format ${format}`)
 			}
 
-			const fps = request.fps ?? 30
+			const projectDefaults = getProjectExportDefaults(request.registry, request.projectId)
+			const fps = request.fps ?? projectDefaults.fps
 			if (!Number.isFinite(fps) || fps <= 0) {
 				throw new Error('Export fps must be positive')
 			}
@@ -1230,8 +1246,8 @@ export const createBrowserVideoExportRenderer = (
 			const resolvedRange = resolveExportRange(request.registry, request.projectId, request.range)
 			const { start, duration } = resolvedRange
 			const frameCount = getFrameCount(duration, fps)
-			const width = options.width ?? defaultExportWidth
-			const height = options.height ?? defaultExportHeight
+			const width = options.width ?? projectDefaults.width
+			const height = options.height ?? projectDefaults.height
 			const backgroundColor = options.backgroundColor ?? '#09090b'
 			const videoBitsPerSecond = options.videoBitsPerSecond ?? 4_000_000
 			const frames: ExportFrameSample[] = []

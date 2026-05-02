@@ -166,6 +166,17 @@ describe('manifest export renderer', () => {
 		expect(frameOpacities).toEqual([0, 0.5, 1, 0.5])
 	})
 
+	it('uses project fps when the export request does not override it', async () => {
+		const { registry, projectId } = createProjectWithClip('image')
+		const project = registry.projects[projectId]
+		registry.entitiesById[project.rootEntityId].attrs.fps = 12
+
+		const result = await createManifestExportRenderer().render({ registry, projectId, range: { type: 'project' } })
+
+		expect(result.manifest.fps).toBe(12)
+		expect(result.frameCount).toBe(24)
+	})
+
 	it('exports linked video audio clips with audio settings in project manifests', async () => {
 		let registry = createEmptyRegistry()
 		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: { title: 'linked audio export' } })
