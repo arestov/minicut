@@ -110,8 +110,13 @@ const createToneWavFile = ({
 	return { name, mimeType: 'audio/wav', buffer }
 }
 
-const createVideoWithToneFile = async (page: Page): Promise<PlaywrightFilePayload> => {
-	const result = await page.evaluate(async () => {
+const createVideoWithToneFile = async (
+	page: Page,
+	options: { name?: string; durationSeconds?: number; segments?: ToneSegment[] } = {},
+): Promise<PlaywrightFilePayload> => {
+	const durationSeconds = options.durationSeconds ?? 1
+	const segments = options.segments ?? [{ start: 0, end: durationSeconds, frequency: 440 }]
+	const result = await page.evaluate(async ({ durationSeconds, segments }) => {
 		const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8', 'video/webm']
 			.find((candidate) => MediaRecorder.isTypeSupported(candidate))
 		if (!mimeType) {
@@ -132,7 +137,10 @@ const createVideoWithToneFile = async (page: Page): Promise<PlaywrightFilePayloa
 		const oscillator = audioContext.createOscillator()
 		const gain = audioContext.createGain()
 		const destination = audioContext.createMediaStreamDestination()
-		oscillator.frequency.value = 440
+		const baseTime = audioContext.currentTime
+		for (const segment of segments) {
+			oscillator.frequency.setValueAtTime(segment.frequency, baseTime + segment.start)
+		}
 		gain.gain.value = 0.08
 		oscillator.connect(gain).connect(destination)
 		for (const track of destination.stream.getAudioTracks()) {
@@ -153,7 +161,8 @@ const createVideoWithToneFile = async (page: Page): Promise<PlaywrightFilePayloa
 
 		recorder.start()
 		oscillator.start()
-		for (let frame = 0; frame < 10; frame += 1) {
+		const frameCount = Math.ceil(durationSeconds * 10)
+		for (let frame = 0; frame < frameCount; frame += 1) {
 			context.fillStyle = '#dc2626'
 			context.fillRect(0, 0, canvas.width, canvas.height)
 			videoTrack?.requestFrame?.()
@@ -169,9 +178,9 @@ const createVideoWithToneFile = async (page: Page): Promise<PlaywrightFilePayloa
 
 		const blob = new Blob(chunks, { type: recorder.mimeType || mimeType })
 		return { mimeType: blob.type || 'video/webm', bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) }
-	})
+	}, { durationSeconds, segments })
 
-	return { name: 'linked-tone-video.webm', mimeType: result.mimeType, buffer: Buffer.from(result.bytes) }
+	return { name: options.name ?? 'linked-tone-video.webm', mimeType: result.mimeType, buffer: Buffer.from(result.bytes) }
 }
 
 const addResourceToTimeline = async (page: Page, resourceName: string): Promise<void> => {
@@ -351,6 +360,35 @@ test.describe('exported audio artifacts', () => {
 		const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
 		expect(analysis.rms).toBeGreaterThan(0.001)
 		expectToneEnergy(samples, { channels: 2, sampleRate: 48_000, frequency: 440, start: 0.1, end: 0.8, minPower: 0.001 })
+	})
+
+	test('selected video export uses trimmed linked audio timing from the produced file', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const videoFile = await createVideoWithToneFile(page, {
+			name: 'linked-two-tone-video.webm',
+			durationSeconds: 2,
+			segments: [
+				{ start: 0, end: 1, frequency: 440 },
+				{ start: 1, end: 2, frequency: 880 },
+			],
+		})
+		await importMediaFiles(page, [videoFile])
+		await selectTimelineClip(page, /Embedded audio/i)
+		const inspector = page.getByRole('complementary', { name: 'Inspector' })
+		await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
+		await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
+		await selectTimelineClip(page, /linked-two-tone-video\.webm/i)
+
+		const exportPath = await exportSelectedClip(page)
+		const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
+		const silentBeforeLinkedAudio = analysis.windows.filter((window) => window.start >= 0.2 && window.end <= 0.8)
+		expect(Math.max(...silentBeforeLinkedAudio.map((window) => window.rms))).toBeLessThan(0.002)
+		const power440 = measureFrequencyPower(samples, 2, 48_000, 440, { start: 1.1, end: 1.8 })
+		const power880 = measureFrequencyPower(samples, 2, 48_000, 880, { start: 1.1, end: 1.8 })
+		expect(power880).toBeGreaterThan(0.001)
+		expect(power880).toBeGreaterThan(power440 * 3)
 	})
 
 	test('gain and pan edits are measurable in decoded PCM', async ({ page }) => {
