@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { VideoEditorProvider } from './VideoEditorContext'
 import { createVideoEditorHarness, type VideoEditorHarness } from './createVideoEditorHarness'
 import { VideoEditorApp } from '../ui/VideoEditorApp'
-import { resolveRoomUrlState } from './roomUrlState'
+import { resolveRoomUrlState, type RoomUrlResolution } from './roomUrlState'
 import '../ui/styles.css'
 
 interface VideoEditorHarnessAppProps {
@@ -11,9 +11,9 @@ interface VideoEditorHarnessAppProps {
 
 const LAST_ROOM_STORAGE_KEY = 'minicut:last-room-id'
 
-const resolveBrowserRoom = (): void => {
+const resolveBrowserRoom = (): RoomUrlResolution | null => {
 	if (typeof window === 'undefined') {
-		return
+		return null
 	}
 
 	const resolved = resolveRoomUrlState({
@@ -24,13 +24,32 @@ const resolveBrowserRoom = (): void => {
 	if (resolved.shouldReplace) {
 		window.history.replaceState(window.history.state, '', resolved.canonicalHash)
 	}
+
+	return resolved
 }
 
 export const VideoEditorHarnessApp = ({
 	harness: providedHarness,
 }: VideoEditorHarnessAppProps) => {
-	resolveBrowserRoom()
-	const ownedHarness = useMemo(() => providedHarness ?? createVideoEditorHarness(), [providedHarness])
+	const resolvedRoom = useMemo(() => resolveBrowserRoom(), [])
+	const ownedHarness = useMemo(() => {
+		if (providedHarness) {
+			return providedHarness
+		}
+
+		if (!resolvedRoom || typeof window === 'undefined') {
+			return createVideoEditorHarness()
+		}
+
+		return createVideoEditorHarness(undefined, {
+			authorityOptions: {
+				p2p: {
+					roomId: resolvedRoom.roomId,
+					signalUrl: window.location.origin,
+				},
+			},
+		})
+	}, [providedHarness, resolvedRoom])
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>

@@ -1,0 +1,310 @@
+import { nanoid } from 'nanoid'
+import { MSG, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { MemoryWorkerAuthority } from '../worker/memoryWorker'
+import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from '../worker/sharedWorkerClient'
+import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
+import type { BridgeSignalingFactory } from './BridgeSignaling'
+import {
+	createPageP2PManager,
+	type P2PTransportLike,
+	type PageP2PManager,
+	type PageP2PManagerConfig,
+	type PageP2PManagerEvents,
+} from './PageP2PManager'
+
+interface PendingCall<T> {
+	run(client: EditorAuthorityClient): void
+	reject(error: unknown): void
+}
+
+interface TransportPendingRequest {
+	resolve(value: unknown): void
+	reject(reason: unknown): void
+	timeoutId: ReturnType<typeof setTimeout>
+}
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 5_000
+
+const createTransportAuthorityClient = (
+	transport: P2PTransportLike,
+	requestTimeoutMs: number,
+): EditorAuthorityClient => {
+	const listeners = new Set<PatchListener>()
+	const pending = new Map<string, TransportPendingRequest>()
+	let destroyed = false
+
+	const cleanupPending = (error: Error): void => {
+		for (const [requestId, request] of pending) {
+			clearTimeout(request.timeoutId)
+			request.reject(new Error(`${error.message}: ${requestId}`))
+		}
+		pending.clear()
+	}
+
+	const unlisten = transport.listen((message) => {
+		if (destroyed) {
+			return
+		}
+
+		if (message.m === MSG.PATCHES) {
+			for (const listener of listeners) {
+				listener(message.p as PatchEnvelope)
+			}
+			return
+		}
+
+		if (!message.requestId) {
+			return
+		}
+
+		const request = pending.get(message.requestId)
+		if (!request) {
+			return
+		}
+
+		pending.delete(message.requestId)
+		clearTimeout(request.timeoutId)
+		if (message.m === MSG.ERROR) {
+			request.reject(new Error(String(message.p ?? 'Unknown P2P authority error')))
+			return
+		}
+
+		request.resolve(message.p)
+	})
+
+	const request = <T>(message: WireMessage): Promise<T> => new Promise((resolve, reject) => {
+		if (destroyed) {
+			reject(new Error('P2P transport authority is destroyed'))
+			return
+		}
+
+		const requestId = nanoid(8)
+		const timeoutId = setTimeout(() => {
+			pending.delete(requestId)
+			reject(new Error(`P2P authority request timed out: ${message.m}`))
+		}, requestTimeoutMs)
+
+		pending.set(requestId, {
+			resolve: resolve as (value: unknown) => void,
+			reject,
+			timeoutId,
+		})
+		transport.send({ ...message, requestId })
+	})
+
+	return {
+		getSnapshot() {
+			return request<ProjectRegistry>({ m: MSG.SNAPSHOT_REQUEST })
+		},
+
+		getHistoryState() {
+			return request<HistoryState>({ m: MSG.HISTORY_STATE_REQUEST })
+		},
+
+		subscribe(listener) {
+			listeners.add(listener)
+			return () => {
+				listeners.delete(listener)
+			}
+		},
+
+		dispatch(command) {
+			return request<DispatchResult>({ m: MSG.COMMAND, p: command })
+		},
+
+		undo() {
+			return request<PatchEnvelope | null>({ m: MSG.UNDO })
+		},
+
+		redo() {
+			return request<PatchEnvelope | null>({ m: MSG.REDO })
+		},
+
+		destroy() {
+			if (destroyed) {
+				return
+			}
+
+			destroyed = true
+			unlisten()
+			listeners.clear()
+			cleanupPending(new Error('P2P authority request cancelled'))
+			transport.destroy()
+		},
+	}
+}
+
+const createDefaultLocalAuthority = (): EditorAuthorityClient => {
+	if (canUseSharedWorkerAuthority()) {
+		return new SharedWorkerAuthorityClient()
+	}
+
+	return new MemoryWorkerAuthority()
+}
+
+export interface CreateP2PAuthorityAdapterConfig {
+	roomId: string
+	signalUrl: string
+	workerUrl: string | URL
+	rtcConfig?: RTCConfiguration
+	createSignaling?: BridgeSignalingFactory
+	connectionTimeoutMs?: number
+	requestTimeoutMs?: number
+	createLocalAuthority?: () => EditorAuthorityClient
+	createManager?: (config: PageP2PManagerConfig, events: PageP2PManagerEvents) => PageP2PManager
+	onSessionLost?: (reason: string) => void
+	onError?: (error: unknown) => void
+}
+
+export interface P2PAuthorityAdapter extends EditorAuthorityClient {
+	readonly role: 'server' | 'client' | 'undecided'
+	readonly peerId: string
+}
+
+export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfig): P2PAuthorityAdapter => {
+	const createLocalAuthority = config.createLocalAuthority ?? createDefaultLocalAuthority
+	const createManager = config.createManager ?? createPageP2PManager
+	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+
+	let destroyed = false
+	let role: 'server' | 'client' | 'undecided' = 'undecided'
+	let activeClient: EditorAuthorityClient | null = null
+	let activeClientUnsubscribe: (() => void) | null = null
+
+	const listeners = new Set<PatchListener>()
+	const pending: PendingCall<unknown>[] = []
+
+	const failPending = (error: Error): void => {
+		const calls = pending.splice(0, pending.length)
+		for (const call of calls) {
+			call.reject(error)
+		}
+	}
+
+	const cleanupActiveClient = (): void => {
+		activeClientUnsubscribe?.()
+		activeClientUnsubscribe = null
+		activeClient?.destroy?.()
+		activeClient = null
+	}
+
+	const activateClient = (nextRole: 'server' | 'client', nextClient: EditorAuthorityClient): void => {
+		if (destroyed) {
+			nextClient.destroy?.()
+			return
+		}
+
+		cleanupActiveClient()
+		role = nextRole
+		activeClient = nextClient
+		activeClientUnsubscribe = nextClient.subscribe((envelope) => {
+			for (const listener of listeners) {
+				listener(envelope)
+			}
+		})
+
+		const queuedCalls = pending.splice(0, pending.length)
+		for (const call of queuedCalls) {
+			call.run(nextClient)
+		}
+	}
+
+	const invoke = <T>(operation: (client: EditorAuthorityClient) => T | Promise<T>): Promise<T> => {
+		if (destroyed) {
+			return Promise.reject(new Error('P2P authority adapter is destroyed'))
+		}
+
+		if (activeClient) {
+			return Promise.resolve(operation(activeClient))
+		}
+
+		return new Promise<T>((resolve, reject) => {
+			pending.push({
+				run(client) {
+					Promise.resolve(operation(client)).then(resolve, reject)
+				},
+				reject,
+			})
+		})
+	}
+
+	const manager = createManager(
+		{
+			roomId: config.roomId,
+			signalUrl: config.signalUrl,
+			workerUrl: config.workerUrl,
+			rtcConfig: config.rtcConfig,
+			createSignaling: config.createSignaling,
+			connectionTimeoutMs: config.connectionTimeoutMs,
+		},
+		{
+			onBecomeServer() {
+				activateClient('server', createLocalAuthority())
+			},
+
+			onBecomeClient(transport) {
+				activateClient('client', createTransportAuthorityClient(transport, requestTimeoutMs))
+			},
+
+			onSessionLost(reason) {
+				cleanupActiveClient()
+				role = 'undecided'
+				failPending(new Error(`P2P session lost: ${reason}`))
+				config.onSessionLost?.(reason)
+			},
+
+			onError(error) {
+				config.onError?.(error)
+			},
+		},
+	)
+
+	return {
+		get role() {
+			return role
+		},
+
+		get peerId() {
+			return manager.peerId
+		},
+
+		getSnapshot() {
+			return invoke((client) => client.getSnapshot())
+		},
+
+		getHistoryState() {
+			return invoke((client) => client.getHistoryState())
+		},
+
+		subscribe(listener) {
+			listeners.add(listener)
+			return () => {
+				listeners.delete(listener)
+			}
+		},
+
+		dispatch(command: Command) {
+			return invoke((client) => client.dispatch(command))
+		},
+
+		undo() {
+			return invoke((client) => client.undo())
+		},
+
+		redo() {
+			return invoke((client) => client.redo())
+		},
+
+		destroy() {
+			if (destroyed) {
+				return
+			}
+
+			destroyed = true
+			failPending(new Error('P2P authority adapter destroyed'))
+			listeners.clear()
+			cleanupActiveClient()
+			manager.destroy()
+		},
+	}
+}

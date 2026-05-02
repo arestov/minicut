@@ -19,7 +19,7 @@ import {
 	type ExportRenderResult,
 } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
-import { createAuthorityClient } from '../worker/createAuthorityClient'
+import { createAuthorityClient, type CreateAuthorityClientOptions } from '../worker/createAuthorityClient'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 const fallbackMediaDuration = 6
@@ -158,12 +158,14 @@ const isProjectTimelineEmpty = (registry: ProjectRegistry, projectId: string): b
 interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
 	exportRenderer?: ExportRenderer
+	authorityOptions?: CreateAuthorityClientOptions
 }
 
 export const createVideoEditorHarness = (
-	authority: EditorAuthorityClient = createAuthorityClient(),
+	authority?: EditorAuthorityClient,
 	options: CreateVideoEditorHarnessOptions = {},
 ) => {
+	const authorityClient = authority ?? createAuthorityClient(options.authorityOptions)
 	const autoCreateInitialProject = options.autoCreateInitialProject ?? true
 	const exportRenderer = options.exportRenderer ?? createBrowserVideoExportRenderer()
 	const projects$ = createProjectsStore()
@@ -195,7 +197,7 @@ export const createVideoEditorHarness = (
 	}
 
 	const syncHistoryState = (): void => {
-		Promise.resolve(authority.getHistoryState()).then((state) => {
+		Promise.resolve(authorityClient.getHistoryState()).then((state) => {
 			if (!isDestroyed) {
 				history$.set(state)
 			}
@@ -218,7 +220,7 @@ export const createVideoEditorHarness = (
 		}
 
 		projectBootstrapInFlight = true
-		Promise.resolve(authority.dispatch({ c: CMD.PROJECT_CREATE, p: {} })).then((result) => {
+		Promise.resolve(authorityClient.dispatch({ c: CMD.PROJECT_CREATE, p: {} })).then((result) => {
 			if (isDestroyed) {
 				return
 			}
@@ -233,7 +235,7 @@ export const createVideoEditorHarness = (
 		})
 	}
 
-	Promise.resolve(authority.getSnapshot()).then((snapshot) => {
+	Promise.resolve(authorityClient.getSnapshot()).then((snapshot) => {
 		if (isDestroyed) {
 			return
 		}
@@ -244,14 +246,14 @@ export const createVideoEditorHarness = (
 		ensureInitialProject()
 	})
 
-	const unsubscribe = authority.subscribe((envelope) => {
+	const unsubscribe = authorityClient.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
 		syncActiveProjectSelection()
 		syncHistoryState()
 	})
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
-		Promise.resolve(authority.dispatch(command)).finally(syncHistoryState)
+		Promise.resolve(authorityClient.dispatch(command)).finally(syncHistoryState)
 
 	const addResourceToTimelineIfEmpty = (projectId: string, resourceId: string): void => {
 		if (isDestroyed || !isProjectTimelineEmpty(projects$.get(), projectId)) {
@@ -279,11 +281,11 @@ export const createVideoEditorHarness = (
 		},
 
 		undo(): void {
-			Promise.resolve(authority.undo()).finally(syncHistoryState)
+			Promise.resolve(authorityClient.undo()).finally(syncHistoryState)
 		},
 
 		redo(): void {
-			Promise.resolve(authority.redo()).finally(syncHistoryState)
+			Promise.resolve(authorityClient.redo()).finally(syncHistoryState)
 		},
 
 		importSampleResource(): void {
@@ -728,7 +730,7 @@ export const createVideoEditorHarness = (
 	}
 
 	return {
-		worker: authority,
+		worker: authorityClient,
 		projects$,
 		session$,
 		history$,
@@ -739,7 +741,7 @@ export const createVideoEditorHarness = (
 			for (const url of importedObjectUrls) {
 				URL.revokeObjectURL(url)
 			}
-			authority.destroy?.()
+			authorityClient.destroy?.()
 			for (const url of exportObjectUrls) {
 				URL.revokeObjectURL(url)
 			}
