@@ -8,6 +8,7 @@ type DebugState = {
 	projectCount: number
 	role: 'server' | 'client' | 'undecided' | null
 	peerId: string | null
+	projectTitles: string[]
 }
 
 type PeerHandle = {
@@ -20,6 +21,7 @@ const readDebugState = async (page: Page): Promise<DebugState | null> =>
 		const debug = (window as typeof window & {
 			__MINICUT_P2P_DEBUG__?: {
 				getProjectCount: () => number
+				getProjectTitles: () => string[]
 				getRole: () => 'server' | 'client' | 'undecided' | null
 				getPeerId: () => string | null
 			}
@@ -31,6 +33,7 @@ const readDebugState = async (page: Page): Promise<DebugState | null> =>
 
 		return {
 			projectCount: debug.getProjectCount(),
+			projectTitles: debug.getProjectTitles(),
 			role: debug.getRole(),
 			peerId: debug.getPeerId(),
 		}
@@ -52,11 +55,16 @@ const getRole = async (page: Page): Promise<'server' | 'client' | 'undecided' | 
 	return state?.role ?? null
 }
 
-const createProject = async (page: Page): Promise<void> => {
-	await page.evaluate(async () => {
+const getProjectTitles = async (page: Page): Promise<string[]> => {
+	const state = await readDebugState(page)
+	return state?.projectTitles ?? []
+}
+
+const createProject = async (page: Page, title?: string): Promise<void> => {
+	await page.evaluate(async (nextTitle) => {
 		const debug = (window as typeof window & {
 			__MINICUT_P2P_DEBUG__?: {
-				dispatchCreateProject: () => Promise<unknown>
+				dispatchCreateProject: (title?: string) => Promise<unknown>
 			}
 		}).__MINICUT_P2P_DEBUG__
 
@@ -64,8 +72,8 @@ const createProject = async (page: Page): Promise<void> => {
 			throw new Error('P2P debug bridge is unavailable')
 		}
 
-		await debug.dispatchCreateProject()
-	})
+		await debug.dispatchCreateProject(nextTitle)
+	}, title)
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
@@ -104,13 +112,13 @@ const waitForRoles = async (firstPage: Page, secondPage: Page): Promise<void> =>
 	}).toBe(true)
 }
 
-const createProjectEventually = async (page: Page): Promise<void> => {
+const createProjectEventually = async (page: Page, title?: string): Promise<void> => {
 	const timeoutAt = Date.now() + 20_000
 	let lastError: unknown = null
 
 	while (Date.now() < timeoutAt) {
 		try {
-			await createProject(page)
+			await createProject(page, title)
 			return
 		} catch (error) {
 			lastError = error
@@ -119,6 +127,12 @@ const createProjectEventually = async (page: Page): Promise<void> => {
 	}
 
 	throw lastError instanceof Error ? lastError : new Error('Failed to create project after failover recovery window')
+}
+
+const expectProjectTitlesContain = async (page: Page, expectedTitles: string[]): Promise<void> => {
+	await expect.poll(() => getProjectTitles(page), {
+		timeout: 20_000,
+	}).toEqual(expect.arrayContaining(expectedTitles))
 }
 
 test('p2p failover keeps room writable and admits new peers', async ({ browser }) => {
@@ -139,9 +153,11 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 	const firstRole = await getRole(peerA.page)
 	const currentServer = firstRole === 'server' ? peerA : peerB
 	const currentClient = firstRole === 'server' ? peerB : peerA
+	const beforeFailoverTitle = `before-failover-${roomId}`
+	const afterFailoverTitle = `after-failover-${roomId}`
 
 	const baselineCount = await waitForSyncedProjectCount(currentServer.page, currentClient.page)
-	await createProject(currentServer.page)
+	await createProject(currentServer.page, beforeFailoverTitle)
 	await expect.poll(() => getProjectCount(currentServer.page), {
 		timeout: 20_000,
 	}).toBeGreaterThan(baselineCount)
@@ -158,10 +174,11 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 	}).toBe('server')
 
 	const afterFailoverBaseline = await getProjectCount(currentClient.page)
-	await createProjectEventually(currentClient.page)
+	await createProjectEventually(currentClient.page, afterFailoverTitle)
 	await expect.poll(() => getProjectCount(currentClient.page), {
 		timeout: 20_000,
 	}).toBeGreaterThan(afterFailoverBaseline)
+	await expectProjectTitlesContain(currentClient.page, [beforeFailoverTitle, afterFailoverTitle])
 
 	const lateJoinerContext = await browser.newContext()
 	const lateJoinerPage = await lateJoinerContext.newPage()
@@ -176,6 +193,66 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 	await expect.poll(() => getProjectCount(lateJoinerPage), {
 		timeout: 20_000,
 	}).toBe(expectedCountAfterFailover)
+	await expectProjectTitlesContain(lateJoinerPage, [beforeFailoverTitle, afterFailoverTitle])
 
 	await Promise.all([currentClient.context.close(), lateJoinerContext.close()])
+})
+
+test('p2p survives two consecutive leader failovers across three peers', async ({ browser }) => {
+	const roomId = `p2p-three-peer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+	const roomUrl = buildRoomUrl(roomId)
+	const titles = [
+		`epoch-1-${roomId}`,
+		`epoch-2-${roomId}`,
+		`epoch-3-${roomId}`,
+	]
+
+	const peerContexts = await Promise.all([browser.newContext(), browser.newContext(), browser.newContext()])
+	const peers: PeerHandle[] = await Promise.all(peerContexts.map(async (context) => ({
+		context,
+		page: await context.newPage(),
+	})))
+
+	await Promise.all(peers.map(({ page }) => page.goto(roomUrl)))
+	await Promise.all(peers.map(async ({ page }) => {
+		await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
+		await waitForDebugState(page)
+	}))
+
+	const splitPeersByRole = async (handles: PeerHandle[]): Promise<{ server: PeerHandle; clients: PeerHandle[] }> => {
+		await expect.poll(async () => {
+			const roles = await Promise.all(handles.map(({ page }) => getRole(page)))
+			return roles.filter((role) => role === 'server').length === 1 && roles.filter((role) => role === 'client').length === handles.length - 1
+		}, {
+			timeout: 20_000,
+		}).toBe(true)
+
+		const roles = await Promise.all(handles.map(({ page }) => getRole(page)))
+		const serverIndex = roles.findIndex((role) => role === 'server')
+		return {
+			server: handles[serverIndex],
+			clients: handles.filter((_peer, index) => index !== serverIndex),
+		}
+	}
+
+	let activePeers = [...peers]
+	let active = await splitPeersByRole(activePeers)
+	await createProject(active.server.page, titles[0])
+	await Promise.all(active.clients.map(({ page }) => expectProjectTitlesContain(page, [titles[0]])))
+
+	await active.server.context.close()
+	activePeers = active.clients
+	active = await splitPeersByRole(activePeers)
+	await createProjectEventually(active.server.page, titles[1])
+	await Promise.all(active.clients.map(({ page }) => expectProjectTitlesContain(page, [titles[0], titles[1]])))
+
+	await active.server.context.close()
+	activePeers = active.clients
+	await expect.poll(() => getRole(activePeers[0].page), {
+		timeout: 20_000,
+	}).toBe('server')
+	await createProjectEventually(activePeers[0].page, titles[2])
+	await expectProjectTitlesContain(activePeers[0].page, titles)
+
+	await activePeers[0].context.close()
 })

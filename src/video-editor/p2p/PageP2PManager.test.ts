@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { BridgeSignalingEvents, BridgeSignalingFactory } from './BridgeSignaling'
-import { createPageP2PManager } from './PageP2PManager'
+import { createDefaultRtcConfig, createPageP2PManager } from './PageP2PManager'
 import type { SignalMessage } from './types'
 
 type Handler = (...args: unknown[]) => void
@@ -177,6 +177,27 @@ afterEach(() => {
 })
 
 describe('PageP2PManager', () => {
+	test('includes TURN relay in default rtc config when provided', () => {
+		expect(createDefaultRtcConfig()).toEqual({
+			iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+		})
+
+		expect(createDefaultRtcConfig({
+			urls: ['turn:relay.example.com:3478?transport=udp'],
+			username: 'relay-user',
+			credential: 'relay-pass',
+		})).toEqual({
+			iceServers: [
+				{ urls: 'stun:stun.l.google.com:19302' },
+				{
+					urls: ['turn:relay.example.com:3478?transport=udp'],
+					username: 'relay-user',
+					credential: 'relay-pass',
+				},
+			],
+		})
+	})
+
 	test('becomes server when room leader equals local peer', () => {
 		const signaling = createSignalingHarness()
 		const events = {

@@ -181,6 +181,24 @@ describe('SignalingRoom (Hibernation API)', () => {
     expect(wsA.sent).toHaveLength(0)
   })
 
+   it('ignores spoofed server-leaving sender ids', async () => {
+     const state = new FakeHibernationState()
+     const room = new SignalingRoom(state as never)
+
+     const wsA = await connectPeer(room, state, 'peer-a')
+     const wsB = await connectPeer(room, state, 'peer-b')
+     wsA.sent.length = 0
+     wsB.sent.length = 0
+
+     await room.webSocketMessage(
+       wsB as unknown as WebSocket,
+       JSON.stringify({ type: 'server-leaving', roomId: 'test-room', from: 'peer-a', ts: Date.now() }),
+     )
+
+     expect(wsA.sent).toHaveLength(0)
+     expect(wsB.sent).toHaveLength(0)
+   })
+
   it('survives hibernation and reconstructs state from attachments', async () => {
     const state = new FakeHibernationState()
     const room1 = new SignalingRoom(state as never)
