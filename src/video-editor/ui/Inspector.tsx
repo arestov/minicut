@@ -329,19 +329,7 @@ export const Inspector = observer(() => {
 								onChange={(event) => actions.updateSelectedClipAudio({ gain: Number(event.currentTarget.value) / 100 })}
 							/>
 						</label>
-						<label className="ve-slider-field">
-							<span>Pan</span>
-							<input
-								type="range"
-								aria-label="Pan"
-								min="-100"
-								max="100"
-								value={Math.round((audio?.pan ?? 0) * 100)}
-								disabled={!isAudioClip}
-								onChange={(event) => actions.updateSelectedClipAudio({ pan: Number(event.currentTarget.value) / 100 })}
-							/>
-						</label>
-						<p className="ve-preview__summary">{isAudioClip ? `Gain ${Math.round((audio?.gain ?? 1) * 100)}% · Pan ${Math.round((audio?.pan ?? 0) * 100)}` : 'Select an audio clip to edit playback settings.'}</p>
+						<p className="ve-preview__summary">{isAudioClip ? `Gain ${Math.round((audio?.gain ?? 1) * 100)}%` : 'Select an audio clip to edit playback settings.'}</p>
 					</InspectorSection>
 				</div>
 			) : null}

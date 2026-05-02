@@ -399,8 +399,7 @@ test('video resources add linked audio clips that play, inspect, and export sett
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Audio' }).click()
 	await inspector.getByLabel('Gain').fill('65')
-	await inspector.getByLabel('Pan').fill('-40')
-	await expect(inspector.getByText('Gain 65% · Pan -40')).toBeVisible()
+	await expect(inspector.getByText('Gain 65%')).toBeVisible()
 
 	await setTimelineCursor(page, 0.5)
 	const renderer = page.getByLabel('Renderer stage')
@@ -411,7 +410,7 @@ test('video resources add linked audio clips that play, inspect, and export sett
 	await expect(audio).not.toHaveAttribute('controls', '')
 	await expect(audio).toHaveAttribute('data-resource-name', 'fixture-video.webm')
 	await expect(audio).toHaveAttribute('data-gain', '0.65')
-	await expect(audio).toHaveAttribute('data-pan', '-0.4')
+	await expect(audio).toHaveAttribute('data-pan', '0')
 	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).volume)).toBeCloseTo(0.65, 2)
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
 	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.5)
@@ -716,7 +715,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 
 	await inspector.getByRole('tab', { name: 'Audio' }).click()
 	await expect(inspector.getByLabel('Audio inspector').getByText('Gain')).toBeVisible()
-	await expect(inspector.getByLabel('Audio inspector').getByText('Pan')).toBeVisible()
+	await expect(inspector.getByLabel('Audio inspector').getByText('Pan')).toHaveCount(0)
 
 	await inspector.getByRole('tab', { name: 'Export' }).click()
 	const exportButton = inspector.getByRole('button', { name: 'Queue clip export' })

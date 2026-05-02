@@ -246,6 +246,7 @@ const useMediaElementSync = (
 			seekState.wasPlaying = isPlaying
 			mediaSeekStateRef.current.set(clip.id, seekState)
 			element.volume = Math.min(1, Math.max(0, clip.audio.gain))
+			// Pan remains export-only until preview audio is routed through an AudioContext/StereoPannerNode.
 			element.dataset.pan = String(clip.audio.pan)
 			syncMediaPlayback(element, isPlaying)
 		}

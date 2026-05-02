@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises'
 import {
 	analyzeExportedAudio,
 	expectToneEnergy,
-	measureChannelFrequencyPower,
 	measureFrequencyPower,
 	probeMedia,
 	sampleVideoFramePixelRgba,
@@ -234,14 +233,11 @@ const selectTimelineClip = async (page: Page, name: RegExp): Promise<void> => {
 	await clip.click()
 }
 
-const setSelectedAudio = async (page: Page, { gain, pan }: { gain?: number; pan?: number }): Promise<void> => {
+const setSelectedAudio = async (page: Page, { gain }: { gain?: number }): Promise<void> => {
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Audio' }).click()
 	if (gain !== undefined) {
 		await inspector.getByLabel('Gain').fill(String(Math.round(gain * 100)))
-	}
-	if (pan !== undefined) {
-		await inspector.getByLabel('Pan').fill(String(Math.round(pan * 100)))
 	}
 }
 
@@ -425,7 +421,7 @@ test.describe('exported audio artifacts', () => {
 		expect(power880).toBeGreaterThan(power440 * 3)
 	})
 
-	test('gain and pan edits are measurable in decoded PCM', async ({ page }) => {
+	test('gain edits are measurable in decoded PCM', async ({ page }) => {
 		await page.goto('/')
 		await createProjectFromMenu(page)
 
@@ -439,28 +435,16 @@ test.describe('exported audio artifacts', () => {
 		await addResourceToTimeline(page, audioFile.name)
 		await selectTimelineClip(page, /gain-pan-tone\.wav/i)
 
-		await setSelectedAudio(page, { gain: 1, pan: 0 })
+		await setSelectedAudio(page, { gain: 1 })
 		const fullGainPath = await exportProject(page)
 		const fullGain = (await analyzeExportedAudio(fullGainPath)).analysis
 
 		await selectTimelineClip(page, /gain-pan-tone\.wav/i)
-		await setSelectedAudio(page, { gain: 0.5, pan: 0 })
+		await setSelectedAudio(page, { gain: 0.5 })
 		const halfGainPath = await exportProject(page)
 		const halfGain = (await analyzeExportedAudio(halfGainPath)).analysis
 		expect(halfGain.rms / fullGain.rms).toBeGreaterThan(0.35)
 		expect(halfGain.rms / fullGain.rms).toBeLessThan(0.75)
-
-		await selectTimelineClip(page, /gain-pan-tone\.wav/i)
-		await setSelectedAudio(page, { gain: 1, pan: -1 })
-		const leftPath = await exportProject(page)
-		const left = (await analyzeExportedAudio(leftPath)).analysis
-		expect(left.leftRms).toBeGreaterThan(left.rightRms * 3)
-
-		await selectTimelineClip(page, /gain-pan-tone\.wav/i)
-		await setSelectedAudio(page, { gain: 1, pan: 1 })
-		const rightPath = await exportProject(page)
-		const right = (await analyzeExportedAudio(rightPath)).analysis
-		expect(right.rightRms).toBeGreaterThan(right.leftRms * 3)
 	})
 
 	test('selected trimmed audio export starts from the source in-point', async ({ page }) => {
@@ -529,7 +513,7 @@ test.describe('exported audio artifacts', () => {
 		expect(power880).toBeGreaterThan(0.001)
 	})
 
-	test('overlapping audio clips preserve independent gain and pan in one mixed export', async ({ page }) => {
+	test('overlapping audio clips preserve independent gain in one mixed export', async ({ page }) => {
 		await page.goto('/')
 		await createProjectFromMenu(page)
 
@@ -549,9 +533,9 @@ test.describe('exported audio artifacts', () => {
 		await addResourceToTimeline(page, toneB.name)
 
 		await selectTimelineClip(page, /combo-tone-left-440\.wav/i)
-		await setSelectedAudio(page, { gain: 0.8, pan: -1 })
+		await setSelectedAudio(page, { gain: 0.8 })
 		await selectTimelineClip(page, /combo-tone-right-880\.wav/i)
-		await setSelectedAudio(page, { gain: 0.5, pan: 1 })
+		await setSelectedAudio(page, { gain: 0.5 })
 
 		const rightClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /combo-tone-right-880\.wav/i }).first()
 		const box = await rightClip.boundingBox()
@@ -568,14 +552,10 @@ test.describe('exported audio artifacts', () => {
 		const exportPath = await exportProject(page)
 		const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
 		expect(analysis.peak).toBeLessThanOrEqual(1)
-		const left440 = measureChannelFrequencyPower(samples, 2, 48_000, 440, 0, { start: 0.35, end: 0.9 })
-		const right440 = measureChannelFrequencyPower(samples, 2, 48_000, 440, 1, { start: 0.35, end: 0.9 })
-		const left880 = measureChannelFrequencyPower(samples, 2, 48_000, 880, 0, { start: 0.35, end: 0.9 })
-		const right880 = measureChannelFrequencyPower(samples, 2, 48_000, 880, 1, { start: 0.35, end: 0.9 })
-		expect(left440).toBeGreaterThan(0.001)
-		expect(right880).toBeGreaterThan(0.001)
-		expect(left440).toBeGreaterThan(right440 * 3)
-		expect(right880).toBeGreaterThan(left880 * 3)
+		const power440 = measureFrequencyPower(samples, 2, 48_000, 440, { start: 0.35, end: 0.9 })
+		const power880 = measureFrequencyPower(samples, 2, 48_000, 880, { start: 0.35, end: 0.9 })
+		expect(power440).toBeGreaterThan(0.001)
+		expect(power880).toBeGreaterThan(0.001)
 	})
 
 	test('overlapping visual clips preserve layer order and opacity in exported frames', async ({ page }) => {
