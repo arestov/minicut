@@ -11,6 +11,23 @@ interface VideoEditorHarnessAppProps {
 
 const LAST_ROOM_STORAGE_KEY = 'minicut:last-room-id'
 
+const resolveSignalUrl = (): string | null => {
+	if (typeof window === 'undefined') {
+		return null
+	}
+
+	const raw = new URLSearchParams(window.location.search).get('signalUrl')
+	if (!raw) {
+		return null
+	}
+
+	try {
+		return new URL(raw, window.location.origin).toString().replace(/\/$/, '')
+	} catch {
+		return null
+	}
+}
+
 const resolveBrowserRoom = (): RoomUrlResolution | null => {
 	if (typeof window === 'undefined') {
 		return null
@@ -32,12 +49,13 @@ export const VideoEditorHarnessApp = ({
 	harness: providedHarness,
 }: VideoEditorHarnessAppProps) => {
 	const resolvedRoom = useMemo(() => resolveBrowserRoom(), [])
+	const signalUrl = useMemo(() => resolveSignalUrl(), [])
 	const ownedHarness = useMemo(() => {
 		if (providedHarness) {
 			return providedHarness
 		}
 
-		if (!resolvedRoom || typeof window === 'undefined') {
+		if (!resolvedRoom || !signalUrl) {
 			return createVideoEditorHarness()
 		}
 
@@ -45,11 +63,11 @@ export const VideoEditorHarnessApp = ({
 			authorityOptions: {
 				p2p: {
 					roomId: resolvedRoom.roomId,
-					signalUrl: window.location.origin,
+					signalUrl,
 				},
 			},
 		})
-	}, [providedHarness, resolvedRoom])
+	}, [providedHarness, resolvedRoom, signalUrl])
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>
