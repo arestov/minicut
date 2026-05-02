@@ -560,12 +560,12 @@ export const createResourceTransferManager = (
 		updateTransferView(resourceId)
 	}
 
-	const sendControl = (peerKey: string, message: ControlMessage): void => {
+	const sendControl = async (peerKey: string, message: ControlMessage): Promise<void> => {
 		if (destroyed) {
 			return
 		}
 
-		getTransport(peerKey)?.transport.send(JSON.stringify(message))
+		await getTransport(peerKey)?.transport.send(JSON.stringify(message))
 	}
 
 	const getRequestPeerKey = (snapshot: ResourceSnapshot): string | null => {
@@ -766,7 +766,7 @@ export const createResourceTransferManager = (
 					continue
 				}
 				const buffer = await resource.blob.slice(start, end).arrayBuffer()
-				sendControl(peerKey, {
+				await sendControl(peerKey, {
 					type: 'resource-chunk-meta',
 					resourceId: resource.resourceId,
 					index,
@@ -783,11 +783,11 @@ export const createResourceTransferManager = (
 					fallbackUrl: resource.fallbackUrl,
 					reason,
 				})
-				getTransport(peerKey)?.transport.send(buffer)
+				await getTransport(peerKey)?.transport.send(buffer)
 				await wait(chunkSendDelayMs)
 			}
 		}
-		sendControl(peerKey, {
+		await sendControl(peerKey, {
 			type: 'resource-chunk-complete',
 			resourceId: resource.resourceId,
 			reason,
@@ -808,7 +808,7 @@ export const createResourceTransferManager = (
 				}
 				const start = index * state.chunkSize
 				const end = start + buffer.byteLength
-				sendControl(peerKey, {
+				await sendControl(peerKey, {
 					type: 'resource-chunk-meta',
 					resourceId: state.resourceId,
 					index,
@@ -825,11 +825,11 @@ export const createResourceTransferManager = (
 					fallbackUrl: state.fallbackUrl,
 					reason,
 				})
-				getTransport(peerKey)?.transport.send(buffer.slice(0))
+				await getTransport(peerKey)?.transport.send(buffer.slice(0))
 				await wait(chunkSendDelayMs)
 			}
 		}
-		sendControl(peerKey, {
+		await sendControl(peerKey, {
 			type: 'resource-chunk-complete',
 			resourceId: state.resourceId,
 			reason,

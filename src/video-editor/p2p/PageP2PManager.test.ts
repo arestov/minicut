@@ -15,10 +15,13 @@ class MockDataChannel {
 	readyState = 'connecting'
 	label: string
 	sent: unknown[] = []
+	bufferedAmount = 0
+	bufferedAmountLowThreshold = 0
 	onopen: Handler | null = null
 	onclose: Handler | null = null
 	onerror: Handler | null = null
 	onmessage: Handler | null = null
+	onbufferedamountlow: Handler | null = null
 
 	constructor(label = 'minicut-authority') {
 		this.label = label
@@ -26,6 +29,13 @@ class MockDataChannel {
 
 	send(data: unknown): void {
 		this.sent.push(data)
+		this.bufferedAmount += typeof data === 'string'
+			? data.length
+			: data instanceof ArrayBuffer
+				? data.byteLength
+				: ArrayBuffer.isView(data)
+					? data.byteLength
+					: 0
 	}
 
 	close(): void {
@@ -48,6 +58,11 @@ class MockDataChannel {
 
 	simulateRawMessage(data: unknown): void {
 		this.onmessage?.({ data })
+	}
+
+	simulateBufferedAmountLow(nextBufferedAmount = 0): void {
+		this.bufferedAmount = nextBufferedAmount
+		this.onbufferedamountlow?.({})
 	}
 }
 
@@ -336,6 +351,44 @@ describe('PageP2PManager', () => {
 		expect(received[0]).toBe('meta')
 		expect(Array.from(new Uint8Array(received[1] as ArrayBuffer))).toEqual([1, 2, 3])
 		expect(Array.from(new Uint8Array(received[2] as ArrayBuffer))).toEqual([4, 5, 6])
+
+		manager.destroy()
+	})
+
+	test('applies bufferedAmount backpressure before sending the next resource frame', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onClientResourceTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		await Promise.resolve()
+		const resourceDc = MockRTCPeerConnection.instances[0].createdChannels[1]
+		resourceDc.simulateOpen()
+
+		expect(events.onClientResourceTransport).toHaveBeenCalledTimes(1)
+		const transport = events.onClientResourceTransport.mock.calls[0][0]
+		resourceDc.bufferedAmount = 500_000
+		const payload = new Uint8Array(2 * 64 * 1024).buffer
+
+		const sendPromise = Promise.resolve(transport.send(payload))
+		await flushMicrotasks(8)
+		expect(resourceDc.sent).toHaveLength(1)
+
+		resourceDc.simulateBufferedAmountLow(0)
+		await sendPromise
+		await flushMicrotasks(4)
+		expect(resourceDc.sent).toHaveLength(2)
 
 		manager.destroy()
 	})

@@ -10,7 +10,7 @@ export interface P2PTransportLike {
 }
 
 export interface P2PRawTransportLike {
-	send(data: string | ArrayBuffer): void
+	send(data: string | ArrayBuffer): void | Promise<void>
 	listen(listener: (data: string | ArrayBuffer) => void): () => void
 	destroy(): void
 }
@@ -298,6 +298,8 @@ export const createPageP2PManager = (
 	 * Using 64 KB gives a comfortable safety margin.
 	 */
 	const MAX_DC_PAYLOAD_BYTES = 64 * 1024
+	const DC_BUFFERED_AMOUNT_HIGH_WATERMARK_BYTES = 512 * 1024
+	const DC_BUFFERED_AMOUNT_LOW_WATERMARK_BYTES = 256 * 1024
 
 	/**
 	 * Binary frame header layout (9 bytes):
@@ -307,12 +309,69 @@ export const createPageP2PManager = (
 	 */
 	const FRAG_HEADER_BYTES = 9
 
-	const sendFragmentedBinary = (dc: RTCDataChannel, data: ArrayBuffer): void => {
+	const waitForBufferedAmountLow = (
+		dc: RTCDataChannel,
+		isAborted: () => boolean,
+	): Promise<void> => {
+		if (
+			isAborted()
+			|| dc.readyState !== 'open'
+			|| dc.bufferedAmount <= DC_BUFFERED_AMOUNT_HIGH_WATERMARK_BYTES
+		) {
+			return Promise.resolve()
+		}
+
+		return new Promise<void>((resolve) => {
+			const previousThreshold = dc.bufferedAmountLowThreshold
+			const previousHandler = dc.onbufferedamountlow
+			let settled = false
+
+			const finish = (): void => {
+				if (settled) {
+					return
+				}
+
+				settled = true
+				dc.bufferedAmountLowThreshold = previousThreshold
+				dc.onbufferedamountlow = previousHandler
+				resolve()
+			}
+
+			const check = (): void => {
+				if (
+					isAborted()
+					|| dc.readyState !== 'open'
+					|| dc.bufferedAmount <= DC_BUFFERED_AMOUNT_LOW_WATERMARK_BYTES
+				) {
+					finish()
+				}
+			}
+
+			dc.bufferedAmountLowThreshold = DC_BUFFERED_AMOUNT_LOW_WATERMARK_BYTES
+			dc.onbufferedamountlow = (event) => {
+				previousHandler?.call(dc, event)
+				check()
+			}
+
+			queueMicrotask(check)
+		})
+	}
+
+	const sendFragmentedBinary = async (
+		dc: RTCDataChannel,
+		data: ArrayBuffer,
+		isAborted: () => boolean,
+	): Promise<void> => {
 		const totalSize = data.byteLength
 		let fragIndex = 0
 		let offset = 0
 
 		while (offset < totalSize) {
+			await waitForBufferedAmountLow(dc, isAborted)
+			if (isAborted() || dc.readyState !== 'open') {
+				return
+			}
+
 			const payloadSize = Math.min(MAX_DC_PAYLOAD_BYTES, totalSize - offset)
 			const isLast = offset + payloadSize >= totalSize
 			const frame = new ArrayBuffer(FRAG_HEADER_BYTES + payloadSize)
@@ -334,6 +393,7 @@ export const createPageP2PManager = (
 		const listeners = new Set<(data: string | ArrayBuffer) => void>()
 		let transportDestroyed = false
 		let deliveryQueue = Promise.resolve()
+		let sendQueue = Promise.resolve()
 
 		// Reassembly state for fragmented binary messages.
 		let fragParts: Uint8Array[] = []
@@ -357,13 +417,9 @@ export const createPageP2PManager = (
 			}
 		}
 
-		const handleBinaryFrame = (buffer: ArrayBuffer): void => {
+		const consumeBinaryFrame = (buffer: ArrayBuffer): ArrayBuffer | null => {
 			if (buffer.byteLength < FRAG_HEADER_BYTES) {
-				// Too short to be a valid framed message – deliver as-is for compat.
-				enqueueDelivery(() => {
-					notifyListeners(buffer)
-				})
-				return
+				return buffer
 			}
 
 			const hdr = new DataView(buffer)
@@ -375,7 +431,7 @@ export const createPageP2PManager = (
 			fragExpectedSize = totalSize
 
 			if (!isLast) {
-				return
+				return null
 			}
 
 			// All fragments collected – assemble and deliver.
@@ -387,10 +443,7 @@ export const createPageP2PManager = (
 			}
 			fragParts = []
 			fragExpectedSize = 0
-			const completeBuffer = assembled.buffer
-			enqueueDelivery(() => {
-				notifyListeners(completeBuffer)
-			})
+			return assembled.buffer
 		}
 
 		dc.onmessage = (event) => {
@@ -407,14 +460,24 @@ export const createPageP2PManager = (
 			}
 
 			if (data instanceof ArrayBuffer) {
-				handleBinaryFrame(data)
+				const payload = consumeBinaryFrame(data)
+				if (payload) {
+					enqueueDelivery(() => {
+						notifyListeners(payload)
+					})
+				}
 				return
 			}
 
 			if (ArrayBuffer.isView(data)) {
 				const view = data as ArrayBufferView
 				const normalized = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
-				handleBinaryFrame(normalized)
+				const payload = consumeBinaryFrame(normalized)
+				if (payload) {
+					enqueueDelivery(() => {
+						notifyListeners(payload)
+					})
+				}
 				return
 			}
 
@@ -422,7 +485,10 @@ export const createPageP2PManager = (
 				enqueueDelivery(async () => {
 					const normalized = await data.arrayBuffer()
 					if (!transportDestroyed) {
-						handleBinaryFrame(normalized)
+						const payload = consumeBinaryFrame(normalized)
+						if (payload) {
+							notifyListeners(payload)
+						}
 					}
 				})
 			}
@@ -440,18 +506,39 @@ export const createPageP2PManager = (
 			// onclose handles lifecycle teardown
 		}
 
+		const enqueueSend = (work: () => Promise<void>): Promise<void> => {
+			sendQueue = sendQueue
+				.then(async () => {
+					if (transportDestroyed || dc.readyState !== 'open') {
+						return
+					}
+
+					await work()
+				})
+				.catch(() => undefined)
+
+			return sendQueue
+		}
+
 		return {
 			send(data) {
 				if (transportDestroyed || dc.readyState !== 'open') {
 					return
 				}
 
-				if (typeof data === 'string') {
-					dc.send(data)
-					return
-				}
+				return enqueueSend(async () => {
+					await waitForBufferedAmountLow(dc, () => transportDestroyed)
+					if (transportDestroyed || dc.readyState !== 'open') {
+						return
+					}
 
-				sendFragmentedBinary(dc, data)
+					if (typeof data === 'string') {
+						dc.send(data)
+						return
+					}
+
+					await sendFragmentedBinary(dc, data, () => transportDestroyed)
+				})
 			},
 
 			listen(listener) {
