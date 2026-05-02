@@ -7,6 +7,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "dev:full": "node ./scripts/dev-full.mjs",
     "start": "vite --config vite.video-editor.config.js --host 127.0.0.1 --port 4174",
     "test": "vitest --run --config vitest.video-editor.config.js",
     "test:video-editor": "vitest --run --config vitest.video-editor.config.js",
@@ -14,7 +15,8 @@
     "test:integration": "playwright test",
     "video-editor:dev": "vite --config vite.video-editor.config.js",
     "video-editor:build": "vite build --config vite.video-editor.config.js",
-    "deploy": "npm run video-editor:build && npx --yes wrangler@4 pages deploy dist-video-editor --project-name minicut-video-editor"
+    "deploy:frontend": "node ./scripts/deploy-frontend.mjs",
+    "deploy": "npm run deploy:frontend"
   },
   "dependencies": {
     "@legendapp/state": "^3.0.0-beta.47",

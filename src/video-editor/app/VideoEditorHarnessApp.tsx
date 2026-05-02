@@ -26,7 +26,16 @@ const resolveSignalUrl = (): string | null => {
 
 	const raw = new URLSearchParams(window.location.search).get('signalUrl')
 	if (!raw) {
-		return null
+		const envSignalUrl = (import.meta.env as Record<string, unknown>).VITE_MINICUT_SIGNAL_URL
+		if (typeof envSignalUrl !== 'string' || envSignalUrl.length === 0) {
+			return null
+		}
+
+		try {
+			return new URL(envSignalUrl, window.location.origin).toString().replace(/\/$/, '')
+		} catch {
+			return null
+		}
 	}
 
 	try {
@@ -84,7 +93,7 @@ export const VideoEditorHarnessApp = ({
 }: VideoEditorHarnessAppProps) => {
 	const resolvedRoom = useMemo(() => resolveBrowserRoom(), [])
 	const signalUrl = useMemo(() => resolveSignalUrl(), [])
-		const rtcConfig = useMemo(() => createDefaultRtcConfig(resolveTurnIceServer()), [])
+	const rtcConfig = useMemo(() => createDefaultRtcConfig(resolveTurnIceServer()), [])
 	const ownedHarness = useMemo(() => {
 		if (providedHarness) {
 			return providedHarness
@@ -103,7 +112,7 @@ export const VideoEditorHarnessApp = ({
 				},
 			},
 		})
-		}, [providedHarness, resolvedRoom, rtcConfig, signalUrl])
+	}, [providedHarness, resolvedRoom, rtcConfig, signalUrl])
 
 	useEffect(() => {
 		if (typeof window === 'undefined' || !import.meta.env.DEV) {
