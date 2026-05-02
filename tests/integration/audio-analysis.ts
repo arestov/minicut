@@ -278,6 +278,34 @@ export const expectToneEnergy = (
 	expect(power).toBeGreaterThan(options.minPower ?? 0.01)
 }
 
+export const sampleVideoFrameRgba = async (
+	filePath: string,
+	options: { time?: number } = {},
+): Promise<[number, number, number, number]> => {
+	const { stdout } = await runBinary(ffmpegInstaller.path, [
+		'-v',
+		'error',
+		'-ss',
+		String(options.time ?? 0.5),
+		'-i',
+		filePath,
+		'-frames:v',
+		'1',
+		'-vf',
+		'scale=1:1',
+		'-f',
+		'rawvideo',
+		'-pix_fmt',
+		'rgba',
+		'pipe:1',
+	], { timeoutMs: 20_000 })
+	if (stdout.length < 4) {
+		throw new Error('Unable to sample exported video frame')
+	}
+
+	return [stdout[0], stdout[1], stdout[2], stdout[3]]
+}
+
 export const analyzeExportedAudio = async (
 	filePath: string,
 	options: { sampleRate?: number; channels?: number; windowSeconds?: number } = {},
