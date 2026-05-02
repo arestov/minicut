@@ -499,10 +499,175 @@ describe('resource transfer manager', () => {
 		await waitFor(() => {
 			expect(requests).toContainEqual(expect.objectContaining({
 				resourceId: 'res-gap',
-				ranges: [[8, 24]],
+				ranges: [[8, 16]],
 				reason: 'sequential',
 			}))
 		})
+
+		client.destroy()
+	})
+
+	it('prioritizes the latest playhead window before background sequential fetch', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const requests = parseRequestMessages(serverTransport)
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+			playheadWindowSeconds: 4,
+		})
+
+		client.attachClientTransport(clientTransport)
+		client.syncRegistry(createRegistryWithResource('res-window-priority', {
+			size: 40,
+			duration: 10,
+			name: 'Window priority clip',
+		}))
+		client.requestPlayheadWindow('res-window-priority', 6)
+
+		await waitFor(() => {
+			expect(requests.filter((message) => message.resourceId === 'res-window-priority')).toEqual([
+				expect.objectContaining({
+					resourceId: 'res-window-priority',
+					ranges: [[0, 8]],
+					reason: 'head',
+				}),
+			])
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-window-priority',
+			index: 0,
+			start: 0,
+			end: 8,
+			totalSize: 40,
+			reason: 'head',
+		}, 'abcdefgh')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-window-priority',
+			reason: 'head',
+		}))
+
+		await waitFor(() => {
+			const resourceRequests = requests.filter((message) => message.resourceId === 'res-window-priority')
+			expect(resourceRequests[1]).toMatchObject({
+				reason: 'window',
+				ranges: [[16, 32]],
+			})
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-window-priority',
+			index: 2,
+			start: 16,
+			end: 24,
+			totalSize: 40,
+			reason: 'window',
+		}, 'qrstuvwx')
+		sendChunk(serverTransport, {
+			resourceId: 'res-window-priority',
+			index: 3,
+			start: 24,
+			end: 32,
+			totalSize: 40,
+			reason: 'window',
+		}, 'yzabcdef')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-window-priority',
+			reason: 'window',
+		}))
+
+		await waitFor(() => {
+			const resourceRequests = requests.filter((message) => message.resourceId === 'res-window-priority')
+			expect(resourceRequests.find((message) =>
+				message.reason === 'sequential'
+				&& JSON.stringify(message.ranges) === JSON.stringify([[8, 16]]),
+			)).toBeTruthy()
+			expect(resourceRequests.findIndex((message) => message.reason === 'window')).toBeLessThan(
+				resourceRequests.findIndex((message) =>
+					message.reason === 'sequential'
+					&& JSON.stringify(message.ranges) === JSON.stringify([[8, 16]]),
+				),
+			)
+		})
+
+		client.destroy()
+	})
+
+	it('builds a sparse preview blob that preserves tail offsets after fallback', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const requests = parseRequestMessages(serverTransport)
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+			tailBytes: 8,
+		})
+
+		client.attachClientTransport(clientTransport)
+		client.syncRegistry(createRegistryWithResource('res-tail-preview', {
+			size: 32,
+			duration: 8,
+			name: 'Tail preview clip',
+		}))
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-tail-preview',
+			index: 0,
+			start: 0,
+			end: 8,
+			totalSize: 32,
+			reason: 'head',
+		}, 'ABCDEFGH')
+		client.notePreviewError('res-tail-preview')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-tail-preview',
+			reason: 'head',
+		}))
+
+		await waitFor(() => {
+			expect(requests).toContainEqual(expect.objectContaining({
+				resourceId: 'res-tail-preview',
+				ranges: [[24, 32]],
+				reason: 'tail',
+			}))
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-tail-preview',
+			index: 3,
+			start: 24,
+			end: 32,
+			totalSize: 32,
+			reason: 'tail',
+		}, 'YZabcdef')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-tail-preview',
+			reason: 'tail',
+		}))
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-tail-preview')).toMatchObject({
+				status: 'partial',
+				tailFallbackRequested: true,
+				loadedRanges: [[0, 8], [24, 32]],
+				canPreview: true,
+			})
+		})
+
+		const sparseBlob = createObjectUrl.mock.calls.at(-1)?.[0]
+		expect(sparseBlob).toBeInstanceOf(Blob)
+		const sparseBytes = Array.from(new Uint8Array(await (sparseBlob as Blob).arrayBuffer()))
+		expect(sparseBytes).toHaveLength(32)
+		expect(sparseBytes.slice(0, 8)).toEqual(Array.from(new TextEncoder().encode('ABCDEFGH')))
+		expect(sparseBytes.slice(8, 24)).toEqual(new Array(16).fill(0))
+		expect(sparseBytes.slice(24, 32)).toEqual(Array.from(new TextEncoder().encode('YZabcdef')))
 
 		client.destroy()
 	})
@@ -646,7 +811,7 @@ describe('resource transfer manager', () => {
 			expect(requests.some((message) =>
 				message.resourceId === 'res-retry'
 				&& message.reason === 'sequential'
-				&& JSON.stringify(message.ranges) === JSON.stringify([[8, 24]]),
+				&& JSON.stringify(message.ranges) === JSON.stringify([[8, 16]]),
 			)).toBe(true)
 		})
 
@@ -658,6 +823,20 @@ describe('resource transfer manager', () => {
 			totalSize: 24,
 			reason: 'sequential',
 		}, 'ijklmnop')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-retry',
+			reason: 'sequential',
+		}))
+
+		await waitFor(() => {
+			expect(requests.some((message) =>
+				message.resourceId === 'res-retry'
+				&& message.reason === 'sequential'
+				&& JSON.stringify(message.ranges) === JSON.stringify([[16, 24]]),
+			)).toBe(true)
+		})
+
 		sendChunk(serverTransport, {
 			resourceId: 'res-retry',
 			index: 2,

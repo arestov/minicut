@@ -6,8 +6,10 @@ import {
 	buildRangeKey,
 	getContiguousRangeEnd,
 	getHeadPreviewRange,
+	getNextSequentialRange,
 	getPlayheadWindowRange,
 	getTailFallbackRange,
+	intersectByteRanges,
 	subtractByteRanges,
 } from './resourceTransferScheduler'
 
@@ -40,11 +42,9 @@ interface RemoteResourceState extends ResourceSnapshot {
 	requestEvents: Array<{ reason: TransferReason, ranges: ResourceByteRange[] }>
 	loadedBytes: number
 	lastTouchedAt: number
-	headRequested: boolean
 	tailRequested: boolean
-	sequentialRequested: boolean
-	replicationRequested: boolean
 	lastWindowKey: string
+	lastWindowRange: ResourceByteRange | null
 	previewUrl: string
 	playbackUrl: string
 	lastPreviewSignature: string
@@ -152,6 +152,9 @@ export interface ResourceTransferManager {
 const SERVER_TRANSPORT_KEY = '__server__'
 const MAX_ERROR_RETRIES = 3
 const ERROR_RETRY_DELAY_MS = 250
+const ZERO_FILL_BLOB_CHUNK_BYTES = 256 * 1024
+const MAX_SPARSE_PREVIEW_BLOB_BYTES = 64 * 1024 * 1024
+const ZERO_FILL_BLOB = new Blob([new Uint8Array(ZERO_FILL_BLOB_CHUNK_BYTES)])
 
 const wait = async (ms: number): Promise<void> => {
 	if (ms <= 0) {
@@ -173,6 +176,15 @@ const computeProgress = (loadedBytes: number, totalBytes: number, isReady: boole
 
 const isRealMediaUrl = (url: string): boolean =>
 	url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('http') || url.startsWith('/') || url.startsWith('./')
+
+const appendZeroFillParts = (parts: BlobPart[], byteLength: number): void => {
+	let remaining = Math.max(0, Math.floor(byteLength))
+	while (remaining > 0) {
+		const nextSize = Math.min(remaining, ZERO_FILL_BLOB_CHUNK_BYTES)
+		parts.push(ZERO_FILL_BLOB.slice(0, nextSize))
+		remaining -= nextSize
+	}
+}
 
 const toSnapshot = (resourceId: string, attrs: ResourceAttrs, defaultChunkSize: number): ResourceSnapshot => ({
 	resourceId,
@@ -209,11 +221,9 @@ const createRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => (
 	requestEvents: [],
 	loadedBytes: 0,
 	lastTouchedAt: Date.now(),
-	headRequested: false,
 	tailRequested: false,
-	sequentialRequested: false,
-	replicationRequested: false,
 	lastWindowKey: '',
+	lastWindowRange: null,
 	previewUrl: '',
 	playbackUrl: '',
 	lastPreviewSignature: '',
@@ -265,11 +275,6 @@ export const createResourceTransferManager = (
 	const resetRemoteRequestState = (state: RemoteResourceState): void => {
 		clearRetryTimeout(state)
 		state.requestedRanges = []
-		state.headRequested = false
-		state.tailRequested = false
-		state.sequentialRequested = false
-		state.replicationRequested = false
-		state.lastWindowKey = ''
 		state.lastError = null
 		state.errorRetryCount = 0
 		if (state.status !== 'ready') {
@@ -396,6 +401,64 @@ export const createResourceTransferManager = (
 		return new Blob(parts, { type: state.mime })
 	}
 
+	const buildSparsePreviewBlob = (state: RemoteResourceState): Blob | null => {
+		const totalSize = state.size
+		if (typeof totalSize === 'number' && Number.isFinite(totalSize) && totalSize > MAX_SPARSE_PREVIEW_BLOB_BYTES) {
+			return buildRemoteBlob(state, false)
+		}
+
+		const headRange = getHeadPreviewRange(state.size, state.chunkSize, headBytes)
+		const tailRange = state.tailRequested
+			? getTailFallbackRange(state.size, state.chunkSize, tailBytes)
+			: null
+		const selectedRanges = mergeByteRanges([
+			...intersectByteRanges(state.loadedRanges, headRange),
+			...intersectByteRanges(state.loadedRanges, state.lastWindowRange),
+			...intersectByteRanges(state.loadedRanges, tailRange),
+		])
+		if (selectedRanges.length === 0) {
+			return buildRemoteBlob(state, false)
+		}
+
+		const preserveOriginalOffsets = selectedRanges.some(([start], index) => index > 0 && start > selectedRanges[index - 1][1])
+		const parts: BlobPart[] = []
+		let cursor = 0
+
+		for (const [rangeStart, rangeEnd] of selectedRanges) {
+			if (preserveOriginalOffsets && rangeStart > cursor) {
+				appendZeroFillParts(parts, rangeStart - cursor)
+			}
+
+			for (const index of getChunkIndexesForRange([rangeStart, rangeEnd], state.chunkSize)) {
+				const chunk = state.chunks.get(index)
+				if (!chunk) {
+					return null
+				}
+
+				const chunkStart = index * state.chunkSize
+				const chunkEnd = chunkStart + chunk.byteLength
+				const sliceStart = Math.max(rangeStart, chunkStart) - chunkStart
+				const sliceEnd = Math.min(rangeEnd, chunkEnd) - chunkStart
+				if (sliceEnd > sliceStart) {
+					parts.push(chunk.slice(sliceStart, sliceEnd))
+				}
+			}
+
+			cursor = rangeEnd
+		}
+
+		if (
+			preserveOriginalOffsets
+			&& typeof totalSize === 'number'
+			&& Number.isFinite(totalSize)
+			&& cursor < totalSize
+		) {
+			appendZeroFillParts(parts, totalSize - cursor)
+		}
+
+		return parts.length > 0 ? new Blob(parts, { type: state.mime }) : null
+	}
+
 	const updateTransferView = (resourceId: string): void => {
 		const local = localResources.get(resourceId)
 		if (local) {
@@ -469,8 +532,8 @@ export const createResourceTransferManager = (
 
 		const totalBytes = state.size
 		const completeBlob = buildRemoteBlob(state, true)
-		const partialBlob = completeBlob ?? buildRemoteBlob(state, false)
-		const signature = `${state.loadedBytes}:${getContiguousRangeEnd(state.loadedRanges)}:${completeBlob ? 'full' : 'partial'}`
+		const partialBlob = completeBlob ?? buildSparsePreviewBlob(state) ?? buildRemoteBlob(state, false)
+		const signature = `${state.loadedRanges.map(([start, end]) => `${start}-${end}`).join(',')}|window:${state.lastWindowKey}|tail:${state.tailRequested ? '1' : '0'}|${completeBlob ? 'full' : 'partial'}`
 		if (state.lastPreviewSignature === signature) {
 			updateTransferView(resourceId)
 			return
@@ -537,18 +600,6 @@ export const createResourceTransferManager = (
 		state.requestedRanges = mergeByteRanges([...state.requestedRanges, ...missingRanges])
 		state.requestedHistory = mergeByteRanges([...state.requestedHistory, ...missingRanges])
 		state.requestEvents = [...state.requestEvents.slice(-19), { reason, ranges: missingRanges }]
-		if (reason === 'head') {
-			state.headRequested = true
-		}
-		if (reason === 'tail') {
-			state.tailRequested = true
-		}
-		if (reason === 'sequential') {
-			state.sequentialRequested = true
-		}
-		if (reason === 'replication') {
-			state.replicationRequested = true
-		}
 		updateTransferView(resourceId)
 		sendControl(peerKey, {
 			type: 'resource-request',
@@ -558,59 +609,46 @@ export const createResourceTransferManager = (
 		})
 	}
 
-	const maybeRequestHead = (resourceId: string): void => {
+	const planNextRequest = (resourceId: string): void => {
 		const state = remoteStates.get(resourceId)
-		if (!state || state.headRequested) {
+		if (!state || state.requestedRanges.length > 0) {
 			return
 		}
 
 		const headRange = getHeadPreviewRange(state.size, state.chunkSize, headBytes)
-		if (!headRange) {
+		const headMissing = headRange ? subtractByteRanges([headRange], state.loadedRanges) : []
+		if (headMissing.length > 0) {
+			requestRanges(resourceId, headMissing, options.getRole() === 'server' ? 'replication' : 'head')
 			return
 		}
 
-		requestRanges(resourceId, [headRange], options.getRole() === 'server' ? 'replication' : 'head')
-	}
+		if (state.tailRequested) {
+			const tailRange = getTailFallbackRange(state.size, state.chunkSize, tailBytes)
+			const tailMissing = tailRange ? subtractByteRanges([tailRange], state.loadedRanges) : []
+			if (tailMissing.length > 0) {
+				requestRanges(resourceId, tailMissing, 'tail')
+				return
+			}
+		}
 
-	const maybeContinueSequential = (resourceId: string): void => {
-		const state = remoteStates.get(resourceId)
-		if (!state || state.sequentialRequested) {
+		if (state.lastWindowRange) {
+			const windowMissing = subtractByteRanges([state.lastWindowRange], state.loadedRanges)
+			if (windowMissing.length > 0) {
+				requestRanges(resourceId, windowMissing, 'window')
+				return
+			}
+		}
+
+		const sequentialRange = getNextSequentialRange({
+			totalSize: state.size,
+			loadedRanges: state.loadedRanges,
+			chunkSize: state.chunkSize,
+		})
+		if (!sequentialRange) {
 			return
 		}
 
-		if (typeof state.size !== 'number' || !Number.isFinite(state.size) || state.size <= 0) {
-			return
-		}
-
-		const contiguousEnd = getContiguousRangeEnd(state.loadedRanges)
-		if (contiguousEnd <= 0 || contiguousEnd >= state.size) {
-			return
-		}
-
-		requestRanges(resourceId, [[contiguousEnd, state.size]], options.getRole() === 'server' ? 'replication' : 'sequential')
-	}
-
-	const requestMissingRanges = (resourceId: string): void => {
-		const state = remoteStates.get(resourceId)
-		if (!state) {
-			return
-		}
-
-		if (typeof state.size !== 'number' || !Number.isFinite(state.size) || state.size <= 0) {
-			maybeRequestHead(resourceId)
-			return
-		}
-
-		const missingRanges = subtractByteRanges([[0, state.size]], state.loadedRanges)
-		if (missingRanges.length === 0) {
-			return
-		}
-
-		requestRanges(
-			resourceId,
-			missingRanges,
-			options.getRole() === 'server' ? 'replication' : state.loadedBytes > 0 ? 'sequential' : 'head',
-		)
+		requestRanges(resourceId, [sequentialRange], options.getRole() === 'server' ? 'replication' : 'sequential')
 	}
 
 	const ensureRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => {
@@ -680,7 +718,7 @@ export const createResourceTransferManager = (
 		state.errorRetryCount = 0
 		rebuildPreviewUrls(resourceId)
 		enforceCacheCap(resourceId)
-		maybeContinueSequential(resourceId)
+		planNextRequest(resourceId)
 	}
 
 	const handleError = (message: ErrorMessage): void => {
@@ -708,7 +746,7 @@ export const createResourceTransferManager = (
 
 			resetRemoteRequestState(state)
 			updateTransferView(message.resourceId)
-			requestMissingRanges(message.resourceId)
+			planNextRequest(message.resourceId)
 		}, ERROR_RETRY_DELAY_MS * 2 ** (state.errorRetryCount - 1))
 	}
 
@@ -854,7 +892,7 @@ export const createResourceTransferManager = (
 				}
 				state.requestedRanges = []
 				updateTransferView(message.resourceId)
-				requestMissingRanges(message.resourceId)
+				planNextRequest(message.resourceId)
 				return
 			}
 			case 'resource-error':
@@ -940,7 +978,7 @@ export const createResourceTransferManager = (
 				ensureRemoteState(snapshot)
 				updateTransferView(resourceId)
 				if (snapshot.sourceKind === 'p2p' && snapshot.ownerPeerId !== options.getPeerId()) {
-					maybeRequestHead(resourceId)
+					planNextRequest(resourceId)
 				}
 			}
 		},
@@ -982,7 +1020,7 @@ export const createResourceTransferManager = (
 			resetRemoteRequestsForPeer(SERVER_TRANSPORT_KEY)
 			for (const [resourceId, snapshot] of resourceSnapshots) {
 				if (snapshot.sourceKind === 'p2p' && snapshot.ownerPeerId !== options.getPeerId()) {
-					maybeRequestHead(resourceId)
+					planNextRequest(resourceId)
 				}
 			}
 		},
@@ -992,7 +1030,7 @@ export const createResourceTransferManager = (
 			resetRemoteRequestsForPeer(remotePeerId)
 			for (const [resourceId, snapshot] of resourceSnapshots) {
 				if (snapshot.ownerPeerId === remotePeerId && snapshot.sourceKind === 'p2p') {
-					maybeRequestHead(resourceId)
+					planNextRequest(resourceId)
 				}
 			}
 		},
@@ -1043,7 +1081,8 @@ export const createResourceTransferManager = (
 			}
 
 			state.lastWindowKey = rangeKey
-			requestRanges(resourceId, [range], 'window')
+			state.lastWindowRange = range
+			planNextRequest(resourceId)
 		},
 
 		notePreviewError(resourceId) {
@@ -1057,7 +1096,8 @@ export const createResourceTransferManager = (
 				return
 			}
 
-			requestRanges(resourceId, [tailRange], 'tail')
+			state.tailRequested = true
+			planNextRequest(resourceId)
 		},
 
 		getTransfer(resourceId) {

@@ -140,5 +140,51 @@ export const subtractByteRanges = (
 	return mergeByteRanges(next)
 }
 
+export const intersectByteRanges = (
+	ranges: ResourceByteRange[],
+	targetRange: ResourceByteRange | null,
+): ResourceByteRange[] => {
+	if (!targetRange) {
+		return []
+	}
+
+	const [targetStart, targetEnd] = targetRange
+	if (targetEnd <= targetStart) {
+		return []
+	}
+
+	const intersections: ResourceByteRange[] = []
+	for (const [start, end] of mergeByteRanges(ranges)) {
+		const nextStart = Math.max(start, targetStart)
+		const nextEnd = Math.min(end, targetEnd)
+		if (nextEnd > nextStart) {
+			intersections.push([nextStart, nextEnd])
+		}
+	}
+
+	return intersections
+}
+
+export const getNextSequentialRange = ({
+	totalSize,
+	loadedRanges,
+	chunkSize = DEFAULT_RESOURCE_CHUNK_SIZE,
+}: {
+	totalSize?: number
+	loadedRanges: ResourceByteRange[]
+	chunkSize?: number
+}): ResourceByteRange | null => {
+	if (typeof totalSize !== 'number' || !Number.isFinite(totalSize) || totalSize <= 0) {
+		return null
+	}
+
+	const contiguousEnd = getContiguousRangeEnd(loadedRanges)
+	if (contiguousEnd <= 0 || contiguousEnd >= totalSize) {
+		return null
+	}
+
+	return clampRangeToSize([contiguousEnd, contiguousEnd + chunkSize], totalSize)
+}
+
 export const buildRangeKey = (range: ResourceByteRange | null): string =>
 	range ? `${range[0]}:${range[1]}` : ''

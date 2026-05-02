@@ -3,8 +3,10 @@ import {
 	buildRangeKey,
 	getContiguousRangeEnd,
 	getHeadPreviewRange,
+	getNextSequentialRange,
 	getPlayheadWindowRange,
 	getTailFallbackRange,
+	intersectByteRanges,
 	subtractByteRanges,
 } from './resourceTransferScheduler'
 
@@ -25,5 +27,11 @@ describe('resource transfer scheduler', () => {
 		expect(subtractByteRanges([[0, 32]], [[0, 8], [16, 24]])).toEqual([[8, 16], [24, 32]])
 		expect(getContiguousRangeEnd([[16, 24], [0, 8], [8, 16]])).toBe(24)
 		expect(buildRangeKey([24, 40])).toBe('24:40')
+	})
+
+	it('intersects loaded ranges and bounds sequential fetches to one chunk', () => {
+		expect(intersectByteRanges([[0, 8], [16, 24], [24, 32]], [4, 28])).toEqual([[4, 8], [16, 28]])
+		expect(getNextSequentialRange({ totalSize: 40, loadedRanges: [[0, 8]], chunkSize: 8 })).toEqual([8, 16])
+		expect(getNextSequentialRange({ totalSize: 40, loadedRanges: [[0, 40]], chunkSize: 8 })).toBeNull()
 	})
 })
