@@ -115,12 +115,15 @@ const waitForRole = async (peer: PeerHandle, role: 'server' | 'client'): Promise
 		.toBe(role)
 }
 
-const waitForPartialTransfer = async (page: Page): Promise<void> => {
+const waitForProgressBeforeOrAtReady = async (page: Page): Promise<void> => {
 	await expect
 		.poll(
 			async () => {
 				const transfers = await getTransfers(page)
-				return transfers.some((t) => t.status === 'partial' && t.progress > 0 && t.progress < 1)
+				return transfers.some((t) =>
+					(t.status === 'partial' && t.progress > 0 && t.progress < 1)
+					|| (t.status === 'ready' && t.progress === 1 && t.loadedBytes > 0),
+				)
 			},
 			{ timeout: 60_000 },
 		)
@@ -245,8 +248,8 @@ for (const direction of directions) {
 			// Import the 3 MB fixture on the main (server) peer.
 			await mainPeer.page.getByLabel('Import media files').setInputFiles(fixture3mb)
 
-			// --- Verify partial progress (proves bytes are flowing, not stuck at 0%) ---
-			await waitForPartialTransfer(clientPeer.page)
+			// --- Verify progress moves off zero, even if the transfer reaches ready quickly ---
+			await waitForProgressBeforeOrAtReady(clientPeer.page)
 
 			// --- Verify full transfer completes with no errors ---
 			await waitForReadyTransfer(clientPeer.page)
