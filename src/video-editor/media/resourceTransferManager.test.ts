@@ -401,6 +401,66 @@ describe('resource transfer manager', () => {
 		server.destroy()
 	})
 
+	it('waits for owner registration before serving requests for a freshly imported p2p resource', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const server = createResourceTransferManager({
+			getRole: () => 'server',
+			getPeerId: () => 'peer-a',
+			chunkSize: 8,
+		})
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		server.attachServerTransport('peer-b', serverTransport)
+		client.attachClientTransport(clientTransport)
+
+		const snapshot = createRegistryWithResource('res-client-owned', {
+			size: 24,
+			duration: 8,
+			name: 'Client owned clip',
+			source: { kind: 'p2p', ownerPeerId: 'peer-b' },
+		})
+		server.syncRegistry(snapshot)
+		client.syncRegistry(snapshot)
+
+		await waitFor(() => {
+			expect(server.getTransfer('res-client-owned')).toMatchObject({
+				status: 'requesting',
+				loadedBytes: 0,
+			})
+		})
+
+		const blob = new Blob(['abcdefghijklmnopqrstuvwx'], { type: 'video/webm' })
+		client.registerLocalResource('res-client-owned', blob, {
+			objectUrl: 'blob:client-owned',
+			kind: 'video',
+			mime: 'video/webm',
+			duration: 8,
+			size: blob.size,
+			chunkSize: 8,
+			ownerPeerId: 'peer-b',
+			sourceKind: 'p2p',
+			fallbackUrl: '',
+			name: 'Client owned clip',
+		})
+
+		await waitFor(() => {
+			expect(server.getTransfer('res-client-owned')).toMatchObject({
+				status: 'ready',
+				loadedBytes: blob.size,
+				progress: 1,
+				lastError: null,
+			})
+		})
+
+		server.destroy()
+		client.destroy()
+	})
+
 	it('requests missing ranges again after an incomplete chunk-complete signal', async () => {
 		const [serverTransport, clientTransport] = createTransportPair()
 		const requests = parseRequestMessages(serverTransport)

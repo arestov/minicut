@@ -156,8 +156,11 @@ export const VideoEditorHarnessApp = ({
 			getResourceTransfers: () => Object.values(ownedHarness.resourceTransfers$.get()).map((transfer) => ({
 				resourceId: transfer.resourceId,
 				name: transfer.name,
+				ownerPeerId: transfer.ownerPeerId,
 				status: transfer.status,
 				progress: transfer.progress,
+				totalBytes: transfer.totalBytes,
+				loadedBytes: transfer.loadedBytes,
 				previewUrl: transfer.previewUrl,
 				loadedRanges: transfer.loadedRanges,
 				requestedRanges: transfer.requestedRanges,
@@ -165,6 +168,7 @@ export const VideoEditorHarnessApp = ({
 				requestEvents: transfer.requestEvents,
 				mode: transfer.mode,
 				availability: transfer.availability,
+				lastError: transfer.lastError,
 			})),
 			getProjectTitles: () => {
 				const registry = ownedHarness.projects$.get()

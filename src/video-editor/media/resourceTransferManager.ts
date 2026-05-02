@@ -238,6 +238,7 @@ export const createResourceTransferManager = (
 	const resourceSnapshots = new Map<string, ResourceSnapshot>()
 	const transports = new Map<string, AttachedTransport>()
 	const peerServeQueues = new Map<string, Promise<void>>()
+	const pendingOwnerRequests = new Map<string, Array<{ peerKey: string, request: RequestMessage }>>()
 	let destroyed = false
 
 	const clearRetryTimeout = (state: RemoteResourceState): void => {
@@ -297,6 +298,38 @@ export const createResourceTransferManager = (
 				}
 			})
 		peerServeQueues.set(peerKey, queued)
+	}
+
+	const sendResourceError = (peerKey: string, resourceId: string, error: unknown): void => {
+		sendControl(peerKey, {
+			type: 'resource-error',
+			resourceId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+
+	const queuePendingOwnerRequest = (resourceId: string, peerKey: string, request: RequestMessage): void => {
+		const pending = pendingOwnerRequests.get(resourceId) ?? []
+		pending.push({ peerKey, request })
+		pendingOwnerRequests.set(resourceId, pending)
+	}
+
+	const flushPendingOwnerRequests = (resourceId: string, resource: LocalResourceEntry): void => {
+		const pending = pendingOwnerRequests.get(resourceId)
+		if (!pending || pending.length === 0) {
+			return
+		}
+
+		pendingOwnerRequests.delete(resourceId)
+		for (const { peerKey, request } of pending) {
+			enqueuePeerServe(peerKey, async () => {
+				try {
+					await serveLocalBlobRanges(peerKey, resource, request.ranges, request.reason)
+				} catch (error) {
+					sendResourceError(peerKey, request.resourceId, error)
+				}
+			})
+		}
 	}
 
 	const evictRemoteState = (state: RemoteResourceState): void => {
@@ -774,23 +807,20 @@ export const createResourceTransferManager = (
 				try {
 					await serveLocalBlobRanges(peerKey, local, message.ranges, message.reason)
 				} catch (error) {
-					sendControl(peerKey, {
-						type: 'resource-error',
-						resourceId: message.resourceId,
-						error: error instanceof Error ? error.message : String(error),
-					})
+					sendResourceError(peerKey, message.resourceId, error)
 				}
 			})
 			return
 		}
 
 		const state = remoteStates.get(message.resourceId)
+		if (state && state.sourceKind === 'p2p' && state.ownerPeerId === options.getPeerId()) {
+			queuePendingOwnerRequest(message.resourceId, peerKey, message)
+			return
+		}
+
 		if (!state) {
-			sendControl(peerKey, {
-				type: 'resource-error',
-				resourceId: message.resourceId,
-				error: 'Unknown resource',
-			})
+			sendResourceError(peerKey, message.resourceId, 'Unknown resource')
 			return
 		}
 
@@ -798,11 +828,7 @@ export const createResourceTransferManager = (
 			try {
 				await serveMirroredRanges(peerKey, state, message.ranges, message.reason)
 			} catch (error) {
-				sendControl(peerKey, {
-					type: 'resource-error',
-					resourceId: message.resourceId,
-					error: error instanceof Error ? error.message : String(error),
-				})
+				sendResourceError(peerKey, message.resourceId, error)
 			}
 		})
 
@@ -945,7 +971,11 @@ export const createResourceTransferManager = (
 				fallbackUrl: snapshot.fallbackUrl,
 				name: snapshot.name,
 			})
+			const local = localResources.get(resourceId)
 			remoteStates.delete(resourceId)
+			if (local) {
+				flushPendingOwnerRequests(resourceId, local)
+			}
 			updateTransferView(resourceId)
 		},
 
@@ -1058,6 +1088,7 @@ export const createResourceTransferManager = (
 			localResources.clear()
 			remoteStates.clear()
 			resourceSnapshots.clear()
+			pendingOwnerRequests.clear()
 		},
 	}
 }
