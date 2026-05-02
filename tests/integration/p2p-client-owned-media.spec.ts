@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
 
 const buildRoomUrl = (roomId: string, params: Record<string, string | number> = {}): string => {
@@ -65,61 +67,11 @@ const getTransfers = async (page: Page): Promise<DebugTransfer[]> => {
 	return state?.transfers ?? []
 }
 
-const createLargeVideoFile = async (
-	page: Page,
-): Promise<{ name: string; mimeType: string; buffer: Buffer }> => {
-	const result = await page.evaluate(async () => {
-		const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8', 'video/webm']
-			.find((candidate) => MediaRecorder.isTypeSupported(candidate))
-		if (!mimeType) {
-			throw new Error('MediaRecorder WebM is not supported in this browser')
-		}
-
-		const canvas = document.createElement('canvas')
-		canvas.width = 640
-		canvas.height = 360
-		const context = canvas.getContext('2d')
-		if (!context) {
-			throw new Error('Unable to create video fixture canvas')
-		}
-		const stream = canvas.captureStream(12)
-		const chunks: BlobPart[] = []
-		const recorder = new MediaRecorder(stream, {
-			mimeType,
-			videoBitsPerSecond: 3_000_000,
-			audioBitsPerSecond: 128_000,
-		})
-		const stopped = new Promise<void>((resolve, reject) => {
-			recorder.addEventListener('dataavailable', (event) => {
-				if (event.data.size > 0) {
-					chunks.push(event.data)
-				}
-			})
-			recorder.addEventListener('stop', () => resolve())
-			recorder.addEventListener('error', () => reject(recorder.error ?? new Error('Fixture recorder failed')))
-		})
-
-		recorder.start(250)
-		for (let frame = 0; frame < 36; frame += 1) {
-			context.fillStyle = frame % 2 === 0 ? '#1d4ed8' : '#ea580c'
-			context.fillRect(0, 0, canvas.width, canvas.height)
-			context.fillStyle = '#ffffff'
-			context.font = 'bold 72px sans-serif'
-			context.fillText(`C${frame}`, 32 + (frame % 6) * 24, 180 + (frame % 4) * 12)
-			await new Promise((resolve) => setTimeout(resolve, 120))
-		}
-		recorder.stop()
-		for (const track of stream.getTracks()) {
-			track.stop()
-		}
-		await stopped
-
-		const blob = new Blob(chunks, { type: recorder.mimeType || mimeType })
-		return { mimeType: blob.type || 'video/webm', bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) }
-	})
-
-	return { name: 'client-owned-fixture.webm', mimeType: result.mimeType, buffer: Buffer.from(result.bytes) }
-}
+const createLargeVideoFile = async (): Promise<{ name: string; mimeType: string; buffer: Buffer }> => ({
+	name: 'fixture-video.webm',
+	mimeType: 'video/webm',
+	buffer: await readFile(path.resolve('tests/fixtures/media/fixture-video.webm')),
+})
 
 const openPeer = async (browser: Browser, roomUrl: string): Promise<PeerHandle> => {
 	const context = await browser.newContext()
@@ -141,9 +93,9 @@ const waitForTwoPeerRoles = async (first: Page, second: Page): Promise<void> => 
 test('client-owned media imports transfer to main without sticking in error', async ({ browser }) => {
 	const roomId = `p2p-client-owned-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	const roomUrl = buildRoomUrl(roomId, {
-		transferChunkSize: 16384,
+		transferChunkSize: 512,
 		transferChunkDelayMs: 250,
-		transferHeadBytes: 16384,
+		transferHeadBytes: 512,
 		transferPlayheadWindowSeconds: 0.5,
 	})
 	const first = await openPeer(browser, roomUrl)
@@ -152,7 +104,7 @@ test('client-owned media imports transfer to main without sticking in error', as
 	await waitForTwoPeerRoles(first.page, second.page)
 	const serverPeer = await getRole(first.page) === 'server' ? first : second
 	const clientPeer = serverPeer === first ? second : first
-	const generatedVideo = await createLargeVideoFile(clientPeer.page)
+	const generatedVideo = await createLargeVideoFile()
 
 	await clientPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
 
@@ -180,9 +132,9 @@ test('client-owned media imports transfer to main without sticking in error', as
 test('main relays a client-owned resource to a late joiner after the owner disconnects', async ({ browser }) => {
 	const roomId = `p2p-client-owned-relay-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	const roomUrl = buildRoomUrl(roomId, {
-		transferChunkSize: 16384,
+		transferChunkSize: 512,
 		transferChunkDelayMs: 250,
-		transferHeadBytes: 16384,
+		transferHeadBytes: 512,
 		transferPlayheadWindowSeconds: 0.5,
 	})
 	const first = await openPeer(browser, roomUrl)
@@ -191,7 +143,7 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 	await waitForTwoPeerRoles(first.page, second.page)
 	const serverPeer = await getRole(first.page) === 'server' ? first : second
 	const ownerPeer = serverPeer === first ? second : first
-	const generatedVideo = await createLargeVideoFile(ownerPeer.page)
+	const generatedVideo = await createLargeVideoFile()
 
 	await ownerPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
 
