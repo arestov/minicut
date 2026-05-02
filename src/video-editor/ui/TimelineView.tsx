@@ -322,9 +322,23 @@ export const TimelineView = observer(() => {
 						data-snapping={snappingEnabled ? 'on' : 'off'}
 						style={{ '--ve-track-count': tracks.length } as CSSProperties}
 					>
+						<div className="ve-timeline-sticky-row">
+							<div className="ve-timeline-label-spacer" aria-hidden="true" />
+							<div className="ve-timeline-ruler-row">
+								<div className="ve-timeline-ruler" aria-label="Time ruler">
+									{timelineTicks.map((tick) => (
+										<span
+											key={tick}
+											style={{ left: `${tick * timelineZoom}px` }}
+										>
+											{tick}s
+										</span>
+									))}
+								</div>
+							</div>
+						</div>
 						<div className="ve-timeline-grid">
 							<div className="ve-track-label-column">
-								<div className="ve-timeline-label-spacer" />
 								<div className="ve-track-label-list">
 									{trackIds$ ? (
 										<For each={trackIds$} optimized item={TrackLabelListItem} />
@@ -367,16 +381,6 @@ export const TimelineView = observer(() => {
 								}}
 							>
 								<div className="ve-track-lane-column">
-									<div className="ve-timeline-ruler" aria-label="Time ruler">
-										{timelineTicks.map((tick) => (
-											<span
-												key={tick}
-												style={{ left: `${tick * timelineZoom}px` }}
-											>
-												{tick}s
-											</span>
-										))}
-									</div>
 									<TimelinePlayhead timelineZoom={timelineZoom} />
 									<div className="ve-track-lane-list">
 										{trackIds$ ? (

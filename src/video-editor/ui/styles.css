@@ -626,6 +626,22 @@ button:disabled {
 	padding-right: 2px;
 }
 
+.ve-timeline-sticky-row {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	display: grid;
+	grid-template-columns: 167px minmax(0, 1fr);
+	align-items: start;
+	padding-bottom: 12px;
+	background: var(--ve-background);
+}
+
+.ve-timeline-ruler-row {
+	min-width: 0;
+	overflow: hidden;
+}
+
 .ve-timeline-grid {
 	display: grid;
 	grid-template-columns: 167px minmax(0, 1fr);
@@ -676,6 +692,8 @@ button:disabled {
 
 .ve-timeline-label-spacer {
 	height: 28px;
+	width: 167px;
+	padding-right: 10px;
 }
 
 .ve-timeline-scroll-area,
