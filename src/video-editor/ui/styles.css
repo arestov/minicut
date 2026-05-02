@@ -542,6 +542,34 @@ button:disabled {
 	margin-right: 2px;
 }
 
+.ve-timeline-tool-mode .ve-button {
+	outline: 1px solid transparent;
+	outline-offset: 0;
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease,
+		box-shadow 0.18s ease,
+		color 0.15s ease,
+		outline-color 0.18s ease,
+		outline-offset 0.18s ease,
+		outline-width 0.18s ease;
+}
+
+.ve-timeline-tool-mode .ve-button[aria-pressed='true'] {
+	border-color: rgba(37, 99, 235, 0.7);
+	outline: 2px solid rgba(37, 99, 235, 0.22);
+	outline-offset: 2px;
+	box-shadow:
+		0 0 0 4px rgba(37, 99, 235, 0.08),
+		0 0 14px rgba(37, 99, 235, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ve-timeline-tool-mode .ve-button {
+		transition: none;
+	}
+}
+
 .ve-timeline__tools span {
 	color: #52525b;
 	font-size: 13px;
