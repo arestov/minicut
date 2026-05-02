@@ -296,6 +296,25 @@ export const createPageP2PManager = (
 	): P2PRawTransportLike => {
 		const listeners = new Set<(data: string | ArrayBuffer) => void>()
 		let transportDestroyed = false
+		let deliveryQueue = Promise.resolve()
+
+		const enqueueDelivery = (deliver: () => void | Promise<void>): void => {
+			deliveryQueue = deliveryQueue
+				.then(async () => {
+					if (transportDestroyed) {
+						return
+					}
+
+					await deliver()
+				})
+				.catch(() => undefined)
+		}
+
+		const notifyListeners = (payload: string | ArrayBuffer): void => {
+			for (const listener of listeners) {
+				listener(payload)
+			}
+		}
 
 		dc.onmessage = (event) => {
 			if (transportDestroyed) {
@@ -304,25 +323,35 @@ export const createPageP2PManager = (
 
 			const data = event.data
 			if (typeof data === 'string') {
-				for (const listener of listeners) {
-					listener(data)
-				}
+				enqueueDelivery(() => {
+					notifyListeners(data)
+				})
 				return
 			}
 
 			if (data instanceof ArrayBuffer) {
-				for (const listener of listeners) {
-					listener(data)
-				}
+				enqueueDelivery(() => {
+					notifyListeners(data)
+				})
 				return
 			}
 
 			if (ArrayBuffer.isView(data)) {
 				const view = data as ArrayBufferView
 				const normalized = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
-				for (const listener of listeners) {
-					listener(normalized)
-				}
+				enqueueDelivery(() => {
+					notifyListeners(normalized)
+				})
+				return
+			}
+
+			if (typeof Blob !== 'undefined' && data instanceof Blob) {
+				enqueueDelivery(async () => {
+					const normalized = await data.arrayBuffer()
+					if (!transportDestroyed) {
+						notifyListeners(normalized)
+					}
+				})
 			}
 		}
 

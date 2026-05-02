@@ -13,13 +13,18 @@ const flushMicrotasks = async (count = 4): Promise<void> => {
 
 class MockDataChannel {
 	readyState = 'connecting'
-	sent: string[] = []
+	label: string
+	sent: unknown[] = []
 	onopen: Handler | null = null
 	onclose: Handler | null = null
 	onerror: Handler | null = null
 	onmessage: Handler | null = null
 
-	send(data: string): void {
+	constructor(label = 'minicut-authority') {
+		this.label = label
+	}
+
+	send(data: unknown): void {
 		this.sent.push(data)
 	}
 
@@ -40,6 +45,10 @@ class MockDataChannel {
 	simulateMessage(data: unknown): void {
 		this.onmessage?.({ data: JSON.stringify(data) })
 	}
+
+	simulateRawMessage(data: unknown): void {
+		this.onmessage?.({ data })
+	}
 }
 
 class MockRTCPeerConnection {
@@ -56,14 +65,14 @@ class MockRTCPeerConnection {
 		MockRTCPeerConnection.instances.push(this)
 	}
 
-	createDataChannel(): RTCDataChannel {
-		const dc = new MockDataChannel()
+	createDataChannel(label?: string): RTCDataChannel {
+		const dc = new MockDataChannel(label)
 		this.createdChannels.push(dc)
 		return dc as unknown as RTCDataChannel
 	}
 
-	simulateDataChannel(): MockDataChannel {
-		const dc = new MockDataChannel()
+	simulateDataChannel(label = 'minicut-authority'): MockDataChannel {
+		const dc = new MockDataChannel(label)
 		this.ondatachannel?.({ channel: dc })
 		return dc
 	}
@@ -285,6 +294,48 @@ describe('PageP2PManager', () => {
 
 		dc.simulateClose()
 		expect(events.onSessionLost).toHaveBeenCalledWith('server-gone')
+
+		manager.destroy()
+	})
+
+	test('normalizes blob frames on the client resource transport without losing message order', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onClientResourceTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		await Promise.resolve()
+		const resourceDc = MockRTCPeerConnection.instances[0].createdChannels[1]
+		resourceDc.simulateOpen()
+
+		expect(events.onClientResourceTransport).toHaveBeenCalledTimes(1)
+		const transport = events.onClientResourceTransport.mock.calls[0][0]
+		const received: Array<string | ArrayBuffer> = []
+		transport.listen((payload: string | ArrayBuffer) => {
+			received.push(payload)
+		})
+
+		resourceDc.simulateRawMessage('meta')
+		resourceDc.simulateRawMessage(new Blob([new Uint8Array([1, 2, 3])]))
+		resourceDc.simulateRawMessage(new Uint8Array([4, 5, 6]))
+		await vi.waitFor(() => {
+			expect(received).toHaveLength(3)
+		})
+
+		expect(received[0]).toBe('meta')
+		expect(Array.from(new Uint8Array(received[1] as ArrayBuffer))).toEqual([1, 2, 3])
+		expect(Array.from(new Uint8Array(received[2] as ArrayBuffer))).toEqual([4, 5, 6])
 
 		manager.destroy()
 	})
