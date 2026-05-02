@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
 	renderPreviewStructureAtCursor,
 	type PreviewStructure,
@@ -21,6 +21,13 @@ interface RendererStageProps {
 	structure: PreviewStructure
 	cursor: number
 	isPlaying: boolean
+}
+
+interface PreviewFrame {
+	cursor: number
+	renderedClips: RenderedClip[]
+	visualRenderedClips: RenderedClip[]
+	audioRenderedClips: RenderedClip[]
 }
 
 interface PreviewCanvasClipSource {
@@ -143,21 +150,25 @@ const seekMediaElement = (
 	return false
 }
 
-export const RendererStage = ({ structure, cursor, isPlaying }: RendererStageProps) => {
+const usePreviewFrame = (structure: PreviewStructure, cursor: number): PreviewFrame =>
+	useMemo(() => {
+		const renderedClips = renderPreviewStructureAtCursor(structure, cursor)
+		return {
+			cursor,
+			renderedClips,
+			visualRenderedClips: renderedClips.filter((clip) => clip.resourceKind !== 'audio'),
+			audioRenderedClips: renderedClips.filter((clip) => clip.resourceKind === 'audio'),
+		}
+	}, [structure, cursor])
+
+const usePreviewCanvasRenderer = (
+	structure: PreviewStructure,
+	frame: PreviewFrame,
+): { canvasRef: MutableRefObject<HTMLCanvasElement | null>; renderMode: 'offscreen' | 'fallback' } => {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null)
 	const workerRef = useRef<Worker | null>(null)
 	const canvasSizeRef = useRef<CanvasSize>(fallbackCanvasSize)
-	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
-	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
-	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>(
-		'fallback',
-	)
-	const renderedClips = useMemo(
-		() => renderPreviewStructureAtCursor(structure, cursor),
-		[structure, cursor],
-	)
-	const visualRenderedClips = renderedClips.filter((clip) => clip.resourceKind !== 'audio')
-	const audioRenderedClips = renderedClips.filter((clip) => clip.resourceKind === 'audio')
+	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>('fallback')
 
 	useEffect(() => {
 		const canvas = canvasRef.current
@@ -198,14 +209,13 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 			return
 		}
 
-		const frameClips = renderPreviewStructureAtCursor(structure, cursor)
 		if (workerRef.current) {
 			const { width, height } = canvasSizeRef.current
 			workerRef.current.postMessage({
 				type: 'render',
 				width,
 				height,
-				cursor,
+				cursor: frame.cursor,
 			})
 			return
 		}
@@ -215,12 +225,21 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 		}
 
 		setRenderMode('fallback')
-		drawFallbackPreview(canvas, canvasSizeRef.current, cursor, frameClips)
-	}, [cursor, structure])
+		drawFallbackPreview(canvas, canvasSizeRef.current, frame.cursor, frame.renderedClips)
+	}, [frame])
 
+	return { canvasRef, renderMode }
+}
+
+const useMediaElementSync = (
+	mediaElementsRef: MutableRefObject<Map<string, HTMLMediaElement>>,
+	mediaSeekStateRef: MutableRefObject<Map<string, MediaSeekState>>,
+	frame: PreviewFrame,
+	isPlaying: boolean,
+): void => {
 	useEffect(() => {
 		const now = performance.now()
-		for (const clip of renderPreviewStructureAtCursor(structure, cursor)) {
+		for (const clip of frame.renderedClips) {
 			if (clip.resourceKind !== 'video' && clip.resourceKind !== 'audio') {
 				continue
 			}
@@ -230,7 +249,7 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 				continue
 			}
 
-			const localTime = getClipLocalMediaTime(clip, cursor)
+			const localTime = getClipLocalMediaTime(clip, frame.cursor)
 			const seekState = mediaSeekStateRef.current.get(clip.id) ?? {
 				lastSeekAt: 0,
 				wasPlaying: false,
@@ -252,7 +271,15 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 			element.dataset.pan = String(clip.audio.pan)
 			syncMediaPlayback(element, isPlaying)
 		}
-	}, [cursor, isPlaying, structure])
+	}, [frame, isPlaying, mediaElementsRef, mediaSeekStateRef])
+}
+
+export const RendererStage = ({ structure, cursor, isPlaying }: RendererStageProps) => {
+	const frame = usePreviewFrame(structure, cursor)
+	const { canvasRef, renderMode } = usePreviewCanvasRenderer(structure, frame)
+	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
+	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
+	useMediaElementSync(mediaElementsRef, mediaSeekStateRef, frame, isPlaying)
 
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">
@@ -263,10 +290,10 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 					aria-label="Offscreen preview canvas"
 					data-render-mode={renderMode}
 				/>
-				{visualRenderedClips.length === 0 ? (
+				{frame.visualRenderedClips.length === 0 ? (
 					<div className="ve-renderer__empty">No frame at cursor</div>
 				) : (
-					visualRenderedClips.map((clip) => {
+					frame.visualRenderedClips.map((clip) => {
 						const hasMedia = isRealMediaUrl(clip.resourceUrl)
 						return (
 							<div
@@ -300,7 +327,7 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 										onLoadedMetadata={(event) =>
 											seekMediaElement(
 												event.currentTarget,
-												getClipLocalMediaTime(clip, cursor),
+												getClipLocalMediaTime(clip, frame.cursor),
 											)
 										}
 									/>
@@ -316,7 +343,7 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 					})
 				)}
 				<div className="ve-renderer__audio-elements" aria-hidden="true">
-					{audioRenderedClips.map((clip) =>
+					{frame.audioRenderedClips.map((clip) =>
 						isRealMediaUrl(clip.resourceUrl) ? (
 							<audio
 								key={clip.id}
@@ -336,7 +363,7 @@ export const RendererStage = ({ structure, cursor, isPlaying }: RendererStagePro
 								onLoadedMetadata={(event) =>
 									seekMediaElement(
 										event.currentTarget,
-										getClipLocalMediaTime(clip, cursor),
+										getClipLocalMediaTime(clip, frame.cursor),
 									)
 								}
 							/>
