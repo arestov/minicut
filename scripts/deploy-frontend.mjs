@@ -23,8 +23,31 @@ if (process.env.MINICUT_TURN_CREDENTIAL || process.env.VITE_MINICUT_TURN_CREDENT
 	buildEnv.VITE_MINICUT_TURN_CREDENTIAL = process.env.VITE_MINICUT_TURN_CREDENTIAL || process.env.MINICUT_TURN_CREDENTIAL || ''
 }
 
-const run = (command, args, env = {}) => new Promise((resolve, reject) => {
-	const child = spawn(command, args, {
+const quoteWindowsArg = (value) => {
+	const text = String(value)
+	if (!/[\s"^&|<>]/.test(text)) {
+		return text
+	}
+
+	return `"${text.replaceAll('"', '\\"')}"`
+}
+
+const spawnProcess = (command, args, env = {}) => {
+	if (process.platform === 'win32') {
+		const quoted = [command, ...args]
+			.map((value, index) => (index === 0 ? String(value) : quoteWindowsArg(value)))
+			.join(' ')
+
+		return spawn('cmd.exe', ['/d', '/s', '/c', quoted], {
+			stdio: 'inherit',
+			env: {
+				...buildEnv,
+				...env,
+			},
+		})
+	}
+
+	return spawn(command, args, {
 		stdio: 'inherit',
 		shell: false,
 		env: {
@@ -32,6 +55,10 @@ const run = (command, args, env = {}) => new Promise((resolve, reject) => {
 			...env,
 		},
 	})
+}
+
+const run = (command, args, env = {}) => new Promise((resolve, reject) => {
+	const child = spawnProcess(command, args, env)
 
 	child.on('error', reject)
 	child.on('exit', (code, signal) => {
