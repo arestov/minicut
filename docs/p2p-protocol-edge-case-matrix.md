@@ -61,14 +61,14 @@ Legend:
 | DO-01 | Durable Object hibernation wake-up | Peer map and leader metadata restored from attachments | `backend/src/do/SignalingRoom.ts` | `backend/test/signaling-room.test.ts` (`survives hibernation and reconstructs state`) | Closed |
 | DO-02 | Leader disconnects | New leader selected by earliest `joinedAt`, epoch incremented | `backend/src/do/SignalingRoom.ts` | `backend/test/signaling-room.test.ts` (`leader leaving triggers leader-changed`) | Closed |
 | DO-03 | `server-leaving` control message | Relayed to all peers except sender | `backend/src/do/SignalingRoom.ts` | `backend/test/signaling-room.test.ts` (`relays server-leaving to all other peers`) | Closed |
+| DO-04 | Spoofed `from` sender in relayed signaling message | Backend validates that payload sender matches WebSocket owner before relaying | `backend/src/do/SignalingRoom.ts` | `backend/test/signaling-room.test.ts` (`ignores spoofed server-leaving sender ids`) | Closed |
 | E2E-01 | Two-peer real WebRTC state convergence | Both peers converge project count after mutation | End-to-end room path | `tests/integration/p2p-state-sync.spec.ts` | Closed |
-| E2E-02 | Failover + late joiner convergence | Remaining peer becomes server; late joiner syncs snapshot | End-to-end room path | `tests/integration/p2p-failover.spec.ts` | Closed |
+| E2E-02 | Failover + late joiner convergence | Remaining peer becomes server; late joiner syncs snapshot and named projects | End-to-end room path | `tests/integration/p2p-failover.spec.ts` | Closed |
 | OPS-01 | Integration tests require local backend and frontend | Playwright `webServer` starts both wrangler and vite automatically | `playwright.config.js` | Verified by successful Playwright run with webServer boot logs | Closed |
-| NET-01 | Symmetric NAT / firewall traversal | Only STUN configured by default; TURN not configured | `src/video-editor/p2p/PageP2PManager.ts` | Not covered | Open |
-| E2E-03 | Multi-failover with 3+ peers | Not explicitly covered in browser tests | N/A | Not covered | Open |
+| NET-01 | Symmetric NAT / firewall traversal | Default RTC config supports optional TURN relay injection alongside STUN; deployment must provide relay credentials | `src/video-editor/p2p/PageP2PManager.ts`, `src/video-editor/app/VideoEditorHarnessApp.tsx` | `PageP2PManager.test.ts` (`includes TURN relay in default rtc config when provided`) | Closed |
+| E2E-03 | Multi-failover with 3+ peers | Two consecutive leader failovers are validated across three browser peers | End-to-end room path | `tests/integration/p2p-failover.spec.ts` (`p2p survives two consecutive leader failovers across three peers`) | Closed |
 
 ## Recommended Next Additions
 
-1. Add TURN credentials/config injection and an integration test gate for TURN-enabled connectivity.
-2. Add a three-peer failover test sequence (`A=leader`, `A leaves`, `B=leader`, `B leaves`, `C survives`).
-3. Add an explicit test asserting room-scope worker isolation by opening two rooms in one browser process and validating no cross-room patch propagation.
+1. Provide production TURN credentials through `VITE_MINICUT_TURN_URLS`, `VITE_MINICUT_TURN_USERNAME`, and `VITE_MINICUT_TURN_CREDENTIAL` or equivalent query params in deployed environments.
+2. Add an explicit test asserting room-scope worker isolation by opening two rooms in one browser process and validating no cross-room patch propagation.
