@@ -605,6 +605,7 @@ button:disabled {
 		linear-gradient(90deg, rgba(39, 39, 42, 0.08) 1px, transparent 1px) 0 0 / 56px 100%,
 		#fafafa;
 	border: 1px solid #ececef;
+	transition: box-shadow 0.18s ease;
 }
 
 .ve-timeline-ruler span {
@@ -634,7 +635,14 @@ button:disabled {
 	grid-template-columns: 167px minmax(0, 1fr);
 	align-items: start;
 	padding-bottom: 12px;
-	background: var(--ve-background);
+	container-type: scroll-state;
+	container-name: timeline-sticky-row;
+}
+
+@container timeline-sticky-row scroll-state(stuck: top) {
+	.ve-timeline-ruler {
+		box-shadow: 0 8px 20px rgba(24, 24, 27, 0.14);
+	}
 }
 
 .ve-timeline-ruler-row {
