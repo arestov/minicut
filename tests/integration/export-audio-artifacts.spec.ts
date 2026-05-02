@@ -294,6 +294,13 @@ const expectAnalyzableExport = async (filePath: string): Promise<void> => {
 	expect(analysis.peak).toBeLessThanOrEqual(1)
 }
 
+const expectWebmContainerMarkers = (bytes: Buffer): void => {
+	expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
+	expect(bytes.includes(Buffer.from('webm'))).toBe(true)
+	expect(bytes.includes(Buffer.from('V_VP8')) || bytes.includes(Buffer.from('V_VP9'))).toBe(true)
+	expect(bytes.includes(Buffer.from('A_OPUS')) || bytes.includes(Buffer.from('A_VORBIS'))).toBe(true)
+}
+
 test.describe('exported audio artifacts', () => {
 	test.describe.configure({ timeout: 120_000 })
 
@@ -970,6 +977,59 @@ test.describe('exported audio artifacts', () => {
 			const [redChannel, greenChannel, blueChannel] = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
 			expect(redChannel).toBeGreaterThan(blueChannel + 20)
 			expect(greenChannel).toBeGreaterThan(blueChannel + 10)
+		})
+	})
+
+	test.describe('MediaRecorder fallback file inspection', () => {
+		test.beforeEach(async ({ page }) => {
+			await forceMediaRecorderFallback(page, { removeRequestFrame: true })
+		})
+
+		test('writes an inspectable WebM with video, audio, duration, and seekable frames', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const imageFile = await createSolidPngFile(page, 'fallback-inspect-green.png', '#16a34a')
+			const audioFile = createToneWavFile({
+				name: 'fallback-inspect-tone.wav',
+				durationSeconds: 1,
+				segments: [{ start: 0, end: 1, frequency: 440 }],
+			})
+			await importMediaFiles(page, [imageFile, audioFile])
+			await addResourceToTimeline(page, audioFile.name)
+
+			const exportPath = await exportProject(page)
+			const bytes = await readFile(exportPath)
+			expect(bytes.length).toBeGreaterThan(10_000)
+			expectWebmContainerMarkers(bytes)
+
+			const media = await probeMedia(exportPath)
+			expect(media.formatDuration).toBeGreaterThan(0.8)
+			expect(media.formatDuration).toBeLessThan(1.6)
+			expect(media.videoStreams).toHaveLength(1)
+			expect(media.audioStreams).toHaveLength(1)
+			expect(media.videoStreams[0]).toMatchObject({ width: 1920, height: 1080 })
+			expect(media.videoStreams[0].codecName).toMatch(/^vp[89]$/)
+			expect(media.audioStreams[0].codecName).toMatch(/^(opus|vorbis)$/)
+			expect(media.audioStreams[0].channels).toBeGreaterThan(0)
+			expect(media.audioStreams[0].sampleRate).toBeGreaterThan(0)
+
+			const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
+			expect(analysis.duration).toBeGreaterThan(0.8)
+			expect(analysis.duration).toBeLessThan(1.6)
+			expect(analysis.rms).toBeGreaterThan(0.001)
+			expect(analysis.peak).toBeLessThanOrEqual(1)
+			expectToneEnergy(samples, { channels: 2, sampleRate: 48_000, frequency: 440, start: 0.1, end: 0.9 })
+
+			const earlyFrame = await sampleVideoFrameRgba(exportPath, { time: 0.1 })
+			const lateFrame = await sampleVideoFrameRgba(exportPath, { time: 0.85 })
+			for (const frame of [earlyFrame, lateFrame]) {
+				const [red, green, blue, alpha] = frame
+				expect(alpha).toBe(255)
+				expect(green).toBeGreaterThan(90)
+				expect(green).toBeGreaterThan(red + 20)
+				expect(green).toBeGreaterThan(blue + 20)
+			}
 		})
 	})
 })
