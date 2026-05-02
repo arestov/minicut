@@ -29,6 +29,14 @@ export interface ExportFrameSample {
 	operations: ClipFrameOperation[]
 }
 
+export type ExportBackend = 'manifest' | 'webcodecs' | 'media-recorder'
+
+export interface ExportDiagnostics {
+	backend: ExportBackend
+	fallbackReason?: string
+	resolvedClipIds: string[]
+}
+
 export interface ExportManifest {
 	format: ExportFormat
 	projectId: string
@@ -39,6 +47,7 @@ export interface ExportManifest {
 	frameCount: number
 	clips: EditframeClip[]
 	frames: ExportFrameSample[]
+	diagnostics?: ExportDiagnostics
 }
 
 export interface ExportRenderResult {
@@ -51,6 +60,7 @@ export interface ExportRenderResult {
 	frameCount: number
 	manifest: ExportManifest
 	downloadUrl?: string
+	diagnostics?: ExportDiagnostics
 }
 
 export interface ExportRenderer {
@@ -141,6 +151,16 @@ interface WebCodecsAudioConfig {
 	muxerCodec: 'A_OPUS'
 }
 
+interface ResolvedExportRange {
+	start: number
+	duration: number
+	clipIds: Set<string> | null
+}
+
+type WebCodecsRenderAttempt =
+	| { blob: Blob; fallbackReason?: undefined }
+	| { blob: null; fallbackReason: string }
+
 const sanitizeFileNamePart = (value: string): string =>
 	value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'export'
 
@@ -171,20 +191,84 @@ const getExportBounds = (registry: ProjectRegistry, projectId: string, range: Ex
 	return { start: attrs.start, duration: attrs.duration }
 }
 
+const getLinkedClipIds = (registry: ProjectRegistry, clipId: string): string[] => {
+	const clip = getClipEntity(registry, clipId)
+	const linked = new Set<string>()
+	for (const value of [clip.rels.linkedAudioClip, clip.rels.linkedVideoClip]) {
+		if (typeof value === 'string') {
+			linked.add(value)
+		}
+	}
+
+	for (const entity of Object.values(registry.entitiesById)) {
+		if (entity?.type !== 'clip') {
+			continue
+		}
+		if (entity.rels.linkedAudioClip === clipId || entity.rels.linkedVideoClip === clipId) {
+			linked.add(entity.id)
+		}
+	}
+
+	return Array.from(linked).filter((id) => id !== clipId && registry.entitiesById[id]?.type === 'clip')
+}
+
+const resolveExportRange = (
+	registry: ProjectRegistry,
+	projectId: string,
+	range: ExportRange,
+): ResolvedExportRange => {
+	const bounds = getExportBounds(registry, projectId, range)
+	if (range.type === 'project') {
+		return { ...bounds, clipIds: null }
+	}
+
+	return {
+		...bounds,
+		clipIds: new Set([range.clipId, ...getLinkedClipIds(registry, range.clipId)]),
+	}
+}
+
 const filterClipsForRange = (
 	operations: ClipFrameOperation[],
-	range: ExportRange,
-): ClipFrameOperation[] => range.type === 'clip'
-	? operations.filter((operation) => operation.clipId === range.clipId)
+	resolvedRange: ResolvedExportRange,
+): ClipFrameOperation[] => resolvedRange.clipIds
+	? operations.filter((operation) => resolvedRange.clipIds?.has(operation.clipId))
 	: operations
 
-const getRangeClips = (registry: ProjectRegistry, projectId: string, range: ExportRange): EditframeClip[] => {
+const getRangeClips = (registry: ProjectRegistry, projectId: string, resolvedRange: ResolvedExportRange): EditframeClip[] => {
 	const clips = compileEditframeClips(registry, projectId)
-	if (range.type === 'project') {
+	if (!resolvedRange.clipIds) {
 		return clips
 	}
 
-	return clips.filter((clip) => clip.id === range.clipId)
+	return clips.filter((clip) => resolvedRange.clipIds?.has(clip.id))
+}
+
+const getResolvedClipIds = (
+	registry: ProjectRegistry,
+	projectId: string,
+	resolvedRange: ResolvedExportRange,
+): string[] => getRangeClips(registry, projectId, resolvedRange).map((clip) => clip.id)
+
+const createExportDiagnostics = (
+	backend: ExportBackend,
+	registry: ProjectRegistry,
+	projectId: string,
+	resolvedRange: ResolvedExportRange,
+	fallbackReason?: string,
+): ExportDiagnostics => ({
+	backend,
+	...(fallbackReason ? { fallbackReason } : {}),
+	resolvedClipIds: getResolvedClipIds(registry, projectId, resolvedRange),
+})
+
+const addDiagnosticsToResult = (
+	result: ExportRenderResult,
+	diagnostics: ExportDiagnostics,
+): ExportRenderResult => {
+	result.diagnostics = diagnostics
+	result.manifest.diagnostics = diagnostics
+	return result
 }
 
 const getFrameCount = (duration: number, fps: number): number =>
@@ -338,13 +422,13 @@ const getStereoPanGains = (gain: number, pan: number): [number, number] => {
 const mixWebCodecsAudioTrack = async (
 	registry: ProjectRegistry,
 	projectId: string,
-	range: ExportRange,
+	resolvedRange: ResolvedExportRange,
 	exportStart: number,
 	exportDuration: number,
 	sampleRate: number,
 	numberOfChannels: number,
 ): Promise<MixedAudioTrack | null> => {
-	const audioClips = getRangeClips(registry, projectId, range).filter((clip) => clip.type === 'ef-audio')
+	const audioClips = getRangeClips(registry, projectId, resolvedRange).filter((clip) => clip.type === 'ef-audio')
 	if (audioClips.length === 0) {
 		return null
 	}
@@ -755,11 +839,11 @@ const encodeMixedAudioTrack = async (
 const createAudioExportMixer = async (
 	registry: ProjectRegistry,
 	projectId: string,
-	range: ExportRange,
+	resolvedRange: ResolvedExportRange,
 	exportStart: number,
 	exportDuration: number,
 ): Promise<AudioExportMixer> => {
-	const audioClips = getRangeClips(registry, projectId, range).filter((clip) => clip.type === 'ef-audio')
+	const audioClips = getRangeClips(registry, projectId, resolvedRange).filter((clip) => clip.type === 'ef-audio')
 	const AudioContextConstructor = globalThis.AudioContext ?? globalThis.webkitAudioContext
 	if (audioClips.length === 0 || !AudioContextConstructor) {
 		return { stream: null, start: async () => undefined, stop: async () => undefined }
@@ -903,7 +987,7 @@ const createAudioExportMixer = async (
 const renderWebCodecsVideoBlob = async ({
 	registry,
 	projectId,
-	range,
+	resolvedRange,
 	start,
 	fps,
 	frameCount,
@@ -916,7 +1000,7 @@ const renderWebCodecsVideoBlob = async ({
 }: {
 	registry: ProjectRegistry
 	projectId: string
-	range: ExportRange
+	resolvedRange: ResolvedExportRange
 	start: number
 	fps: number
 	frameCount: number
@@ -926,23 +1010,23 @@ const renderWebCodecsVideoBlob = async ({
 	videoBitsPerSecond: number
 	onProgress?: (event: ExportProgressEvent) => void
 	onFrame: (frame: ExportFrameSample) => void
-}): Promise<Blob | null> => {
+}): Promise<WebCodecsRenderAttempt> => {
 	const config = await getWebCodecsConfig(width, height, fps, videoBitsPerSecond)
 	if (!config) {
-		return null
+		return { blob: null, fallbackReason: 'webcodecs-video-unsupported' }
 	}
-	const audioClipCount = getRangeClips(registry, projectId, range).filter((clip) => clip.type === 'ef-audio').length
+	const audioClipCount = getRangeClips(registry, projectId, resolvedRange).filter((clip) => clip.type === 'ef-audio').length
 	const audioConfig = audioClipCount > 0
 		? await getWebCodecsAudioConfig(2, 128_000)
 		: null
 	if (audioClipCount > 0 && !audioConfig) {
-		return null
+		return { blob: null, fallbackReason: 'webcodecs-audio-unsupported' }
 	}
 	const mixedAudioTrack = audioConfig
 		? await mixWebCodecsAudioTrack(
 			registry,
 			projectId,
-			range,
+			resolvedRange,
 			start,
 			frameCount / fps,
 			audioConfig.encoderConfig.sampleRate,
@@ -950,7 +1034,7 @@ const renderWebCodecsVideoBlob = async ({
 		)
 		: null
 	if (audioClipCount > 0 && audioConfig && !mixedAudioTrack) {
-		return null
+		return { blob: null, fallbackReason: 'webcodecs-audio-mix-failed' }
 	}
 
 	const canvas = document.createElement('canvas')
@@ -995,7 +1079,7 @@ const renderWebCodecsVideoBlob = async ({
 			const time = start + index / fps
 			const operations = filterClipsForRange(
 				compileFrameOperations(registry, projectId, time),
-				range,
+				resolvedRange,
 			)
 			const preparedOperations = await prepareFrameOperations(operations, resourceCache, width, height)
 			const timestamp = Math.round((index / fps) * 1_000_000)
@@ -1014,7 +1098,7 @@ const renderWebCodecsVideoBlob = async ({
 			await encodeMixedAudioTrack(muxer, audioConfig, mixedAudioTrack)
 		}
 		muxer.finalize()
-		return new Blob([target.buffer], { type: videoMimeType })
+		return { blob: new Blob([target.buffer], { type: videoMimeType }) }
 	} finally {
 		encoder.close()
 		for (const resource of resourceCache.values()) {
@@ -1061,6 +1145,7 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 
 		onProgress?.({ stage: 'queued', progress: 0 })
 		const { start, duration } = getExportBounds(request.registry, request.projectId, request.range)
+		const resolvedRange = resolveExportRange(request.registry, request.projectId, request.range)
 		const frameCount = getFrameCount(duration, fps)
 		const frames: ExportFrameSample[] = []
 
@@ -1071,7 +1156,7 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 				time,
 				operations: filterClipsForRange(
 					compileFrameOperations(request.registry, request.projectId, time),
-					request.range,
+					resolvedRange,
 				),
 			})
 			onProgress?.({ stage: 'rendering', progress: (index + 1) / frameCount })
@@ -1086,9 +1171,11 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 			duration,
 			fps,
 			frameCount,
-			clips: getRangeClips(request.registry, request.projectId, request.range),
+			clips: getRangeClips(request.registry, request.projectId, resolvedRange),
 			frames,
 		}
+		const diagnostics = createExportDiagnostics('manifest', request.registry, request.projectId, resolvedRange)
+		manifest.diagnostics = diagnostics
 		const blob = renderManifestBlob(manifest)
 		const rangeName = getRangeName(request.registry, request.projectId, request.range)
 		const result: ExportRenderResult = {
@@ -1100,6 +1187,7 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 			duration,
 			frameCount,
 			manifest,
+			diagnostics,
 		}
 		onProgress?.({ stage: 'done', progress: 1 })
 
@@ -1134,7 +1222,8 @@ export const createBrowserVideoExportRenderer = (
 			}
 
 			onProgress?.({ stage: 'queued', progress: 0 })
-			const { start, duration } = getExportBounds(request.registry, request.projectId, request.range)
+			const resolvedRange = resolveExportRange(request.registry, request.projectId, request.range)
+			const { start, duration } = resolvedRange
 			const frameCount = getFrameCount(duration, fps)
 			const width = options.width ?? defaultExportWidth
 			const height = options.height ?? defaultExportHeight
@@ -1142,10 +1231,10 @@ export const createBrowserVideoExportRenderer = (
 			const videoBitsPerSecond = options.videoBitsPerSecond ?? 4_000_000
 			const frames: ExportFrameSample[] = []
 
-			const webCodecsBlob = await renderWebCodecsVideoBlob({
+			const webCodecsAttempt = await renderWebCodecsVideoBlob({
 				registry: request.registry,
 				projectId: request.projectId,
-				range: request.range,
+				resolvedRange,
 				start,
 				fps,
 				frameCount,
@@ -1157,8 +1246,9 @@ export const createBrowserVideoExportRenderer = (
 				onFrame: (frame) => frames.push(frame),
 			})
 
-			if (webCodecsBlob) {
+			if (webCodecsAttempt.blob) {
 				onProgress?.({ stage: 'finalizing', progress: 1 })
+				const diagnostics = createExportDiagnostics('webcodecs', request.registry, request.projectId, resolvedRange)
 				const manifest: ExportManifest = {
 					format,
 					projectId: request.projectId,
@@ -1167,19 +1257,21 @@ export const createBrowserVideoExportRenderer = (
 					duration,
 					fps,
 					frameCount,
-					clips: getRangeClips(request.registry, request.projectId, request.range),
+					clips: getRangeClips(request.registry, request.projectId, resolvedRange),
 					frames,
+					diagnostics,
 				}
 				const rangeName = getRangeName(request.registry, request.projectId, request.range)
 				const result: ExportRenderResult = {
 					id: createExportId(),
 					fileName: buildFileName(rangeName, format),
 					mimeType: videoMimeType,
-					blob: webCodecsBlob,
-					size: webCodecsBlob.size,
+					blob: webCodecsAttempt.blob,
+					size: webCodecsAttempt.blob.size,
 					duration,
 					frameCount,
 					manifest,
+					diagnostics,
 				}
 				onProgress?.({ stage: 'done', progress: 1 })
 
@@ -1188,7 +1280,11 @@ export const createBrowserVideoExportRenderer = (
 
 			if (!isVideoExportSupported()) {
 				if (fallbackToManifestOnUnsupported) {
-					return fallbackRenderer.render({ ...request, format: 'json-manifest' }, onProgress)
+					const result = await fallbackRenderer.render({ ...request, format: 'json-manifest' }, onProgress)
+					return addDiagnosticsToResult(
+						result,
+						createExportDiagnostics('manifest', request.registry, request.projectId, resolvedRange, webCodecsAttempt.fallbackReason),
+					)
 				}
 
 				throw new Error('Video export is not supported in this environment')
@@ -1202,25 +1298,20 @@ export const createBrowserVideoExportRenderer = (
 				throw new Error('Unable to acquire export canvas context')
 			}
 
-			const audioMixer = await createAudioExportMixer(request.registry, request.projectId, request.range, start, duration)
+			const audioMixer = await createAudioExportMixer(request.registry, request.projectId, resolvedRange, start, duration)
 			let stream = canvas.captureStream(0)
+			let videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
+			if (typeof videoTrack?.requestFrame !== 'function') {
+				for (const track of stream.getVideoTracks()) {
+					track.stop()
+				}
+				stream = canvas.captureStream(fps)
+				videoTrack = undefined
+			}
 			if (audioMixer.stream) {
 				for (const audioTrack of audioMixer.stream.getAudioTracks()) {
 					stream.addTrack(audioTrack)
 				}
-			}
-			let videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
-			if (typeof videoTrack?.requestFrame !== 'function') {
-				for (const track of stream.getTracks()) {
-					track.stop()
-				}
-				stream = canvas.captureStream(fps)
-				if (audioMixer.stream) {
-					for (const audioTrack of audioMixer.stream.getAudioTracks()) {
-						stream.addTrack(audioTrack)
-					}
-				}
-				videoTrack = undefined
 			}
 			const mimeType = getWebmMimeType() ?? videoMimeType
 			const recorder = new MediaRecorder(stream, {
@@ -1248,7 +1339,7 @@ export const createBrowserVideoExportRenderer = (
 					const time = start + index / fps
 					const operations = filterClipsForRange(
 						compileFrameOperations(request.registry, request.projectId, time),
-						request.range,
+						resolvedRange,
 					)
 					const preparedOperations = await prepareFrameOperations(
 						operations,
@@ -1293,9 +1384,17 @@ export const createBrowserVideoExportRenderer = (
 				duration,
 				fps,
 				frameCount,
-				clips: getRangeClips(request.registry, request.projectId, request.range),
+				clips: getRangeClips(request.registry, request.projectId, resolvedRange),
 				frames,
 			}
+			const diagnostics = createExportDiagnostics(
+				'media-recorder',
+				request.registry,
+				request.projectId,
+				resolvedRange,
+				webCodecsAttempt.fallbackReason,
+			)
+			manifest.diagnostics = diagnostics
 			const recordedBlob = new Blob(chunks, { type: mimeType })
 			const blob = await fixWebmDuration(recordedBlob, duration * 1000, { logger: false })
 			const rangeName = getRangeName(request.registry, request.projectId, request.range)
@@ -1308,6 +1407,7 @@ export const createBrowserVideoExportRenderer = (
 				duration,
 				frameCount,
 				manifest,
+				diagnostics,
 			}
 			onProgress?.({ stage: 'done', progress: 1 })
 
