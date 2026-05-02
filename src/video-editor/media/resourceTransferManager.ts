@@ -163,8 +163,13 @@ const wait = async (ms: number): Promise<void> => {
 	})
 }
 
-const computeProgress = (loadedBytes: number, totalBytes: number): number =>
-	totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : loadedBytes > 0 ? 0.01 : 0
+const computeProgress = (loadedBytes: number, totalBytes: number, isReady: boolean): number => {
+	if (totalBytes > 0) {
+		return Math.max(0, Math.min(1, loadedBytes / totalBytes))
+	}
+
+	return isReady ? 1 : 0
+}
 
 const isRealMediaUrl = (url: string): boolean =>
 	url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('http') || url.startsWith('/') || url.startsWith('./')
@@ -394,7 +399,7 @@ export const createResourceTransferManager = (
 			return
 		}
 
-		const totalBytes = state.size ?? 0
+		const totalBytes = state.size ?? (state.status === 'ready' ? state.loadedBytes : 0)
 		const previewUrl = state.playbackUrl || state.previewUrl || (isRealMediaUrl(state.fallbackUrl) ? state.fallbackUrl : '')
 		transfers$[resourceId].set({
 			resourceId,
@@ -407,7 +412,7 @@ export const createResourceTransferManager = (
 				: state.status === 'missing' && state.requestedRanges.length > 0
 					? 'requesting'
 					: state.status,
-			progress: computeProgress(state.loadedBytes, totalBytes),
+			progress: computeProgress(state.loadedBytes, totalBytes, state.status === 'ready'),
 			loadedBytes: state.loadedBytes,
 			totalBytes,
 			loadedRanges: state.loadedRanges,

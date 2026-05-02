@@ -488,6 +488,52 @@ describe('resource transfer manager', () => {
 		client.destroy()
 	})
 
+	it('keeps unknown-size partial transfers at zero progress until completion is known', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		client.attachClientTransport(clientTransport)
+		client.syncRegistry(createRegistryWithResource('res-unknown-size', {
+			size: undefined,
+			duration: 8,
+			name: 'Unknown size clip',
+		}))
+
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-meta',
+			resourceId: 'res-unknown-size',
+			index: 0,
+			start: 0,
+			end: 8,
+			mime: 'video/webm',
+			kind: 'video',
+			name: 'Unknown size clip',
+			duration: 8,
+			chunkSize: 8,
+			ownerPeerId: 'peer-a',
+			sourceKind: 'p2p',
+			fallbackUrl: '',
+			reason: 'head',
+		}))
+		serverTransport.send(new TextEncoder().encode('abcdefgh').buffer)
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-unknown-size')).toMatchObject({
+				status: 'partial',
+				loadedBytes: 8,
+				totalBytes: 0,
+				progress: 0,
+			})
+		})
+
+		client.destroy()
+	})
+
 	it('retries a temporary resource error and resumes downloading', async () => {
 		const [serverTransport, clientTransport] = createTransportPair()
 		const requests = parseRequestMessages(serverTransport)
