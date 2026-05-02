@@ -341,6 +341,8 @@ export const createVideoEditorHarness = (
 							url,
 							width: kind === 'audio' ? undefined : 1920,
 							height: kind === 'audio' ? undefined : 1080,
+							size: file.size,
+							source: { kind: 'local' },
 						},
 					}).then((result) => {
 						const resourceId = result.createdIds?.resourceId

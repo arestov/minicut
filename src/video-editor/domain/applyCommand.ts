@@ -1,6 +1,7 @@
 import { createProjectGraph } from './createProject'
 import { assertEntity, assertProject, assertProjectForEntity, validateCommand } from './validateCommand'
 import { createEntityId } from './id'
+import { createMissingResourceData, createReadyResourceData } from './resourceData'
 import {
 	getClipIdsForTrack,
 	getActiveTimeline,
@@ -116,18 +117,26 @@ export const buildDispatchResult = (
 			const project = assertProject(registry, command.p.projectId)
 			const projectEntity = getProjectEntity(registry, project)
 			const resourceId = createEntityId()
+			const dataStatus = command.p.dataStatus ?? command.p.data?.status ?? 'ready'
+			const data = command.p.data ?? (dataStatus === 'ready'
+				? createReadyResourceData({ size: command.p.size, chunkSize: command.p.chunkSize })
+				: createMissingResourceData(command.p.chunkSize))
+			const source = command.p.source ?? { kind: 'local' as const }
 			const resource: Entity = {
 				id: resourceId,
 				type: 'resource',
 				attrs: {
 					name: command.p.name,
 					kind: command.p.kind,
-					url: command.p.url ?? `sample://${resourceId}`,
+					url: command.p.url ?? (data.status === 'missing' ? '' : `sample://${resourceId}`),
 					mime: command.p.mime ?? `${command.p.kind}/sample`,
 					duration: command.p.duration,
 					width: command.p.width,
 					height: command.p.height,
-					status: 'ready',
+					size: command.p.size,
+					source,
+					data,
+					status: data.status,
 				},
 				rels: {},
 			}

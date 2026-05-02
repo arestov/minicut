@@ -2,10 +2,66 @@ import { buildDispatchResult } from './applyCommand'
 import { applyPatchEnvelopeInPlace } from './applyPatchInPlace'
 import { applyPatchEnvelopeToRegistry } from './applyPatch'
 import { createEmptyRegistry } from './createProject'
-import { getAudioTrack, getClipIdsForTrack, getTracks, getVideoTrack } from './selectors'
-import { CMD, PATCH, type Command } from './types'
+import { getAudioTrack, getClipIdsForTrack, getResourceDerived, getTracks, getVideoTrack } from './selectors'
+import { CMD, PATCH, type Command, type ResourceAttrs } from './types'
+
+const containsBinaryPayload = (value: unknown): boolean => {
+	if (!value || typeof value !== 'object') {
+		return false
+	}
+	if (value instanceof Uint8Array || value instanceof ArrayBuffer || value instanceof Blob) {
+		return true
+	}
+	return Object.values(value as Record<string, unknown>).some(containsBinaryPayload)
+}
 
 describe('command validation', () => {
+	it('allows p2p resource metadata without bytes to be clipped without binary patch payloads', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, {
+			c: CMD.PROJECT_CREATE,
+			p: { title: 'P2P project' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: {
+				projectId,
+				name: 'Remote camera take',
+				kind: 'video',
+				duration: 8,
+				mime: 'video/webm',
+				size: 8 * 1024 * 1024,
+				source: { kind: 'p2p', ownerPeerId: 'peer-a' },
+				dataStatus: 'missing',
+			},
+		})
+		expect(containsBinaryPayload(importResult.envelope)).toBe(false)
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const resourceId = String(importResult.createdIds?.resourceId)
+		const resource = registry.entitiesById[resourceId]
+		const resourceAttrs = resource.attrs as ResourceAttrs
+		expect(resourceAttrs.source).toEqual({ kind: 'p2p', ownerPeerId: 'peer-a' })
+		expect(resourceAttrs.data.status).toBe('missing')
+		expect(resourceAttrs.status).toBe('missing')
+		expect(getResourceDerived(resource).isPlayable).toBe(false)
+
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId },
+		})
+		expect(containsBinaryPayload(clipResult.envelope)).toBe(false)
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+
+		expect(registry.entitiesById[String(clipResult.createdIds?.clipId)]).toMatchObject({
+			type: 'clip',
+			rels: { resource: resourceId },
+		})
+	})
+
 	it('rejects a clip insertion with a missing resource before producing patches', () => {
 		let registry = createEmptyRegistry()
 		const createResult = buildDispatchResult(registry, {

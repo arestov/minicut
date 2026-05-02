@@ -106,6 +106,9 @@ const seekVideo = (video: HTMLVideoElement, targetTime: number): Promise<void> =
 		}
 	})
 
+const canLoadRenderableResource = (resource: RenderableResource): boolean =>
+	Boolean(resource.attrs.url) && resource.attrs.data?.status !== 'missing'
+
 export const createResourceCache = (registryEntities: Record<string, { type: string; attrs: unknown } | undefined>): Map<string, RenderableResource> => {
 	const cache = new Map<string, RenderableResource>()
 	for (const entityId of Object.keys(registryEntities)) {
@@ -177,8 +180,27 @@ export const prepareFrameOperations = async (
 			})
 			continue
 		}
+		if (!canLoadRenderableResource(resource)) {
+			prepared.push({
+				operation,
+				resource,
+				sourceWidth: Number(resource.attrs.width) || width,
+				sourceHeight: Number(resource.attrs.height) || height,
+			})
+			continue
+		}
 
-		await ensureRenderableResource(resource, operation.resourceKind)
+		try {
+			await ensureRenderableResource(resource, operation.resourceKind)
+		} catch {
+			prepared.push({
+				operation,
+				resource,
+				sourceWidth: Number(resource.attrs.width) || width,
+				sourceHeight: Number(resource.attrs.height) || height,
+			})
+			continue
+		}
 		if (operation.resourceKind === 'image' && resource.image) {
 			prepared.push({
 				operation,

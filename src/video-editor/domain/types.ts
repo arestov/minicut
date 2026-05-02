@@ -43,15 +43,62 @@ export interface EditorSessionState {
 	timelineZoom: number
 }
 
+
+export type ResourceKind = 'video' | 'audio' | 'image'
+export type ResourceSourceKind = 'local' | 'p2p'
+export type ResourceDataStatus = 'missing' | 'partial' | 'ready'
+export type ResourceChunkStatus = 'missing' | 'loading' | 'ready'
+export type ResourceByteRange = [number, number]
+
+export interface ResourceSource {
+	kind: ResourceSourceKind
+	ownerPeerId?: string
+}
+
+export interface ResourceChunkMeta {
+	index: number
+	start: number
+	end: number
+	size: number
+	status: ResourceChunkStatus
+}
+
+export interface ResourceDataState {
+	status: ResourceDataStatus
+	chunkSize: number
+	chunks: Record<number, ResourceChunkMeta>
+	ranges: {
+		loaded: ResourceByteRange[]
+		requested: ResourceByteRange[]
+	}
+	loadedBytes: number
+}
+
+export interface ResourceDerived {
+	progress: number
+	isPlayable: boolean
+	loadedBytes: number
+	loadedRanges: ResourceByteRange[]
+	requestedRanges: ResourceByteRange[]
+}
+
+export interface Peer {
+	id: string
+	resources: EntityId[]
+}
+
 export interface ResourceAttrs {
 	name: string
-	kind: 'video' | 'audio' | 'image'
+	kind: ResourceKind
 	url: string
 	mime: string
 	duration: number
 	width?: number
 	height?: number
-	status: 'ready' | 'loading' | 'error'
+	size?: number
+	source: ResourceSource
+	data: ResourceDataState
+	status: ResourceDataStatus | 'loading' | 'error'
 }
 
 export interface TrackAttrs {
@@ -176,6 +223,11 @@ export type Command =
 				mime?: string
 				width?: number
 				height?: number
+				size?: number
+				source?: ResourceSource
+				data?: ResourceDataState
+				dataStatus?: ResourceDataStatus
+				chunkSize?: number
 			}
 	  }
 	| {

@@ -7,8 +7,10 @@ import type {
 	ProjectGraph,
 	ProjectMeta,
 	ProjectRegistry,
+	ResourceDerived,
 	ResourceAttrs,
 } from './types'
+import { getResourceDerived as deriveResourceData } from './resourceData'
 
 const asArray = (value: Entity['rels'][string]): EntityId[] =>
 	Array.isArray(value) ? value : []
@@ -161,6 +163,9 @@ export const getResourceLabel = (resource: Entity): string => {
 	const attrs = resource.attrs as ResourceAttrs
 	return `${attrs.name} · ${attrs.kind} · ${attrs.mime} · ${attrs.duration.toFixed(1)}s`
 }
+
+export const getResourceDerived = (resource: Entity): ResourceDerived =>
+	deriveResourceData(resource.attrs as ResourceAttrs)
 
 export const getTrackEnd = (registry: ProjectRegistry, trackId: EntityId): number =>
 	getClipEntitiesForTrack(registry, trackId).reduce((max, clip) => {

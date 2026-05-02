@@ -1,5 +1,5 @@
 import { getEntity, getProjectEntity, getProjectForEntity, getTrackForClip } from './selectors'
-import { CMD, type ClipAttrs, type Command, type Entity, type ProjectGraph, type ProjectRegistry } from './types'
+import { CMD, type ClipAttrs, type Command, type Entity, type ProjectGraph, type ProjectRegistry, type ResourceDataState } from './types'
 
 const assert = (condition: unknown, message: string): asserts condition => {
 	if (!condition) {
@@ -8,6 +8,31 @@ const assert = (condition: unknown, message: string): asserts condition => {
 }
 
 const isFinitePositive = (value: number): boolean => Number.isFinite(value) && value > 0
+
+const isFiniteNonNegative = (value: number): boolean => Number.isFinite(value) && value >= 0
+
+const assertSerializableResourceData = (data: ResourceDataState): void => {
+	assert(['missing', 'partial', 'ready'].includes(data.status), 'Resource data status is invalid')
+	assert(isFinitePositive(data.chunkSize), 'Resource chunk size must be positive')
+	assert(isFiniteNonNegative(data.loadedBytes), 'Resource loaded bytes must be non-negative')
+	assert(data.chunks && typeof data.chunks === 'object', 'Resource chunks must be an object')
+	assert(data.ranges && typeof data.ranges === 'object', 'Resource ranges must be an object')
+	assert(Array.isArray(data.ranges.loaded), 'Resource loaded ranges must be an array')
+	assert(Array.isArray(data.ranges.requested), 'Resource requested ranges must be an array')
+
+	for (const range of [...data.ranges.loaded, ...data.ranges.requested]) {
+		assert(Array.isArray(range) && range.length === 2, 'Resource ranges must be byte pairs')
+		assert(isFiniteNonNegative(range[0]) && isFiniteNonNegative(range[1]) && range[1] >= range[0], 'Resource range bounds are invalid')
+	}
+
+	for (const chunk of Object.values(data.chunks)) {
+		assert(Number.isInteger(chunk.index) && chunk.index >= 0, 'Resource chunk index is invalid')
+		assert(isFiniteNonNegative(chunk.start), 'Resource chunk start is invalid')
+		assert(isFiniteNonNegative(chunk.end) && chunk.end >= chunk.start, 'Resource chunk end is invalid')
+		assert(isFiniteNonNegative(chunk.size), 'Resource chunk size is invalid')
+		assert(['missing', 'loading', 'ready'].includes(chunk.status), 'Resource chunk status is invalid')
+	}
+}
 
 export const assertProject = (registry: ProjectRegistry, projectId: string): ProjectGraph => {
 	const project = registry.projects[projectId]
@@ -76,6 +101,22 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			assert(isFinitePositive(command.p.duration), 'Resource duration must be positive')
 			assert(!command.p.url || typeof command.p.url === 'string', 'Resource url must be a string')
 			assert(!command.p.mime || typeof command.p.mime === 'string', 'Resource mime must be a string')
+			if (command.p.size !== undefined) {
+				assert(isFiniteNonNegative(command.p.size), 'Resource size must be non-negative')
+			}
+			if (command.p.chunkSize !== undefined) {
+				assert(isFinitePositive(command.p.chunkSize), 'Resource chunk size must be positive')
+			}
+			if (command.p.dataStatus !== undefined) {
+				assert(['missing', 'partial', 'ready'].includes(command.p.dataStatus), 'Resource data status is invalid')
+			}
+			if (command.p.source !== undefined) {
+				assert(['local', 'p2p'].includes(command.p.source.kind), 'Resource source kind is invalid')
+				assert(!command.p.source.ownerPeerId || typeof command.p.source.ownerPeerId === 'string', 'Resource owner peer id must be a string')
+			}
+			if (command.p.data !== undefined) {
+				assertSerializableResourceData(command.p.data)
+			}
 			return
 		}
 
