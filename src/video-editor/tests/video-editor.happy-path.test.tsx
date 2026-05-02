@@ -465,6 +465,13 @@ describe('video editor harness', () => {
 			expect(snappingButton).toHaveAttribute('aria-pressed', 'false')
 			expect(scrollArea).toHaveAttribute('data-snapping', 'off')
 
+			const trackActions = within(timeline).getByLabelText('Track actions')
+			await user.click(within(trackActions).getByRole('button', { name: 'Add video track' }))
+			await user.click(within(trackActions).getByRole('button', { name: 'Add audio track' }))
+			expect(within(timeline).getByText('4 tracks')).toBeInTheDocument()
+			expect(within(timeline).getByText('V2')).toBeInTheDocument()
+			expect(within(timeline).getByText('A2')).toBeInTheDocument()
+
 			const v1Controls = within(timeline).getByLabelText('V1 controls')
 			expect(within(v1Controls).getByRole('button', { name: 'Track audible' })).toBeDisabled()
 			expect(within(v1Controls).getByRole('button', { name: 'Track unlocked' })).toBeDisabled()
