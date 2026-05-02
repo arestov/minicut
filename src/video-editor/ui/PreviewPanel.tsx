@@ -54,8 +54,12 @@ const PreviewPlaybackButton = observer(({
 
 const PreviewTransport = observer(({
 	frame$,
+	session$,
+	onTogglePlayback,
 }: {
 	frame$: Observable<PreviewFrame>
+	session$: Observable<EditorSessionState>
+	onTogglePlayback: () => void
 }) => {
 	const frame = frame$.get()
 
@@ -72,6 +76,12 @@ const PreviewTransport = observer(({
 			</div>
 			<div className="ve-preview-transport__active">
 				<span>{frame.activeClipNames.length > 0 ? frame.activeClipNames.join(', ') : 'No active clips'}</span>
+			</div>
+			<div className="ve-preview-transport__playback">
+				<PreviewPlaybackButton
+					session$={session$}
+					onTogglePlayback={onTogglePlayback}
+				/>
 			</div>
 		</div>
 	)
@@ -94,13 +104,11 @@ export const PreviewPanel = () => {
 				<h2>Preview</h2>
 			</div>
 			<PreviewStage frame$={previewFrame$} structure$={previewStructure$} session$={session$} />
-			<div className="ve-preview-panel__playback">
-				<PreviewPlaybackButton
-					session$={session$}
-					onTogglePlayback={() => actions.togglePlayback()}
-				/>
-			</div>
-			<PreviewTransport frame$={previewFrame$} />
+			<PreviewTransport
+				frame$={previewFrame$}
+				session$={session$}
+				onTogglePlayback={() => actions.togglePlayback()}
+			/>
 		</section>
 	)
 }

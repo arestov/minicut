@@ -16,22 +16,27 @@ import {
 	ZoomOut,
 } from 'lucide-react'
 import {
+	useMemo,
 	useRef,
 	useState,
 	type CSSProperties,
 	type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
 import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,
 	TIMELINE_ZOOM_STEP,
 } from '../legend/sessionStore'
 import {
+	clipAttrs$,
+	clipRels$,
 	getActiveProjectId$,
 	getActiveTimelineId$,
 	getTimelineTrackIds$,
 	getTimelineTrackIdsNode$,
+	resourceAttrs$,
 } from '../legend/observableSelectors'
 import { IconButton } from './ControlPrimitives'
 import { TrackLabel, TrackLane } from './TrackRow'
@@ -123,6 +128,26 @@ export const TimelineView = observer(() => {
 	const selectedEntityId = session$.selectedEntityId.get()
 	const selectedEntityType = selectedEntityId ? projects$.entitiesById[selectedEntityId]?.type.get() : null
 	const hasSelectedClip = selectedEntityType === 'clip'
+	const selectedClipTrackPosition$ = useMemo(
+		() => createSelectedClipTrackPosition$(projects$, session$),
+		[projects$, session$],
+	)
+	const selectedClipTrackPosition = selectedClipTrackPosition$.get()
+	const selectedClipSummary = hasSelectedClip && selectedEntityId
+		? (() => {
+				const clip$ = clipAttrs$(projects$, selectedEntityId)
+				const resourceId = clipRels$(projects$, selectedEntityId).resource.get()
+				const resourceName = resourceId
+					? String(resourceAttrs$(projects$, resourceId).name.get())
+					: String(clip$.name.get())
+
+				return {
+					color: String(clip$.color.get() ?? '#2563eb'),
+					resourceName,
+					trackName: selectedClipTrackPosition?.trackName ?? 'Track',
+				}
+			})()
+		: null
 	const canZoomOut = timelineZoom > TIMELINE_ZOOM_MIN
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 
@@ -188,7 +213,16 @@ export const TimelineView = observer(() => {
 					<h2>Timeline</h2>
 				</div>
 				<div className="ve-timeline-clip-actions" aria-label="Clip edit actions">
-					<span className="ve-playhead-mark" aria-hidden="true" />
+					{selectedClipSummary ? (
+						<div
+							className="ve-clip-action-target"
+							aria-label="Selected clip action target"
+							style={{ borderColor: selectedClipSummary.color }}
+						>
+							<span>{selectedClipSummary.resourceName}</span>
+							<strong>{selectedClipSummary.trackName}</strong>
+						</div>
+					) : null}
 					<IconButton
 						type="button"
 						icon={Scissors}

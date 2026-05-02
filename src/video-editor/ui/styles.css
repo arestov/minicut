@@ -435,7 +435,6 @@ button:disabled {
 .ve-timeline {
 	border-bottom: 0;
 	height: var(--ve-timeline-height);
-	overflow: hidden;
 }
 
 .ve-panel__header {
@@ -466,6 +465,7 @@ button:disabled {
 }
 
 .ve-timeline-clip-actions {
+	position: relative;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -485,34 +485,42 @@ button:disabled {
 	border-radius: 6px;
 }
 
-.ve-playhead-mark {
-	position: relative;
-	display: inline-flex;
-	justify-content: center;
-	width: 18px;
+.ve-clip-action-target {
+	position: absolute;
+	left: 50%;
+	bottom: calc(100% + 6px);
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: max-content;
+	max-width: 260px;
 	height: 24px;
-	margin: 0 3px;
-	flex: 0 0 18px;
+	padding: 0 8px 0 6px;
+	border: 1px solid var(--ve-border);
+	border-left-width: 4px;
+	border-radius: 5px;
+	background: #ffffff;
+	box-shadow: 0 3px 5px rgba(24, 24, 27, 0.12);
+	color: var(--ve-foreground);
+	font-size: 11px;
+	line-height: 1;
+	pointer-events: none;
+	z-index: 2;
 }
 
-.ve-playhead-mark::before {
-	content: '';
-	position: absolute;
-	top: 1px;
-	width: 12px;
-	height: 7px;
-	border-radius: 3px 3px 6px 6px;
-	background: #dc2626;
+.ve-clip-action-target span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.ve-playhead-mark::after {
-	content: '';
-	position: absolute;
-	top: 6px;
-	bottom: 1px;
-	width: 2px;
-	border-radius: 999px;
-	background: #dc2626;
+.ve-clip-action-target strong {
+	flex: 0 0 auto;
+	font-size: 10px;
+	font-weight: 700;
+	color: var(--ve-muted-foreground);
 }
 
 .ve-timeline__body {
@@ -990,12 +998,6 @@ button:disabled {
 	flex-direction: column;
 }
 
-.ve-preview-panel__playback {
-	display: flex;
-	justify-content: center;
-	padding: 0 0 12px;
-}
-
 .ve-preview-transport {
 	display: flex;
 	align-items: center;
@@ -1019,7 +1021,7 @@ button:disabled {
 .ve-preview-transport__active {
 	min-width: 0;
 	flex: 1 1 auto;
-	justify-content: flex-end;
+	justify-content: flex-start;
 	font-weight: 600;
 	color: var(--ve-foreground);
 }
@@ -1029,6 +1031,16 @@ button:disabled {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.ve-preview-transport__playback {
+	flex: 0 0 auto;
+	margin-left: auto;
+}
+
+.ve-preview-transport__playback .ve-button {
+	height: 30px;
+	padding-inline: 10px;
 }
 
 .ve-resource-row__content {

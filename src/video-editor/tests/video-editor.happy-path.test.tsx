@@ -109,6 +109,9 @@ describe('video editor harness', () => {
 			const timeline = screen.getByLabelText('Timeline')
 			setTimelineCursor(timeline, 2.75)
 			const clipActions = within(timeline).getByLabelText('Clip edit actions')
+			const selectedClipTarget = within(clipActions).getByLabelText('Selected clip action target')
+			expect(selectedClipTarget).toHaveTextContent('Sample asset 1')
+			expect(selectedClipTarget).toHaveTextContent('V1')
 
 			await user.click(within(clipActions).getByRole('button', { name: 'Split clip' }))
 			expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2)
@@ -521,8 +524,13 @@ describe('video editor harness', () => {
 
 			expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.50s')
 			expect(within(timeline).getAllByLabelText('Current step')).toHaveLength(1)
-			expect(within(screen.getByLabelText('Preview panel')).queryByRole('slider', { name: 'Cursor' })).toBeNull()
-			expect(within(screen.getByLabelText('Preview panel')).getByText('Cursor at 4.5s')).toBeVisible()
+			const previewPanel = screen.getByLabelText('Preview panel')
+			expect(within(previewPanel).queryByRole('slider', { name: 'Cursor' })).toBeNull()
+			const cursorReadout = within(previewPanel).getByText('Cursor at 4.5s')
+			expect(cursorReadout).toBeVisible()
+			const previewTransport = cursorReadout.closest('.ve-preview-transport')
+			expect(previewTransport).not.toBeNull()
+			expect(within(previewTransport as HTMLElement).getByRole('button', { name: 'Play' })).toBeVisible()
 		} finally {
 			unmount()
 		}
