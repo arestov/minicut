@@ -4,10 +4,13 @@ import type { LucideIcon } from 'lucide-react'
 import {
 	Hand,
 	Magnet,
+	MoveLeft,
+	MoveRight,
 	MousePointer2,
 	Music,
 	Scissors,
 	StretchHorizontal,
+	Trash2,
 	Video,
 	ZoomIn,
 	ZoomOut,
@@ -117,6 +120,9 @@ export const TimelineView = observer(() => {
 	const timelineId = getActiveTimelineId$(projects$, activeProjectId)
 	const tracks = getTimelineTrackIds$(projects$, timelineId)
 	const trackIds$ = getTimelineTrackIdsNode$(projects$, timelineId)
+	const selectedEntityId = session$.selectedEntityId.get()
+	const selectedEntityType = selectedEntityId ? projects$.entitiesById[selectedEntityId]?.type.get() : null
+	const hasSelectedClip = selectedEntityType === 'clip'
 	const canZoomOut = timelineZoom > TIMELINE_ZOOM_MIN
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 
@@ -180,26 +186,41 @@ export const TimelineView = observer(() => {
 			<div className="ve-panel__header">
 				<div className="ve-timeline__track-actions">
 					<h2>Timeline</h2>
+				</div>
+				<div className="ve-timeline-clip-actions" aria-label="Clip edit actions">
+					<span className="ve-playhead-mark" aria-hidden="true" />
 					<IconButton
 						type="button"
-						icon={Video}
-						label="Add video track"
-						variant="outline"
-						onClick={() => actions.addTrack('video')}
-						disabled={!activeProjectId}
-					>
-						Add video track
-					</IconButton>
+						icon={Scissors}
+						label="Split clip"
+						variant="ghost"
+						onClick={() => actions.splitSelectedClip()}
+						disabled={!hasSelectedClip}
+					/>
 					<IconButton
 						type="button"
-						icon={Music}
-						label="Add audio track"
-						variant="outline"
-						onClick={() => actions.addTrack('audio')}
-						disabled={!activeProjectId}
-					>
-						Add audio track
-					</IconButton>
+						icon={MoveLeft}
+						label="Nudge -0.5s"
+						variant="ghost"
+						onClick={() => actions.nudgeSelectedClip(-0.5)}
+						disabled={!hasSelectedClip}
+					/>
+					<IconButton
+						type="button"
+						icon={MoveRight}
+						label="Nudge +0.5s"
+						variant="ghost"
+						onClick={() => actions.nudgeSelectedClip(0.5)}
+						disabled={!hasSelectedClip}
+					/>
+					<IconButton
+						type="button"
+						icon={Trash2}
+						label="Delete clip"
+						variant="ghost"
+						onClick={() => actions.deleteSelectedClip()}
+						disabled={!hasSelectedClip}
+					/>
 				</div>
 				<div className="ve-timeline__tools" aria-label="Timeline tools">
 					<div
@@ -274,6 +295,28 @@ export const TimelineView = observer(() => {
 									{trackIds$ ? (
 										<For each={trackIds$} optimized item={TrackLabelListItem} />
 									) : null}
+								</div>
+								<div className="ve-track-label-actions" aria-label="Track actions">
+									<IconButton
+										type="button"
+										icon={Video}
+										label="Add video track"
+										variant="outline"
+										onClick={() => actions.addTrack('video')}
+										disabled={!activeProjectId}
+									>
+										Video track
+									</IconButton>
+									<IconButton
+										type="button"
+										icon={Music}
+										label="Add audio track"
+										variant="outline"
+										onClick={() => actions.addTrack('audio')}
+										disabled={!activeProjectId}
+									>
+										Audio track
+									</IconButton>
 								</div>
 							</div>
 							<div

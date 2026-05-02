@@ -459,6 +459,62 @@ button:disabled {
 	width: 100%;
 }
 
+.ve-timeline > .ve-panel__header {
+	display: grid;
+	grid-template-columns: minmax(120px, 1fr) auto minmax(280px, 1fr);
+	align-items: center;
+}
+
+.ve-timeline-clip-actions {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 3px;
+	justify-self: center;
+	height: 36px;
+	padding: 2px 5px;
+	border: 1px solid var(--ve-border);
+	border-radius: 8px;
+	background: #ffffff;
+	box-shadow: 0 1px 2px rgba(24, 24, 27, 0.04);
+}
+
+.ve-timeline-clip-actions .ve-button {
+	width: 30px;
+	height: 30px;
+	border-radius: 6px;
+}
+
+.ve-playhead-mark {
+	position: relative;
+	display: inline-flex;
+	justify-content: center;
+	width: 18px;
+	height: 24px;
+	margin: 0 3px;
+	flex: 0 0 18px;
+}
+
+.ve-playhead-mark::before {
+	content: '';
+	position: absolute;
+	top: 1px;
+	width: 12px;
+	height: 7px;
+	border-radius: 3px 3px 6px 6px;
+	background: #dc2626;
+}
+
+.ve-playhead-mark::after {
+	content: '';
+	position: absolute;
+	top: 6px;
+	bottom: 1px;
+	width: 2px;
+	border-radius: 999px;
+	background: #dc2626;
+}
+
 .ve-timeline__body {
 	display: flex;
 	flex-direction: column;
@@ -547,6 +603,23 @@ button:disabled {
 	gap: 12px;
 	width: 167px;
 	padding-right: 10px;
+}
+
+.ve-track-label-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px;
+	border: 1px solid var(--ve-border);
+	border-radius: 8px;
+	background: #fafafa;
+}
+
+.ve-track-label-actions .ve-button {
+	justify-content: flex-start;
+	width: 100%;
+	height: 32px;
+	border-radius: 6px;
 }
 
 .ve-track-lane-scroll {

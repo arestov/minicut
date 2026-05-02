@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
-import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Trash2, Volume2, Wand2, X } from 'lucide-react'
+import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
 import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
@@ -292,11 +292,6 @@ export const Inspector = observer(() => {
 							) : null}
 						</div>
 					</InspectorSection>
-					<div className="ve-inline-actions">
-						<IconButton type="button" icon={Scissors} label="Split clip" variant="outline" onClick={() => actions.splitSelectedClip()}>Split clip</IconButton>
-						<IconButton type="button" icon={Move} label="Nudge +0.5s" variant="outline" onClick={() => actions.nudgeSelectedClip(0.5)}>Nudge +0.5s</IconButton>
-						<IconButton type="button" icon={Trash2} label="Delete clip" variant="destructive" onClick={() => actions.deleteSelectedClip()}>Delete clip</IconButton>
-					</div>
 				</div>
 			) : null}
 			{activeTab === 'color' ? (

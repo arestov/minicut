@@ -108,12 +108,15 @@ describe('video editor harness', () => {
 
 			const timeline = screen.getByLabelText('Timeline')
 			setTimelineCursor(timeline, 2.75)
+			const clipActions = within(timeline).getByLabelText('Clip edit actions')
 
-			await user.click(within(inspector).getByRole('button', { name: 'Split clip' }))
+			await user.click(within(clipActions).getByRole('button', { name: 'Split clip' }))
 			expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2)
 
-			await user.click(within(inspector).getByRole('button', { name: 'Nudge +0.5s' }))
-			expect(screen.getByText('3.3s')).toBeInTheDocument()
+			await user.click(within(clipActions).getByRole('button', { name: 'Nudge -0.5s' }))
+			expect(screen.getByRole('button', { name: /Sample asset 1 · 2\.3s \/ 2\.3s/i })).toBeInTheDocument()
+			await user.click(within(clipActions).getByRole('button', { name: 'Nudge +0.5s' }))
+			expect(screen.getByRole('button', { name: /Sample asset 1 · 2\.8s \/ 2\.3s/i })).toBeInTheDocument()
 		} finally {
 			unmount()
 		}
@@ -132,7 +135,7 @@ describe('video editor harness', () => {
 			const timeline = screen.getByLabelText('Timeline')
 			setTimelineCursor(timeline, 1.25)
 
-			await user.click(within(screen.getByLabelText('Inspector')).getByRole('button', { name: 'Split clip' }))
+			await user.click(within(timeline).getByRole('button', { name: 'Split clip' }))
 
 			const splitClips = screen.getAllByRole('button', { name: /Sample asset 1/i }) as HTMLButtonElement[]
 			expect(splitClips).toHaveLength(2)
@@ -199,7 +202,7 @@ describe('video editor harness', () => {
 		}
 	})
 
-	it('deletes selected clips through the inspector', async () => {
+	it('deletes selected clips through the timeline clip actions', async () => {
 		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
@@ -208,7 +211,7 @@ describe('video editor harness', () => {
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
-			await user.click(within(screen.getByLabelText('Inspector')).getByRole('button', { name: 'Delete clip' }))
+			await user.click(within(screen.getByLabelText('Timeline')).getByRole('button', { name: 'Delete clip' }))
 			expect(screen.queryByRole('button', { name: /Sample asset 1 · 0.0s/i })).not.toBeInTheDocument()
 			expect(screen.getByText('Select a clip to edit opacity or split it.')).toBeInTheDocument()
 		} finally {
@@ -440,6 +443,11 @@ describe('video editor harness', () => {
 			expect(within(mediaBin).getByText('1 of 3 assets')).toBeInTheDocument()
 
 			const timeline = screen.getByLabelText('Timeline')
+			const clipActions = within(timeline).getByLabelText('Clip edit actions')
+			expect(within(clipActions).getByRole('button', { name: 'Split clip' })).toBeEnabled()
+			expect(within(clipActions).getByRole('button', { name: 'Nudge -0.5s' })).toBeEnabled()
+			expect(within(clipActions).getByRole('button', { name: 'Nudge +0.5s' })).toBeEnabled()
+			expect(within(clipActions).getByRole('button', { name: 'Delete clip' })).toBeEnabled()
 			const scrollArea = timeline.querySelector('.ve-timeline-scroll-area') as HTMLDivElement | null
 			expect(scrollArea).not.toBeNull()
 			expect(within(timeline).getByRole('button', { name: 'Select tool' })).toHaveAttribute('aria-pressed', 'true')
