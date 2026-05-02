@@ -100,6 +100,14 @@ export interface PreviewScene {
 	}>
 }
 
+export interface PreviewFrame {
+	cursor: number
+	renderedClips: RenderedClip[]
+	visualRenderedClips: RenderedClip[]
+	audioRenderedClips: RenderedClip[]
+	activeClipNames: string[]
+}
+
 export interface SelectedClipTrackPosition {
 	trackId: EntityId
 	trackName: string
@@ -368,23 +376,31 @@ export const renderPreviewStructureAtCursor = (
 	.map((clip) => renderPreviewClipSourceAtCursor(clip, cursor))
 	.filter((clip): clip is RenderedClip => clip !== null)
 
+export const createPreviewFrame = (structure: PreviewStructure, cursor: number): PreviewFrame => {
+	const renderedClips = renderPreviewStructureAtCursor(structure, cursor)
+	return {
+		cursor,
+		renderedClips,
+		visualRenderedClips: renderedClips.filter((clip) => clip.resourceKind !== 'audio'),
+		audioRenderedClips: renderedClips.filter((clip) => clip.resourceKind === 'audio'),
+		activeClipNames: renderedClips.map((clip) => clip.name),
+	}
+}
+
+export const createPreviewFrame$ = (
+	previewStructure$: Observable<PreviewStructure>,
+	session$: Observable<EditorSessionState>,
+): Observable<PreviewFrame> =>
+	computed(() => createPreviewFrame(previewStructure$.get(), session$.cursor.get()))
+
 export const createPreviewScene$ = (
 	projects$: Observable<ProjectRegistry>,
 	session$: Observable<EditorSessionState>,
 ): Observable<PreviewScene> => {
 	const previewStructure$ = createPreviewStructure$(projects$, session$)
-	const renderedClips$ = computed(() =>
-		renderPreviewStructureAtCursor(previewStructure$.get(), session$.cursor.get()),
-	)
-	const visualRenderedClips$ = computed(() =>
-		renderedClips$.get().filter((clip) => clip.resourceKind !== 'audio'),
-	)
-	const audioRenderedClips$ = computed(() =>
-		renderedClips$.get().filter((clip) => clip.resourceKind === 'audio'),
-	)
-	const activeClipNames$ = computed(() => renderedClips$.get().map((clip) => clip.name))
+	const previewFrame$ = createPreviewFrame$(previewStructure$, session$)
 	const canvasClips$ = computed(() =>
-		renderedClips$.get().map((clip) => ({
+		previewFrame$.get().renderedClips.map((clip) => ({
 			name: clip.name,
 			color: clip.color,
 			kind: clip.resourceKind,
@@ -393,13 +409,14 @@ export const createPreviewScene$ = (
 	)
 
 	return computed(() => {
+		const frame = previewFrame$.get()
 		return {
-			cursor: session$.cursor.get(),
+			cursor: frame.cursor,
 			isPlaying: session$.isPlaying.get(),
-			renderedClips: renderedClips$.get(),
-			visualRenderedClips: visualRenderedClips$.get(),
-			audioRenderedClips: audioRenderedClips$.get(),
-			activeClipNames: activeClipNames$.get(),
+			renderedClips: frame.renderedClips,
+			visualRenderedClips: frame.visualRenderedClips,
+			audioRenderedClips: frame.audioRenderedClips,
+			activeClipNames: frame.activeClipNames,
 			canvasClips: canvasClips$.get(),
 		}
 	})

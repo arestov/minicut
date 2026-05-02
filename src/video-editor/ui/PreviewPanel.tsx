@@ -4,8 +4,9 @@ import { Gauge, Pause, Play, Timer } from 'lucide-react'
 import { useMemo } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import {
+	createPreviewFrame$,
 	createPreviewStructure$,
-	renderPreviewStructureAtCursor,
+	type PreviewFrame,
 	type PreviewStructure,
 } from '../legend/derivedTimeline'
 import type { EditorSessionState } from '../domain/types'
@@ -14,15 +15,17 @@ import { IconButton } from './ControlPrimitives'
 import { RendererStage } from './RendererStage'
 
 const PreviewStage = observer(({
+	frame$,
 	structure$,
 	session$,
 }: {
+	frame$: Observable<PreviewFrame>
 	structure$: Observable<PreviewStructure>
 	session$: Observable<EditorSessionState>
 }) => (
 	<RendererStage
 		structure={structure$.get()}
-		cursor={session$.cursor.get()}
+		frame={frame$.get()}
 		isPlaying={session$.isPlaying.get()}
 	/>
 ))
@@ -50,31 +53,25 @@ const PreviewPlaybackButton = observer(({
 })
 
 const PreviewTransport = observer(({
-	structure$,
-	session$,
+	frame$,
 }: {
-	structure$: Observable<PreviewStructure>
-	session$: Observable<EditorSessionState>
+	frame$: Observable<PreviewFrame>
 }) => {
-	const cursor = session$.cursor.get()
-	const activeClipNames = renderPreviewStructureAtCursor(
-		structure$.get(),
-		cursor,
-	).map((clip) => clip.name)
+	const frame = frame$.get()
 
 	return (
 		<div className="ve-preview-transport" aria-label="Preview transport status">
 			<div>
 				<Timer size={15} aria-hidden="true" />
-				<span className="ve-sr-only">Cursor at {formatSeconds(cursor)}</span>
-				<span>{formatSeconds(cursor)}</span>
+				<span className="ve-sr-only">Cursor at {formatSeconds(frame.cursor)}</span>
+				<span>{formatSeconds(frame.cursor)}</span>
 			</div>
 			<div>
 				<Gauge size={15} aria-hidden="true" />
 				<span>Draft preview</span>
 			</div>
 			<div className="ve-preview-transport__active">
-				<span>{activeClipNames.length > 0 ? activeClipNames.join(', ') : 'No active clips'}</span>
+				<span>{frame.activeClipNames.length > 0 ? frame.activeClipNames.join(', ') : 'No active clips'}</span>
 			</div>
 		</div>
 	)
@@ -86,20 +83,24 @@ export const PreviewPanel = () => {
 		() => createPreviewStructure$(projects$, session$),
 		[projects$, session$],
 	)
+	const previewFrame$ = useMemo(
+		() => createPreviewFrame$(previewStructure$, session$),
+		[previewStructure$, session$],
+	)
 
 	return (
 		<section className="ve-panel ve-preview-panel" aria-label="Preview panel">
 			<div className="ve-panel__header">
 				<h2>Preview</h2>
 			</div>
-			<PreviewStage structure$={previewStructure$} session$={session$} />
+			<PreviewStage frame$={previewFrame$} structure$={previewStructure$} session$={session$} />
 			<div className="ve-preview-panel__playback">
 				<PreviewPlaybackButton
 					session$={session$}
 					onTogglePlayback={() => actions.togglePlayback()}
 				/>
 			</div>
-			<PreviewTransport structure$={previewStructure$} session$={session$} />
+			<PreviewTransport frame$={previewFrame$} />
 		</section>
 	)
 }

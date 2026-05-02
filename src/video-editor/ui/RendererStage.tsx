@@ -1,9 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
-import {
-	renderPreviewStructureAtCursor,
-	type PreviewStructure,
-	type RenderedClip,
-} from '../legend/derivedTimeline'
+import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
 
 const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()
@@ -19,15 +15,8 @@ interface MediaSeekState {
 
 interface RendererStageProps {
 	structure: PreviewStructure
-	cursor: number
+	frame: PreviewFrame
 	isPlaying: boolean
-}
-
-interface PreviewFrame {
-	cursor: number
-	renderedClips: RenderedClip[]
-	visualRenderedClips: RenderedClip[]
-	audioRenderedClips: RenderedClip[]
 }
 
 interface PreviewCanvasClipSource {
@@ -150,17 +139,6 @@ const seekMediaElement = (
 	return false
 }
 
-const usePreviewFrame = (structure: PreviewStructure, cursor: number): PreviewFrame =>
-	useMemo(() => {
-		const renderedClips = renderPreviewStructureAtCursor(structure, cursor)
-		return {
-			cursor,
-			renderedClips,
-			visualRenderedClips: renderedClips.filter((clip) => clip.resourceKind !== 'audio'),
-			audioRenderedClips: renderedClips.filter((clip) => clip.resourceKind === 'audio'),
-		}
-	}, [structure, cursor])
-
 const usePreviewCanvasRenderer = (
 	structure: PreviewStructure,
 	frame: PreviewFrame,
@@ -274,8 +252,7 @@ const useMediaElementSync = (
 	}, [frame, isPlaying, mediaElementsRef, mediaSeekStateRef])
 }
 
-export const RendererStage = ({ structure, cursor, isPlaying }: RendererStageProps) => {
-	const frame = usePreviewFrame(structure, cursor)
+export const RendererStage = ({ structure, frame, isPlaying }: RendererStageProps) => {
 	const { canvasRef, renderMode } = usePreviewCanvasRenderer(structure, frame)
 	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
 	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
