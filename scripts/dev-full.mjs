@@ -1,11 +1,19 @@
 import { spawn } from 'node:child_process'
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const localSignalUrl = process.env.MINICUT_SIGNAL_URL?.trim() || 'http://127.0.0.1:8787'
 
 const passthroughEnv = {
 	...process.env,
 	VITE_MINICUT_SIGNAL_URL: localSignalUrl,
+}
+
+const quoteWindowsArg = (value) => {
+	const text = String(value)
+	if (!/[\s"^&|<>]/.test(text)) {
+		return text
+	}
+
+	return `"${text.replaceAll('"', '\\"')}"`
 }
 
 if (process.env.MINICUT_TURN_URLS) {
@@ -18,17 +26,33 @@ if (process.env.MINICUT_TURN_CREDENTIAL) {
 	passthroughEnv.VITE_MINICUT_TURN_CREDENTIAL = process.env.MINICUT_TURN_CREDENTIAL
 }
 
-const spawnProcess = (command, args, env = {}) => spawn(command, args, {
-	stdio: 'inherit',
-	shell: false,
-	env: {
-		...passthroughEnv,
-		...env,
-	},
-})
+const spawnProcess = (command, args, env = {}) => {
+	if (process.platform === 'win32') {
+		const quoted = [command, ...args]
+			.map((value, index) => (index === 0 ? String(value) : quoteWindowsArg(value)))
+			.join(' ')
 
-const backend = spawnProcess(npmCommand, ['--prefix', 'backend', 'run', 'dev:test'])
-const frontend = spawnProcess(npmCommand, ['run', 'start'])
+		return spawn('cmd.exe', ['/d', '/s', '/c', quoted], {
+			stdio: 'inherit',
+			env: {
+				...passthroughEnv,
+				...env,
+			},
+		})
+	}
+
+	return spawn(command, args, {
+		stdio: 'inherit',
+		shell: false,
+		env: {
+			...passthroughEnv,
+			...env,
+		},
+	})
+}
+
+const backend = spawnProcess('npm', ['--prefix', 'backend', 'run', 'dev:test'])
+const frontend = spawnProcess('npm', ['run', 'start'])
 
 const children = [backend, frontend]
 let shuttingDown = false
