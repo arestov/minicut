@@ -1,7 +1,7 @@
 import type { Observable } from '@legendapp/state'
 import { observer } from '@legendapp/state/react'
 import { Gauge, Pause, Play, Timer } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import {
 	createPreviewFrame$,
@@ -14,6 +14,8 @@ import type { EditorSessionState } from '../domain/types'
 import { formatSeconds } from './format'
 import { IconButton } from './ControlPrimitives'
 import { RendererStage } from './RendererStage'
+
+const previewWindowRequestIntervalMs = 200
 
 const PreviewStage = observer(({
 	frame$,
@@ -31,6 +33,8 @@ const PreviewStage = observer(({
 	noteResourcePreviewError: (resourceId: string) => void
 }) => {
 	const frame = frame$.get()
+	const isPlaying = session$.isPlaying.get()
+	const lastWindowRequestAtRef = useRef(new Map<string, number>())
 	const resolvedClip = (clip: RenderedClip): RenderedClip => ({
 		...clip,
 		resourceUrl: clip.resourceId ? resolveResourceUrl(clip.resourceId, clip.resourceUrl) : clip.resourceUrl,
@@ -43,20 +47,27 @@ const PreviewStage = observer(({
 	}
 
 	useEffect(() => {
+		const now = performance.now()
 		for (const clip of frame.renderedClips) {
 			if (!clip.resourceId || (clip.resourceKind !== 'video' && clip.resourceKind !== 'audio')) {
 				continue
 			}
 
+			const lastRequestedAt = lastWindowRequestAtRef.current.get(clip.resourceId) ?? 0
+			if (isPlaying && now - lastRequestedAt < previewWindowRequestIntervalMs) {
+				continue
+			}
+
+			lastWindowRequestAtRef.current.set(clip.resourceId, now)
 			requestResourcePlayheadWindow(clip.resourceId, Math.max(0, frame.cursor - clip.start + clip.inPoint))
 		}
-	}, [frame, requestResourcePlayheadWindow])
+	}, [frame, isPlaying, requestResourcePlayheadWindow])
 
 	return (
 		<RendererStage
 			structure={structure$.get()}
 			frame={resolvedFrame}
-			isPlaying={session$.isPlaying.get()}
+			isPlaying={isPlaying}
 			onClipMediaError={(resourceId) => noteResourcePreviewError(resourceId)}
 		/>
 	)
