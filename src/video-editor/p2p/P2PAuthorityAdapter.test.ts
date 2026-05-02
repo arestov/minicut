@@ -243,4 +243,23 @@ describe('P2PAuthorityAdapter', () => {
 		expect(local.replaceSnapshot).toHaveBeenCalledWith(remoteSnapshot)
 		await expect(adapter.getSnapshot()).resolves.toEqual(remoteSnapshot)
 	})
+
+	test('rejects queued calls when role resolution timeout is exceeded', async () => {
+		vi.useFakeTimers()
+		const manager = createManagerHarness()
+		const adapter = createP2PAuthorityAdapter({
+			roomId: 'room-timeout',
+			signalUrl: 'http://localhost:8787',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createManager: manager.factory,
+			pendingCallTimeoutMs: 100,
+		})
+
+		const pendingSnapshot = adapter.getSnapshot()
+			const rejection = expect(pendingSnapshot).rejects.toThrow('P2P authority role resolution timed out')
+		await vi.advanceTimersByTimeAsync(120)
+
+			await rejection
+		adapter.destroy()
+	})
 })

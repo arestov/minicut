@@ -242,6 +242,60 @@ describe('createDoSignalingFactory', () => {
 		expect(MockWebSocket.instances.length).toBe(2)
 	})
 
+	test('reconnects when ws closes after room-state', async () => {
+		vi.useFakeTimers()
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-1',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+
+		const ws1 = MockWebSocket.instances[0]
+		ws1.simulateOpen()
+		ws1.simulateMessage({
+			type: 'room-state',
+			epoch: 1,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a', 'peer-b'],
+		})
+		ws1.simulateClose()
+
+		expect(events.onError).not.toHaveBeenCalled()
+		await vi.advanceTimersByTimeAsync(310)
+		expect(MockWebSocket.instances.length).toBe(2)
+	})
+
+	test('emits member-left when room-state excludes known peer', async () => {
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-1',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+
+		const ws = MockWebSocket.instances[0]
+		ws.simulateOpen()
+		ws.simulateMessage({
+			type: 'room-state',
+			epoch: 1,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a', 'peer-b', 'peer-c'],
+		})
+		ws.simulateMessage({
+			type: 'room-state',
+			epoch: 2,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a', 'peer-c'],
+		})
+
+		expect(events.onMemberLeft).toHaveBeenCalledWith('peer-b')
+	})
+
 	test('fires error after retry budget is exhausted', async () => {
 		vi.useFakeTimers()
 		const { createDoSignalingFactory } = await import('./BridgeSignaling')

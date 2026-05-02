@@ -147,6 +147,9 @@ const createSignalingHarness = () => {
 		sent,
 		sendBye,
 		destroy,
+		emitMemberLeft(peerId: string) {
+			eventsRef?.onMemberLeft(peerId)
+		},
 		emitLeader(peerId: string, epoch = 1) {
 			eventsRef?.onLeaderAssigned(peerId, epoch)
 		},
@@ -409,5 +412,120 @@ describe('PageP2PManager', () => {
 			fromPeerId: manager.peerId,
 		})
 		expect(signaling.sendBye).toHaveBeenCalledTimes(1)
+	})
+
+	test('replaces existing peer connection when duplicate offer arrives from same remote peer', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader(manager.peerId)
+		signaling.emitSignal({
+			kind: 'offer',
+			roomId: 'room-1',
+			fromPeerId: 'remote-client-1',
+			toPeerId: manager.peerId,
+			sdp: { type: 'offer', sdp: 'offer-1' },
+			ts: Date.now(),
+		})
+		await flushMicrotasks(8)
+
+		const firstPc = MockRTCPeerConnection.instances[0]
+		expect(firstPc.connectionState).toBe('new')
+
+		signaling.emitSignal({
+			kind: 'offer',
+			roomId: 'room-1',
+			fromPeerId: 'remote-client-1',
+			toPeerId: manager.peerId,
+			sdp: { type: 'offer', sdp: 'offer-2' },
+			ts: Date.now(),
+		})
+		await flushMicrotasks(8)
+
+		expect(MockRTCPeerConnection.instances).toHaveLength(2)
+		expect(firstPc.connectionState).toBe('closed')
+		expect(events.onError).not.toHaveBeenCalled()
+
+		manager.destroy()
+	})
+
+	test('emits session-lost once when leader leaves member set', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		await Promise.resolve()
+		const dc = MockRTCPeerConnection.instances[0].createdChannels[0]
+		dc.simulateOpen()
+
+		signaling.emitMemberLeft('remote-server')
+		expect(events.onSessionLost).toHaveBeenCalledTimes(1)
+		expect(events.onSessionLost).toHaveBeenCalledWith('server-gone')
+
+		manager.destroy()
+	})
+
+	test('switches from server role to client role when newer leader epoch is received', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader(manager.peerId, 1)
+		signaling.emitSignal({
+			kind: 'offer',
+			roomId: 'room-1',
+			fromPeerId: 'remote-client-1',
+			toPeerId: manager.peerId,
+			sdp: { type: 'offer', sdp: 'incoming-offer' },
+			ts: Date.now(),
+		})
+		await flushMicrotasks(8)
+		const remoteDc = MockRTCPeerConnection.instances[0].simulateDataChannel()
+		remoteDc.simulateOpen()
+		expect(MockSharedWorker.instances).toHaveLength(1)
+		expect(MockSharedWorker.instances[0].port.started).toBe(true)
+
+		signaling.emitLeader('remote-server', 2)
+		await Promise.resolve()
+		const nextClientPc = MockRTCPeerConnection.instances[MockRTCPeerConnection.instances.length - 1]
+		nextClientPc.createdChannels[0]?.simulateOpen()
+
+		expect(manager.role).toBe('client')
+		expect(events.onBecomeClient).toHaveBeenCalledTimes(1)
+		expect(MockSharedWorker.instances[0].port.started).toBe(false)
+
+		manager.destroy()
 	})
 })
