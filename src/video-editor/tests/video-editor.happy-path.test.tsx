@@ -82,13 +82,13 @@ describe('video editor harness', () => {
 			await user.click(clipButton)
 			expect(screen.getByLabelText('Renderer stage')).toHaveTextContent('Sample asset 1')
 			const inspector = screen.getByLabelText('Inspector')
-			expect(within(inspector).getByText('Clip 1 - V1 - 0.0s')).toBeInTheDocument()
+			expect(within(inspector).getByText(/Clip 1 - V1 - 0\.0s - Duration 5\.0s/)).toBeInTheDocument()
 			expect(within(inspector).queryByText(/clip-18/i)).not.toBeInTheDocument()
 			const opacitySlider = within(inspector).getByRole('slider', { name: 'Opacity' })
 			expect(opacitySlider).toBeInTheDocument()
 			fireEvent.change(opacitySlider, { target: { value: '60' } })
 
-			expect(screen.getByText('60%', { selector: 'dd' })).toBeInTheDocument()
+			expect(within(inspector).getByText('Opacity 60%')).toBeInTheDocument()
 			await user.click(within(inspector).getByRole('button', { name: 'Blur' }))
 			await user.click(within(inspector).getByRole('button', { name: 'Sharpen' }))
 			expect(within(inspector).getByText('2 effects')).toBeInTheDocument()
@@ -100,7 +100,7 @@ describe('video editor harness', () => {
 			})
 
 			await user.click(within(inspector).getByRole('button', { name: 'Start +0.5s' }))
-			expect(screen.getByText('0.5s', { selector: 'dd' })).toBeInTheDocument()
+			expect(within(inspector).getByText(/Clip 1 - V1 - 0\.5s - Duration/)).toBeInTheDocument()
 
 			const transformControls = within(inspector).getByLabelText('Transform controls')
 			fireEvent.change(within(transformControls).getByLabelText('X'), { target: { value: '24' } })

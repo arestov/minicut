@@ -327,14 +327,16 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 		await opacitySlider.press('ArrowLeft')
 		await expect(opacitySlider).toHaveValue(value)
 	}
-	await expect(inspector.getByText('60%')).toBeVisible()
+	await expect(inspector.getByText('Opacity 60%')).toBeVisible()
 	await setTimelineCursor(page, 0.5)
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const clipActions = timeline.getByLabel('Clip edit actions')
 
-	await inspector.getByRole('button', { name: 'Split clip' }).click()
+	await clipActions.getByRole('button', { name: 'Split clip' }).click()
 	await expect(page.getByRole('button', { name: /fixture-video.webm/i })).toHaveCount(2)
 
-	await inspector.getByRole('button', { name: 'Nudge +0.5s' }).click()
-	await expect(inspector.locator('dd').filter({ hasText: '1.0s' })).toBeVisible()
+	await clipActions.getByRole('button', { name: 'Nudge +0.5s' }).click()
+	await expect(inspector.getByText(/Clip 2 - V1 - 1\.0s - Duration/)).toBeVisible()
 })
 
 test('split clip follows playhead and reflects resulting durations in timeline widths', async ({ page }) => {
@@ -347,8 +349,7 @@ test('split clip follows playhead and reflects resulting durations in timeline w
 	await clip.click()
 	await setTimelineCursor(page, 0.5)
 
-	const inspector = page.getByRole('complementary', { name: 'Inspector' })
-	await inspector.getByRole('button', { name: 'Split clip' }).click()
+	await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Split clip' }).click()
 
 	const clips = timeline.getByRole('button', { name: /fixture-video.webm/i })
 	await expect(clips).toHaveCount(2)
@@ -632,7 +633,7 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByLabel('Opacity').fill('60')
 	await inspector.getByLabel('X').fill('24')
-	await expect(inspector.getByText('60%')).toBeVisible()
+	await expect(inspector.getByText('Opacity 60%')).toBeVisible()
 
 	await setTimelineCursor(page, 0.5)
 	const renderer = page.getByLabel('Renderer stage')
@@ -697,7 +698,8 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 
 	await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
-	await expect(inspector.locator('dd').filter({ hasText: '0.5s' })).toHaveCount(2)
+	await expect(inspector.getByText(/Clip 1 - V1 - 0\.5s - Duration/)).toBeVisible()
+	await expect(inspector.getByText('In 0.5s')).toBeVisible()
 	await setTimelineCursor(page, 0.5)
 
 	await inspector.getByRole('button', { name: 'Tint' }).click()
@@ -709,7 +711,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 
 	await inspector.getByRole('tab', { name: 'Color' }).click()
 	await inspector.getByRole('button', { name: 'Set color #16a34a' }).click()
-	await expect(inspector.locator('.ve-inspector-thumb')).toHaveCSS('background-color', 'rgb(22, 163, 74)')
+	await expect(inspector.locator('.ve-inspector-thumb')).toHaveCSS('border-color', 'rgb(22, 163, 74)')
 	await expect(clip).toHaveCSS('border-left-color', 'rgb(22, 163, 74)')
 	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer--video')).toHaveCSS('border-color', 'rgb(22, 163, 74)')
 
@@ -730,7 +732,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 			.map((button) => button.textContent?.trim() ?? ''),
 	)
 	expect(overflowingInspectorButtons).toEqual([])
-	await inspector.getByRole('button', { name: 'Delete clip' }).click()
+	await page.getByRole('region', { name: 'Timeline' }).getByLabel('Clip edit actions').getByRole('button', { name: 'Delete clip' }).click()
 	await expect(page.getByText('Select a clip to edit opacity or split it.')).toBeVisible()
 })
 

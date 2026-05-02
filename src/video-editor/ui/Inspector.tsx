@@ -85,6 +85,31 @@ const InspectorSection = ({
 	</section>
 )
 
+const isPreviewableResourceUrl = (url: string): boolean =>
+	url.startsWith('blob:')
+	|| url.startsWith('/')
+	|| url.startsWith('./')
+	|| url.startsWith('http')
+	|| url.startsWith('data:')
+
+const ClipHeaderPreview = ({ resource, color, name }: {
+	resource: ResourceAttrs | null
+	color: string
+	name: string
+}) => {
+	const url = String(resource?.url ?? '')
+	const kind = String(resource?.kind ?? '')
+	const canPreview = isPreviewableResourceUrl(url)
+
+	return (
+		<div className="ve-inspector-thumb" style={{ borderColor: color }} aria-label="Clip preview">
+			{canPreview && kind === 'image' ? <img src={url} alt="" /> : null}
+			{canPreview && kind === 'video' ? <video src={url} muted preload="metadata" aria-label={`${name} first frame`} /> : null}
+			{!canPreview || (kind !== 'image' && kind !== 'video') ? <span>{kind === 'audio' ? 'AUD' : 'CLIP'}</span> : null}
+		</div>
+	)
+}
+
 export const Inspector = observer(() => {
 	const [activeTab, setActiveTab] = useState<InspectorTab>('edit')
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
@@ -127,9 +152,10 @@ export const Inspector = observer(() => {
 	const transform = selectedClip$.transform.get()
 	const effectIds = selectedClipRels$.effects.get()
 	const resourceId = selectedClipRels$.resource.get()
-	const resourceKind = typeof resourceId === 'string'
-		? resourceAttrs$(projects$, resourceId).kind.get()
-		: 'image'
+	const resource = typeof resourceId === 'string'
+		? resourceAttrs$(projects$, resourceId).get() as ResourceAttrs
+		: null
+	const resourceKind = resource?.kind ?? 'image'
 	const selectedMediaKind = selectedClip$.mediaKind.get() ?? resourceKind
 	const isAudioClip = selectedMediaKind === 'audio'
 	const effects = Array.isArray(effectIds) ? effectIds : []
@@ -161,40 +187,20 @@ export const Inspector = observer(() => {
 			</div>
 			<InspectorTabs activeTab={activeTab} onChange={setActiveTab} />
 			<div className="ve-inspector-selected">
-				<div className="ve-inspector-thumb" style={{ background: color }} />
+				<ClipHeaderPreview resource={resource} color={color} name={name} />
 				<div>
-					<strong>{name}</strong>
-					<small>Clip {selectedClipOrdinal} - {selectedTrackName} - {formatSeconds(start)}</small>
+					<input
+						className="ve-inspector-name ve-inspector-title-input"
+						type="text"
+						aria-label="Clip name"
+						value={name}
+						onChange={(event) => actions.renameSelectedClip(event.currentTarget.value)}
+					/>
+					<small>Clip {selectedClipOrdinal} - {selectedTrackName} - {formatSeconds(start)} - Duration {formatSeconds(duration)}</small>
 				</div>
 			</div>
 			{activeTab === 'edit' ? (
 				<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Edit inspector">
-					<InspectorSection title="Basic" icon={SlidersHorizontal}>
-						<label className="ve-inspector-field">
-							<span>Clip name</span>
-							<input
-								className="ve-inspector-name"
-								type="text"
-								aria-label="Clip name"
-								value={name}
-								onChange={(event) => actions.renameSelectedClip(event.currentTarget.value)}
-							/>
-						</label>
-						<dl className="ve-inspector-grid">
-							<div>
-								<dt>Start</dt>
-								<dd>{formatSeconds(start)}</dd>
-							</div>
-							<div>
-								<dt>Duration</dt>
-								<dd>{formatSeconds(duration)}</dd>
-							</div>
-							<div>
-								<dt>Opacity</dt>
-								<dd>{formatPercent(opacity)}</dd>
-							</div>
-						</dl>
-					</InspectorSection>
 					<InspectorSection title="Opacity" icon={Gauge}>
 						<label className="ve-slider-field">
 							<span>Opacity</span>
@@ -207,6 +213,7 @@ export const Inspector = observer(() => {
 								onChange={(event) => actions.updateSelectedClipOpacity(Number(event.currentTarget.value))}
 							/>
 						</label>
+						<small>Opacity {formatPercent(opacity)}</small>
 					</InspectorSection>
 					<InspectorSection title="Fade" icon={Gauge} ariaLabel="Fade controls">
 						<dl className="ve-inspector-grid">
