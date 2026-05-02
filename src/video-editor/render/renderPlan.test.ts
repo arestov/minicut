@@ -137,6 +137,17 @@ describe('render plan compiler', () => {
 		expect(clips[1]).toMatchObject({ type: 'ef-image', source: 'file:///still.png', start: 4, duration: 1, trimStart: 0 })
 	})
 
+	it('excludes muted tracks from frame operations and export source clips', () => {
+		const { registry, projectId } = createRenderedProject()
+		const project = registry.projects[projectId]
+		const videoTrack = getVideoTrack(registry, project)
+		expect(videoTrack).not.toBeNull()
+		registry.entitiesById[String(videoTrack?.id)].attrs.muted = true
+
+		expect(compileFrameOperations(registry, projectId, 0.5)).toEqual([])
+		expect(compileEditframeClips(registry, projectId)).toEqual([])
+	})
+
 	it('compiles linked video audio clips with audio gain and pan for preview and export', () => {
 		let registry = createEmptyRegistry()
 		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })

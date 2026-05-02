@@ -31,6 +31,7 @@ export interface TimelineClipInterval {
 	id: EntityId
 	trackId: EntityId
 	trackKind: ResourceAttrs['kind']
+	trackMuted: boolean
 	start: number
 	end: number
 }
@@ -114,7 +115,9 @@ export const getTimelineClipIntervals$ = (
 	const intervals: TimelineClipInterval[] = []
 
 	for (const trackId of trackIds) {
-		const trackKind = String(trackAttrs$(projects$, trackId).kind.get()) as ResourceAttrs['kind']
+		const track$ = trackAttrs$(projects$, trackId)
+		const trackKind = String(track$.kind.get()) as ResourceAttrs['kind']
+		const trackMuted = track$.muted.get() === true
 		const clipIds = getTrackClipIds$(projects$, trackId)
 
 		for (const clipId of clipIds) {
@@ -126,6 +129,7 @@ export const getTimelineClipIntervals$ = (
 					id: clipId,
 					trackId,
 					trackKind,
+					trackMuted,
 					start,
 					end: start + duration,
 				})
@@ -408,7 +412,9 @@ export const createPreviewStructure$ = (
 	const clipIntervals$ = createTimelineClipIntervals$(projects$, session$)
 
 	return computed(() => ({
-		clipSources: clipIntervals$.get().map((clipRef) => getPreviewClipSource$(projects$, clipRef)),
+		clipSources: clipIntervals$.get()
+			.filter((clipRef) => !clipRef.trackMuted)
+			.map((clipRef) => getPreviewClipSource$(projects$, clipRef)),
 	}))
 }
 

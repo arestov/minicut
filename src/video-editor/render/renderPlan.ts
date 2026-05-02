@@ -95,6 +95,7 @@ export const compileFrameOperations = (
 ): ClipFrameOperation[] => {
 	const project = registry.projects[projectId]
 	return getTracks(registry, project)
+		.filter((track) => track.attrs.muted !== true)
 		.flatMap((track) => getClipEntitiesForTrack(registry, track.id))
 		.filter((clip) => {
 			const attrs = clip.attrs as unknown as ClipAttrs
@@ -106,6 +107,7 @@ export const compileFrameOperations = (
 export const compileEditframeClips = (registry: ProjectRegistry, projectId: string): EditframeClip[] => {
 	const project = registry.projects[projectId]
 	return getTracks(registry, project)
+		.filter((track) => track.attrs.muted !== true)
 		.flatMap((track) => getClipEntitiesForTrack(registry, track.id))
 		.map((clip) => {
 			const attrs = clip.attrs as unknown as ClipAttrs

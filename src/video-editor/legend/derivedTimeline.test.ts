@@ -67,4 +67,23 @@ describe('derived timeline selectors', () => {
 		session$.cursor.set(2.5)
 		expect(previewScene$.get().activeClipNames).toEqual([])
 	})
+
+	it('keeps muted tracks out of preview while preserving playback duration', () => {
+		const { registry, projectId } = createRegistryFixture()
+		const projects$ = createProjectsStore()
+		const session$ = createSessionStore()
+		applySnapshot(projects$, registry)
+		session$.activeProjectId.set(projectId)
+		const previewScene$ = createPreviewScene$(projects$, session$)
+		const playbackDuration$ = createPlaybackDuration$(projects$, session$)
+		const timelineId = getActiveTimelineId$(projects$, projectId)
+		const trackId = getTimelineTrackIds$(projects$, timelineId)[0]
+
+		projects$.entitiesById[trackId].attrs.muted.set(true)
+		session$.cursor.set(0.5)
+
+		expect(playbackDuration$.get()).toBe(2)
+		expect(previewScene$.get().renderedClips).toEqual([])
+		expect(previewScene$.get().activeClipNames).toEqual([])
+	})
 })

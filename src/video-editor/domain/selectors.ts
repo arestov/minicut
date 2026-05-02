@@ -134,6 +134,11 @@ export const getClipIdsForTrack = (registry: ProjectRegistry, trackId: EntityId)
 export const getClipEntitiesForTrack = (registry: ProjectRegistry, trackId: EntityId): Entity[] =>
 	getClipIdsForTrack(registry, trackId).map((clipId) => registry.entitiesById[clipId])
 
+export const getTrackForClip = (registry: ProjectRegistry, clipId: EntityId): Entity | null =>
+	Object.values(registry.entitiesById).find((entity) =>
+		entity?.type === 'track' && getClipIdsForTrack(registry, entity.id).includes(clipId),
+	) ?? null
+
 export const getSelectedClip = (
 	registry: ProjectRegistry,
 	session: Pick<EditorSessionState, 'activeProjectId' | 'selectedEntityId'>,

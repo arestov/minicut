@@ -242,6 +242,52 @@ describe('command validation', () => {
 		}
 	})
 
+	it('rejects clip mutations on locked tracks', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const project = registry.projects[projectId]
+		const videoTrack = getVideoTrack(registry, project)
+		expect(videoTrack).not.toBeNull()
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Locked source', kind: 'video', duration: 5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const clipId = String(clipResult.createdIds?.clipId)
+		const effectResult = buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: { id: clipId, name: 'Blur', kind: 'blur', amount: 0.5 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, effectResult.envelope)
+		const effectId = String(effectResult.createdIds?.effectId)
+		registry = applyPatchEnvelopeToRegistry(registry, {
+			projectId,
+			version: registry.projects[projectId].version + 1,
+			patches: [{ c: PATCH.ATTRS_MERGE, p: { id: String(videoTrack?.id), attrs: { locked: true } } }],
+		})
+
+		const lockedCommands: Command[] = [
+			{ c: CMD.TIMELINE_MOVE_CLIP, p: { id: clipId, delta: 0.5 } },
+			{ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clipId, time: 1 } },
+			{ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } },
+			{ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { start: 0.5 } } },
+			{ c: CMD.EFFECT_ADD, p: { id: clipId, name: 'Tint', kind: 'tint', amount: 0.25 } },
+			{ c: CMD.EFFECT_REMOVE, p: { id: clipId, effectId } },
+		]
+
+		for (const command of lockedCommands) {
+			expect(() => buildDispatchResult(registry, command)).toThrow('Cannot modify a clip on a locked track')
+		}
+	})
+
 	it('clamps moved clip start to zero when delta is too negative', () => {
 		let registry = createEmptyRegistry()
 		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })

@@ -1,4 +1,4 @@
-import { getEntity, getProjectEntity, getProjectForEntity } from './selectors'
+import { getEntity, getProjectEntity, getProjectForEntity, getTrackForClip } from './selectors'
 import { CMD, type ClipAttrs, type Command, type Entity, type ProjectGraph, type ProjectRegistry } from './types'
 
 const assert = (condition: unknown, message: string): asserts condition => {
@@ -56,6 +56,12 @@ const assertClipTarget = (
 	return assertEntityType(registry, target.id, 'clip')
 }
 
+const assertClipTrackUnlocked = (registry: ProjectRegistry, clipId: string): void => {
+	const track = getTrackForClip(registry, clipId)
+	assert(track, `Unable to resolve track for clip ${clipId}`)
+	assert(track.attrs.locked !== true, 'Cannot modify a clip on a locked track')
+}
+
 export const validateCommand = (registry: ProjectRegistry, command: Command): void => {
 	switch (command.c) {
 		case CMD.PROJECT_CREATE:
@@ -99,6 +105,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.TIMELINE_MOVE_CLIP: {
 			assertClipTarget(registry, command.p)
 			assertProjectForEntity(registry, command.p.id)
+			assertClipTrackUnlocked(registry, command.p.id)
 			assert(Number.isFinite(command.p.delta), 'Move delta must be finite')
 			return
 		}
@@ -106,6 +113,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.TIMELINE_SPLIT_CLIP: {
 			const clip = assertClipTarget(registry, command.p)
 			assertProjectForEntity(registry, command.p.id)
+			assertClipTrackUnlocked(registry, command.p.id)
 			const attrs = clip.attrs as unknown as ClipAttrs
 			assert(Number.isFinite(command.p.time), 'Split time must be finite')
 			assert(
@@ -118,12 +126,14 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.TIMELINE_DELETE_CLIP: {
 			assertClipTarget(registry, command.p)
 			assertProjectForEntity(registry, command.p.id)
+			assertClipTrackUnlocked(registry, command.p.id)
 			return
 		}
 
 		case CMD.CLIP_UPDATE_ATTRS: {
 			assertClipTarget(registry, command.p)
 			assertProjectForEntity(registry, command.p.id)
+			assertClipTrackUnlocked(registry, command.p.id)
 			if (command.p.attrs.opacity) {
 				const opacity = command.p.attrs.opacity.value
 				assert(opacity >= 0 && opacity <= 1, 'Opacity must be between 0 and 1')
@@ -159,6 +169,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.EFFECT_ADD: {
 			assertClipTarget(registry, command.p)
 			assertProjectForEntity(registry, command.p.id)
+			assertClipTrackUnlocked(registry, command.p.id)
 			assert(command.p.name.trim().length > 0, 'Effect name is required')
 			assert(['blur', 'sharpen', 'tint'].includes(command.p.kind), 'Effect kind is invalid')
 			assert(command.p.amount >= 0 && command.p.amount <= 1, 'Effect amount must be between 0 and 1')
@@ -168,6 +179,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 		case CMD.EFFECT_REMOVE: {
 			const clip = assertClipTarget(registry, command.p)
 			assertProjectForEntity(registry, command.p.id)
+			assertClipTrackUnlocked(registry, command.p.id)
 			const effect = assertEntityType(registry, command.p.effectId, 'effect')
 			const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
 			assert(effectIds.includes(command.p.effectId), 'Effect must belong to the target clip')
