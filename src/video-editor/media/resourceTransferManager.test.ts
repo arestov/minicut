@@ -69,6 +69,17 @@ const createRegistryWithResource = (resourceId: string, attrs: Partial<ResourceA
 	}
 }
 
+const createRegistryWithResources = (
+	resources: Array<{ resourceId: string; attrs?: Partial<ResourceAttrs> }>,
+): ProjectRegistry => ({
+	activeProjectId: null,
+	projects: {},
+	entitiesById: Object.fromEntries(resources.map(({ resourceId, attrs }) => [
+		resourceId,
+		createRegistryWithResource(resourceId, attrs).entitiesById[resourceId],
+	])),
+})
+
 describe('resource transfer manager', () => {
 	const createObjectUrl = vi.fn<(blob: Blob) => string>()
 	const revokeObjectUrl = vi.fn<(url: string) => void>()
@@ -155,7 +166,7 @@ describe('resource transfer manager', () => {
 			expect(client.getTransfer('res-remote')).toMatchObject({
 				availability: 'remote',
 				status: 'ready',
-				loadedBytes: 24,
+				loadedBytes: blob.size,
 				progress: 1,
 				canPreview: true,
 			})
@@ -164,6 +175,146 @@ describe('resource transfer manager', () => {
 		const resolvedUrl = client.resolveResourceUrl('res-remote', '')
 		expect(resolvedUrl).toMatch(/^blob:test-\d+$/)
 		expect(createObjectUrl).toHaveBeenCalled()
+		const sourceBytes = Array.from(new Uint8Array(await blob.arrayBuffer()))
+		const completedBlob = createObjectUrl.mock.calls.at(-1)?.[0]
+		expect(completedBlob).toBeInstanceOf(Blob)
+		const rebuiltBytes = Array.from(new Uint8Array(await (completedBlob as Blob).arrayBuffer()))
+		expect(rebuiltBytes).toEqual(sourceBytes)
+
+		client.destroy()
+		server.destroy()
+	})
+
+	it('surfaces partial progress before completion when head and transfer delay are constrained', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const server = createResourceTransferManager({
+			getRole: () => 'server',
+			getPeerId: () => 'peer-a',
+			chunkSize: 8,
+			chunkSendDelayMs: 250,
+		})
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		server.attachServerTransport('peer-b', serverTransport)
+		client.attachClientTransport(clientTransport)
+
+		const blob = new Blob(['abcdefghijklmnopqrstuvwx'], { type: 'video/webm' })
+		server.registerLocalResource('res-progressive', blob, {
+			objectUrl: 'blob:server-local',
+			kind: 'video',
+			mime: 'video/webm',
+			duration: 8,
+			size: blob.size,
+			chunkSize: 8,
+			ownerPeerId: 'peer-a',
+			sourceKind: 'p2p',
+			fallbackUrl: '',
+			name: 'Progressive clip',
+		})
+
+		client.syncRegistry(createRegistryWithResource('res-progressive', { size: blob.size, duration: 8 }))
+		client.requestPlayheadWindow('res-progressive', 4)
+		await waitFor(() => {
+			expect(client.getTransfer('res-progressive')?.requestEvents.some((event) =>
+				event.reason === 'window' && event.ranges.some(([start]) => start > 0),
+			)).toBe(true)
+		})
+
+		await waitFor(() => {
+			const transfer = client.getTransfer('res-progressive')
+			expect(transfer).toMatchObject({
+				status: 'partial',
+				canPreview: true,
+			})
+			expect((transfer?.progress ?? 0) > 0 && (transfer?.progress ?? 0) < 1).toBe(true)
+		})
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-progressive')).toMatchObject({
+				status: 'ready',
+				progress: 1,
+			})
+		})
+
+		client.destroy()
+		server.destroy()
+	})
+
+	it('evicts older remote entries when the configured cache cap is exceeded', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const server = createResourceTransferManager({
+			getRole: () => 'server',
+			getPeerId: () => 'peer-a',
+			chunkSize: 8,
+		})
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			maxCachedBytes: 24,
+		})
+
+		server.attachServerTransport('peer-b', serverTransport)
+		client.attachClientTransport(clientTransport)
+
+		const firstBlob = new Blob(['abcdefghijklmnopqrstuvwx'], { type: 'video/webm' })
+		server.registerLocalResource('res-a', firstBlob, {
+			objectUrl: 'blob:server-a',
+			kind: 'video',
+			mime: 'video/webm',
+			duration: 8,
+			size: firstBlob.size,
+			chunkSize: 8,
+			ownerPeerId: 'peer-a',
+			sourceKind: 'p2p',
+			fallbackUrl: '',
+			name: 'Clip A',
+		})
+		client.syncRegistry(createRegistryWithResource('res-a', { size: firstBlob.size, duration: 8, name: 'Clip A' }))
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-a')).toMatchObject({
+				status: 'ready',
+				loadedBytes: firstBlob.size,
+			})
+		})
+
+		const secondBlob = new Blob(['zyxwvutsrqponmlkjihgfedc'], { type: 'video/webm' })
+		server.registerLocalResource('res-b', secondBlob, {
+			objectUrl: 'blob:server-b',
+			kind: 'video',
+			mime: 'video/webm',
+			duration: 8,
+			size: secondBlob.size,
+			chunkSize: 8,
+			ownerPeerId: 'peer-a',
+			sourceKind: 'p2p',
+			fallbackUrl: '',
+			name: 'Clip B',
+		})
+		client.syncRegistry(createRegistryWithResources([
+			{ resourceId: 'res-a', attrs: { size: firstBlob.size, duration: 8, name: 'Clip A' } },
+			{ resourceId: 'res-b', attrs: { size: secondBlob.size, duration: 8, name: 'Clip B' } },
+		]))
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-b')).toMatchObject({
+				status: 'ready',
+				loadedBytes: secondBlob.size,
+			})
+		})
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-a')).toMatchObject({
+				status: 'missing',
+				loadedBytes: 0,
+			})
+		})
 
 		client.destroy()
 		server.destroy()

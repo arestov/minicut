@@ -88,12 +88,43 @@ const resolveBrowserRoom = (): RoomUrlResolution | null => {
 	return resolved
 }
 
+const resolveMediaTransferOptions = (): {
+	chunkSize?: number
+	chunkSendDelayMs?: number
+	headBytes?: number
+	tailBytes?: number
+	playheadWindowSeconds?: number
+} => {
+	if (typeof window === 'undefined') {
+		return {}
+	}
+
+	const params = new URLSearchParams(window.location.search)
+	const getNumber = (key: string): number | undefined => {
+		const raw = params.get(key)
+		if (!raw) {
+			return undefined
+		}
+		const parsed = Number(raw)
+		return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
+	}
+
+	return {
+		chunkSize: getNumber('transferChunkSize'),
+		chunkSendDelayMs: getNumber('transferChunkDelayMs'),
+		headBytes: getNumber('transferHeadBytes'),
+		tailBytes: getNumber('transferTailBytes'),
+		playheadWindowSeconds: getNumber('transferPlayheadWindowSeconds'),
+	}
+}
+
 export const VideoEditorHarnessApp = ({
 	harness: providedHarness,
 }: VideoEditorHarnessAppProps) => {
 	const resolvedRoom = useMemo(() => resolveBrowserRoom(), [])
 	const signalUrl = useMemo(() => resolveSignalUrl(), [])
 	const rtcConfig = useMemo(() => createDefaultRtcConfig(resolveTurnIceServer()), [])
+	const mediaTransferOptions = useMemo(() => resolveMediaTransferOptions(), [])
 	const ownedHarness = useMemo(() => {
 		if (providedHarness) {
 			return providedHarness
@@ -104,6 +135,7 @@ export const VideoEditorHarnessApp = ({
 		}
 
 		return createVideoEditorHarness(undefined, {
+			mediaTransferOptions,
 			authorityOptions: {
 				p2p: {
 					roomId: resolvedRoom.roomId,
@@ -112,7 +144,7 @@ export const VideoEditorHarnessApp = ({
 				},
 			},
 		})
-	}, [providedHarness, resolvedRoom, rtcConfig, signalUrl])
+	}, [mediaTransferOptions, providedHarness, resolvedRoom, rtcConfig, signalUrl])
 
 	useEffect(() => {
 		if (typeof window === 'undefined' || !import.meta.env.DEV) {
@@ -127,6 +159,10 @@ export const VideoEditorHarnessApp = ({
 				status: transfer.status,
 				progress: transfer.progress,
 				previewUrl: transfer.previewUrl,
+				loadedRanges: transfer.loadedRanges,
+				requestedRanges: transfer.requestedRanges,
+				requestedHistory: transfer.requestedHistory,
+				requestEvents: transfer.requestEvents,
 				mode: transfer.mode,
 				availability: transfer.availability,
 			})),
@@ -147,6 +183,9 @@ export const VideoEditorHarnessApp = ({
 			},
 			createProject: () => {
 				ownedHarness.actions.createProject()
+			},
+			setCursor: (cursor: number) => {
+				ownedHarness.actions.setCursor(cursor)
 			},
 			dispatchCreateProject: async (title?: string) => {
 				let timeoutId = 0

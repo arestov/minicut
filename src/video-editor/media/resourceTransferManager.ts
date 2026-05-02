@@ -36,7 +36,10 @@ interface RemoteResourceState extends ResourceSnapshot {
 	chunks: Map<number, ArrayBuffer>
 	loadedRanges: ResourceByteRange[]
 	requestedRanges: ResourceByteRange[]
+	requestedHistory: ResourceByteRange[]
+	requestEvents: Array<{ reason: TransferReason, ranges: ResourceByteRange[] }>
 	loadedBytes: number
+	lastTouchedAt: number
 	headRequested: boolean
 	tailRequested: boolean
 	sequentialRequested: boolean
@@ -61,6 +64,8 @@ export interface ResourceTransferView {
 	totalBytes: number
 	loadedRanges: ResourceByteRange[]
 	requestedRanges: ResourceByteRange[]
+	requestedHistory: ResourceByteRange[]
+	requestEvents: Array<{ reason: TransferReason, ranges: ResourceByteRange[] }>
 	previewUrl: string
 	playbackUrl: string
 	canPreview: boolean
@@ -121,6 +126,10 @@ export interface CreateResourceTransferManagerOptions {
 	getPeerId: () => string | null
 	chunkSize?: number
 	chunkSendDelayMs?: number
+	maxCachedBytes?: number
+	headBytes?: number
+	tailBytes?: number
+	playheadWindowSeconds?: number
 	transfers$?: Observable<Record<string, ResourceTransferView>>
 }
 
@@ -187,7 +196,10 @@ const createRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => (
 	chunks: new Map<number, ArrayBuffer>(),
 	loadedRanges: [],
 	requestedRanges: [],
+	requestedHistory: [],
+	requestEvents: [],
 	loadedBytes: 0,
+	lastTouchedAt: Date.now(),
 	headRequested: false,
 	tailRequested: false,
 	sequentialRequested: false,
@@ -206,6 +218,10 @@ export const createResourceTransferManager = (
 	const transfers$ = options.transfers$ ?? observable<Record<string, ResourceTransferView>>({})
 	const defaultChunkSize = options.chunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE
 	const chunkSendDelayMs = options.chunkSendDelayMs ?? 0
+	const maxCachedBytes = options.maxCachedBytes ?? 128 * 1024 * 1024
+	const headBytes = options.headBytes
+	const tailBytes = options.tailBytes
+	const playheadWindowSeconds = options.playheadWindowSeconds
 	const localResources = new Map<string, LocalResourceEntry>()
 	const remoteStates = new Map<string, RemoteResourceState>()
 	const resourceSnapshots = new Map<string, ResourceSnapshot>()
@@ -225,6 +241,36 @@ export const createResourceTransferManager = (
 	}
 
 	const getTransport = (peerKey: string): AttachedTransport | null => transports.get(peerKey) ?? null
+
+	const evictRemoteState = (state: RemoteResourceState): void => {
+		revokeRemoteUrls(state)
+		state.chunks.clear()
+		state.loadedRanges = []
+		state.requestedRanges = []
+		state.loadedBytes = 0
+		state.status = 'missing'
+		updateTransferView(state.resourceId)
+	}
+
+	const enforceCacheCap = (exemptResourceId?: string): void => {
+		let totalBytes = Array.from(remoteStates.values()).reduce((sum, state) => sum + state.loadedBytes, 0)
+		if (totalBytes <= maxCachedBytes) {
+			return
+		}
+
+		const candidates = Array.from(remoteStates.values())
+			.filter((state) => state.resourceId !== exemptResourceId && state.loadedBytes > 0)
+			.sort((left, right) => left.lastTouchedAt - right.lastTouchedAt)
+
+		for (const state of candidates) {
+			if (totalBytes <= maxCachedBytes) {
+				break
+			}
+
+			totalBytes -= state.loadedBytes
+			evictRemoteState(state)
+		}
+	}
 
 	const buildRemoteBlob = (state: RemoteResourceState, requireComplete: boolean): Blob | null => {
 		const totalSize = state.size
@@ -275,6 +321,8 @@ export const createResourceTransferManager = (
 				totalBytes,
 				loadedRanges: totalBytes > 0 ? [[0, totalBytes]] : [],
 				requestedRanges: [],
+				requestedHistory: [],
+				requestEvents: [],
 				previewUrl: local.objectUrl,
 				playbackUrl: local.objectUrl,
 				canPreview: true,
@@ -311,6 +359,8 @@ export const createResourceTransferManager = (
 			totalBytes,
 			loadedRanges: state.loadedRanges,
 			requestedRanges: state.requestedRanges,
+			requestedHistory: state.requestedHistory,
+			requestEvents: state.requestEvents,
 			previewUrl,
 			playbackUrl: previewUrl,
 			canPreview: previewUrl.length > 0,
@@ -396,6 +446,8 @@ export const createResourceTransferManager = (
 		}
 
 		state.requestedRanges = mergeByteRanges([...state.requestedRanges, ...missingRanges])
+		state.requestedHistory = mergeByteRanges([...state.requestedHistory, ...missingRanges])
+		state.requestEvents = [...state.requestEvents.slice(-19), { reason, ranges: missingRanges }]
 		if (reason === 'head') {
 			state.headRequested = true
 		}
@@ -423,7 +475,7 @@ export const createResourceTransferManager = (
 			return
 		}
 
-		const headRange = getHeadPreviewRange(state.size, state.chunkSize)
+		const headRange = getHeadPreviewRange(state.size, state.chunkSize, headBytes)
 		if (!headRange) {
 			return
 		}
@@ -490,9 +542,11 @@ export const createResourceTransferManager = (
 		state.loadedRanges = mergeByteRanges([...state.loadedRanges, [meta.start, meta.end]])
 		state.requestedRanges = subtractByteRanges(state.requestedRanges, [[meta.start, meta.end]])
 		state.loadedBytes = Array.from(state.chunks.values()).reduce((sum, chunk) => sum + chunk.byteLength, 0)
+		state.lastTouchedAt = Date.now()
 		state.status = typeof state.size === 'number' && state.loadedBytes >= state.size ? 'ready' : 'partial'
 		state.lastError = null
 		rebuildPreviewUrls(resourceId)
+		enforceCacheCap(resourceId)
 		maybeContinueSequential(resourceId)
 	}
 
@@ -820,6 +874,7 @@ export const createResourceTransferManager = (
 				duration: state.duration,
 				time,
 				chunkSize: state.chunkSize,
+				windowSeconds: playheadWindowSeconds,
 			})
 			const rangeKey = buildRangeKey(range)
 			if (!range || rangeKey === state.lastWindowKey) {
@@ -836,7 +891,7 @@ export const createResourceTransferManager = (
 				return
 			}
 
-			const tailRange = getTailFallbackRange(state.size, state.chunkSize)
+			const tailRange = getTailFallbackRange(state.size, state.chunkSize, tailBytes)
 			if (!tailRange) {
 				return
 			}

@@ -162,6 +162,13 @@ interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
 	exportRenderer?: ExportRenderer
 	authorityOptions?: CreateAuthorityClientOptions
+	mediaTransferOptions?: {
+		chunkSize?: number
+		chunkSendDelayMs?: number
+		headBytes?: number
+		tailBytes?: number
+		playheadWindowSeconds?: number
+	}
 }
 
 export const createVideoEditorHarness = (
@@ -169,6 +176,7 @@ export const createVideoEditorHarness = (
 	options: CreateVideoEditorHarnessOptions = {},
 ) => {
 	let authorityClientRef: EditorAuthorityClient | null = null
+	const resourceChunkSize = options.mediaTransferOptions?.chunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE
 	const resourceTransferManager = createResourceTransferManager({
 		getRole: () => {
 			const role = (authorityClientRef as Partial<{ role: unknown }> | null)?.role
@@ -178,7 +186,11 @@ export const createVideoEditorHarness = (
 			const peerId = (authorityClientRef as Partial<{ peerId: unknown }> | null)?.peerId
 			return typeof peerId === 'string' ? peerId : null
 		},
-		chunkSize: DEFAULT_RESOURCE_CHUNK_SIZE,
+		chunkSize: resourceChunkSize,
+		chunkSendDelayMs: options.mediaTransferOptions?.chunkSendDelayMs,
+		headBytes: options.mediaTransferOptions?.headBytes,
+		tailBytes: options.mediaTransferOptions?.tailBytes,
+		playheadWindowSeconds: options.mediaTransferOptions?.playheadWindowSeconds,
 	})
 	const authorityOptions = options.authorityOptions?.p2p
 		? {
@@ -455,7 +467,7 @@ export const createVideoEditorHarness = (
 							size: file.size,
 							source,
 							dataStatus: source.kind === 'p2p' ? 'missing' : 'ready',
-							chunkSize: DEFAULT_RESOURCE_CHUNK_SIZE,
+							chunkSize: resourceChunkSize,
 						},
 					}).then((result) => {
 						const resourceId = result.createdIds?.resourceId
@@ -466,7 +478,7 @@ export const createVideoEditorHarness = (
 								mime: file.type || `${kind}/unknown`,
 								duration,
 								size: file.size,
-								chunkSize: DEFAULT_RESOURCE_CHUNK_SIZE,
+								chunkSize: resourceChunkSize,
 								ownerPeerId,
 								sourceKind: source.kind,
 								fallbackUrl: source.kind === 'p2p' ? '' : url,
