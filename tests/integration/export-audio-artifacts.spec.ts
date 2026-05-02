@@ -265,10 +265,9 @@ const addSelectedEffect = async (page: Page, effectName: 'Blur' | 'Sharpen' | 'T
 }
 
 const nudgeSelectedClip = async (page: Page, count: number): Promise<void> => {
-	const inspector = page.getByRole('complementary', { name: 'Inspector' })
-	await inspector.getByRole('tab', { name: 'Edit' }).click()
+	const clipActions = page.getByRole('region', { name: 'Timeline' }).getByLabel('Clip edit actions')
 	for (let index = 0; index < count; index += 1) {
-		await inspector.getByRole('button', { name: 'Nudge +0.5s' }).click()
+		await clipActions.getByRole('button', { name: 'Nudge +0.5s' }).click()
 	}
 }
 
@@ -736,5 +735,154 @@ test.describe('exported audio artifacts', () => {
 		const power880 = measureFrequencyPower(samples, 2, 48_000, 880, { start: 0.1, end: 0.8 })
 		expect(power440).toBeGreaterThan(0.001)
 		expect(power880).toBeLessThan(power440 * 0.2)
+	})
+
+	test.describe('MediaRecorder fallback audio parity', () => {
+		test.beforeEach(async ({ page }) => {
+			await forceMediaRecorderFallback(page, { removeRequestFrame: true })
+		})
+
+		test('selected video clip export includes linked embedded audio', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const videoFile = await createVideoWithToneFile(page)
+			await importMediaFiles(page, [videoFile])
+			await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+			await selectTimelineClip(page, /linked-tone-video\.webm/i)
+
+			const exportPath = await exportSelectedClip(page)
+			const media = await probeMedia(exportPath)
+			expect(media.audioStreams.length).toBeGreaterThan(0)
+			const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
+			expect(analysis.rms).toBeGreaterThan(0.001)
+			expectToneEnergy(samples, { channels: 2, sampleRate: 48_000, frequency: 440, start: 0.1, end: 0.8, minPower: 0.001 })
+		})
+
+		test('selected video export uses trimmed linked audio timing', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const videoFile = await createVideoWithToneFile(page, {
+				name: 'fallback-linked-two-tone-video.webm',
+				durationSeconds: 2,
+				segments: [
+					{ start: 0, end: 1, frequency: 440 },
+					{ start: 1, end: 2, frequency: 880 },
+				],
+			})
+			await importMediaFiles(page, [videoFile])
+			await selectTimelineClip(page, /Embedded audio/i)
+			const inspector = page.getByRole('complementary', { name: 'Inspector' })
+			await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
+			await inspector.getByRole('button', { name: 'Start +0.5s' }).click()
+			await selectTimelineClip(page, /fallback-linked-two-tone-video\.webm/i)
+
+			const exportPath = await exportSelectedClip(page)
+			const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
+			const silentBeforeLinkedAudio = analysis.windows.filter((window) => window.start >= 0.2 && window.end <= 0.8)
+			expect(Math.max(...silentBeforeLinkedAudio.map((window) => window.rms))).toBeLessThan(0.002)
+			const power440 = measureFrequencyPower(samples, 2, 48_000, 440, { start: 1.1, end: 1.8 })
+			const power880 = measureFrequencyPower(samples, 2, 48_000, 880, { start: 1.1, end: 1.8 })
+			expect(power880).toBeGreaterThan(0.001)
+			expect(power880).toBeGreaterThan(power440 * 3)
+		})
+
+		test('gain edits are measurable in decoded PCM', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const imageFile = await createSolidPngFile(page, 'fallback-gain-green.png', '#16a34a')
+			const audioFile = createToneWavFile({
+				name: 'fallback-gain-tone.wav',
+				durationSeconds: 1,
+				segments: [{ start: 0, end: 1, frequency: 440 }],
+			})
+			await importMediaFiles(page, [imageFile, audioFile])
+			await addResourceToTimeline(page, audioFile.name)
+			await selectTimelineClip(page, /fallback-gain-tone\.wav/i)
+
+			await setSelectedAudio(page, { gain: 1 })
+			const fullGainPath = await exportProject(page)
+			const fullGain = (await analyzeExportedAudio(fullGainPath)).analysis
+
+			await selectTimelineClip(page, /fallback-gain-tone\.wav/i)
+			await setSelectedAudio(page, { gain: 0.5 })
+			const halfGainPath = await exportProject(page)
+			const halfGain = (await analyzeExportedAudio(halfGainPath)).analysis
+			expect(halfGain.rms / fullGain.rms).toBeGreaterThan(0.35)
+			expect(halfGain.rms / fullGain.rms).toBeLessThan(0.75)
+		})
+
+		test('overlapping audio clips mix both tones without clipping', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const imageFile = await createSolidPngFile(page, 'fallback-mix-green.png', '#16a34a')
+			const toneA = createToneWavFile({
+				name: 'fallback-mix-tone-a.wav',
+				durationSeconds: 1,
+				segments: [{ start: 0, end: 1, frequency: 440, leftGain: 0.55, rightGain: 0.55 }],
+			})
+			const toneB = createToneWavFile({
+				name: 'fallback-mix-tone-b.wav',
+				durationSeconds: 1,
+				segments: [{ start: 0, end: 1, frequency: 880, leftGain: 0.55, rightGain: 0.55 }],
+			})
+			await importMediaFiles(page, [imageFile, toneA, toneB])
+			await addResourceToTimeline(page, toneA.name)
+			await addResourceToTimeline(page, toneB.name)
+
+			const secondClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fallback-mix-tone-b\.wav/i }).first()
+			const box = await secondClip.boundingBox()
+			expect(box).not.toBeNull()
+			if (!box) {
+				return
+			}
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+			await page.mouse.down()
+			await page.mouse.move(box.x + box.width / 2 - timelineZoomPxPerSecond * 0.75, box.y + box.height / 2, { steps: 6 })
+			await page.mouse.up()
+			await expect(secondClip).toContainText(/0\.3s/)
+
+			const exportPath = await exportProject(page)
+			const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
+			expect(analysis.peak).toBeLessThanOrEqual(1)
+			const power440 = measureFrequencyPower(samples, 2, 48_000, 440, { start: 0.35, end: 0.9 })
+			const power880 = measureFrequencyPower(samples, 2, 48_000, 880, { start: 0.35, end: 0.9 })
+			expect(power440).toBeGreaterThan(0.001)
+			expect(power880).toBeGreaterThan(0.001)
+		})
+
+		test('audio gaps remain silent between separated clips', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const image = await createSolidPngFile(page, 'fallback-gap-green.png', '#16a34a')
+			const firstTone = createToneWavFile({
+				name: 'fallback-gap-tone-a.wav',
+				durationSeconds: 1,
+				segments: [{ start: 0, end: 1, frequency: 440 }],
+			})
+			const secondTone = createToneWavFile({
+				name: 'fallback-gap-tone-b.wav',
+				durationSeconds: 1,
+				segments: [{ start: 0, end: 1, frequency: 880 }],
+			})
+			await importMediaFiles(page, [image, firstTone, secondTone])
+			await addResourceToTimeline(page, firstTone.name)
+			await addResourceToTimeline(page, secondTone.name)
+			await selectTimelineClip(page, /fallback-gap-tone-b\.wav/i)
+			await nudgeSelectedClip(page, 1)
+
+			const exportPath = await exportProject(page)
+			const { analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.1 })
+			const activeA = analysis.windows.filter((window) => window.start >= 0.2 && window.end <= 0.8)
+			const gap = analysis.windows.filter((window) => window.start >= 1.1 && window.end <= 1.4)
+			const activeB = analysis.windows.filter((window) => window.start >= 1.7 && window.end <= 2.3)
+			expect(Math.max(...activeA.map((window) => window.rms))).toBeGreaterThan(0.01)
+			expect(Math.max(...gap.map((window) => window.rms))).toBeLessThan(0.002)
+			expect(Math.max(...activeB.map((window) => window.rms))).toBeGreaterThan(0.01)
+		})
 	})
 })
