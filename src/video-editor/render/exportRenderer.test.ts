@@ -194,6 +194,35 @@ describe('manifest export renderer', () => {
 			expect.objectContaining({ clipId: audioClipId, resourceKind: 'audio' }),
 		]))
 	})
+
+	it('records linked audio clip ids in selected video export diagnostics', async () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: { title: 'selected linked diagnostics' } })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Camera take', kind: 'video', duration: 2, url: 'file:///camera.webm' },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+		const clipResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId), includeLinkedAudio: true },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
+		const videoClipId = String(clipResult.createdIds?.clipId)
+		const audioClipId = String(clipResult.createdIds?.audioClipId)
+
+		const result = await createManifestExportRenderer().render({ registry, projectId, range: { type: 'clip', clipId: videoClipId }, fps: 2 })
+
+		expect(result.manifest.clips).toEqual(expect.arrayContaining([
+			expect.objectContaining({ type: 'ef-video', id: videoClipId }),
+			expect.objectContaining({ type: 'ef-audio', id: audioClipId }),
+		]))
+		expect(result.diagnostics).toMatchObject({ backend: 'manifest' })
+		expect(result.diagnostics?.resolvedClipIds).toEqual(expect.arrayContaining([videoClipId, audioClipId]))
+		expect(result.manifest.diagnostics?.resolvedClipIds).toEqual(expect.arrayContaining([videoClipId, audioClipId]))
+	})
 })
 
 describe('browser video export renderer', () => {
@@ -225,6 +254,12 @@ describe('browser video export renderer', () => {
 		expect(result.fileName).toMatch(/\.minicut-export\.json$/)
 		expect(result.manifest.format).toBe('json-manifest')
 		expect(result.manifest.frames.length).toBeGreaterThan(0)
+		expect(result.diagnostics).toMatchObject({
+			backend: 'manifest',
+			fallbackReason: 'webcodecs-video-unsupported',
+		})
+		expect(result.diagnostics?.resolvedClipIds).toEqual([clipId])
+		expect(result.manifest.diagnostics).toEqual(result.diagnostics)
 	})
 
 	it('throws when video export is unsupported and fallback is disabled', async () => {
