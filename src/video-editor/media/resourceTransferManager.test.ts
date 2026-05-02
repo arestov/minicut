@@ -1,7 +1,7 @@
 import { waitFor } from '@testing-library/react'
 import type { Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
 import { createMissingResourceData } from '../domain/resourceData'
-import { createResourceTransferManager } from './resourceTransferManager'
+import { createResourceTransferManager, type RequestMessage } from './resourceTransferManager'
 import type { P2PRawTransportLike } from '../p2p/PageP2PManager'
 
 class LinkedRawTransport implements P2PRawTransportLike {
@@ -39,6 +39,53 @@ const createTransportPair = (): [P2PRawTransportLike, P2PRawTransportLike] => {
 	left.connect(right)
 	right.connect(left)
 	return [left, right]
+}
+
+const parseRequestMessages = (transport: P2PRawTransportLike): RequestMessage[] => {
+	const messages: RequestMessage[] = []
+	transport.listen((data) => {
+		if (typeof data !== 'string') {
+			return
+		}
+
+		const parsed = JSON.parse(data) as { type?: string }
+		if (parsed.type === 'resource-request') {
+			messages.push(parsed as RequestMessage)
+		}
+	})
+	return messages
+}
+
+const sendChunk = (
+	transport: P2PRawTransportLike,
+	message: {
+		resourceId: string
+		index: number
+		start: number
+		end: number
+		totalSize: number
+		reason: 'head' | 'tail' | 'window' | 'sequential' | 'replication'
+	},
+	payload: string,
+): void => {
+	transport.send(JSON.stringify({
+		type: 'resource-chunk-meta',
+		resourceId: message.resourceId,
+		index: message.index,
+		start: message.start,
+		end: message.end,
+		totalSize: message.totalSize,
+		mime: 'video/webm',
+		kind: 'video',
+		name: 'Remote clip',
+		duration: 8,
+		chunkSize: 8,
+		ownerPeerId: 'peer-a',
+		sourceKind: 'p2p',
+		fallbackUrl: '',
+		reason: message.reason,
+	}))
+	transport.send(new TextEncoder().encode(payload).buffer)
 }
 
 const createRegistryWithResource = (resourceId: string, attrs: Partial<ResourceAttrs> = {}): ProjectRegistry => {
@@ -338,9 +385,6 @@ describe('resource transfer manager', () => {
 			})
 		})
 
-		client.attachClientTransport(createTransportPair()[1])
-		server.attachServerTransport('peer-b', createTransportPair()[0])
-
 		const [replacementServerTransport, replacementClientTransport] = createTransportPair()
 		server.attachServerTransport('peer-b', replacementServerTransport)
 		client.attachClientTransport(replacementClientTransport)
@@ -355,6 +399,175 @@ describe('resource transfer manager', () => {
 
 		client.destroy()
 		server.destroy()
+	})
+
+	it('requests missing ranges again after an incomplete chunk-complete signal', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const requests = parseRequestMessages(serverTransport)
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		client.attachClientTransport(clientTransport)
+		client.syncRegistry(createRegistryWithResource('res-gap', { size: 24, duration: 8, name: 'Gap clip' }))
+
+		await waitFor(() => {
+			expect(requests).toContainEqual(expect.objectContaining({
+				resourceId: 'res-gap',
+				ranges: [[0, 8]],
+				reason: 'head',
+			}))
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-gap',
+			index: 0,
+			start: 0,
+			end: 8,
+			totalSize: 24,
+			reason: 'head',
+		}, 'abcdefgh')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-gap',
+			reason: 'head',
+		}))
+
+		await waitFor(() => {
+			expect(requests).toContainEqual(expect.objectContaining({
+				resourceId: 'res-gap',
+				ranges: [[8, 24]],
+				reason: 'sequential',
+			}))
+		})
+
+		client.destroy()
+	})
+
+	it('ignores invalid chunk metadata instead of counting corrupt ranges', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		client.attachClientTransport(clientTransport)
+		client.syncRegistry(createRegistryWithResource('res-invalid', { size: 24, duration: 8, name: 'Invalid clip' }))
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-invalid',
+			index: 99,
+			start: 792,
+			end: 800,
+			totalSize: 24,
+			reason: 'head',
+		}, 'xxxxxxxx')
+		sendChunk(serverTransport, {
+			resourceId: 'res-invalid',
+			index: 0,
+			start: 0,
+			end: 8,
+			totalSize: 24,
+			reason: 'head',
+		}, 'abcdefgh')
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-invalid')).toMatchObject({
+				loadedBytes: 8,
+				loadedRanges: [[0, 8]],
+				status: 'partial',
+			})
+		})
+		expect(createObjectUrl).toHaveBeenCalledTimes(1)
+
+		client.destroy()
+	})
+
+	it('retries a temporary resource error and resumes downloading', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const requests = parseRequestMessages(serverTransport)
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		client.attachClientTransport(clientTransport)
+		client.syncRegistry(createRegistryWithResource('res-retry', { size: 24, duration: 8, name: 'Retry clip' }))
+
+		await waitFor(() => {
+			expect(requests.length).toBeGreaterThanOrEqual(1)
+		})
+
+		serverTransport.send(JSON.stringify({
+			type: 'resource-error',
+			resourceId: 'res-retry',
+			error: 'temporary failure',
+		}))
+
+		await waitFor(() => {
+			expect(requests.filter((message) => message.resourceId === 'res-retry')).toHaveLength(2)
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-retry',
+			index: 0,
+			start: 0,
+			end: 8,
+			totalSize: 24,
+			reason: 'head',
+		}, 'abcdefgh')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-retry',
+			reason: 'head',
+		}))
+
+		await waitFor(() => {
+			expect(requests.some((message) =>
+				message.resourceId === 'res-retry'
+				&& message.reason === 'sequential'
+				&& JSON.stringify(message.ranges) === JSON.stringify([[8, 24]]),
+			)).toBe(true)
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-retry',
+			index: 1,
+			start: 8,
+			end: 16,
+			totalSize: 24,
+			reason: 'sequential',
+		}, 'ijklmnop')
+		sendChunk(serverTransport, {
+			resourceId: 'res-retry',
+			index: 2,
+			start: 16,
+			end: 24,
+			totalSize: 24,
+			reason: 'sequential',
+		}, 'qrstuvwx')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-retry',
+			reason: 'sequential',
+		}))
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-retry')).toMatchObject({
+				status: 'ready',
+				loadedBytes: 24,
+				progress: 1,
+			})
+		})
+
+		client.destroy()
 	})
 
 	it('evicts older remote entries when the configured cache cap is exceeded', async () => {

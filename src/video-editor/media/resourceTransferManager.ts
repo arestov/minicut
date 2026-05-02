@@ -49,6 +49,8 @@ interface RemoteResourceState extends ResourceSnapshot {
 	playbackUrl: string
 	lastPreviewSignature: string
 	lastError: string | null
+	errorRetryCount: number
+	retryTimeoutId: number | null
 	status: 'missing' | 'partial' | 'ready' | 'error'
 }
 
@@ -76,7 +78,7 @@ export interface ResourceTransferView {
 	mode: 'local' | 'mirrored' | 'streaming'
 }
 
-interface RequestMessage {
+export interface RequestMessage {
 	type: 'resource-request'
 	resourceId: string
 	ranges: ResourceByteRange[]
@@ -148,6 +150,8 @@ export interface ResourceTransferManager {
 }
 
 const SERVER_TRANSPORT_KEY = '__server__'
+const MAX_ERROR_RETRIES = 3
+const ERROR_RETRY_DELAY_MS = 250
 
 const wait = async (ms: number): Promise<void> => {
 	if (ms <= 0) {
@@ -209,6 +213,8 @@ const createRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => (
 	playbackUrl: '',
 	lastPreviewSignature: '',
 	lastError: null,
+	errorRetryCount: 0,
+	retryTimeoutId: null,
 	status: 'missing',
 })
 
@@ -229,6 +235,13 @@ export const createResourceTransferManager = (
 	const peerServeQueues = new Map<string, Promise<void>>()
 	let destroyed = false
 
+	const clearRetryTimeout = (state: RemoteResourceState): void => {
+		if (state.retryTimeoutId !== null) {
+			window.clearTimeout(state.retryTimeoutId)
+			state.retryTimeoutId = null
+		}
+	}
+
 	const revokeRemoteUrls = (state: RemoteResourceState): void => {
 		if (state.previewUrl) {
 			URL.revokeObjectURL(state.previewUrl)
@@ -244,6 +257,7 @@ export const createResourceTransferManager = (
 	const getTransport = (peerKey: string): AttachedTransport | null => transports.get(peerKey) ?? null
 
 	const resetRemoteRequestState = (state: RemoteResourceState): void => {
+		clearRetryTimeout(state)
 		state.requestedRanges = []
 		state.headRequested = false
 		state.tailRequested = false
@@ -251,6 +265,7 @@ export const createResourceTransferManager = (
 		state.replicationRequested = false
 		state.lastWindowKey = ''
 		state.lastError = null
+		state.errorRetryCount = 0
 		if (state.status !== 'ready') {
 			state.status = state.loadedBytes > 0 ? 'partial' : 'missing'
 		}
@@ -280,6 +295,7 @@ export const createResourceTransferManager = (
 	}
 
 	const evictRemoteState = (state: RemoteResourceState): void => {
+		clearRetryTimeout(state)
 		revokeRemoteUrls(state)
 		state.chunks.clear()
 		state.loadedRanges = []
@@ -538,6 +554,29 @@ export const createResourceTransferManager = (
 		requestRanges(resourceId, [[contiguousEnd, state.size]], options.getRole() === 'server' ? 'replication' : 'sequential')
 	}
 
+	const requestMissingRanges = (resourceId: string): void => {
+		const state = remoteStates.get(resourceId)
+		if (!state) {
+			return
+		}
+
+		if (typeof state.size !== 'number' || !Number.isFinite(state.size) || state.size <= 0) {
+			maybeRequestHead(resourceId)
+			return
+		}
+
+		const missingRanges = subtractByteRanges([[0, state.size]], state.loadedRanges)
+		if (missingRanges.length === 0) {
+			return
+		}
+
+		requestRanges(
+			resourceId,
+			missingRanges,
+			options.getRole() === 'server' ? 'replication' : state.loadedBytes > 0 ? 'sequential' : 'head',
+		)
+	}
+
 	const ensureRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => {
 		const existing = remoteStates.get(snapshot.resourceId)
 		if (existing) {
@@ -559,6 +598,19 @@ export const createResourceTransferManager = (
 	}
 
 	const applyChunkMeta = (resourceId: string, meta: ChunkMetaMessage, buffer: ArrayBuffer): void => {
+		if (!Number.isInteger(meta.index) || meta.index < 0) {
+			return
+		}
+		if (!Number.isFinite(meta.start) || !Number.isFinite(meta.end) || meta.end <= meta.start) {
+			return
+		}
+		if (meta.end - meta.start !== buffer.byteLength) {
+			return
+		}
+		if (meta.start !== meta.index * Math.max(1, meta.chunkSize)) {
+			return
+		}
+
 		const baseSnapshot = resourceSnapshots.get(resourceId) ?? {
 			resourceId,
 			kind: meta.kind,
@@ -573,6 +625,12 @@ export const createResourceTransferManager = (
 		}
 		resourceSnapshots.set(resourceId, baseSnapshot)
 		const state = ensureRemoteState(baseSnapshot)
+		if (typeof state.size === 'number' && Number.isFinite(state.size) && state.size > 0) {
+			const maxIndex = Math.ceil(state.size / state.chunkSize)
+			if (meta.index >= maxIndex || meta.end > state.size) {
+				return
+			}
+		}
 		if (!state.chunks.has(meta.index)) {
 			state.chunks.set(meta.index, buffer.slice(0))
 		}
@@ -582,6 +640,8 @@ export const createResourceTransferManager = (
 		state.lastTouchedAt = Date.now()
 		state.status = typeof state.size === 'number' && state.loadedBytes >= state.size ? 'ready' : 'partial'
 		state.lastError = null
+		clearRetryTimeout(state)
+		state.errorRetryCount = 0
 		rebuildPreviewUrls(resourceId)
 		enforceCacheCap(resourceId)
 		maybeContinueSequential(resourceId)
@@ -593,9 +653,27 @@ export const createResourceTransferManager = (
 			return
 		}
 
+		clearRetryTimeout(state)
 		state.lastError = message.error
-		state.status = 'error'
+		if (state.errorRetryCount >= MAX_ERROR_RETRIES) {
+			state.status = 'error'
+			updateTransferView(message.resourceId)
+			return
+		}
+
+		state.errorRetryCount += 1
+		state.status = state.loadedBytes > 0 ? 'partial' : 'missing'
 		updateTransferView(message.resourceId)
+		state.retryTimeoutId = window.setTimeout(() => {
+			state.retryTimeoutId = null
+			if (destroyed || !remoteStates.has(message.resourceId)) {
+				return
+			}
+
+			resetRemoteRequestState(state)
+			updateTransferView(message.resourceId)
+			requestMissingRanges(message.resourceId)
+		}, ERROR_RETRY_DELAY_MS * 2 ** (state.errorRetryCount - 1))
 	}
 
 	const serveLocalBlobRanges = async (
@@ -747,6 +825,7 @@ export const createResourceTransferManager = (
 				}
 				state.requestedRanges = []
 				updateTransferView(message.resourceId)
+				requestMissingRanges(message.resourceId)
 				return
 			}
 			case 'resource-error':
@@ -968,6 +1047,7 @@ export const createResourceTransferManager = (
 				URL.revokeObjectURL(local.objectUrl)
 			}
 			for (const state of remoteStates.values()) {
+				clearRetryTimeout(state)
 				revokeRemoteUrls(state)
 			}
 			localResources.clear()
