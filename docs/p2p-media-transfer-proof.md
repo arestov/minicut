@@ -193,6 +193,12 @@ The following checks were explicitly added or preserved as proof points:
 - remote peer receives metadata first and then progressive media transfer
 - remote peer reaches partial progress before completion
 - remote peer ends with `ready` transfer and `blob:` preview/renderer URL
+- mixed-engine 2-peer matrix is covered for Firefox main <-> Edge client in both directions
+- mixed-engine 2-peer matrix is covered for client-owned imports from Firefox -> Edge main and Edge -> Firefox main
+- mixed-engine 3-peer relay is covered for Firefox main / Edge owner / Firefox late joiner
+- mixed-engine 3-peer relay is covered for Firefox main / Edge owner / Edge late joiner
+- mixed-engine 3-peer relay is covered for Edge main / Firefox owner / Edge late joiner
+- mixed-engine 3-peer relay is covered for Edge main / Firefox owner / Firefox late joiner
 
 ## Definition of Done
 
