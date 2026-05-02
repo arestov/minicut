@@ -8,6 +8,7 @@ import type { EditorAuthorityClient, PatchListener } from '../worker/authorityCl
 import type { BridgeSignalingFactory } from './BridgeSignaling'
 import {
 	createPageP2PManager,
+	type P2PRawTransportLike,
 	type P2PTransportLike,
 	type PageP2PManager,
 	type PageP2PManagerConfig,
@@ -160,6 +161,9 @@ export interface CreateP2PAuthorityAdapterConfig {
 	pendingCallTimeoutMs?: number
 	createLocalAuthority?: () => EditorAuthorityClient
 	createManager?: (config: PageP2PManagerConfig, events: PageP2PManagerEvents) => PageP2PManager
+	onClientResourceTransport?: (transport: P2PRawTransportLike) => void
+	onServerResourceTransport?: (remotePeerId: string, transport: P2PRawTransportLike) => void
+	onResourcePeerDisconnected?: (remotePeerId: string) => void
 	onSessionLost?: (reason: string) => void
 	onError?: (error: unknown) => void
 }
@@ -300,6 +304,18 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 
 			onBecomeClient(transport) {
 				activateClient('client', createTransportAuthorityClient(transport, requestTimeoutMs))
+			},
+
+			onClientResourceTransport(transport) {
+				config.onClientResourceTransport?.(transport)
+			},
+
+			onServerResourceTransport(remotePeerId, transport) {
+				config.onServerResourceTransport?.(remotePeerId, transport)
+			},
+
+			onResourcePeerDisconnected(remotePeerId) {
+				config.onResourcePeerDisconnected?.(remotePeerId)
 			},
 
 			onSessionLost(reason) {

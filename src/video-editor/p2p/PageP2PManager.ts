@@ -9,6 +9,12 @@ export interface P2PTransportLike {
 	destroy(): void
 }
 
+export interface P2PRawTransportLike {
+	send(data: string | ArrayBuffer): void
+	listen(listener: (data: string | ArrayBuffer) => void): () => void
+	destroy(): void
+}
+
 export interface PageP2PManagerConfig {
 	roomId: string
 	signalUrl: string
@@ -16,6 +22,7 @@ export interface PageP2PManagerConfig {
 	rtcConfig?: RTCConfiguration
 	createSignaling?: BridgeSignalingFactory
 	dataChannelLabel?: string
+	resourceDataChannelLabel?: string
 	sharedWorkerName?: string
 	connectionTimeoutMs?: number
 }
@@ -23,6 +30,9 @@ export interface PageP2PManagerConfig {
 export interface PageP2PManagerEvents {
 	onBecomeServer(): void
 	onBecomeClient(transport: P2PTransportLike): void
+	onClientResourceTransport?(transport: P2PRawTransportLike): void
+	onServerResourceTransport?(remotePeerId: string, transport: P2PRawTransportLike): void
+	onResourcePeerDisconnected?(remotePeerId: string): void
 	onSessionLost(reason: string): void
 	onError(error: unknown): void
 }
@@ -67,6 +77,7 @@ export const createPageP2PManager = (
 	const peerId = crypto.randomUUID()
 	const rtcConfig = config.rtcConfig ?? DEFAULT_RTC_CONFIG
 	const dataChannelLabel = config.dataChannelLabel ?? 'minicut-authority'
+	const resourceDataChannelLabel = config.resourceDataChannelLabel ?? 'minicut-resource'
 	const sharedWorkerName = config.sharedWorkerName ?? 'minicut-video-editor-authority'
 	const connectionTimeoutMs = config.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS
 
@@ -81,6 +92,7 @@ export const createPageP2PManager = (
 	const proxyConnections = new Map<string, ProxyEntry>()
 	const peerConnections = new Map<string, RTCPeerConnection>()
 	const dataChannels = new Map<string, RTCDataChannel>()
+	const resourceTransports = new Map<string, P2PRawTransportLike>()
 
 	const closePeer = (remotePeerId: string): void => {
 		const pc = peerConnections.get(remotePeerId)
@@ -89,6 +101,12 @@ export const createPageP2PManager = (
 			peerConnections.delete(remotePeerId)
 		}
 		dataChannels.delete(remotePeerId)
+		const resourceTransport = resourceTransports.get(remotePeerId)
+		if (resourceTransport) {
+			resourceTransport.destroy()
+			resourceTransports.delete(remotePeerId)
+			events.onResourcePeerDisconnected?.(remotePeerId)
+		}
 		cleanupProxy(remotePeerId)
 	}
 
@@ -272,6 +290,82 @@ export const createPageP2PManager = (
 		}
 	}
 
+	const createRawDcTransport = (
+		dc: RTCDataChannel,
+		onClosed?: () => void,
+	): P2PRawTransportLike => {
+		const listeners = new Set<(data: string | ArrayBuffer) => void>()
+		let transportDestroyed = false
+
+		dc.onmessage = (event) => {
+			if (transportDestroyed) {
+				return
+			}
+
+			const data = event.data
+			if (typeof data === 'string') {
+				for (const listener of listeners) {
+					listener(data)
+				}
+				return
+			}
+
+			if (data instanceof ArrayBuffer) {
+				for (const listener of listeners) {
+					listener(data)
+				}
+				return
+			}
+
+			if (ArrayBuffer.isView(data)) {
+				const view = data as ArrayBufferView
+				const normalized = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
+				for (const listener of listeners) {
+					listener(normalized)
+				}
+			}
+		}
+
+		dc.onclose = () => {
+			if (transportDestroyed) {
+				return
+			}
+
+			onClosed?.()
+		}
+
+		dc.onerror = () => {
+			// onclose handles lifecycle teardown
+		}
+
+		return {
+			send(data) {
+				if (transportDestroyed || dc.readyState !== 'open') {
+					return
+				}
+
+				dc.send(data)
+			},
+
+			listen(listener) {
+				listeners.add(listener)
+				return () => {
+					listeners.delete(listener)
+				}
+			},
+
+			destroy() {
+				if (transportDestroyed) {
+					return
+				}
+
+				transportDestroyed = true
+				listeners.clear()
+				dc.close()
+			},
+		}
+	}
+
 	const cleanupProxy = (remotePeerId: string): void => {
 		const entry = proxyConnections.get(remotePeerId)
 		if (!entry) {
@@ -367,6 +461,7 @@ export const createPageP2PManager = (
 		peerConnections.set(targetPeerId, pc)
 
 		const dc = pc.createDataChannel(dataChannelLabel, { ordered: true })
+		const resourceDc = pc.createDataChannel(resourceDataChannelLabel, { ordered: true })
 		dataChannels.set(targetPeerId, dc)
 		scheduleConnectionWatchdog(targetPeerId, pc)
 
@@ -388,6 +483,20 @@ export const createPageP2PManager = (
 
 			notifySessionLost('server-gone')
 			dataChannels.delete(targetPeerId)
+		}
+
+		resourceDc.binaryType = 'arraybuffer'
+		resourceDc.onopen = () => {
+			if (destroyed) {
+				return
+			}
+
+			const transport = createRawDcTransport(resourceDc, () => {
+				resourceTransports.delete(targetPeerId)
+				events.onResourcePeerDisconnected?.(targetPeerId)
+			})
+			resourceTransports.set(targetPeerId, transport)
+			events.onClientResourceTransport?.(transport)
 		}
 
 		pc.onicecandidate = (event) => {
@@ -458,6 +567,17 @@ export const createPageP2PManager = (
 				peerConnections.set(remotePeerId, pc)
 
 				pc.ondatachannel = (event) => {
+					if (event.channel.label === resourceDataChannelLabel) {
+						event.channel.binaryType = 'arraybuffer'
+						const transport = createRawDcTransport(event.channel, () => {
+							resourceTransports.delete(remotePeerId)
+							events.onResourcePeerDisconnected?.(remotePeerId)
+						})
+						resourceTransports.set(remotePeerId, transport)
+						events.onServerResourceTransport?.(remotePeerId, transport)
+						return
+					}
+
 					setupServerProxy(remotePeerId, event.channel, pc)
 				}
 

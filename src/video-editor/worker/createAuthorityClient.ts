@@ -2,7 +2,7 @@ import type { EditorAuthorityClient } from './authorityClient'
 import { MemoryWorkerAuthority } from './memoryWorker'
 import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from './sharedWorkerClient'
 import type { BridgeSignalingFactory } from '../p2p/BridgeSignaling'
-import type { PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from '../p2p/PageP2PManager'
+import type { P2PRawTransportLike, PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from '../p2p/PageP2PManager'
 import { createP2PAuthorityAdapter, type CreateP2PAuthorityAdapterConfig } from '../p2p/P2PAuthorityAdapter'
 
 export interface CreateAuthorityClientOptions {
@@ -17,6 +17,9 @@ export interface CreateAuthorityClientOptions {
 		pendingCallTimeoutMs?: number
 		createManager?: (config: PageP2PManagerConfig, events: PageP2PManagerEvents) => PageP2PManager
 		createLocalAuthority?: CreateP2PAuthorityAdapterConfig['createLocalAuthority']
+		onClientResourceTransport?: (transport: P2PRawTransportLike) => void
+		onServerResourceTransport?: (remotePeerId: string, transport: P2PRawTransportLike) => void
+		onResourcePeerDisconnected?: (remotePeerId: string) => void
 		onSessionLost?: (reason: string) => void
 		onError?: (error: unknown) => void
 	}
@@ -37,6 +40,9 @@ export const createAuthorityClient = (options: CreateAuthorityClientOptions = {}
 			pendingCallTimeoutMs: options.p2p.pendingCallTimeoutMs,
 			createManager: options.p2p.createManager,
 			createLocalAuthority: options.p2p.createLocalAuthority,
+			onClientResourceTransport: options.p2p.onClientResourceTransport,
+			onServerResourceTransport: options.p2p.onServerResourceTransport,
+			onResourcePeerDisconnected: options.p2p.onResourcePeerDisconnected,
 			onSessionLost: options.p2p.onSessionLost,
 			onError: options.p2p.onError,
 		})
