@@ -108,6 +108,10 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 
 			switch (msg.type) {
 				case 'room-state': {
+					if (typeof msg.roomId === 'string' && msg.roomId !== roomId) {
+						return
+					}
+
 					const peers = Array.isArray(msg.peers) ? msg.peers.filter((value): value is string => typeof value === 'string') : []
 					const newPeers = new Set(peers.filter((id) => id !== peerId))
 					for (const knownPeer of knownPeers) {
@@ -140,7 +144,12 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 
 				case 'offer':
 				case 'answer':
-				case 'ice-candidate': {
+				case 'ice-candidate':
+				case 'server-leaving': {
+					if (typeof msg.roomId === 'string' && msg.roomId !== roomId) {
+						return
+					}
+
 					const from = String(msg.from ?? '')
 					if (!from || from === peerId) {
 						return
@@ -216,7 +225,8 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 			sendSignal(msg: SignalMessage) {
 				sendToServer({
 					type: msg.kind,
-					epoch: 0,
+					roomId,
+					epoch: lastLeaderEpoch >= 0 ? lastLeaderEpoch : 0,
 					from: peerId,
 					to: msg.toPeerId,
 					...(msg.kind === 'offer' || msg.kind === 'answer' ? { sdp: msg.sdp } : {}),

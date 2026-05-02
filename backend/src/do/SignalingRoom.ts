@@ -78,8 +78,15 @@ export class SignalingRoom {
         return
       }
 
+      const nextRoomId = typeof msg.roomId === 'string' ? msg.roomId : null
+      if (!nextRoomId) {
+        return
+      }
+
       if (!this.roomId) {
-        this.roomId = (msg.roomId as string) ?? null
+        this.roomId = nextRoomId
+      } else if (this.roomId !== nextRoomId) {
+        return
       }
 
       const existing = this.peers?.get(peerId)
@@ -109,12 +116,21 @@ export class SignalingRoom {
     if (type === 'bye') {
       const peerId = this.getPeerId(ws)
       if (peerId) {
-        this.removePeer(peerId)
+        this.removePeer(peerId, ws)
       }
       return
     }
 
     if (type === 'offer' || type === 'answer' || type === 'ice-candidate' || type === 'server-leaving') {
+      if (typeof msg.roomId !== 'string' || msg.roomId !== this.roomId) {
+        return
+      }
+
+      const messageEpoch = Number(msg.epoch)
+      if (!Number.isFinite(messageEpoch) || messageEpoch !== this.epoch) {
+        return
+      }
+
       const from = String(msg.from ?? '')
       if (!from) {
         return
@@ -149,7 +165,7 @@ export class SignalingRoom {
     this.ensureState()
     const peerId = this.getPeerId(ws)
     if (peerId) {
-      this.removePeer(peerId)
+      this.removePeer(peerId, ws)
     }
   }
 
@@ -157,7 +173,7 @@ export class SignalingRoom {
     this.ensureState()
     const peerId = this.getPeerId(ws)
     if (peerId) {
-      this.removePeer(peerId)
+      this.removePeer(peerId, ws)
     }
   }
 
@@ -262,7 +278,12 @@ export class SignalingRoom {
     }
   }
 
-  private removePeer(peerId: string) {
+  private removePeer(peerId: string, socket?: WebSocket) {
+    const current = this.peers?.get(peerId)
+    if (socket && current?.socket !== socket) {
+      return
+    }
+
     this.peers?.delete(peerId)
 
     if (this.leaderPeerId === peerId) {

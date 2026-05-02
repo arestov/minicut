@@ -195,6 +195,34 @@ describe('createDoSignalingFactory', () => {
 		expect(events.onSignal.mock.calls[0][0]).toMatchObject({ kind: 'offer', fromPeerId: 'peer-b', toPeerId: 'peer-a' })
 	})
 
+	test('relays server-leaving messages to the manager', async () => {
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-1',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+		const ws = MockWebSocket.instances[0]
+		ws.simulateOpen()
+
+		ws.simulateMessage({
+			type: 'server-leaving',
+			roomId: 'room-1',
+			from: 'peer-b',
+			epoch: 2,
+			ts: 123,
+		})
+
+		expect(events.onSignal).toHaveBeenCalledWith(expect.objectContaining({
+			kind: 'server-leaving',
+			roomId: 'room-1',
+			fromPeerId: 'peer-b',
+			ts: 123,
+		}))
+	})
+
 	test('sendSignal and sendBye use do wire protocol', async () => {
 		const { createDoSignalingFactory } = await import('./BridgeSignaling')
 		const events = createEvents()
@@ -220,6 +248,76 @@ describe('createDoSignalingFactory', () => {
 
 		expect(JSON.parse(ws.sent[0])).toMatchObject({ type: 'ice-candidate', from: 'peer-a', to: 'peer-b' })
 		expect(JSON.parse(ws.sent[1])).toEqual({ type: 'bye', roomId: 'room-bye', peerId: 'peer-a' })
+	})
+
+	test('sends signals with the current room id and leader epoch', async () => {
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		const signaling = createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-epoch',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+		const ws = MockWebSocket.instances[0]
+		ws.simulateOpen()
+		ws.simulateMessage({
+			type: 'room-state',
+			roomId: 'room-epoch',
+			epoch: 7,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a', 'peer-b'],
+		})
+		ws.sent.length = 0
+
+		signaling.sendSignal({
+			kind: 'offer',
+			roomId: 'room-epoch',
+			fromPeerId: 'peer-a',
+			toPeerId: 'peer-b',
+			sdp: { type: 'offer', sdp: 'offer-sdp' },
+			ts: 123,
+		})
+
+		expect(JSON.parse(ws.sent[0])).toMatchObject({
+			type: 'offer',
+			roomId: 'room-epoch',
+			epoch: 7,
+			from: 'peer-a',
+			to: 'peer-b',
+		})
+	})
+
+	test('ignores room-state and signals from another room id', async () => {
+		const { createDoSignalingFactory } = await import('./BridgeSignaling')
+		const events = createEvents()
+		createDoSignalingFactory('ws://127.0.0.1:8790')({
+			roomId: 'room-local',
+			peerId: 'peer-a',
+			joinedAt: Date.now(),
+			events,
+		})
+		const ws = MockWebSocket.instances[0]
+		ws.simulateOpen()
+
+		ws.simulateMessage({
+			type: 'room-state',
+			roomId: 'room-other',
+			epoch: 1,
+			leaderPeerId: 'peer-a',
+			peers: ['peer-a', 'peer-b'],
+		})
+		ws.simulateMessage({
+			type: 'offer',
+			roomId: 'room-other',
+			from: 'peer-b',
+			to: 'peer-a',
+			sdp: { type: 'offer', sdp: 'wrong-room' },
+		})
+
+		expect(events.onConnected).not.toHaveBeenCalled()
+		expect(events.onMemberJoined).not.toHaveBeenCalled()
+		expect(events.onSignal).not.toHaveBeenCalled()
 	})
 
 	test('retries when ws closes before room-state', async () => {

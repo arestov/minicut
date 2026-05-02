@@ -149,7 +149,7 @@ describe('SignalingRoom (Hibernation API)', () => {
 
     await room.webSocketMessage(
       wsA as unknown as WebSocket,
-      JSON.stringify({ type: 'offer', epoch: 1, from: 'peer-a', to: 'peer-b', sdp: 'test-sdp' }),
+      JSON.stringify({ type: 'offer', roomId: 'test-room', epoch: 1, from: 'peer-a', to: 'peer-b', sdp: 'test-sdp' }),
     )
 
     expect(wsB.sent).toHaveLength(1)
@@ -171,7 +171,7 @@ describe('SignalingRoom (Hibernation API)', () => {
 
     await room.webSocketMessage(
       wsA as unknown as WebSocket,
-      JSON.stringify({ type: 'server-leaving', roomId: 'test-room', from: 'peer-a', ts: Date.now() }),
+      JSON.stringify({ type: 'server-leaving', roomId: 'test-room', epoch: 1, from: 'peer-a', ts: Date.now() }),
     )
 
     expect(wsB.sent).toHaveLength(1)
@@ -192,7 +192,7 @@ describe('SignalingRoom (Hibernation API)', () => {
 
      await room.webSocketMessage(
        wsB as unknown as WebSocket,
-       JSON.stringify({ type: 'server-leaving', roomId: 'test-room', from: 'peer-a', ts: Date.now() }),
+       JSON.stringify({ type: 'server-leaving', roomId: 'test-room', epoch: 1, from: 'peer-a', ts: Date.now() }),
      )
 
      expect(wsA.sent).toHaveLength(0)
@@ -212,7 +212,7 @@ describe('SignalingRoom (Hibernation API)', () => {
 
     await room2.webSocketMessage(
       wsA as unknown as WebSocket,
-      JSON.stringify({ type: 'offer', epoch: 1, from: 'peer-a', to: 'peer-b', sdp: 'post-wake' }),
+      JSON.stringify({ type: 'offer', roomId: 'test-room', epoch: 1, from: 'peer-a', to: 'peer-b', sdp: 'post-wake' }),
     )
 
     expect(wsB.sent).toHaveLength(1)
@@ -239,5 +239,83 @@ describe('SignalingRoom (Hibernation API)', () => {
     const msg = json(wsA2)
     expect(msg.type).toBe('room-state')
     expect(msg.leaderPeerId).toBe('peer-a')
+  })
+
+  it('ignores a stale close event from a replaced socket after rejoin', async () => {
+    const state = new FakeHibernationState()
+    const room = new SignalingRoom(state as never)
+
+    const wsA = await connectPeer(room, state, 'peer-a')
+    const wsB = await connectPeer(room, state, 'peer-b')
+
+    const wsA2 = new FakeWebSocket()
+    state.acceptWebSocket(wsA2)
+    await room.webSocketMessage(
+      wsA2 as unknown as WebSocket,
+      JSON.stringify({ type: 'rejoin', roomId: 'test-room', peerId: 'peer-a' }),
+    )
+    wsA2.sent.length = 0
+    wsB.sent.length = 0
+
+    await room.webSocketClose(wsA as unknown as WebSocket, 1000, '', true)
+    await room.webSocketMessage(
+      wsA2 as unknown as WebSocket,
+      JSON.stringify({ type: 'offer', roomId: 'test-room', epoch: 1, from: 'peer-a', to: 'peer-b', sdp: 'still-joined' }),
+    )
+
+    expect(wsB.sent).toHaveLength(1)
+    expect(json(wsB).sdp).toBe('still-joined')
+  })
+
+  it('rejects stale epoch signaling messages', async () => {
+    const state = new FakeHibernationState()
+    const room = new SignalingRoom(state as never)
+
+    const wsA = await connectPeer(room, state, 'peer-a')
+    const wsB = await connectPeer(room, state, 'peer-b')
+    wsA.sent.length = 0
+    wsB.sent.length = 0
+
+    await room.webSocketClose(wsA as unknown as WebSocket, 1000, '', true)
+    const wsC = await connectPeer(room, state, 'peer-c')
+    wsC.sent.length = 0
+    wsB.sent.length = 0
+
+    await room.webSocketMessage(
+      wsB as unknown as WebSocket,
+      JSON.stringify({ type: 'offer', roomId: 'test-room', epoch: 1, from: 'peer-b', to: 'peer-c', sdp: 'stale' }),
+    )
+    expect(wsC.sent).toHaveLength(0)
+
+    await room.webSocketMessage(
+      wsB as unknown as WebSocket,
+      JSON.stringify({ type: 'offer', roomId: 'test-room', epoch: 2, from: 'peer-b', to: 'peer-c', sdp: 'current' }),
+    )
+    expect(wsC.sent).toHaveLength(1)
+    expect(json(wsC).sdp).toBe('current')
+  })
+
+  it('rejects room id mismatches for joins and relayed signals', async () => {
+    const state = new FakeHibernationState()
+    const room = new SignalingRoom(state as never)
+
+    const wsA = await connectPeer(room, state, 'peer-a', 'room-a')
+    const wsB = await connectPeer(room, state, 'peer-b', 'room-a')
+    const wsOther = new FakeWebSocket()
+    state.acceptWebSocket(wsOther)
+
+    await room.webSocketMessage(
+      wsOther as unknown as WebSocket,
+      JSON.stringify({ type: 'join', roomId: 'room-b', peerId: 'peer-x' }),
+    )
+    expect(wsOther.sent).toHaveLength(0)
+
+    wsA.sent.length = 0
+    wsB.sent.length = 0
+    await room.webSocketMessage(
+      wsA as unknown as WebSocket,
+      JSON.stringify({ type: 'offer', roomId: 'room-b', epoch: 1, from: 'peer-a', to: 'peer-b', sdp: 'wrong-room' }),
+    )
+    expect(wsB.sent).toHaveLength(0)
   })
 })

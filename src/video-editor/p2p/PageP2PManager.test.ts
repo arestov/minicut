@@ -75,6 +75,8 @@ class MockRTCPeerConnection {
 	ondatachannel: Handler | null = null
 	onconnectionstatechange: Handler | null = null
 	createdChannels: MockDataChannel[] = []
+	remoteDescriptions: unknown[] = []
+	addedIceCandidates: unknown[] = []
 
 	constructor() {
 		MockRTCPeerConnection.instances.push(this)
@@ -104,11 +106,13 @@ class MockRTCPeerConnection {
 		this.localDescription = { toJSON: () => desc as Record<string, unknown> }
 	}
 
-	async setRemoteDescription(): Promise<void> {
+	async setRemoteDescription(desc?: unknown): Promise<void> {
+		this.remoteDescriptions.push(desc)
 		return
 	}
 
-	async addIceCandidate(): Promise<void> {
+	async addIceCandidate(candidate?: unknown): Promise<void> {
+		this.addedIceCandidates.push(candidate)
 		return
 	}
 
@@ -355,6 +359,44 @@ describe('PageP2PManager', () => {
 		manager.destroy()
 	})
 
+	test('passes through unframed native binary resource messages', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onClientResourceTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		await Promise.resolve()
+		const resourceDc = MockRTCPeerConnection.instances[0].createdChannels[1]
+		resourceDc.simulateOpen()
+
+		const transport = events.onClientResourceTransport.mock.calls[0][0]
+		const received: Array<string | ArrayBuffer> = []
+		transport.listen((payload: string | ArrayBuffer) => {
+			received.push(payload)
+		})
+
+		const rawPayload = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]).buffer
+		resourceDc.simulateRawMessage(rawPayload)
+
+		await vi.waitFor(() => {
+			expect(received).toHaveLength(1)
+		})
+		expect(Array.from(new Uint8Array(received[0] as ArrayBuffer))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+
+		manager.destroy()
+	})
+
 	test('applies bufferedAmount backpressure before sending the next resource frame', async () => {
 		const signaling = createSignalingHarness()
 		const events = {
@@ -462,6 +504,89 @@ describe('PageP2PManager', () => {
 
 		MockSharedWorker.instances[0].port.onmessage?.({ data: { m: -2, p: { snapshot: true } } })
 		expect(JSON.parse(remoteDc.sent[0])).toEqual({ m: -2, p: { snapshot: true } })
+
+		manager.destroy()
+	})
+
+	test('announces server resource transport only after resource data channel opens', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onServerResourceTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader(manager.peerId)
+		signaling.emitSignal({
+			kind: 'offer',
+			roomId: 'room-1',
+			fromPeerId: 'remote-client-1',
+			toPeerId: manager.peerId,
+			sdp: { type: 'offer', sdp: 'incoming-offer' },
+			ts: Date.now(),
+		})
+		await flushMicrotasks(8)
+
+		const resourceDc = MockRTCPeerConnection.instances[0].simulateDataChannel('minicut-resource')
+		expect(events.onServerResourceTransport).not.toHaveBeenCalled()
+
+		resourceDc.simulateOpen()
+		expect(events.onServerResourceTransport).toHaveBeenCalledTimes(1)
+		expect(events.onServerResourceTransport.mock.calls[0][0]).toBe('remote-client-1')
+
+		manager.destroy()
+	})
+
+	test('queues ice candidates that arrive before the remote answer is applied', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		await Promise.resolve()
+		const pc = MockRTCPeerConnection.instances[0]
+
+		signaling.emitSignal({
+			kind: 'ice-candidate',
+			roomId: 'room-1',
+			fromPeerId: 'remote-server',
+			toPeerId: manager.peerId,
+			candidate: { candidate: 'candidate:before-answer' } as RTCIceCandidateInit,
+			ts: Date.now(),
+		})
+		expect(pc.addedIceCandidates).toHaveLength(0)
+
+		signaling.emitSignal({
+			kind: 'answer',
+			roomId: 'room-1',
+			fromPeerId: 'remote-server',
+			toPeerId: manager.peerId,
+			sdp: { type: 'answer', sdp: 'answer-sdp' },
+			ts: Date.now(),
+		})
+		await flushMicrotasks(4)
+
+		expect(pc.remoteDescriptions).toHaveLength(1)
+		expect(pc.addedIceCandidates).toHaveLength(1)
+		expect(events.onError).not.toHaveBeenCalled()
 
 		manager.destroy()
 	})

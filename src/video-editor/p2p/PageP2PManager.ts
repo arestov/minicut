@@ -93,6 +93,8 @@ export const createPageP2PManager = (
 	const peerConnections = new Map<string, RTCPeerConnection>()
 	const dataChannels = new Map<string, RTCDataChannel>()
 	const resourceTransports = new Map<string, P2PRawTransportLike>()
+	const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>()
+	const remoteDescriptionReadyPeers = new Set<string>()
 
 	const closePeer = (remotePeerId: string): void => {
 		const pc = peerConnections.get(remotePeerId)
@@ -107,6 +109,8 @@ export const createPageP2PManager = (
 			resourceTransports.delete(remotePeerId)
 			events.onResourcePeerDisconnected?.(remotePeerId)
 		}
+		pendingIceCandidates.delete(remotePeerId)
+		remoteDescriptionReadyPeers.delete(remotePeerId)
 		cleanupProxy(remotePeerId)
 	}
 
@@ -228,6 +232,51 @@ export const createPageP2PManager = (
 		signaling?.sendSignal(msg)
 	}
 
+	const queueIceCandidate = (remotePeerId: string, candidate: RTCIceCandidateInit): void => {
+		const pending = pendingIceCandidates.get(remotePeerId) ?? []
+		pending.push(candidate)
+		pendingIceCandidates.set(remotePeerId, pending)
+	}
+
+	const flushPendingIceCandidates = (remotePeerId: string, pc: RTCPeerConnection): void => {
+		const pending = pendingIceCandidates.get(remotePeerId)
+		if (!pending || pending.length === 0) {
+			return
+		}
+
+		pendingIceCandidates.delete(remotePeerId)
+		for (const candidate of pending) {
+			void pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((error) => {
+				events.onError(error)
+			})
+		}
+	}
+
+	const markRemoteDescriptionReady = (remotePeerId: string, pc: RTCPeerConnection): void => {
+		remoteDescriptionReadyPeers.add(remotePeerId)
+		flushPendingIceCandidates(remotePeerId, pc)
+	}
+
+	const addOrQueueIceCandidate = (remotePeerId: string, candidate: RTCIceCandidateInit | undefined): void => {
+		if (!candidate) {
+			return
+		}
+
+		const pc = peerConnections.get(remotePeerId)
+		if (!pc) {
+			return
+		}
+
+		if (!remoteDescriptionReadyPeers.has(remotePeerId)) {
+			queueIceCandidate(remotePeerId, candidate)
+			return
+		}
+
+		void pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((error) => {
+			events.onError(error)
+		})
+	}
+
 	const createDcTransport = (dc: RTCDataChannel): P2PTransportLike => {
 		const listeners = new Set<(message: WireMessage) => void>()
 		let transportDestroyed = false
@@ -302,12 +351,16 @@ export const createPageP2PManager = (
 	const DC_BUFFERED_AMOUNT_LOW_WATERMARK_BYTES = 256 * 1024
 
 	/**
-	 * Binary frame header layout (9 bytes):
-	 *   [0-3]  uint32 BE  fragment index (0-based)
-	 *   [4-7]  uint32 BE  total message size in bytes
-	 *   [8]    uint8      0x01 = final fragment, 0x00 = more follow
+	 * Binary frame header layout (12 bytes):
+	 *   [0-1]  uint16 BE  magic "MC"
+	 *   [2]    uint8      frame version
+	 *   [3]    uint8      0x01 = final fragment, 0x00 = more follow
+	 *   [4-7]  uint32 BE  fragment index (0-based)
+	 *   [8-11] uint32 BE  total message size in bytes
 	 */
-	const FRAG_HEADER_BYTES = 9
+	const FRAG_MAGIC = 0x4d43
+	const FRAG_VERSION = 1
+	const FRAG_HEADER_BYTES = 12
 
 	const waitForBufferedAmountLow = (
 		dc: RTCDataChannel,
@@ -376,9 +429,11 @@ export const createPageP2PManager = (
 			const isLast = offset + payloadSize >= totalSize
 			const frame = new ArrayBuffer(FRAG_HEADER_BYTES + payloadSize)
 			const hdr = new DataView(frame)
-			hdr.setUint32(0, fragIndex, false)
-			hdr.setUint32(4, totalSize, false)
-			hdr.setUint8(8, isLast ? 1 : 0)
+			hdr.setUint16(0, FRAG_MAGIC, false)
+			hdr.setUint8(2, FRAG_VERSION)
+			hdr.setUint8(3, isLast ? 1 : 0)
+			hdr.setUint32(4, fragIndex, false)
+			hdr.setUint32(8, totalSize, false)
 			new Uint8Array(frame, FRAG_HEADER_BYTES).set(new Uint8Array(data, offset, payloadSize))
 			dc.send(frame)
 			offset += payloadSize
@@ -423,9 +478,19 @@ export const createPageP2PManager = (
 			}
 
 			const hdr = new DataView(buffer)
-			const totalSize = hdr.getUint32(4, false)
-			const isLast = hdr.getUint8(8) === 1
+			if (hdr.getUint16(0, false) !== FRAG_MAGIC || hdr.getUint8(2) !== FRAG_VERSION) {
+				return buffer
+			}
+
+			const isLast = hdr.getUint8(3) === 1
+			const fragIndex = hdr.getUint32(4, false)
+			const totalSize = hdr.getUint32(8, false)
 			const payload = buffer.slice(FRAG_HEADER_BYTES)
+			if (fragIndex !== fragParts.length || totalSize < payload.byteLength) {
+				fragParts = []
+				fragExpectedSize = 0
+				return null
+			}
 
 			fragParts.push(new Uint8Array(payload))
 			fragExpectedSize = totalSize
@@ -438,9 +503,21 @@ export const createPageP2PManager = (
 			const assembled = new Uint8Array(fragExpectedSize)
 			let pos = 0
 			for (const part of fragParts) {
+				if (pos + part.byteLength > assembled.byteLength) {
+					fragParts = []
+					fragExpectedSize = 0
+					return null
+				}
+
 				assembled.set(part, pos)
 				pos += part.byteLength
 			}
+			if (pos !== fragExpectedSize) {
+				fragParts = []
+				fragExpectedSize = 0
+				return null
+			}
+
 			fragParts = []
 			fragExpectedSize = 0
 			return assembled.buffer
@@ -763,12 +840,26 @@ export const createPageP2PManager = (
 				pc.ondatachannel = (event) => {
 					if (event.channel.label === resourceDataChannelLabel) {
 						event.channel.binaryType = 'arraybuffer'
-						const transport = createRawDcTransport(event.channel, () => {
-							resourceTransports.delete(remotePeerId)
-							events.onResourcePeerDisconnected?.(remotePeerId)
-						})
-						resourceTransports.set(remotePeerId, transport)
-						events.onServerResourceTransport?.(remotePeerId, transport)
+						let announced = false
+						const announceResourceTransport = (): void => {
+							if (destroyed || announced) {
+								return
+							}
+
+							announced = true
+							const transport = createRawDcTransport(event.channel, () => {
+								resourceTransports.delete(remotePeerId)
+								events.onResourcePeerDisconnected?.(remotePeerId)
+							})
+							resourceTransports.set(remotePeerId, transport)
+							events.onServerResourceTransport?.(remotePeerId, transport)
+						}
+
+						if (event.channel.readyState === 'open') {
+							announceResourceTransport()
+						} else {
+							event.channel.onopen = announceResourceTransport
+						}
 						return
 					}
 
@@ -791,7 +882,10 @@ export const createPageP2PManager = (
 				}
 
 				void pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
-					.then(() => pc.createAnswer())
+					.then(() => {
+						markRemoteDescriptionReady(remotePeerId, pc)
+						return pc.createAnswer()
+					})
 					.then((answer) => pc.setLocalDescription(answer))
 					.then(() => {
 						sendSignal({
@@ -815,7 +909,9 @@ export const createPageP2PManager = (
 					return
 				}
 
-				void pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).catch((error) => {
+				void pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(() => {
+					markRemoteDescriptionReady(msg.fromPeerId, pc)
+				}).catch((error) => {
 					events.onError(error)
 				})
 				return
@@ -827,9 +923,7 @@ export const createPageP2PManager = (
 					return
 				}
 
-				void pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch((error) => {
-					events.onError(error)
-				})
+				addOrQueueIceCandidate(msg.fromPeerId, msg.candidate)
 				return
 			}
 
@@ -875,6 +969,12 @@ export const createPageP2PManager = (
 			}
 			peerConnections.clear()
 			dataChannels.clear()
+			for (const transport of resourceTransports.values()) {
+				transport.destroy()
+			}
+			resourceTransports.clear()
+			pendingIceCandidates.clear()
+			remoteDescriptionReadyPeers.clear()
 
 			signaling?.sendBye?.()
 			signaling?.destroy()
