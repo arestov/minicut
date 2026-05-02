@@ -14,6 +14,7 @@ export interface CreateAuthorityClientOptions {
 		createSignaling?: BridgeSignalingFactory
 		connectionTimeoutMs?: number
 		requestTimeoutMs?: number
+		pendingCallTimeoutMs?: number
 		createManager?: (config: PageP2PManagerConfig, events: PageP2PManagerEvents) => PageP2PManager
 		createLocalAuthority?: CreateP2PAuthorityAdapterConfig['createLocalAuthority']
 		onSessionLost?: (reason: string) => void
@@ -33,6 +34,7 @@ export const createAuthorityClient = (options: CreateAuthorityClientOptions = {}
 			createSignaling: options.p2p.createSignaling,
 			connectionTimeoutMs: options.p2p.connectionTimeoutMs,
 			requestTimeoutMs: options.p2p.requestTimeoutMs,
+			pendingCallTimeoutMs: options.p2p.pendingCallTimeoutMs,
 			createManager: options.p2p.createManager,
 			createLocalAuthority: options.p2p.createLocalAuthority,
 			onSessionLost: options.p2p.onSessionLost,

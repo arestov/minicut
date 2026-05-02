@@ -17,6 +17,7 @@ import {
 interface PendingCall<T> {
 	run(client: EditorAuthorityClient): void
 	reject(error: unknown): void
+	timeoutId: ReturnType<typeof setTimeout>
 }
 
 interface TransportPendingRequest {
@@ -26,6 +27,7 @@ interface TransportPendingRequest {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000
+const DEFAULT_PENDING_CALL_TIMEOUT_MS = 30_000
 const P2P_SHARED_WORKER_NAME_PREFIX = 'minicut-video-editor-authority:p2p:'
 
 type RestorableAuthorityClient = EditorAuthorityClient & {
@@ -155,6 +157,7 @@ export interface CreateP2PAuthorityAdapterConfig {
 	createSignaling?: BridgeSignalingFactory
 	connectionTimeoutMs?: number
 	requestTimeoutMs?: number
+	pendingCallTimeoutMs?: number
 	createLocalAuthority?: () => EditorAuthorityClient
 	createManager?: (config: PageP2PManagerConfig, events: PageP2PManagerEvents) => PageP2PManager
 	onSessionLost?: (reason: string) => void
@@ -180,6 +183,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 	})
 	const createManager = config.createManager ?? createPageP2PManager
 	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+	const pendingCallTimeoutMs = config.pendingCallTimeoutMs ?? DEFAULT_PENDING_CALL_TIMEOUT_MS
 
 	let destroyed = false
 	let role: 'server' | 'client' | 'undecided' = 'undecided'
@@ -199,6 +203,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 	const failPending = (error: Error): void => {
 		const calls = pending.splice(0, pending.length)
 		for (const call of calls) {
+			clearTimeout(call.timeoutId)
 			call.reject(error)
 		}
 	}
@@ -236,6 +241,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		const flushQueuedCalls = (): void => {
 			const queuedCalls = pending.splice(0, pending.length)
 			for (const call of queuedCalls) {
+				clearTimeout(call.timeoutId)
 				call.run(nextClient)
 			}
 		}
@@ -257,11 +263,22 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		}
 
 		return new Promise<T>((resolve, reject) => {
+			const timeoutId = setTimeout(() => {
+				const index = pending.findIndex((call) => call.timeoutId === timeoutId)
+				if (index === -1) {
+					return
+				}
+
+				pending.splice(index, 1)
+				reject(new Error('P2P authority role resolution timed out'))
+			}, pendingCallTimeoutMs)
+
 			pending.push({
 				run(client) {
 					Promise.resolve(operation(client)).then(resolve, reject)
 				},
 				reject,
+				timeoutId,
 			})
 		})
 	}

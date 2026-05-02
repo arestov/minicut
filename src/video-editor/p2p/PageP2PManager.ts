@@ -68,6 +68,7 @@ export const createPageP2PManager = (
 	let destroyed = false
 	let serverPeerId: string | null = null
 	let clientTransportReady = false
+	let sessionLostNotified = false
 	let currentLeaderEpoch = -1
 	let connectionWatchdog: ReturnType<typeof setTimeout> | null = null
 
@@ -112,6 +113,17 @@ export const createPageP2PManager = (
 		}, connectionTimeoutMs)
 	}
 
+	const notifySessionLost = (reason: string): void => {
+		if (destroyed || role !== 'client' || sessionLostNotified) {
+			return
+		}
+
+		sessionLostNotified = true
+		clientTransportReady = false
+		clearConnectionWatchdog()
+		events.onSessionLost(reason)
+	}
+
 	const createSignaling = config.createSignaling ?? createDoSignalingFactory(config.signalUrl)
 
 	let signaling: ReturnType<BridgeSignalingFactory> | null = createSignaling({
@@ -127,6 +139,10 @@ export const createPageP2PManager = (
 				if (destroyed) {
 					return
 				}
+
+					if (role === 'client' && remotePeerId === serverPeerId) {
+						notifySessionLost('server-gone')
+					}
 
 				closePeer(remotePeerId)
 			},
@@ -218,8 +234,7 @@ export const createPageP2PManager = (
 				return
 			}
 
-			clientTransportReady = false
-			events.onSessionLost('server-gone')
+				notifySessionLost('server-gone')
 		}
 
 		dc.onerror = () => {
@@ -317,6 +332,7 @@ export const createPageP2PManager = (
 		}
 
 		clientTransportReady = false
+		sessionLostNotified = false
 		serverPeerId = null
 		role = 'server'
 		events.onBecomeServer()
@@ -327,13 +343,18 @@ export const createPageP2PManager = (
 			return
 		}
 
-		role = 'client'
-		if (serverPeerId && serverPeerId !== targetPeerId) {
-			closePeer(serverPeerId)
+		for (const remotePeerId of [...proxyConnections.keys()]) {
+			cleanupProxy(remotePeerId)
 		}
+
+		for (const remotePeerId of [...peerConnections.keys()]) {
+			closePeer(remotePeerId)
+		}
+
+		role = 'client'
 		serverPeerId = targetPeerId
 		clientTransportReady = false
-		closePeer(targetPeerId)
+		sessionLostNotified = false
 
 		const pc = new RTCPeerConnection(rtcConfig)
 		peerConnections.set(targetPeerId, pc)
@@ -349,6 +370,7 @@ export const createPageP2PManager = (
 
 			clearConnectionWatchdog()
 			clientTransportReady = true
+			sessionLostNotified = false
 			events.onBecomeClient(createDcTransport(dc))
 		}
 
@@ -357,10 +379,8 @@ export const createPageP2PManager = (
 				return
 			}
 
-			clearConnectionWatchdog()
-			clientTransportReady = false
+			notifySessionLost('server-gone')
 			dataChannels.delete(targetPeerId)
-			events.onSessionLost('server-gone')
 		}
 
 		pc.onicecandidate = (event) => {
@@ -391,8 +411,8 @@ export const createPageP2PManager = (
 
 			if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
 				clearConnectionWatchdog()
-				if (!destroyed && role === 'client' && serverPeerId === targetPeerId) {
-					events.onSessionLost('server-gone')
+				if (!destroyed && serverPeerId === targetPeerId) {
+					notifySessionLost('server-gone')
 				}
 			}
 		}
@@ -426,6 +446,7 @@ export const createPageP2PManager = (
 				}
 
 				const remotePeerId = msg.fromPeerId
+					closePeer(remotePeerId)
 				const pc = new RTCPeerConnection(rtcConfig)
 				peerConnections.set(remotePeerId, pc)
 
@@ -493,7 +514,7 @@ export const createPageP2PManager = (
 
 			case 'server-leaving':
 				if (role === 'client' && msg.fromPeerId === serverPeerId) {
-					events.onSessionLost('server-gone')
+						notifySessionLost('server-gone')
 				}
 		}
 	}

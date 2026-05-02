@@ -62,6 +62,22 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 			events.onLeaderAssigned(leaderPeerId, nextEpoch)
 		}
 
+		const reconnect = (): void => {
+			if (destroyed) {
+				return
+			}
+
+			try {
+				ws?.close()
+			} catch {
+				// noop
+			}
+
+			ws = null
+			connected = false
+			scheduleRetry()
+		}
+
 		const scheduleRetry = (): void => {
 			if (destroyed || retryCount >= MAX_CONNECT_RETRIES) {
 				events.onError(new Error('WebSocket signaling error'))
@@ -109,16 +125,16 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 
 					connected = true
 					retryCount = 0
-						notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
-						if (!connectedNotified) {
-							connectedNotified = true
-							events.onConnected()
-						}
+					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
+					if (!connectedNotified) {
+						connectedNotified = true
+						events.onConnected()
+					}
 					break
 				}
 
 				case 'leader-changed': {
-						notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
+					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
 					break
 				}
 
@@ -153,18 +169,8 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 			if (destroyed) {
 				return
 			}
-			if (!connected) {
-				try {
-					ws?.close()
-				} catch {
-					// noop
-				}
-				ws = null
-				scheduleRetry()
-				return
-			}
 
-			events.onError(new Error('WebSocket signaling error'))
+			reconnect()
 		}
 
 		const onClose = (): void => {
@@ -172,15 +178,11 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 				return
 			}
 
-			if (!connected) {
-				if (ws) {
-					ws = null
-					scheduleRetry()
-				}
+			if (!ws) {
 				return
 			}
 
-			events.onError(new Error('WebSocket signaling closed'))
+			reconnect()
 		}
 
 		const connect = (): void => {
