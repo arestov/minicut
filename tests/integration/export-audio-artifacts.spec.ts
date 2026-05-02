@@ -4,6 +4,7 @@ import {
 	expectToneEnergy,
 	measureFrequencyPower,
 	probeMedia,
+	sampleVideoFramePixelRgba,
 	sampleVideoFrameRgba,
 } from './audio-analysis'
 
@@ -233,6 +234,37 @@ const setSelectedAudio = async (page: Page, { gain, pan }: { gain?: number; pan?
 	}
 }
 
+const setSelectedOpacity = async (page: Page, opacityPercent: number): Promise<void> => {
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('tab', { name: 'Edit' }).click()
+	await inspector.getByLabel('Opacity').fill(String(opacityPercent))
+}
+
+const setSelectedTransform = async (
+	page: Page,
+	transform: Partial<Record<'X' | 'Y' | 'Scale' | 'Rotate', number>>,
+): Promise<void> => {
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('tab', { name: 'Edit' }).click()
+	for (const [label, value] of Object.entries(transform)) {
+		await inspector.getByLabel(label).fill(String(value))
+	}
+}
+
+const addSelectedEffect = async (page: Page, effectName: 'Blur' | 'Sharpen' | 'Tint'): Promise<void> => {
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('tab', { name: 'Edit' }).click()
+	await inspector.getByRole('button', { name: effectName }).click()
+}
+
+const nudgeSelectedClip = async (page: Page, count: number): Promise<void> => {
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('tab', { name: 'Edit' }).click()
+	for (let index = 0; index < count; index += 1) {
+		await inspector.getByRole('button', { name: 'Nudge +0.5s' }).click()
+	}
+}
+
 const forceMediaRecorderFallback = async (page: Page, options: { removeRequestFrame?: boolean } = {}): Promise<void> => {
 	await page.addInitScript(({ removeRequestFrame }) => {
 		Object.defineProperty(window, 'VideoEncoder', { value: undefined, configurable: true })
@@ -422,5 +454,143 @@ test.describe('exported audio artifacts', () => {
 		const power880 = measureFrequencyPower(samples, 2, 48_000, 880, { start: 0.35, end: 0.9 })
 		expect(power440).toBeGreaterThan(0.001)
 		expect(power880).toBeGreaterThan(0.001)
+	})
+
+	test('overlapping visual clips preserve layer order and opacity in exported frames', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const green = await createSolidPngFile(page, 'layer-green.png', '#16a34a')
+		const red = await createSolidPngFile(page, 'layer-red.png', '#dc2626')
+		await importMediaFiles(page, [green, red])
+		await addResourceToTimeline(page, red.name)
+
+		const redClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /layer-red\.png/i }).first()
+		const box = await redClip.boundingBox()
+		expect(box).not.toBeNull()
+		if (!box) {
+			return
+		}
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+		await page.mouse.down()
+		await page.mouse.move(box.x + box.width / 2 - timelineZoomPxPerSecond * 0.75, box.y + box.height / 2, { steps: 6 })
+		await page.mouse.up()
+		await redClip.click()
+		await setSelectedOpacity(page, 50)
+
+		const exportPath = await exportProject(page)
+		const [redChannel, greenChannel, blueChannel] = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+		expect(redChannel).toBeGreaterThan(80)
+		expect(greenChannel).toBeGreaterThan(60)
+		expect(redChannel).toBeGreaterThan(blueChannel + 20)
+		expect(greenChannel).toBeGreaterThan(blueChannel + 20)
+	})
+
+	test('fade settings change exported frame opacity over clip time', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const red = await createSolidPngFile(page, 'fade-red.png', '#dc2626')
+		await importMediaFiles(page, [red])
+		await selectTimelineClip(page, /fade-red\.png/i)
+		const inspector = page.getByRole('complementary', { name: 'Inspector' })
+		await inspector.getByRole('button', { name: 'Fade in +0.5s' }).click()
+		await inspector.getByRole('button', { name: 'Fade out +0.5s' }).click()
+
+		const exportPath = await exportProject(page)
+		const early = await sampleVideoFramePixelRgba(exportPath, { time: 0.05, x: 640, y: 360 })
+		const middle = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+		const late = await sampleVideoFramePixelRgba(exportPath, { time: 0.95, x: 640, y: 360 })
+		expect(middle[0]).toBeGreaterThan(early[0] + 40)
+		expect(middle[0]).toBeGreaterThan(late[0] + 40)
+	})
+
+	test('transform settings move pixels in exported frames', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const red = await createSolidPngFile(page, 'transform-red.png', '#dc2626')
+		await importMediaFiles(page, [red])
+		await selectTimelineClip(page, /transform-red\.png/i)
+		await setSelectedTransform(page, { X: 500 })
+
+		const exportPath = await exportProject(page)
+		const center = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+		const shifted = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 1000, y: 360 })
+		expect(center[0]).toBeLessThan(80)
+		expect(shifted[0]).toBeGreaterThan(140)
+		expect(shifted[0]).toBeGreaterThan(shifted[1] + 40)
+	})
+
+	test('tint effect is visible in exported frame pixels', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const gray = await createSolidPngFile(page, 'effect-gray.png', '#808080')
+		await importMediaFiles(page, [gray])
+		await selectTimelineClip(page, /effect-gray\.png/i)
+		await addSelectedEffect(page, 'Tint')
+
+		const exportPath = await exportProject(page)
+		const [redChannel, greenChannel, blueChannel] = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+		expect(redChannel).toBeGreaterThan(blueChannel + 20)
+		expect(greenChannel).toBeGreaterThan(blueChannel + 10)
+	})
+
+	test('audio gaps remain silent between separated clips in the exported file', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const image = await createSolidPngFile(page, 'gap-green.png', '#16a34a')
+		const firstTone = createToneWavFile({
+			name: 'gap-tone-a.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 440 }],
+		})
+		const secondTone = createToneWavFile({
+			name: 'gap-tone-b.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 880 }],
+		})
+		await importMediaFiles(page, [image, firstTone, secondTone])
+		await addResourceToTimeline(page, firstTone.name)
+		await addResourceToTimeline(page, secondTone.name)
+		await selectTimelineClip(page, /gap-tone-b\.wav/i)
+		await nudgeSelectedClip(page, 1)
+
+		const exportPath = await exportProject(page)
+		const { analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.1 })
+		const activeA = analysis.windows.filter((window) => window.start >= 0.2 && window.end <= 0.8)
+		const gap = analysis.windows.filter((window) => window.start >= 1.1 && window.end <= 1.4)
+		const activeB = analysis.windows.filter((window) => window.start >= 1.7 && window.end <= 2.3)
+		expect(Math.max(...activeA.map((window) => window.rms))).toBeGreaterThan(0.01)
+		expect(Math.max(...gap.map((window) => window.rms))).toBeLessThan(0.002)
+		expect(Math.max(...activeB.map((window) => window.rms))).toBeGreaterThan(0.01)
+	})
+
+	test('selected audio clip export excludes unrelated timeline audio', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const firstTone = createToneWavFile({
+			name: 'range-tone-440.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 440 }],
+		})
+		const secondTone = createToneWavFile({
+			name: 'range-tone-880.wav',
+			durationSeconds: 1,
+			segments: [{ start: 0, end: 1, frequency: 880 }],
+		})
+		await importMediaFiles(page, [firstTone, secondTone])
+		await addResourceToTimeline(page, secondTone.name)
+		await selectTimelineClip(page, /range-tone-440\.wav/i)
+
+		const exportPath = await exportSelectedClip(page)
+		const { samples } = await analyzeExportedAudio(exportPath)
+		const power440 = measureFrequencyPower(samples, 2, 48_000, 440, { start: 0.1, end: 0.8 })
+		const power880 = measureFrequencyPower(samples, 2, 48_000, 880, { start: 0.1, end: 0.8 })
+		expect(power440).toBeGreaterThan(0.001)
+		expect(power880).toBeLessThan(power440 * 0.2)
 	})
 })
