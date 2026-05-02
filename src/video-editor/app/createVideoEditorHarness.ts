@@ -11,6 +11,7 @@ import type {
 	EditorSessionState,
 	HistoryState,
 	ProjectRegistry,
+	ResourceAttrs,
 } from '../domain/types'
 import { CMD } from '../domain/types'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
@@ -370,6 +371,44 @@ export const createVideoEditorHarness = (
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
 		Promise.resolve(authorityClient.dispatch(command)).finally(syncHistoryState)
+
+	const createExportRegistrySnapshot = (registry: ProjectRegistry): ProjectRegistry => {
+		const snapshot = structuredClone(registry)
+		for (const [resourceId, entity] of Object.entries(snapshot.entitiesById)) {
+			if (!entity || entity.type !== 'resource') {
+				continue
+			}
+
+			const attrs = entity.attrs as ResourceAttrs
+			const transfer = resourceTransferManager.getTransfer(resourceId)
+			if (!transfer || transfer.status !== 'ready') {
+				continue
+			}
+
+			const resolvedUrl = resourceTransferManager.resolveResourceUrl(resourceId, attrs.url)
+			if (!resolvedUrl) {
+				continue
+			}
+
+			entity.attrs = {
+				...attrs,
+				url: resolvedUrl,
+				status: 'ready',
+				data: {
+					...attrs.data,
+					status: 'ready',
+					loadedBytes: transfer.loadedBytes,
+					ranges: {
+						...attrs.data.ranges,
+						loaded: transfer.loadedRanges,
+						requested: transfer.requestedRanges,
+					},
+				},
+			}
+		}
+
+		return snapshot
+	}
 
 	const addResourceToTimelineIfEmpty = (projectId: string, resourceId: string): void => {
 		if (isDestroyed || !isProjectTimelineEmpty(projects$.get(), projectId)) {
@@ -775,7 +814,7 @@ export const createVideoEditorHarness = (
 			}
 
 			const request = {
-				registry,
+				registry: createExportRegistrySnapshot(registry),
 				projectId: project.id,
 				range: { type: 'clip' as const, clipId: clip.id },
 				format: 'video-webm' as const,
@@ -802,7 +841,7 @@ export const createVideoEditorHarness = (
 			}
 
 			const request = {
-				registry,
+				registry: createExportRegistrySnapshot(registry),
 				projectId: project.id,
 				range: { type: 'project' as const },
 				format: 'video-webm' as const,

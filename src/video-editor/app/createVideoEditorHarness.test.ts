@@ -376,6 +376,91 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('exports p2p resources with resolved transfer URLs without mutating domain state', async () => {
+		const createElement = mockMediaElementDuration({ duration: 3 })
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+			if (blob instanceof File) {
+				return `blob:${blob.name}`
+			}
+
+			return 'blob:p2p-export'
+		})
+		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+		const render = vi.fn(async (request: ExportRenderRequest) => ({
+			id: 'export-p2p-video',
+			fileName: 'project.webm',
+			mimeType: 'video/webm',
+			blob: new Blob(['video'], { type: 'video/webm' }),
+			size: 5,
+			duration: 3,
+			frameCount: 90,
+			manifest: {
+				format: 'video-webm' as const,
+				projectId: request.projectId,
+				range: request.range,
+				start: 0,
+				duration: 3,
+				fps: 30,
+				frameCount: 90,
+				clips: [],
+				frames: [],
+			},
+		}))
+		const authority = new MemoryWorkerAuthority() as MemoryWorkerAuthority & { role?: 'server', peerId?: string }
+		authority.role = 'server'
+		authority.peerId = 'peer-owner'
+		const harness = createVideoEditorHarness(authority, {
+			autoCreateInitialProject: false,
+			exportRenderer: { render },
+		})
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+
+			harness.actions.importFiles([new File(['video-bytes'], 'p2p-clip.webm', { type: 'video/webm' })])
+			await settleHarness()
+
+			const registryBeforeExport = harness.projects$.get()
+			const project = getActiveProject(registryBeforeExport, harness.session$.get())
+			expect(project).not.toBeNull()
+			const resource = getResourceEntities(registryBeforeExport, project!)[0]
+			expect(resource).toBeDefined()
+			const resourceId = resource.id
+			expect(resource.attrs as ResourceAttrs).toMatchObject({
+				url: '',
+				status: 'missing',
+				source: { kind: 'p2p', ownerPeerId: 'peer-owner' },
+			})
+
+			const result = await harness.actions.queueProjectExport()
+
+			expect(result).not.toBeNull()
+			expect(render).toHaveBeenCalledTimes(1)
+			const exportResource = render.mock.calls[0][0].registry.entitiesById[resourceId]
+			expect(exportResource.attrs as ResourceAttrs).toMatchObject({
+				url: 'blob:p2p-clip.webm',
+				status: 'ready',
+				data: expect.objectContaining({
+					status: 'ready',
+					loadedBytes: 'video-bytes'.length,
+				}),
+			})
+			expect(harness.projects$.get().entitiesById[resourceId].attrs as ResourceAttrs).toMatchObject({
+				url: '',
+				status: 'missing',
+			})
+		} finally {
+			harness.destroy()
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:p2p-clip.webm')
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:p2p-export')
+			createElement.mockRestore()
+			createObjectURL.mockRestore()
+			revokeObjectURL.mockRestore()
+		}
+	})
+
 	it('undoes and redoes timeline edits through the harness', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)
