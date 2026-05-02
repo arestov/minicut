@@ -1,9 +1,10 @@
 import fixWebmDuration from 'fix-webm-duration'
 import { ArrayBufferTarget, Muxer } from 'webm-muxer'
-import { getProjectEntity, getTrackEnd, getTracks } from '../domain/selectors'
-import type { ClipAttrs, Entity, ProjectAttrs, ProjectRegistry, ResourceAttrs } from '../domain/types'
-import type { ExportBackend, ExportDiagnostics, ExportFrameSample, ExportManifest, ExportRenderer, ExportRenderResult } from './exportTypes'
-import { compileEditframeClips, compileFrameOperations, type ClipFrameOperation } from './renderPlan'
+import { getProjectEntity } from '../domain/selectors'
+import type { ProjectAttrs, ProjectRegistry, ResourceAttrs } from '../domain/types'
+import type { ExportBackend, ExportDiagnostics, ExportFormat, ExportFrameSample, ExportManifest, ExportProgressEvent, ExportRenderer, ExportRenderResult } from './exportTypes'
+import { createExportDiagnostics, filterClipsForRange, getRangeClips, getRangeName, resolveExportRange, type ResolvedExportRange } from './exportRange'
+import { compileFrameOperations, type ClipFrameOperation } from './renderPlan'
 
 export type { ExportBackend, ExportDiagnostics, ExportFormat, ExportFrameSample, ExportManifest, ExportProgressEvent, ExportRange, ExportRenderer, ExportRenderRequest, ExportRenderResult } from './exportTypes'
 
@@ -88,116 +89,12 @@ interface WebCodecsAudioConfig {
 	muxerCodec: 'A_OPUS'
 }
 
-interface ResolvedExportRange {
-	start: number
-	duration: number
-	clipIds: Set<string> | null
-}
-
 type WebCodecsRenderAttempt =
 	| { blob: Blob; fallbackReason?: undefined }
 	| { blob: null; fallbackReason: string }
 
 const sanitizeFileNamePart = (value: string): string =>
 	value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'export'
-
-const getProjectDuration = (registry: ProjectRegistry, projectId: string): number => {
-	const project = registry.projects[projectId]
-	if (!project) {
-		throw new Error(`Unknown project ${projectId}`)
-	}
-
-	return getTracks(registry, project).reduce((duration, track) => Math.max(duration, getTrackEnd(registry, track.id)), 0)
-}
-
-const getClipEntity = (registry: ProjectRegistry, clipId: string): Entity => {
-	const clip = registry.entitiesById[clipId]
-	if (!clip || clip.type !== 'clip') {
-		throw new Error(`Unknown clip ${clipId}`)
-	}
-
-	return clip
-}
-
-const getExportBounds = (registry: ProjectRegistry, projectId: string, range: ExportRange): { start: number; duration: number } => {
-	if (range.type === 'project') {
-		return { start: 0, duration: getProjectDuration(registry, projectId) }
-	}
-
-	const attrs = getClipEntity(registry, range.clipId).attrs as unknown as ClipAttrs
-	return { start: attrs.start, duration: attrs.duration }
-}
-
-const getLinkedClipIds = (registry: ProjectRegistry, clipId: string): string[] => {
-	const clip = getClipEntity(registry, clipId)
-	const linked = new Set<string>()
-	for (const value of [clip.rels.linkedAudioClip, clip.rels.linkedVideoClip]) {
-		if (typeof value === 'string') {
-			linked.add(value)
-		}
-	}
-
-	for (const entity of Object.values(registry.entitiesById)) {
-		if (entity?.type !== 'clip') {
-			continue
-		}
-		if (entity.rels.linkedAudioClip === clipId || entity.rels.linkedVideoClip === clipId) {
-			linked.add(entity.id)
-		}
-	}
-
-	return Array.from(linked).filter((id) => id !== clipId && registry.entitiesById[id]?.type === 'clip')
-}
-
-const resolveExportRange = (
-	registry: ProjectRegistry,
-	projectId: string,
-	range: ExportRange,
-): ResolvedExportRange => {
-	const bounds = getExportBounds(registry, projectId, range)
-	if (range.type === 'project') {
-		return { ...bounds, clipIds: null }
-	}
-
-	return {
-		...bounds,
-		clipIds: new Set([range.clipId, ...getLinkedClipIds(registry, range.clipId)]),
-	}
-}
-
-const filterClipsForRange = (
-	operations: ClipFrameOperation[],
-	resolvedRange: ResolvedExportRange,
-): ClipFrameOperation[] => resolvedRange.clipIds
-	? operations.filter((operation) => resolvedRange.clipIds?.has(operation.clipId))
-	: operations
-
-const getRangeClips = (registry: ProjectRegistry, projectId: string, resolvedRange: ResolvedExportRange): EditframeClip[] => {
-	const clips = compileEditframeClips(registry, projectId)
-	if (!resolvedRange.clipIds) {
-		return clips
-	}
-
-	return clips.filter((clip) => resolvedRange.clipIds?.has(clip.id))
-}
-
-const getResolvedClipIds = (
-	registry: ProjectRegistry,
-	projectId: string,
-	resolvedRange: ResolvedExportRange,
-): string[] => getRangeClips(registry, projectId, resolvedRange).map((clip) => clip.id)
-
-const createExportDiagnostics = (
-	backend: ExportBackend,
-	registry: ProjectRegistry,
-	projectId: string,
-	resolvedRange: ResolvedExportRange,
-	fallbackReason?: string,
-): ExportDiagnostics => ({
-	backend,
-	...(fallbackReason ? { fallbackReason } : {}),
-	resolvedClipIds: getResolvedClipIds(registry, projectId, resolvedRange),
-})
 
 const addDiagnosticsToResult = (
 	result: ExportRenderResult,
@@ -216,15 +113,6 @@ const addDiagnosticsToResult = (
 const getFrameCount = (duration: number, fps: number): number =>
 	Math.max(1, Math.ceil(duration * fps))
 
-const getProjectTitle = (registry: ProjectRegistry, projectId: string): string => {
-	const project = registry.projects[projectId]
-	if (!project) {
-		return 'project'
-	}
-
-	return String(getProjectEntity(registry, project).attrs.title ?? 'project')
-}
-
 const getProjectExportDefaults = (registry: ProjectRegistry, projectId: string): Pick<ProjectAttrs, 'fps' | 'width' | 'height'> => {
 	const project = registry.projects[projectId]
 	if (!project) {
@@ -238,11 +126,6 @@ const getProjectExportDefaults = (registry: ProjectRegistry, projectId: string):
 		height: Number.isFinite(attrs.height) && Number(attrs.height) > 0 ? Number(attrs.height) : defaultExportHeight,
 	}
 }
-
-const getRangeName = (registry: ProjectRegistry, projectId: string, range: ExportRange): string =>
-	range.type === 'clip'
-		? String(getClipEntity(registry, range.clipId).attrs.name ?? 'clip')
-		: getProjectTitle(registry, projectId)
 
 const getOperationValue = <Value>(
 	operations: ClipFrameOperation['operations'],
@@ -1101,8 +984,8 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 		}
 
 		onProgress?.({ stage: 'queued', progress: 0 })
-		const { start, duration } = getExportBounds(request.registry, request.projectId, request.range)
 		const resolvedRange = resolveExportRange(request.registry, request.projectId, request.range)
+		const { start, duration } = resolvedRange
 		const frameCount = getFrameCount(duration, fps)
 		const frames: ExportFrameSample[] = []
 
