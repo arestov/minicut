@@ -226,6 +226,7 @@ export const createResourceTransferManager = (
 	const remoteStates = new Map<string, RemoteResourceState>()
 	const resourceSnapshots = new Map<string, ResourceSnapshot>()
 	const transports = new Map<string, AttachedTransport>()
+	const peerServeQueues = new Map<string, Promise<void>>()
 	let destroyed = false
 
 	const revokeRemoteUrls = (state: RemoteResourceState): void => {
@@ -241,6 +242,42 @@ export const createResourceTransferManager = (
 	}
 
 	const getTransport = (peerKey: string): AttachedTransport | null => transports.get(peerKey) ?? null
+
+	const resetRemoteRequestState = (state: RemoteResourceState): void => {
+		state.requestedRanges = []
+		state.headRequested = false
+		state.tailRequested = false
+		state.sequentialRequested = false
+		state.replicationRequested = false
+		state.lastWindowKey = ''
+		state.lastError = null
+		if (state.status !== 'ready') {
+			state.status = state.loadedBytes > 0 ? 'partial' : 'missing'
+		}
+	}
+
+	const resetRemoteRequestsForPeer = (peerKey: string): void => {
+		for (const state of remoteStates.values()) {
+			if (getRequestPeerKey(state) !== peerKey || state.status === 'ready') {
+				continue
+			}
+
+			resetRemoteRequestState(state)
+			updateTransferView(state.resourceId)
+		}
+	}
+
+	const enqueuePeerServe = (peerKey: string, work: () => Promise<void>): void => {
+		const queued = (peerServeQueues.get(peerKey) ?? Promise.resolve())
+			.then(work)
+			.catch(() => undefined)
+			.finally(() => {
+				if (peerServeQueues.get(peerKey) === queued) {
+					peerServeQueues.delete(peerKey)
+				}
+			})
+		peerServeQueues.set(peerKey, queued)
+	}
 
 	const evictRemoteState = (state: RemoteResourceState): void => {
 		revokeRemoteUrls(state)
@@ -650,12 +687,16 @@ export const createResourceTransferManager = (
 	const handleRequest = (peerKey: string, message: RequestMessage): void => {
 		const local = localResources.get(message.resourceId)
 		if (local) {
-			void serveLocalBlobRanges(peerKey, local, message.ranges, message.reason).catch((error) => {
-				sendControl(peerKey, {
-					type: 'resource-error',
-					resourceId: message.resourceId,
-					error: error instanceof Error ? error.message : String(error),
-				})
+			enqueuePeerServe(peerKey, async () => {
+				try {
+					await serveLocalBlobRanges(peerKey, local, message.ranges, message.reason)
+				} catch (error) {
+					sendControl(peerKey, {
+						type: 'resource-error',
+						resourceId: message.resourceId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
 			})
 			return
 		}
@@ -670,12 +711,16 @@ export const createResourceTransferManager = (
 			return
 		}
 
-		void serveMirroredRanges(peerKey, state, message.ranges, message.reason).catch((error) => {
-			sendControl(peerKey, {
-				type: 'resource-error',
-				resourceId: message.resourceId,
-				error: error instanceof Error ? error.message : String(error),
-			})
+		enqueuePeerServe(peerKey, async () => {
+			try {
+				await serveMirroredRanges(peerKey, state, message.ranges, message.reason)
+			} catch (error) {
+				sendControl(peerKey, {
+					type: 'resource-error',
+					resourceId: message.resourceId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 		})
 
 		if (options.getRole() === 'server' && state.ownerPeerId && state.ownerPeerId !== options.getPeerId()) {
@@ -822,6 +867,7 @@ export const createResourceTransferManager = (
 
 		attachClientTransport(transport) {
 			attachTransport(SERVER_TRANSPORT_KEY, transport)
+			resetRemoteRequestsForPeer(SERVER_TRANSPORT_KEY)
 			for (const [resourceId, snapshot] of resourceSnapshots) {
 				if (snapshot.sourceKind === 'p2p' && snapshot.ownerPeerId !== options.getPeerId()) {
 					maybeRequestHead(resourceId)
@@ -831,6 +877,7 @@ export const createResourceTransferManager = (
 
 		attachServerTransport(remotePeerId, transport) {
 			attachTransport(remotePeerId, transport)
+			resetRemoteRequestsForPeer(remotePeerId)
 			for (const [resourceId, snapshot] of resourceSnapshots) {
 				if (snapshot.ownerPeerId === remotePeerId && snapshot.sourceKind === 'p2p') {
 					maybeRequestHead(resourceId)
@@ -847,6 +894,8 @@ export const createResourceTransferManager = (
 			attached.unlisten()
 			attached.transport.destroy()
 			transports.delete(remotePeerId)
+			peerServeQueues.delete(remotePeerId)
+			resetRemoteRequestsForPeer(remotePeerId)
 		},
 
 		resolveResourceUrl(resourceId, fallbackUrl) {
@@ -914,6 +963,7 @@ export const createResourceTransferManager = (
 				attached.transport.destroy()
 			}
 			transports.clear()
+			peerServeQueues.clear()
 			for (const local of localResources.values()) {
 				URL.revokeObjectURL(local.objectUrl)
 			}

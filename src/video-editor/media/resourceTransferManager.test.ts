@@ -245,6 +245,118 @@ describe('resource transfer manager', () => {
 		server.destroy()
 	})
 
+	it('serializes concurrent requests over a single raw transport without corrupting bytes', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const server = createResourceTransferManager({
+			getRole: () => 'server',
+			getPeerId: () => 'peer-a',
+			chunkSize: 8,
+			chunkSendDelayMs: 1,
+		})
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		server.attachServerTransport('peer-b', serverTransport)
+		client.attachClientTransport(clientTransport)
+
+		const blob = new Blob(['abcdefghijklmnopqrstuvwx'], { type: 'video/webm' })
+		server.registerLocalResource('res-race', blob, {
+			objectUrl: 'blob:server-race',
+			kind: 'video',
+			mime: 'video/webm',
+			duration: 8,
+			size: blob.size,
+			chunkSize: 8,
+			ownerPeerId: 'peer-a',
+			sourceKind: 'p2p',
+			fallbackUrl: '',
+			name: 'Race clip',
+		})
+
+		client.syncRegistry(createRegistryWithResource('res-race', { size: blob.size, duration: 8, name: 'Race clip' }))
+		client.requestPlayheadWindow('res-race', 4)
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-race')).toMatchObject({
+				status: 'ready',
+				loadedBytes: blob.size,
+			})
+		})
+
+		const sourceBytes = Array.from(new Uint8Array(await blob.arrayBuffer()))
+		const completedBlob = createObjectUrl.mock.calls.at(-1)?.[0]
+		expect(completedBlob).toBeInstanceOf(Blob)
+		const rebuiltBytes = Array.from(new Uint8Array(await (completedBlob as Blob).arrayBuffer()))
+		expect(rebuiltBytes).toEqual(sourceBytes)
+
+		client.destroy()
+		server.destroy()
+	})
+
+	it('resumes a partial transfer after client transport reconnect', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const server = createResourceTransferManager({
+			getRole: () => 'server',
+			getPeerId: () => 'peer-a',
+			chunkSize: 8,
+			chunkSendDelayMs: 250,
+		})
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		server.attachServerTransport('peer-b', serverTransport)
+		client.attachClientTransport(clientTransport)
+
+		const blob = new Blob(['abcdefghijklmnopqrstuvwx'], { type: 'video/webm' })
+		server.registerLocalResource('res-reconnect', blob, {
+			objectUrl: 'blob:server-reconnect',
+			kind: 'video',
+			mime: 'video/webm',
+			duration: 8,
+			size: blob.size,
+			chunkSize: 8,
+			ownerPeerId: 'peer-a',
+			sourceKind: 'p2p',
+			fallbackUrl: '',
+			name: 'Reconnect clip',
+		})
+
+		client.syncRegistry(createRegistryWithResource('res-reconnect', { size: blob.size, duration: 8, name: 'Reconnect clip' }))
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-reconnect')).toMatchObject({
+				status: 'partial',
+				loadedBytes: 8,
+			})
+		})
+
+		client.attachClientTransport(createTransportPair()[1])
+		server.attachServerTransport('peer-b', createTransportPair()[0])
+
+		const [replacementServerTransport, replacementClientTransport] = createTransportPair()
+		server.attachServerTransport('peer-b', replacementServerTransport)
+		client.attachClientTransport(replacementClientTransport)
+
+		await waitFor(() => {
+			expect(client.getTransfer('res-reconnect')).toMatchObject({
+				status: 'ready',
+				loadedBytes: blob.size,
+				progress: 1,
+			})
+		})
+
+		client.destroy()
+		server.destroy()
+	})
+
 	it('evicts older remote entries when the configured cache cap is exceeded', async () => {
 		const [serverTransport, clientTransport] = createTransportPair()
 		const server = createResourceTransferManager({
