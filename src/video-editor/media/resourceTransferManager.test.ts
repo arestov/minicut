@@ -618,6 +618,13 @@ describe('resource transfer manager', () => {
 		}))
 
 		await waitFor(() => {
+			expect(client.getTransfer('res-retry')).toMatchObject({
+				status: 'requesting',
+			})
+			expect(client.getTransfer('res-retry')?.status).not.toBe('error')
+		})
+
+		await waitFor(() => {
 			expect(requests.filter((message) => message.resourceId === 'res-retry')).toHaveLength(2)
 		})
 

@@ -440,11 +440,9 @@ export const createResourceTransferManager = (
 			kind: state.kind,
 			ownerPeerId: state.ownerPeerId,
 			availability: 'remote',
-			status: state.lastError
-				? 'error'
-				: state.status === 'missing' && state.requestedRanges.length > 0
-					? 'requesting'
-					: state.status,
+			status: state.status === 'missing' && state.requestedRanges.length > 0
+				? 'requesting'
+				: state.status,
 			progress: computeProgress(state.loadedBytes, totalBytes, state.status === 'ready'),
 			loadedBytes: state.loadedBytes,
 			totalBytes,
