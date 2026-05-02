@@ -885,4 +885,91 @@ test.describe('exported audio artifacts', () => {
 			expect(Math.max(...activeB.map((window) => window.rms))).toBeGreaterThan(0.01)
 		})
 	})
+
+	test.describe('MediaRecorder fallback visual parity', () => {
+		test.beforeEach(async ({ page }) => {
+			await forceMediaRecorderFallback(page, { removeRequestFrame: true })
+		})
+
+		test('overlapping visual clips preserve layer order and opacity', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const green = await createSolidPngFile(page, 'fallback-layer-green.png', '#16a34a')
+			const red = await createSolidPngFile(page, 'fallback-layer-red.png', '#dc2626')
+			await importMediaFiles(page, [green, red])
+			await addResourceToTimeline(page, red.name)
+
+			const redClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fallback-layer-red\.png/i }).first()
+			const box = await redClip.boundingBox()
+			expect(box).not.toBeNull()
+			if (!box) {
+				return
+			}
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+			await page.mouse.down()
+			await page.mouse.move(box.x + box.width / 2 - timelineZoomPxPerSecond * 0.75, box.y + box.height / 2, { steps: 6 })
+			await page.mouse.up()
+			await redClip.click()
+			await setSelectedOpacity(page, 50)
+
+			const exportPath = await exportProject(page)
+			const [redChannel, greenChannel, blueChannel] = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+			expect(redChannel).toBeGreaterThan(80)
+			expect(greenChannel).toBeGreaterThan(60)
+			expect(redChannel).toBeGreaterThan(blueChannel + 20)
+			expect(greenChannel).toBeGreaterThan(blueChannel + 20)
+		})
+
+		test('fade settings change exported frame opacity over clip time', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const red = await createSolidPngFile(page, 'fallback-fade-red.png', '#dc2626')
+			await importMediaFiles(page, [red])
+			await selectTimelineClip(page, /fallback-fade-red\.png/i)
+			const inspector = page.getByRole('complementary', { name: 'Inspector' })
+			await inspector.getByRole('button', { name: 'Fade in +0.5s' }).click()
+			await inspector.getByRole('button', { name: 'Fade out +0.5s' }).click()
+
+			const exportPath = await exportProject(page)
+			const early = await sampleVideoFramePixelRgba(exportPath, { time: 0.05, x: 640, y: 360 })
+			const middle = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+			const late = await sampleVideoFramePixelRgba(exportPath, { time: 0.95, x: 640, y: 360 })
+			expect(middle[0]).toBeGreaterThan(early[0] + 40)
+			expect(middle[0]).toBeGreaterThan(late[0] + 40)
+		})
+
+		test('transform settings move pixels in exported frames', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const red = await createSolidPngFile(page, 'fallback-transform-red.png', '#dc2626')
+			await importMediaFiles(page, [red])
+			await selectTimelineClip(page, /fallback-transform-red\.png/i)
+			await setSelectedTransform(page, { X: 500 })
+
+			const exportPath = await exportProject(page)
+			const center = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+			const shifted = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 1000, y: 360 })
+			expect(center[0]).toBeLessThan(80)
+			expect(shifted[0]).toBeGreaterThan(140)
+			expect(shifted[0]).toBeGreaterThan(shifted[1] + 40)
+		})
+
+		test('tint effect is visible in exported frame pixels', async ({ page }) => {
+			await page.goto('/')
+			await createProjectFromMenu(page)
+
+			const gray = await createSolidPngFile(page, 'fallback-effect-gray.png', '#808080')
+			await importMediaFiles(page, [gray])
+			await selectTimelineClip(page, /fallback-effect-gray\.png/i)
+			await addSelectedEffect(page, 'Tint')
+
+			const exportPath = await exportProject(page)
+			const [redChannel, greenChannel, blueChannel] = await sampleVideoFramePixelRgba(exportPath, { time: 0.5, x: 640, y: 360 })
+			expect(redChannel).toBeGreaterThan(blueChannel + 20)
+			expect(greenChannel).toBeGreaterThan(blueChannel + 10)
+		})
+	})
 })
