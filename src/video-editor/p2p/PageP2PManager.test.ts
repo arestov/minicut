@@ -1,0 +1,334 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import type { BridgeSignalingEvents, BridgeSignalingFactory } from './BridgeSignaling'
+import { createPageP2PManager } from './PageP2PManager'
+import type { SignalMessage } from './types'
+
+type Handler = (...args: unknown[]) => void
+
+const flushMicrotasks = async (count = 4): Promise<void> => {
+	for (let index = 0; index < count; index += 1) {
+		await Promise.resolve()
+	}
+}
+
+class MockDataChannel {
+	readyState = 'connecting'
+	sent: string[] = []
+	onopen: Handler | null = null
+	onclose: Handler | null = null
+	onerror: Handler | null = null
+	onmessage: Handler | null = null
+
+	send(data: string): void {
+		this.sent.push(data)
+	}
+
+	close(): void {
+		this.readyState = 'closed'
+	}
+
+	simulateOpen(): void {
+		this.readyState = 'open'
+		this.onopen?.({})
+	}
+
+	simulateClose(): void {
+		this.readyState = 'closed'
+		this.onclose?.({})
+	}
+
+	simulateMessage(data: unknown): void {
+		this.onmessage?.({ data: JSON.stringify(data) })
+	}
+}
+
+class MockRTCPeerConnection {
+	static instances: MockRTCPeerConnection[] = []
+
+	connectionState: RTCPeerConnectionState = 'new'
+	localDescription: { toJSON: () => Record<string, unknown> } | null = null
+	onicecandidate: Handler | null = null
+	ondatachannel: Handler | null = null
+	onconnectionstatechange: Handler | null = null
+	createdChannels: MockDataChannel[] = []
+
+	constructor() {
+		MockRTCPeerConnection.instances.push(this)
+	}
+
+	createDataChannel(): RTCDataChannel {
+		const dc = new MockDataChannel()
+		this.createdChannels.push(dc)
+		return dc as unknown as RTCDataChannel
+	}
+
+	simulateDataChannel(): MockDataChannel {
+		const dc = new MockDataChannel()
+		this.ondatachannel?.({ channel: dc })
+		return dc
+	}
+
+	async createOffer(): Promise<RTCSessionDescriptionInit> {
+		return { type: 'offer', sdp: 'offer-sdp' }
+	}
+
+	async createAnswer(): Promise<RTCSessionDescriptionInit> {
+		return { type: 'answer', sdp: 'answer-sdp' }
+	}
+
+	async setLocalDescription(desc: RTCSessionDescriptionInit): Promise<void> {
+		this.localDescription = { toJSON: () => desc as Record<string, unknown> }
+	}
+
+	async setRemoteDescription(): Promise<void> {
+		return
+	}
+
+	async addIceCandidate(): Promise<void> {
+		return
+	}
+
+	close(): void {
+		this.connectionState = 'closed'
+	}
+
+	simulateConnectionState(state: RTCPeerConnectionState): void {
+		this.connectionState = state
+		this.onconnectionstatechange?.({})
+	}
+}
+
+class MockMessagePort {
+	onmessage: ((event: { data: unknown }) => void) | null = null
+	sent: unknown[] = []
+	started = false
+
+	start(): void {
+		this.started = true
+	}
+
+	postMessage(data: unknown): void {
+		this.sent.push(data)
+	}
+
+	close(): void {
+		this.started = false
+	}
+}
+
+class MockSharedWorker {
+	static instances: MockSharedWorker[] = []
+	port = new MockMessagePort()
+
+	constructor() {
+		MockSharedWorker.instances.push(this)
+	}
+}
+
+const createSignalingHarness = () => {
+	let eventsRef: BridgeSignalingEvents | null = null
+	const sent: SignalMessage[] = []
+	const sendBye = vi.fn()
+	const destroy = vi.fn()
+
+	const factory: BridgeSignalingFactory = ({ events }) => {
+		eventsRef = events
+		return {
+			sendSignal(msg) {
+				sent.push(msg)
+			},
+			sendBye,
+			destroy,
+		}
+	}
+
+	return {
+		factory,
+		sent,
+		sendBye,
+		destroy,
+		emitLeader(peerId: string, epoch = 1) {
+			eventsRef?.onLeaderAssigned(peerId, epoch)
+		},
+		emitSignal(msg: SignalMessage) {
+			eventsRef?.onSignal(msg)
+		},
+		emitError(error: unknown) {
+			eventsRef?.onError(error)
+		},
+	}
+}
+
+beforeEach(() => {
+	MockRTCPeerConnection.instances = []
+	MockSharedWorker.instances = []
+	vi.stubGlobal('RTCPeerConnection', MockRTCPeerConnection as unknown as typeof RTCPeerConnection)
+	vi.stubGlobal('RTCSessionDescription', class { constructor(_value: unknown) {} })
+	vi.stubGlobal('RTCIceCandidate', class { constructor(_value: unknown) {} })
+	vi.stubGlobal('SharedWorker', MockSharedWorker as unknown as typeof SharedWorker)
+})
+
+afterEach(() => {
+	vi.unstubAllGlobals()
+	vi.useRealTimers()
+})
+
+describe('PageP2PManager', () => {
+	test('becomes server when room leader equals local peer', () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader(manager.peerId)
+		expect(manager.role).toBe('server')
+		expect(events.onBecomeServer).toHaveBeenCalledTimes(1)
+		expect(events.onBecomeClient).not.toHaveBeenCalled()
+
+		manager.destroy()
+	})
+
+	test('becomes client and relays transport messages over data channel', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		expect(manager.role).toBe('client')
+		expect(MockRTCPeerConnection.instances).toHaveLength(1)
+
+		await Promise.resolve()
+		const dc = MockRTCPeerConnection.instances[0].createdChannels[0]
+		dc.simulateOpen()
+
+		expect(events.onBecomeClient).toHaveBeenCalledTimes(1)
+		const transport = events.onBecomeClient.mock.calls[0][0]
+		const received: unknown[] = []
+		transport.listen((message: unknown) => {
+			received.push(message)
+		})
+
+		transport.send({ m: -1, p: { test: true } })
+		expect(JSON.parse(dc.sent[0])).toMatchObject({ m: -1 })
+
+		dc.simulateMessage({ m: -4, p: { ok: true } })
+		expect(received).toEqual([{ m: -4, p: { ok: true } }])
+
+		dc.simulateClose()
+		expect(events.onSessionLost).toHaveBeenCalledWith('server-gone')
+
+		manager.destroy()
+	})
+
+	test('handles incoming offer in server mode and creates worker proxy bridge', async () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitLeader(manager.peerId)
+		signaling.emitSignal({
+			kind: 'offer',
+			roomId: 'room-1',
+			fromPeerId: 'remote-client-1',
+			toPeerId: manager.peerId,
+			sdp: { type: 'offer', sdp: 'incoming-offer' },
+			ts: Date.now(),
+		})
+
+		await flushMicrotasks(8)
+		expect(MockRTCPeerConnection.instances).toHaveLength(1)
+
+		const pc = MockRTCPeerConnection.instances[0]
+		const remoteDc = pc.simulateDataChannel()
+		remoteDc.simulateOpen()
+
+		expect(events.onError).not.toHaveBeenCalled()
+		expect(MockSharedWorker.instances).toHaveLength(1)
+		const answer = signaling.sent.find((message) => message.kind === 'answer')
+		expect(answer).toBeTruthy()
+
+		remoteDc.simulateMessage({ m: -1, p: { request: true } })
+		expect(MockSharedWorker.instances[0].port.sent[0]).toEqual({ m: -1, p: { request: true } })
+
+		MockSharedWorker.instances[0].port.onmessage?.({ data: { m: -2, p: { snapshot: true } } })
+		expect(JSON.parse(remoteDc.sent[0])).toEqual({ m: -2, p: { snapshot: true } })
+
+		manager.destroy()
+	})
+
+	test('emits timeout error when client connection remains disconnected', () => {
+		vi.useFakeTimers()
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+			connectionTimeoutMs: 10_000,
+		}, events)
+
+		signaling.emitLeader('remote-server')
+		const pc = MockRTCPeerConnection.instances[0]
+		pc.simulateConnectionState('disconnected')
+
+		vi.advanceTimersByTime(9_999)
+		expect(events.onError).not.toHaveBeenCalled()
+		vi.advanceTimersByTime(1)
+		expect(events.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'WebRTC connection timed out' }))
+	})
+
+	test('falls back to server role when signaling errors before role assignment', () => {
+		const signaling = createSignalingHarness()
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		}
+		const manager = createPageP2PManager({
+			roomId: 'room-1',
+			signalUrl: 'ws://127.0.0.1:8790',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createSignaling: signaling.factory,
+		}, events)
+
+		signaling.emitError(new Error('signaling down'))
+		expect(manager.role).toBe('server')
+		expect(events.onBecomeServer).toHaveBeenCalledTimes(1)
+	})
+})
