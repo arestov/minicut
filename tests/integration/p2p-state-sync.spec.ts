@@ -1,43 +1,127 @@
-import { expect, test } from '@playwright/test'
-const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
-	const projectsRegion = page.getByLabel('Projects')
-	await projectsRegion.getByRole('button').first().click()
-	await projectsRegion.getByRole('button', { name: 'New project' }).click()
-	await expect(projectsRegion.getByRole('button', { name: /Project \d+/i })).toBeVisible()
+import { expect, test, type Page } from '@playwright/test'
+
+const SIGNAL_URL = encodeURIComponent('http://127.0.0.1:8787')
+
+const buildRoomUrl = (roomId: string): string => `/?signalUrl=${SIGNAL_URL}#/${roomId}`
+
+type DebugState = {
+	projectCount: number
+	role: 'server' | 'client' | 'undecided' | null
+	peerId: string | null
 }
 
-test('p2p state sync works across tabs in one room', async ({ context }) => {
-	const roomId = `p2p-sync-${Date.now().toString(36)}`
-	const roomUrl = `/#/${roomId}`
-	const firstPage = await context.newPage()
-	const secondPage = await context.newPage()
+const readDebugState = async (page: Page): Promise<DebugState | null> =>
+	page.evaluate(() => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				getProjectCount: () => number
+				getRole: () => 'server' | 'client' | 'undecided' | null
+				getPeerId: () => string | null
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		if (!debug) {
+			return null
+		}
+
+		return {
+			projectCount: debug.getProjectCount(),
+			role: debug.getRole(),
+			peerId: debug.getPeerId(),
+		}
+	})
+
+const waitForDebugState = async (page: Page): Promise<void> => {
+	await expect.poll(() => readDebugState(page), {
+		timeout: 20_000,
+	}).not.toBeNull()
+}
+
+const getProjectCount = async (page: Page): Promise<number> => {
+	const state = await readDebugState(page)
+	return state?.projectCount ?? 0
+}
+
+const getRole = async (page: Page): Promise<'server' | 'client' | 'undecided' | null> => {
+	const state = await readDebugState(page)
+	return state?.role ?? null
+}
+
+const createProject = async (page: Page): Promise<void> => {
+	await page.evaluate(async () => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				dispatchCreateProject: () => Promise<unknown>
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		if (!debug) {
+			throw new Error('P2P debug bridge is unavailable')
+		}
+
+		await debug.dispatchCreateProject()
+	})
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
+	setTimeout(resolve, ms)
+})
+
+const waitForSyncedProjectCount = async (firstPage: Page, secondPage: Page): Promise<number> => {
+	const timeoutAt = Date.now() + 20_000
+	let firstCount = 0
+	let secondCount = 0
+	let firstRole: string | null = null
+	let secondRole: string | null = null
+
+	while (Date.now() < timeoutAt) {
+		firstCount = await getProjectCount(firstPage)
+		secondCount = await getProjectCount(secondPage)
+		firstRole = await getRole(firstPage)
+		secondRole = await getRole(secondPage)
+		if (firstCount > 0 && firstCount === secondCount) {
+			return firstCount
+		}
+
+		await sleep(250)
+	}
+
+	throw new Error(`Project counts did not converge: first=${firstCount} second=${secondCount} roles=${firstRole}/${secondRole}`)
+}
+
+test('p2p state sync works over WebRTC across isolated browser contexts', async ({ browser }) => {
+	const roomId = `p2p-sync-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+	const roomUrl = buildRoomUrl(roomId)
+	const firstContext = await browser.newContext()
+	const secondContext = await browser.newContext()
+	const firstPage = await firstContext.newPage()
+	const secondPage = await secondContext.newPage()
 
 	await Promise.all([firstPage.goto(roomUrl), secondPage.goto(roomUrl)])
 	await expect(firstPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
 	await expect(secondPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
 
-	const firstProjectsRegion = firstPage.getByLabel('Projects')
-	await firstProjectsRegion.getByRole('button').first().click()
-	const firstBeforeCount = await firstProjectsRegion.getByRole('button', { name: /Project \d+/i }).count()
-	await firstProjectsRegion.getByRole('button').first().click()
+	await Promise.all([waitForDebugState(firstPage), waitForDebugState(secondPage)])
 
-	const secondProjectsRegion = secondPage.getByLabel('Projects')
-	await secondProjectsRegion.getByRole('button').first().click()
-	const secondBeforeCount = await secondProjectsRegion.getByRole('button', { name: /Project \d+/i }).count()
-	await secondProjectsRegion.getByRole('button').first().click()
+	await expect.poll(async () => {
+		const firstRole = await getRole(firstPage)
+		const secondRole = await getRole(secondPage)
+		return (firstRole === 'server' && secondRole === 'client') || (firstRole === 'client' && secondRole === 'server')
+	}, {
+		timeout: 20_000,
+	}).toBe(true)
 
-	await createProjectFromMenu(firstPage)
-	await firstProjectsRegion.getByRole('button').first().click()
-	await expect(firstProjectsRegion.getByRole('button', { name: /Project \d+/i })).toHaveCount(firstBeforeCount + 1, {
-		timeout: 8_000,
-	})
-	await firstProjectsRegion.getByRole('button').first().click()
+	const syncedBeforeCount = await waitForSyncedProjectCount(firstPage, secondPage)
 
-	await secondProjectsRegion.getByRole('button').first().click()
-	await expect(secondProjectsRegion.getByRole('button', { name: /Project \d+/i })).toHaveCount(secondBeforeCount + 1, {
-		timeout: 12_000,
-	})
+	await createProject(firstPage)
+	await expect.poll(() => getProjectCount(firstPage), {
+		timeout: 20_000,
+	}).toBeGreaterThan(syncedBeforeCount)
 
-	await firstPage.close()
-	await secondPage.close()
+	const expectedCount = await getProjectCount(firstPage)
+	await expect.poll(() => getProjectCount(secondPage), {
+		timeout: 20_000,
+	}).toBe(expectedCount)
+
+	await Promise.all([firstContext.close(), secondContext.close()])
 })
