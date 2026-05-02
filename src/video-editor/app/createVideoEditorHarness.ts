@@ -180,6 +180,34 @@ export const createVideoEditorHarness = (
 	let projectBootstrapInFlight = false
 	let isDestroyed = false
 	let snapshotBootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
+	let initialProjectRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+	const getAuthorityRole = (): 'server' | 'client' | 'undecided' | null => {
+		const role = (authorityClient as Partial<{ role: unknown }>).role
+		if (role === 'server' || role === 'client' || role === 'undecided') {
+			return role
+		}
+
+		return null
+	}
+
+	const clearInitialProjectRetry = (): void => {
+		if (initialProjectRetryTimer) {
+			clearTimeout(initialProjectRetryTimer)
+			initialProjectRetryTimer = null
+		}
+	}
+
+	const scheduleInitialProjectRetry = (): void => {
+		if (isDestroyed || initialProjectRetryTimer) {
+			return
+		}
+
+		initialProjectRetryTimer = setTimeout(() => {
+			initialProjectRetryTimer = null
+			ensureInitialProject()
+		}, SNAPSHOT_BOOTSTRAP_RETRY_MS)
+	}
 
 	const syncActiveProjectSelection = (): void => {
 		const registry = projects$.get()
@@ -213,7 +241,21 @@ export const createVideoEditorHarness = (
 		if (initialBootstrapChecked || isDestroyed) {
 			return
 		}
+
+		const authorityRole = getAuthorityRole()
+		if (authorityRole === 'client') {
+			initialBootstrapChecked = true
+			clearInitialProjectRetry()
+			return
+		}
+
+		if (authorityRole === 'undecided') {
+			scheduleInitialProjectRetry()
+			return
+		}
+
 		initialBootstrapChecked = true
+		clearInitialProjectRetry()
 
 		const registry = projects$.get()
 		if (Object.keys(registry.projects).length > 0 || projectBootstrapInFlight) {
@@ -757,6 +799,7 @@ export const createVideoEditorHarness = (
 		actions,
 		destroy(): void {
 			isDestroyed = true
+			clearInitialProjectRetry()
 			if (snapshotBootstrapRetryTimer) {
 				clearTimeout(snapshotBootstrapRetryTimer)
 				snapshotBootstrapRetryTimer = null
