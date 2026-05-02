@@ -290,6 +290,43 @@ export const createPageP2PManager = (
 		}
 	}
 
+	/**
+	 * Maximum payload bytes per DataChannel frame.
+	 *
+	 * Chrome/Edge announces `a=max-message-size:262144` (256 KB) in SDP.
+	 * Firefox respects this limit and throws if we exceed it.
+	 * Using 64 KB gives a comfortable safety margin.
+	 */
+	const MAX_DC_PAYLOAD_BYTES = 64 * 1024
+
+	/**
+	 * Binary frame header layout (9 bytes):
+	 *   [0-3]  uint32 BE  fragment index (0-based)
+	 *   [4-7]  uint32 BE  total message size in bytes
+	 *   [8]    uint8      0x01 = final fragment, 0x00 = more follow
+	 */
+	const FRAG_HEADER_BYTES = 9
+
+	const sendFragmentedBinary = (dc: RTCDataChannel, data: ArrayBuffer): void => {
+		const totalSize = data.byteLength
+		let fragIndex = 0
+		let offset = 0
+
+		while (offset < totalSize) {
+			const payloadSize = Math.min(MAX_DC_PAYLOAD_BYTES, totalSize - offset)
+			const isLast = offset + payloadSize >= totalSize
+			const frame = new ArrayBuffer(FRAG_HEADER_BYTES + payloadSize)
+			const hdr = new DataView(frame)
+			hdr.setUint32(0, fragIndex, false)
+			hdr.setUint32(4, totalSize, false)
+			hdr.setUint8(8, isLast ? 1 : 0)
+			new Uint8Array(frame, FRAG_HEADER_BYTES).set(new Uint8Array(data, offset, payloadSize))
+			dc.send(frame)
+			offset += payloadSize
+			fragIndex++
+		}
+	}
+
 	const createRawDcTransport = (
 		dc: RTCDataChannel,
 		onClosed?: () => void,
@@ -297,6 +334,10 @@ export const createPageP2PManager = (
 		const listeners = new Set<(data: string | ArrayBuffer) => void>()
 		let transportDestroyed = false
 		let deliveryQueue = Promise.resolve()
+
+		// Reassembly state for fragmented binary messages.
+		let fragParts: Uint8Array[] = []
+		let fragExpectedSize = 0
 
 		const enqueueDelivery = (deliver: () => void | Promise<void>): void => {
 			deliveryQueue = deliveryQueue
@@ -316,6 +357,42 @@ export const createPageP2PManager = (
 			}
 		}
 
+		const handleBinaryFrame = (buffer: ArrayBuffer): void => {
+			if (buffer.byteLength < FRAG_HEADER_BYTES) {
+				// Too short to be a valid framed message – deliver as-is for compat.
+				enqueueDelivery(() => {
+					notifyListeners(buffer)
+				})
+				return
+			}
+
+			const hdr = new DataView(buffer)
+			const totalSize = hdr.getUint32(4, false)
+			const isLast = hdr.getUint8(8) === 1
+			const payload = buffer.slice(FRAG_HEADER_BYTES)
+
+			fragParts.push(new Uint8Array(payload))
+			fragExpectedSize = totalSize
+
+			if (!isLast) {
+				return
+			}
+
+			// All fragments collected – assemble and deliver.
+			const assembled = new Uint8Array(fragExpectedSize)
+			let pos = 0
+			for (const part of fragParts) {
+				assembled.set(part, pos)
+				pos += part.byteLength
+			}
+			fragParts = []
+			fragExpectedSize = 0
+			const completeBuffer = assembled.buffer
+			enqueueDelivery(() => {
+				notifyListeners(completeBuffer)
+			})
+		}
+
 		dc.onmessage = (event) => {
 			if (transportDestroyed) {
 				return
@@ -330,18 +407,14 @@ export const createPageP2PManager = (
 			}
 
 			if (data instanceof ArrayBuffer) {
-				enqueueDelivery(() => {
-					notifyListeners(data)
-				})
+				handleBinaryFrame(data)
 				return
 			}
 
 			if (ArrayBuffer.isView(data)) {
 				const view = data as ArrayBufferView
 				const normalized = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
-				enqueueDelivery(() => {
-					notifyListeners(normalized)
-				})
+				handleBinaryFrame(normalized)
 				return
 			}
 
@@ -349,7 +422,7 @@ export const createPageP2PManager = (
 				enqueueDelivery(async () => {
 					const normalized = await data.arrayBuffer()
 					if (!transportDestroyed) {
-						notifyListeners(normalized)
+						handleBinaryFrame(normalized)
 					}
 				})
 			}
@@ -373,7 +446,12 @@ export const createPageP2PManager = (
 					return
 				}
 
-				dc.send(data)
+				if (typeof data === 'string') {
+					dc.send(data)
+					return
+				}
+
+				sendFragmentedBinary(dc, data)
 			},
 
 			listen(listener) {
