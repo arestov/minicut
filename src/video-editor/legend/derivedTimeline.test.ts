@@ -32,12 +32,12 @@ const createRegistryFixture = () => {
 	registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
 	const clipId = String(clipResult.createdIds?.clipId)
 
-	return { registry, projectId, clipId }
+	return { registry, projectId, clipId, resourceId }
 }
 
 describe('derived timeline selectors', () => {
 	it('derives playback duration and active preview scene from observable graph nodes', () => {
-		const { registry, projectId, clipId } = createRegistryFixture()
+		const { registry, projectId, clipId, resourceId } = createRegistryFixture()
 		const projects$ = createProjectsStore()
 		const session$ = createSessionStore()
 		applySnapshot(projects$, registry)
@@ -59,6 +59,7 @@ describe('derived timeline selectors', () => {
 		expect(previewScene$.get().activeClipNames).toEqual(['clip.webm'])
 		expect(previewScene$.get().renderedClips[0]).toMatchObject({
 			id: clipId,
+			resourceId,
 			name: 'clip.webm',
 			resourceKind: 'video',
 			resourceUrl: 'blob:clip',

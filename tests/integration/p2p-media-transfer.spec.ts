@@ -1,0 +1,113 @@
+import path from 'node:path'
+import { expect, test, type Page } from '@playwright/test'
+
+const SIGNAL_URL = encodeURIComponent('http://127.0.0.1:8787')
+
+const buildRoomUrl = (roomId: string): string => `/?signalUrl=${SIGNAL_URL}#/${roomId}`
+
+type DebugTransfer = {
+	resourceId: string
+	name: string
+	status: 'missing' | 'requesting' | 'partial' | 'ready' | 'error'
+	progress: number
+	previewUrl: string
+	mode: 'local' | 'mirrored' | 'streaming'
+	availability: 'local' | 'remote'
+}
+
+type DebugState = {
+	role: 'server' | 'client' | 'undecided' | null
+	transfers: DebugTransfer[]
+}
+
+const readDebugState = async (page: Page): Promise<DebugState | null> =>
+	page.evaluate(() => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				getRole: () => 'server' | 'client' | 'undecided' | null
+				getResourceTransfers: () => DebugTransfer[]
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		if (!debug) {
+			return null
+		}
+
+		return {
+			role: debug.getRole(),
+			transfers: debug.getResourceTransfers(),
+		}
+	})
+
+const getRole = async (page: Page): Promise<'server' | 'client' | 'undecided' | null> => {
+	const state = await readDebugState(page)
+	return state?.role ?? null
+}
+
+const getTransfers = async (page: Page): Promise<DebugTransfer[]> => {
+	const state = await readDebugState(page)
+	return state?.transfers ?? []
+}
+
+test('p2p media import transfers to the remote peer and yields a blob preview', async ({ browser }) => {
+	const roomId = `p2p-media-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+	const roomUrl = buildRoomUrl(roomId)
+	const firstContext = await browser.newContext()
+	const secondContext = await browser.newContext()
+	const firstPage = await firstContext.newPage()
+	const secondPage = await secondContext.newPage()
+
+	await Promise.all([firstPage.goto(roomUrl), secondPage.goto(roomUrl)])
+	await expect(firstPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
+	await expect(secondPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
+
+	await expect.poll(async () => {
+		const roles = await Promise.all([getRole(firstPage), getRole(secondPage)])
+		return roles.includes('server') && roles.includes('client')
+	}, {
+		timeout: 20_000,
+	}).toBe(true)
+
+	const serverPage = await getRole(firstPage) === 'server' ? firstPage : secondPage
+	const clientPage = serverPage === firstPage ? secondPage : firstPage
+
+	await serverPage.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
+
+	await expect.poll(() => getTransfers(serverPage), {
+		timeout: 20_000,
+	}).toEqual(expect.arrayContaining([
+		expect.objectContaining({
+			availability: 'local',
+			status: 'ready',
+			progress: 1,
+		}) as DebugTransfer,
+	]))
+
+	await expect.poll(() => getTransfers(clientPage), {
+		timeout: 20_000,
+	}).toEqual(expect.arrayContaining([
+		expect.objectContaining({
+			availability: 'remote',
+			mode: 'streaming',
+			status: 'ready',
+			progress: 1,
+		}) as DebugTransfer,
+	]))
+
+	await expect.poll(async () => {
+		const transfers = await getTransfers(clientPage)
+		return transfers[0]?.previewUrl ?? ''
+	}, {
+		timeout: 20_000,
+	}).toMatch(/^blob:/)
+
+	await expect.poll(() => clientPage.locator('.ve-media-bin .ve-resource-row small').allTextContents(), {
+		timeout: 20_000,
+	}).toContain('streaming · ready · 100%')
+
+	await expect.poll(() => clientPage.locator('.ve-renderer__layer video').evaluate((node) => (node as HTMLVideoElement).currentSrc), {
+		timeout: 20_000,
+	}).toMatch(/^blob:/)
+
+	await Promise.all([firstContext.close(), secondContext.close()])
+})

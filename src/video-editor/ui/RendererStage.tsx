@@ -17,6 +17,7 @@ interface RendererStageProps {
 	structure: PreviewStructure
 	frame: PreviewFrame
 	isPlaying: boolean
+	onClipMediaError?: (resourceId: string) => void
 }
 
 interface PreviewCanvasClipSource {
@@ -253,7 +254,7 @@ const useMediaElementSync = (
 	}, [frame, isPlaying, mediaElementsRef, mediaSeekStateRef])
 }
 
-export const RendererStage = ({ structure, frame, isPlaying }: RendererStageProps) => {
+export const RendererStage = ({ structure, frame, isPlaying, onClipMediaError }: RendererStageProps) => {
 	const { canvasRef, renderMode } = usePreviewCanvasRenderer(structure, frame)
 	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
 	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
@@ -308,6 +309,11 @@ export const RendererStage = ({ structure, frame, isPlaying }: RendererStageProp
 												getClipLocalMediaTime(clip, frame.cursor),
 											)
 										}
+										onError={() => {
+											if (clip.resourceId) {
+												onClipMediaError?.(clip.resourceId)
+											}
+										}}
 									/>
 								) : null}
 								{!hasMedia ? (
@@ -344,6 +350,11 @@ export const RendererStage = ({ structure, frame, isPlaying }: RendererStageProp
 										getClipLocalMediaTime(clip, frame.cursor),
 									)
 								}
+								onError={() => {
+									if (clip.resourceId) {
+										onClipMediaError?.(clip.resourceId)
+									}
+								}}
 							/>
 						) : null,
 					)}

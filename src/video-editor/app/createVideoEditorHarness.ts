@@ -2,6 +2,7 @@ import { observable, type Observable } from '@legendapp/state'
 import { createPlaybackDuration$ } from '../legend/derivedTimeline'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
 import { createSessionStore, TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from '../legend/sessionStore'
+import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import { getActiveProject, getAudioTrack, getClipIdsForTrack, getProjectMetaList, getSelectedClip, getTracks, getVideoTrack } from '../domain/selectors'
 import type {
 	ClipAttrs,
@@ -12,6 +13,7 @@ import type {
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
+import { createResourceTransferManager } from '../media/resourceTransferManager'
 import {
 	createBrowserVideoExportRenderer,
 	type ExportProgressEvent,
@@ -166,7 +168,40 @@ export const createVideoEditorHarness = (
 	authority?: EditorAuthorityClient,
 	options: CreateVideoEditorHarnessOptions = {},
 ) => {
-	const authorityClient = authority ?? createAuthorityClient(options.authorityOptions)
+	let authorityClientRef: EditorAuthorityClient | null = null
+	const resourceTransferManager = createResourceTransferManager({
+		getRole: () => {
+			const role = (authorityClientRef as Partial<{ role: unknown }> | null)?.role
+			return role === 'server' || role === 'client' || role === 'undecided' ? role : null
+		},
+		getPeerId: () => {
+			const peerId = (authorityClientRef as Partial<{ peerId: unknown }> | null)?.peerId
+			return typeof peerId === 'string' ? peerId : null
+		},
+		chunkSize: DEFAULT_RESOURCE_CHUNK_SIZE,
+	})
+	const authorityOptions = options.authorityOptions?.p2p
+		? {
+				...options.authorityOptions,
+				p2p: {
+					...options.authorityOptions.p2p,
+					onClientResourceTransport: (transport) => {
+						resourceTransferManager.attachClientTransport(transport)
+						options.authorityOptions?.p2p?.onClientResourceTransport?.(transport)
+					},
+					onServerResourceTransport: (remotePeerId, transport) => {
+						resourceTransferManager.attachServerTransport(remotePeerId, transport)
+						options.authorityOptions?.p2p?.onServerResourceTransport?.(remotePeerId, transport)
+					},
+					onResourcePeerDisconnected: (remotePeerId) => {
+						resourceTransferManager.detachPeerTransport(remotePeerId)
+						options.authorityOptions?.p2p?.onResourcePeerDisconnected?.(remotePeerId)
+					},
+				},
+			}
+		: options.authorityOptions
+	const authorityClient = authority ?? createAuthorityClient(authorityOptions)
+	authorityClientRef = authorityClient
 	const autoCreateInitialProject = options.autoCreateInitialProject ?? true
 	const exportRenderer = options.exportRenderer ?? createBrowserVideoExportRenderer()
 	const projects$ = createProjectsStore()
@@ -189,6 +224,11 @@ export const createVideoEditorHarness = (
 		}
 
 		return null
+	}
+
+	const getAuthorityPeerId = (): string | null => {
+		const peerId = (authorityClient as Partial<{ peerId: unknown }>).peerId
+		return typeof peerId === 'string' ? peerId : null
 	}
 
 	const clearInitialProjectRetry = (): void => {
@@ -291,6 +331,7 @@ export const createVideoEditorHarness = (
 			}
 
 			applySnapshot(projects$, snapshot)
+			resourceTransferManager.syncRegistry(snapshot)
 			syncActiveProjectSelection()
 			syncHistoryState()
 			ensureInitialProject()
@@ -310,6 +351,7 @@ export const createVideoEditorHarness = (
 
 	const unsubscribe = authorityClient.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
+		resourceTransferManager.syncRegistry(projects$.get())
 		syncActiveProjectSelection()
 		syncHistoryState()
 	})
@@ -394,6 +436,11 @@ export const createVideoEditorHarness = (
 						return
 					}
 
+					const ownerPeerId = getAuthorityPeerId()
+					const source = ownerPeerId
+						? { kind: 'p2p' as const, ownerPeerId }
+						: { kind: 'local' as const }
+
 					dispatch({
 						c: CMD.RESOURCE_IMPORT,
 						p: {
@@ -402,15 +449,29 @@ export const createVideoEditorHarness = (
 							kind,
 							duration,
 							mime: file.type || `${kind}/unknown`,
-							url,
+							url: source.kind === 'p2p' ? '' : url,
 							width: kind === 'audio' ? undefined : 1920,
 							height: kind === 'audio' ? undefined : 1080,
 							size: file.size,
-							source: { kind: 'local' },
+							source,
+							dataStatus: source.kind === 'p2p' ? 'missing' : 'ready',
+							chunkSize: DEFAULT_RESOURCE_CHUNK_SIZE,
 						},
 					}).then((result) => {
 						const resourceId = result.createdIds?.resourceId
 						if (resourceId) {
+							resourceTransferManager.registerLocalResource(String(resourceId), file, {
+								objectUrl: url,
+								kind,
+								mime: file.type || `${kind}/unknown`,
+								duration,
+								size: file.size,
+								chunkSize: DEFAULT_RESOURCE_CHUNK_SIZE,
+								ownerPeerId,
+								sourceKind: source.kind,
+								fallbackUrl: source.kind === 'p2p' ? '' : url,
+								name: file.name,
+							})
 							addResourceToTimelineIfEmpty(projectId, String(resourceId))
 						}
 					})
@@ -796,6 +857,16 @@ export const createVideoEditorHarness = (
 		projects$,
 		session$,
 		history$,
+		resourceTransfers$: resourceTransferManager.transfers$,
+		resolveResourceUrl(resourceId: string, fallbackUrl: string): string {
+			return resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl)
+		},
+		requestResourcePlayheadWindow(resourceId: string, time: number): void {
+			resourceTransferManager.requestPlayheadWindow(resourceId, time)
+		},
+		noteResourcePreviewError(resourceId: string): void {
+			resourceTransferManager.notePreviewError(resourceId)
+		},
 		actions,
 		destroy(): void {
 			isDestroyed = true
@@ -808,6 +879,7 @@ export const createVideoEditorHarness = (
 			for (const url of importedObjectUrls) {
 				URL.revokeObjectURL(url)
 			}
+			resourceTransferManager.destroy()
 			authorityClient.destroy?.()
 			for (const url of exportObjectUrls) {
 				URL.revokeObjectURL(url)

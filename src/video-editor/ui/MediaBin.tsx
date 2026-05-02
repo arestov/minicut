@@ -3,6 +3,7 @@ import { Grid2X2, List, Plus, Search, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
+import type { ResourceTransferView } from '../media/resourceTransferManager'
 import {
 	getActiveProjectId$,
 	getProjectResourceIds$,
@@ -21,19 +22,22 @@ const ResourceThumbnail = ({
 	kind,
 	name,
 	url,
+	transfer,
 }: {
 	kind: ResourceAttrs['kind']
 	name: string
 	url: string
+	transfer?: ResourceTransferView
 }) => {
-	const canPreview = isPreviewableUrl(url)
+	const resolvedUrl = transfer?.previewUrl || url
+	const canPreview = isPreviewableUrl(resolvedUrl)
 
 	if (canPreview && kind === 'image') {
-		return <img className="ve-resource-thumb" src={url} alt={`${name} thumbnail`} />
+		return <img className="ve-resource-thumb" src={resolvedUrl} alt={`${name} thumbnail`} />
 	}
 
 	if (canPreview && kind === 'video') {
-		return <video className="ve-resource-thumb" src={url} aria-label={`${name} thumbnail`} muted playsInline preload="metadata" />
+		return <video className="ve-resource-thumb" src={resolvedUrl} aria-label={`${name} thumbnail`} muted playsInline preload="metadata" />
 	}
 
 	return (
@@ -44,21 +48,28 @@ const ResourceThumbnail = ({
 }
 
 const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
-	const { projects$, actions } = useVideoEditor()
+	const { projects$, actions, resourceTransfers$ } = useVideoEditor()
 	const resource$ = resourceAttrs$(projects$, resourceId)
+	const transfer = resourceTransfers$[resourceId].get() as ResourceTransferView | undefined
 	const name = String(resource$.name.get())
 	const kind = resource$.kind.get()
 	const mime = String(resource$.mime.get())
 	const duration = Number(resource$.duration.get())
 	const url = String(resource$.url.get())
+	const totalBytes = transfer?.totalBytes ?? Number(resource$.size.get() ?? 0)
+	const progressPercent = Math.round((transfer?.progress ?? 0) * 100)
+	const statusLabel = transfer
+		? `${transfer.mode} · ${transfer.status}${totalBytes > 0 ? ` · ${progressPercent}%` : ''}`
+		: null
 
 	return (
 		<li className="ve-resource-row">
-			<ResourceThumbnail kind={kind} name={name} url={url} />
+			<ResourceThumbnail kind={kind} name={name} url={url} transfer={transfer} />
 			<div className="ve-resource-row__content">
 				<strong>{name}</strong>
 				<div className="ve-resource-row__meta">
 					<small>{kind} · {mime} · {duration.toFixed(1)}s</small>
+					{statusLabel ? <small>{statusLabel}</small> : null}
 					<div className="ve-resource-row__action-line">
 						<IconButton
 							type="button"

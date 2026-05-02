@@ -121,6 +121,15 @@ export const VideoEditorHarnessApp = ({
 
 		const debug = {
 			getProjectCount: () => Object.keys(ownedHarness.projects$.get().projects).length,
+			getResourceTransfers: () => Object.values(ownedHarness.resourceTransfers$.get()).map((transfer) => ({
+				resourceId: transfer.resourceId,
+				name: transfer.name,
+				status: transfer.status,
+				progress: transfer.progress,
+				previewUrl: transfer.previewUrl,
+				mode: transfer.mode,
+				availability: transfer.availability,
+			})),
 			getProjectTitles: () => {
 				const registry = ownedHarness.projects$.get()
 				return Object.values(registry.projects)

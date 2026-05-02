@@ -38,6 +38,7 @@ export interface TimelineClipInterval {
 
 export interface RenderedClip {
 	id: string
+	resourceId: string | null
 	name: string
 	color: string
 	resourceName: string
@@ -59,6 +60,7 @@ export interface ResolvedAnimatedScalar {
 
 export interface PreviewClipSource {
 	id: string
+	resourceId: string | null
 	name: string
 	color: string
 	resourceName: string
@@ -306,6 +308,7 @@ const getPreviewClipSource$ = (
 
 	return {
 		id: clipRef.id,
+		resourceId: typeof resourceId === 'string' ? resourceId : null,
 		name: String(clip$.name.get()),
 		color: String(clip$.color.get() ?? '#2563eb'),
 		resourceName: resource$ ? String(resource$.name.get()) : String(clip$.name.get()),
@@ -342,6 +345,7 @@ export const renderPreviewClipSourceAtCursor = (
 
 	return {
 		id: clip.id,
+		resourceId: clip.resourceId,
 		name: clip.name,
 		color: clip.color,
 		resourceName: clip.resourceName,
