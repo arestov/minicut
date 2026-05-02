@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import {
 	analyzeExportedAudio,
 	expectToneEnergy,
@@ -343,6 +344,39 @@ test.describe('exported audio artifacts', () => {
 
 		const exportPath = await exportProject(page)
 		await expectAnalyzableExport(exportPath)
+	})
+
+	test('bad audio source exports manifest diagnostics instead of a silent successful file', async ({ page }) => {
+		await page.addInitScript(() => {
+			Object.defineProperty(window, 'MediaRecorder', { value: undefined, configurable: true })
+		})
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const imageFile = await createSolidPngFile(page, 'bad-audio-green.png', '#16a34a')
+		const badAudioFile: PlaywrightFilePayload = {
+			name: 'bad-audio-source.wav',
+			mimeType: 'audio/wav',
+			buffer: Buffer.from('this is not a wav file'),
+		}
+		await importMediaFiles(page, [imageFile, badAudioFile])
+		await addResourceToTimeline(page, badAudioFile.name)
+
+		const exportPath = await exportProject(page)
+		const manifest = JSON.parse(await readFile(exportPath, 'utf8')) as {
+			format?: string
+			diagnostics?: { backend?: string; fallbackReason?: string; resolvedClipIds?: string[] }
+			clips?: Array<{ type?: string; source?: string }>
+		}
+		expect(manifest.format).toBe('json-manifest')
+		expect(manifest.diagnostics).toMatchObject({
+			backend: 'manifest',
+			fallbackReason: 'webcodecs-audio-mix-failed',
+		})
+		expect(manifest.diagnostics?.resolvedClipIds?.length).toBeGreaterThanOrEqual(2)
+		expect(manifest.clips).toEqual(expect.arrayContaining([
+			expect.objectContaining({ type: 'ef-audio' }),
+		]))
 	})
 
 	test('selected video clip export includes linked embedded audio', async ({ page }) => {

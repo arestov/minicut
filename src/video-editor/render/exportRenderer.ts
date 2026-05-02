@@ -268,6 +268,11 @@ const addDiagnosticsToResult = (
 ): ExportRenderResult => {
 	result.diagnostics = diagnostics
 	result.manifest.diagnostics = diagnostics
+	if (result.mimeType === manifestMimeType) {
+		const blob = renderManifestBlob(result.manifest)
+		result.blob = blob
+		result.size = blob.size
+	}
 	return result
 }
 

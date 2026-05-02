@@ -260,6 +260,7 @@ describe('browser video export renderer', () => {
 		})
 		expect(result.diagnostics?.resolvedClipIds).toEqual([clipId])
 		expect(result.manifest.diagnostics).toEqual(result.diagnostics)
+		expect(await result.blob.text()).toContain('webcodecs-video-unsupported')
 	})
 
 	it('throws when video export is unsupported and fallback is disabled', async () => {
