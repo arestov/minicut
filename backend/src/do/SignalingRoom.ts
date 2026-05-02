@@ -119,6 +119,10 @@ export class SignalingRoom {
       if (!from) {
         return
       }
+      const senderPeerId = this.getPeerId(ws)
+      if (!senderPeerId || senderPeerId !== from) {
+        return
+      }
 
       if (type === 'server-leaving') {
         for (const peer of this.peers?.values() ?? []) {

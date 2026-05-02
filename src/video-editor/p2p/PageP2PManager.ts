@@ -40,9 +40,15 @@ interface ProxyEntry {
 	proxyPort: MessagePort
 }
 
-const DEFAULT_RTC_CONFIG: RTCConfiguration = {
-	iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+export const DEFAULT_STUN_ICE_SERVER: RTCIceServer = {
+	urls: 'stun:stun.l.google.com:19302',
 }
+
+export const createDefaultRtcConfig = (turnIceServer?: RTCIceServer | null): RTCConfiguration => ({
+	iceServers: [DEFAULT_STUN_ICE_SERVER, ...(turnIceServer ? [turnIceServer] : [])],
+})
+
+const DEFAULT_RTC_CONFIG: RTCConfiguration = createDefaultRtcConfig()
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000
 
@@ -142,6 +148,7 @@ export const createPageP2PManager = (
 
 					if (role === 'client' && remotePeerId === serverPeerId) {
 						notifySessionLost('server-gone')
+						return
 					}
 
 				closePeer(remotePeerId)
