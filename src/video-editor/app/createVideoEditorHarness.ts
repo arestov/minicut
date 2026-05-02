@@ -24,6 +24,7 @@ import { createAuthorityClient, type CreateAuthorityClientOptions } from '../wor
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 const fallbackMediaDuration = 6
 const imageDuration = 1
+const SNAPSHOT_BOOTSTRAP_RETRY_MS = 250
 
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	if (file.type.startsWith('video/')) {
@@ -178,6 +179,7 @@ export const createVideoEditorHarness = (
 	let initialBootstrapChecked = false
 	let projectBootstrapInFlight = false
 	let isDestroyed = false
+	let snapshotBootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 	const syncActiveProjectSelection = (): void => {
 		const registry = projects$.get()
@@ -235,16 +237,34 @@ export const createVideoEditorHarness = (
 		})
 	}
 
-	Promise.resolve(authorityClient.getSnapshot()).then((snapshot) => {
-		if (isDestroyed) {
-			return
-		}
+	const bootstrapSnapshot = (): void => {
+		Promise.resolve(authorityClient.getSnapshot()).then((snapshot) => {
+			if (isDestroyed) {
+				return
+			}
 
-		applySnapshot(projects$, snapshot)
-		syncActiveProjectSelection()
-		syncHistoryState()
-		ensureInitialProject()
-	})
+			if (snapshotBootstrapRetryTimer) {
+				clearTimeout(snapshotBootstrapRetryTimer)
+				snapshotBootstrapRetryTimer = null
+			}
+
+			applySnapshot(projects$, snapshot)
+			syncActiveProjectSelection()
+			syncHistoryState()
+			ensureInitialProject()
+		}).catch(() => {
+			if (isDestroyed) {
+				return
+			}
+
+			snapshotBootstrapRetryTimer = setTimeout(() => {
+				snapshotBootstrapRetryTimer = null
+				bootstrapSnapshot()
+			}, SNAPSHOT_BOOTSTRAP_RETRY_MS)
+		})
+	}
+
+	bootstrapSnapshot()
 
 	const unsubscribe = authorityClient.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
@@ -737,6 +757,10 @@ export const createVideoEditorHarness = (
 		actions,
 		destroy(): void {
 			isDestroyed = true
+			if (snapshotBootstrapRetryTimer) {
+				clearTimeout(snapshotBootstrapRetryTimer)
+				snapshotBootstrapRetryTimer = null
+			}
 			unsubscribe()
 			for (const url of importedObjectUrls) {
 				URL.revokeObjectURL(url)

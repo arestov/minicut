@@ -43,8 +43,12 @@ export class SignalingRoom {
       const client = pair[0]
       const server = pair[1]
 
-      server.accept()
-      this.bindSocket(server)
+      if (typeof this.state.acceptWebSocket === 'function') {
+        this.state.acceptWebSocket(server)
+      } else {
+        server.accept()
+        this.bindSocket(server)
+      }
 
       return new Response(null, { status: 101, webSocket: client })
     }
@@ -201,7 +205,12 @@ export class SignalingRoom {
       return null
     }
 
-    const raw = candidate.deserializeAttachment()
+    let raw: unknown
+    try {
+      raw = candidate.deserializeAttachment()
+    } catch {
+      return null
+    }
     if (!raw || typeof raw !== 'object') {
       return null
     }
@@ -237,11 +246,15 @@ export class SignalingRoom {
 	    continue
 	  }
 
-	  candidate.serializeAttachment({
-        peerId: peer.peerId,
-        joinedAt: peer.joinedAt,
-        ...shared,
+    try {
+      candidate.serializeAttachment({
+          peerId: peer.peerId,
+          joinedAt: peer.joinedAt,
+          ...shared,
       })
+    } catch {
+      // socket may be in transient close state
+    }
     }
   }
 

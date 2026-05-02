@@ -12,7 +12,7 @@ const createRegistryEnvelope = (snapshot: ProjectRegistry): PatchEnvelope => ({
 })
 
 class FakeAuthorityClient implements EditorAuthorityClient {
-	readonly snapshot: ProjectRegistry
+	snapshot: ProjectRegistry
 	readonly history: HistoryState = { canUndo: false, canRedo: false }
 	readonly listeners = new Set<PatchListener>()
 
@@ -44,6 +44,12 @@ class FakeAuthorityClient implements EditorAuthorityClient {
 			listener(envelope)
 		}
 	}
+}
+
+class FakeRestorableAuthorityClient extends FakeAuthorityClient {
+	replaceSnapshot = vi.fn(async (snapshot: ProjectRegistry) => {
+		this.snapshot = structuredClone(snapshot)
+	})
 }
 
 const createTransportHarness = () => {
@@ -203,5 +209,38 @@ describe('P2PAuthorityAdapter', () => {
 		manager.emitBecomeServer()
 		await expect(adapter.getSnapshot()).resolves.toEqual(local.snapshot)
 		expect(createLocalAuthority).toHaveBeenCalledTimes(1)
+	})
+
+	test('hydrates local authority snapshot when client fails over to server', async () => {
+		const manager = createManagerHarness()
+		const transport = createTransportHarness()
+		const local = new FakeRestorableAuthorityClient()
+		const createLocalAuthority = vi.fn(() => local)
+
+		const adapter = createP2PAuthorityAdapter({
+			roomId: 'room-1',
+			signalUrl: 'http://localhost:8787',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createManager: manager.factory,
+			createLocalAuthority,
+		})
+
+		manager.emitBecomeClient(transport.transport)
+		const remoteSnapshot = createEmptyRegistry()
+		const snapshotPromise = adapter.getSnapshot()
+		const requestId = String(transport.sent[0].requestId)
+		transport.emit({
+			m: MSG.SNAPSHOT,
+			requestId,
+			p: remoteSnapshot,
+		})
+		await expect(snapshotPromise).resolves.toEqual(remoteSnapshot)
+
+		manager.emitSessionLost('server-gone')
+		manager.emitBecomeServer()
+		await Promise.resolve()
+
+		expect(local.replaceSnapshot).toHaveBeenCalledWith(remoteSnapshot)
+		await expect(adapter.getSnapshot()).resolves.toEqual(remoteSnapshot)
 	})
 })

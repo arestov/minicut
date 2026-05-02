@@ -1,5 +1,7 @@
 import { nanoid } from 'nanoid'
 import { MSG, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
+import { createEmptyRegistry } from '../domain/createProject'
 import { MemoryWorkerAuthority } from '../worker/memoryWorker'
 import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from '../worker/sharedWorkerClient'
 import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
@@ -24,6 +26,14 @@ interface TransportPendingRequest {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000
+const P2P_SHARED_WORKER_NAME_PREFIX = 'minicut-video-editor-authority:p2p:'
+
+type RestorableAuthorityClient = EditorAuthorityClient & {
+	replaceSnapshot(snapshot: ProjectRegistry): Promise<void>
+}
+
+const canReplaceSnapshot = (client: EditorAuthorityClient): client is RestorableAuthorityClient =>
+	typeof (client as Partial<RestorableAuthorityClient>).replaceSnapshot === 'function'
 
 const createTransportAuthorityClient = (
 	transport: P2PTransportLike,
@@ -134,13 +144,8 @@ const createTransportAuthorityClient = (
 	}
 }
 
-const createDefaultLocalAuthority = (): EditorAuthorityClient => {
-	if (canUseSharedWorkerAuthority()) {
-		return new SharedWorkerAuthorityClient()
-	}
-
-	return new MemoryWorkerAuthority()
-}
+const toWorkerScopeKey = (roomId: string): string =>
+	roomId.replace(/[^a-zA-Z0-9:_-]/g, '-').slice(0, 80)
 
 export interface CreateP2PAuthorityAdapterConfig {
 	roomId: string
@@ -162,7 +167,17 @@ export interface P2PAuthorityAdapter extends EditorAuthorityClient {
 }
 
 export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfig): P2PAuthorityAdapter => {
-	const createLocalAuthority = config.createLocalAuthority ?? createDefaultLocalAuthority
+	const roomScopedWorkerName = `${P2P_SHARED_WORKER_NAME_PREFIX}${toWorkerScopeKey(config.roomId)}`
+	const createLocalAuthority = config.createLocalAuthority ?? (() => {
+		if (canUseSharedWorkerAuthority()) {
+			return new SharedWorkerAuthorityClient({
+				workerUrl: config.workerUrl,
+				name: roomScopedWorkerName,
+			})
+		}
+
+		return new MemoryWorkerAuthority()
+	})
 	const createManager = config.createManager ?? createPageP2PManager
 	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
 
@@ -170,9 +185,16 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 	let role: 'server' | 'client' | 'undecided' = 'undecided'
 	let activeClient: EditorAuthorityClient | null = null
 	let activeClientUnsubscribe: (() => void) | null = null
+	let hasCachedSnapshot = false
+	let cachedSnapshot = createEmptyRegistry()
 
 	const listeners = new Set<PatchListener>()
 	const pending: PendingCall<unknown>[] = []
+
+	const setCachedSnapshot = (snapshot: ProjectRegistry): void => {
+		hasCachedSnapshot = true
+		cachedSnapshot = structuredClone(snapshot)
+	}
 
 	const failPending = (error: Error): void => {
 		const calls = pending.splice(0, pending.length)
@@ -198,15 +220,31 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		role = nextRole
 		activeClient = nextClient
 		activeClientUnsubscribe = nextClient.subscribe((envelope) => {
+			if (hasCachedSnapshot) {
+				try {
+					applyPatchEnvelopeInPlace(cachedSnapshot, envelope)
+				} catch {
+					// ignore invalid cache update attempts
+				}
+			}
+
 			for (const listener of listeners) {
 				listener(envelope)
 			}
 		})
 
-		const queuedCalls = pending.splice(0, pending.length)
-		for (const call of queuedCalls) {
-			call.run(nextClient)
+		const flushQueuedCalls = (): void => {
+			const queuedCalls = pending.splice(0, pending.length)
+			for (const call of queuedCalls) {
+				call.run(nextClient)
+			}
 		}
+
+		if (nextRole === 'server' && hasCachedSnapshot && canReplaceSnapshot(nextClient)) {
+			void nextClient.replaceSnapshot(cachedSnapshot)
+		}
+
+		flushQueuedCalls()
 	}
 
 	const invoke = <T>(operation: (client: EditorAuthorityClient) => T | Promise<T>): Promise<T> => {
@@ -235,6 +273,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			workerUrl: config.workerUrl,
 			rtcConfig: config.rtcConfig,
 			createSignaling: config.createSignaling,
+			sharedWorkerName: roomScopedWorkerName,
 			connectionTimeoutMs: config.connectionTimeoutMs,
 		},
 		{
@@ -269,7 +308,10 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		},
 
 		getSnapshot() {
-			return invoke((client) => client.getSnapshot())
+			return invoke((client) => client.getSnapshot()).then((snapshot) => {
+				setCachedSnapshot(snapshot)
+				return snapshot
+			})
 		},
 
 		getHistoryState() {

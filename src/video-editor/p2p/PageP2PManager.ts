@@ -170,7 +170,7 @@ export const createPageP2PManager = (
 				}
 
 				if (role === 'undecided') {
-					becomeServer()
+					events.onError(error)
 					return
 				}
 

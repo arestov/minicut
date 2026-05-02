@@ -181,6 +181,8 @@ export const MSG = {
 	REDO: -9,
 	HISTORY_STATE_REQUEST: -10,
 	HISTORY_STATE: -11,
+	REGISTRY_RESTORE_REQUEST: -12,
+	REGISTRY_RESTORE_ACK: -13,
 } as const
 
 export const CMD = {

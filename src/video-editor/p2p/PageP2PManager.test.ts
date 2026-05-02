@@ -365,7 +365,7 @@ describe('PageP2PManager', () => {
 		expect(events.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'WebRTC connection timed out' }))
 	})
 
-	test('falls back to server role when signaling errors before role assignment', () => {
+	test('reports signaling errors while role is still undecided', () => {
 		const signaling = createSignalingHarness()
 		const events = {
 			onBecomeServer: vi.fn(),
@@ -373,7 +373,7 @@ describe('PageP2PManager', () => {
 			onSessionLost: vi.fn(),
 			onError: vi.fn(),
 		}
-		const manager = createPageP2PManager({
+		createPageP2PManager({
 			roomId: 'room-1',
 			signalUrl: 'ws://127.0.0.1:8790',
 			workerUrl: 'http://localhost/sharedWorker.js',
@@ -381,8 +381,8 @@ describe('PageP2PManager', () => {
 		}, events)
 
 		signaling.emitError(new Error('signaling down'))
-		expect(manager.role).toBe('server')
-		expect(events.onBecomeServer).toHaveBeenCalledTimes(1)
+		expect(events.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'signaling down' }))
+		expect(events.onBecomeServer).not.toHaveBeenCalled()
 	})
 
 	test('announces server-leaving before destroy when acting as server', () => {

@@ -115,6 +115,17 @@ self.onconnect = (event: MessageEvent) => {
 				post(port, { m: MSG.HISTORY_STATE, requestId: message.requestId, p: getHistoryState() })
 				break
 
+			case MSG.REGISTRY_RESTORE_REQUEST: {
+				registry = structuredClone(message.p as ProjectRegistry)
+				indexes = buildWorkerDerivedIndexes(registry)
+				undoStack.length = 0
+				redoStack = []
+				const envelope = createRegistrySetEnvelope(registry)
+				broadcastPatch(envelope)
+				post(port, { m: MSG.REGISTRY_RESTORE_ACK, requestId: message.requestId, p: true })
+				break
+			}
+
 			case MSG.COMMAND:
 				handleCommand(port, message.requestId, message.p as Command)
 				break
