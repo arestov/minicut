@@ -20,8 +20,15 @@ If you need a different backend URL or TURN credentials at build time, set `MINI
 ### Tests
 
 - `npm run test:video-editor` runs the editor unit tests.
+- `npm run test:video-editor:node` runs node-only headless and runtime contract tests.
 - `npm run test:integration` runs the Playwright integration tests and starts both local services automatically.
 - `npm --prefix backend run test` runs backend Durable Object tests.
+
+### Node Headless Runtime
+
+- `npm run node:headless:run` executes a sample headless scenario file and prints JSON output.
+- `npm run node:headless:scenario -- --scenario <path> [--out <path>]` runs a custom scenario.
+- Sample scenario: `tests/fixtures/headless/sample-scenario.json`.
 
 ## Architecture and Review Docs
 
