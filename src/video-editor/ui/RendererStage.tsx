@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
+// Keep Vite's worker query import explicit.
+//
+// Why this is intentionally verbose:
+// - Vite rewrites `?worker` imports into a JS worker asset URL at build time.
+// - If we hide worker resolution behind dynamic URL composition, Vite may stop transforming it,
+//   and the browser can end up requesting a raw `.ts` file with a wrong MIME type.
+// - This direct import guarantees the emitted asset is JavaScript (previewCanvasWorker-*.js).
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
 
 const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()

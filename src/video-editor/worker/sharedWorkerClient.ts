@@ -10,7 +10,6 @@ type PendingRequest = {
 
 const REQUEST_TIMEOUT_MS = 5000
 const DEFAULT_SHARED_WORKER_NAME = 'minicut-video-editor-authority'
-const DEFAULT_SHARED_WORKER_URL = new URL('./sharedWorker.ts', import.meta.url)
 
 export interface SharedWorkerAuthorityClientOptions {
 	workerUrl?: string | URL
@@ -32,11 +31,30 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 	constructor(options: SharedWorkerAuthorityClientOptions = {}) {
 		this.#requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
 		this.#onError = options.onError
-		this.#worker = new SharedWorker(options.workerUrl ?? DEFAULT_SHARED_WORKER_URL, {
-			type: 'module',
-			name: options.name ?? DEFAULT_SHARED_WORKER_NAME,
-		})
-		this.#worker.onerror = () => {
+		// Keep this construction pattern intentionally explicit for Vite.
+		//
+		// Why the code is verbose and duplicated:
+		// - Vite only transforms worker URLs when it can statically see
+		//   `new SharedWorker(new URL('...', import.meta.url), { ...literal... })`.
+		// - Earlier compact versions (coalescing expressions / prebuilt options objects)
+		//   either failed Vite parsing or allowed `.ts` worker paths to leak to runtime.
+		// - Those leaked `.ts` URLs are served with a non-JS MIME on static hosting,
+		//   so the browser refuses to initialize the worker.
+		//
+		// We therefore keep two explicit branches:
+		// 1) custom URL provided externally
+		// 2) Vite-static default URL based on import.meta.url
+		this.#worker = options.workerUrl
+			? new SharedWorker(options.workerUrl, {
+				type: 'module',
+				name: options.name ?? DEFAULT_SHARED_WORKER_NAME,
+			})
+			: new SharedWorker(new URL('./sharedWorker.ts', import.meta.url), {
+				type: 'module',
+				name: options.name ?? DEFAULT_SHARED_WORKER_NAME,
+			})
+		this.#worker.onerror = (e) => {
+			console.error(e.message, e)
 			this.#failAllPending(new Error('SharedWorker failed to load'))
 		}
 		this.#worker.port.onmessage = (event: MessageEvent<WireMessage>) => {

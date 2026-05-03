@@ -152,7 +152,7 @@ const toWorkerScopeKey = (roomId: string): string =>
 export interface CreateP2PAuthorityAdapterConfig {
 	roomId: string
 	signalUrl: string
-	workerUrl: string | URL
+	workerUrl?: string | URL
 	rtcConfig?: RTCConfiguration
 	createSignaling?: BridgeSignalingFactory
 	connectionTimeoutMs?: number

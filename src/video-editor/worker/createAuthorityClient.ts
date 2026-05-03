@@ -24,14 +24,12 @@ export interface CreateAuthorityClientOptions {
 	}
 }
 
-export const DEFAULT_SHARED_WORKER_URL = new URL('./sharedWorker.ts', import.meta.url)
-
 export const createAuthorityClient = (options: CreateAuthorityClientOptions = {}): EditorAuthorityClient => {
 	if (options.p2p?.roomId && options.p2p.signalUrl) {
 		return createP2PAuthorityAdapter({
 			roomId: options.p2p.roomId,
 			signalUrl: options.p2p.signalUrl,
-			workerUrl: options.p2p.workerUrl ?? DEFAULT_SHARED_WORKER_URL,
+			workerUrl: options.p2p.workerUrl,
 			rtcConfig: options.p2p.rtcConfig,
 			createSignaling: options.p2p.createSignaling,
 			connectionTimeoutMs: options.p2p.connectionTimeoutMs,

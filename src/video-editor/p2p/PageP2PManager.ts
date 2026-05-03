@@ -18,7 +18,7 @@ export interface P2PRawTransportLike {
 export interface PageP2PManagerConfig {
 	roomId: string
 	signalUrl: string
-	workerUrl: string | URL
+	workerUrl?: string | URL
 	rtcConfig?: RTCConfiguration
 	createSignaling?: BridgeSignalingFactory
 	dataChannelLabel?: string
@@ -658,10 +658,26 @@ export const createPageP2PManager = (
 	const setupServerProxy = (remotePeerId: string, dc: RTCDataChannel, pc: RTCPeerConnection): void => {
 		let proxyWorker: SharedWorker
 		try {
-			proxyWorker = new SharedWorker(config.workerUrl, {
-				type: 'module',
-				name: sharedWorkerName,
-			})
+			// Keep this block intentionally verbose for Vite worker bundling stability.
+			//
+			// Why we do not collapse this into a single compact expression:
+			// - Vite's worker transform is strict and expects static constructor shapes.
+			// - If URL/options become non-static, Vite may emit/leave a `.ts` worker path.
+			// - In production that `.ts` path is typically served with the wrong MIME type,
+			//   and SharedWorker initialization fails in the browser.
+			//
+			// This branch form preserves both use-cases:
+			// 1) externally provided worker URL for tests/overrides
+			// 2) default worker URL that Vite can statically analyze and rewrite to JS
+			proxyWorker = config.workerUrl
+				? new SharedWorker(config.workerUrl, {
+					type: 'module',
+					name: sharedWorkerName,
+				})
+				: new SharedWorker(new URL('../worker/sharedWorker.ts', import.meta.url), {
+					type: 'module',
+					name: sharedWorkerName,
+				})
 		} catch (error) {
 			console.warn('[minicut:p2p] failed to create server proxy SharedWorker', {
 				remotePeerId,
@@ -673,7 +689,8 @@ export const createPageP2PManager = (
 		}
 		const proxyPort = proxyWorker.port
 		proxyPort.start()
-		proxyWorker.onerror = () => {
+		proxyWorker.onerror = (e) => {
+			console.error(e.message, e)
 			const error = new Error('P2P server proxy SharedWorker failed to load')
 			console.warn('[minicut:p2p] server proxy SharedWorker failed', { remotePeerId })
 			events.onError(error)
