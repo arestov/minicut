@@ -25,6 +25,7 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 	#listeners = new Set<PatchListener>()
 	#pending = new Map<string, PendingRequest>()
 	#isDestroyed = false
+	#loadFailed = false
 
 	constructor(options: SharedWorkerAuthorityClientOptions = {}) {
 		this.#requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
@@ -32,8 +33,14 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 			type: 'module',
 			name: options.name ?? DEFAULT_SHARED_WORKER_NAME,
 		})
+		this.#worker.onerror = () => {
+			this.#failAllPending(new Error('SharedWorker failed to load'))
+		}
 		this.#worker.port.onmessage = (event: MessageEvent<WireMessage>) => {
 			this.#handleMessage(event.data)
+		}
+		this.#worker.port.onmessageerror = () => {
+			this.#failAllPending(new Error('SharedWorker port message error'))
 		}
 		this.#worker.port.start()
 	}
@@ -80,6 +87,11 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 				return
 			}
 
+			if (this.#loadFailed) {
+				reject(new Error('SharedWorker failed to load'))
+				return
+			}
+
 			const timeoutId = setTimeout(() => {
 				this.#pending.delete(requestId)
 				reject(new Error(`SharedWorker request timed out: ${message.m}`))
@@ -92,6 +104,15 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 			})
 			this.#worker.port.postMessage({ ...message, requestId })
 		})
+	}
+
+	#failAllPending(error: Error): void {
+		this.#loadFailed = true
+		for (const [requestId, pending] of this.#pending) {
+			clearTimeout(pending.timeoutId)
+			pending.reject(error)
+		}
+		this.#pending.clear()
 	}
 
 	#handleMessage(message: WireMessage): void {
