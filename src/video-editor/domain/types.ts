@@ -185,6 +185,15 @@ export const MSG = {
 	REGISTRY_RESTORE_ACK: -13,
 } as const
 
+export const AUTHORITY_PROTOCOL_VERSION = 1 as const
+export const RESOURCE_TRANSFER_PROTOCOL_VERSION = 1 as const
+
+export interface WireProtocolMeta {
+	protocolVersion?: number
+	schemaVersion?: number
+	capabilities?: string[]
+}
+
 export const CMD = {
 	PROJECT_CREATE: -100,
 	RESOURCE_IMPORT: -110,
@@ -341,4 +350,5 @@ export interface WireMessage<Payload = unknown> {
 	m: (typeof MSG)[keyof typeof MSG]
 	requestId?: string
 	p?: Payload
+	meta?: WireProtocolMeta
 }

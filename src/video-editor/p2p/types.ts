@@ -1,11 +1,19 @@
 export type P2PRole = 'server' | 'client' | 'undecided'
 
+export const SIGNAL_PROTOCOL_VERSION = 1 as const
+
+export interface SignalProtocolMeta {
+	protocolVersion?: number
+	capabilities?: string[]
+}
+
 export interface BaseSignalMessage {
 	kind: string
 	roomId: string
 	fromPeerId: string
 	toPeerId?: string
 	ts: number
+	meta?: SignalProtocolMeta
 }
 
 export interface OfferSignal extends BaseSignalMessage {
