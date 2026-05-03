@@ -147,7 +147,7 @@ describe('P2PAuthorityAdapter', () => {
 		local.emitPatch(createRegistryEnvelope(local.snapshot))
 		expect(patchListener).toHaveBeenCalledTimes(1)
 
-		adapter.destroy()
+		adapter.destroy?.()
 		expect(manager.destroy).toHaveBeenCalledTimes(1)
 	})
 
@@ -177,7 +177,7 @@ describe('P2PAuthorityAdapter', () => {
 		})
 
 		await expect(snapshotPromise).resolves.toEqual(snapshot)
-		adapter.destroy()
+		adapter.destroy?.()
 		expect(transport.destroy).toHaveBeenCalledTimes(1)
 	})
 
@@ -260,6 +260,6 @@ describe('P2PAuthorityAdapter', () => {
 		await vi.advanceTimersByTimeAsync(120)
 
 			await rejection
-		adapter.destroy()
+		adapter.destroy?.()
 	})
 })

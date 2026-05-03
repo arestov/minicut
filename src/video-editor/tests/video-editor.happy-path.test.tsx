@@ -260,7 +260,7 @@ describe('video editor harness', () => {
 				harness.projects$.entitiesById['keyframe:x-start'].set({ id: 'keyframe:x-start', type: 'keyframe', attrs: { time: 0, value: 0 }, rels: {} })
 				harness.projects$.entitiesById['keyframe:x-end'].set({ id: 'keyframe:x-end', type: 'keyframe', attrs: { time: 5, value: 100 }, rels: {} })
 				harness.projects$.entitiesById[clipId].attrs.opacity.set({ value: 1, keyframes: ['keyframe:opacity-start', 'keyframe:opacity-end'] })
-				harness.projects$.entitiesById[clipId].attrs.transform.x.set({ value: 0, keyframes: ['keyframe:x-start', 'keyframe:x-end'] })
+				;(harness.projects$.entitiesById[clipId].attrs.transform as unknown as Record<string, { set(v: unknown): void }>).x.set({ value: 0, keyframes: ['keyframe:x-start', 'keyframe:x-end'] })
 				harness.actions.setCursor(2.5)
 			})
 

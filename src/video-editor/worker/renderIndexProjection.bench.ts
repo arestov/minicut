@@ -12,7 +12,7 @@ const countRenderIndexPatches = (patches: Patch[]): number =>
 			return count
 		}
 
-		return patch.p.entity.type === 'render-index' ? count + 1 : count
+		return (patch.p.entity.type as string) === 'render-index' ? count + 1 : count
 	}, 0)
 
 const createDenseTimeline = () => {

@@ -101,8 +101,8 @@ describe('createVideoEditorHarness actions', () => {
 			expect(project).not.toBeNull()
 			const resources = getResourceEntities(registry, project!)
 			expect(resources).toHaveLength(1)
-			expect((resources[0].attrs as ResourceAttrs).name).toBe('clip.webm')
-			expect((resources[0].attrs as ResourceAttrs).duration).toBe(12.75)
+			expect((resources[0].attrs as unknown as ResourceAttrs).name).toBe('clip.webm')
+			expect((resources[0].attrs as unknown as ResourceAttrs).duration).toBe(12.75)
 			expect(createObjectURL).toHaveBeenCalledTimes(1)
 		} finally {
 			harness.destroy()
@@ -138,7 +138,7 @@ describe('createVideoEditorHarness actions', () => {
 			const project = getActiveProject(registry, harness.session$.get())
 			expect(project).not.toBeNull()
 			const resources = getResourceEntities(registry, project!)
-			expect(resources.map((resource) => (resource.attrs as ResourceAttrs).duration)).toEqual([1, 6])
+			expect(resources.map((resource) => (resource.attrs as unknown as ResourceAttrs).duration)).toEqual([1, 6])
 		} finally {
 			harness.destroy()
 			expect(revokeObjectURL).toHaveBeenCalledWith('blob:still.png')
@@ -367,7 +367,7 @@ describe('createVideoEditorHarness actions', () => {
 			expect(render).toHaveBeenCalledWith(
 				expect.objectContaining({ format: 'video-webm', range: { type: 'project' } }),
 			)
-			expect(render.mock.calls[0][0]).not.toHaveProperty('fps')
+			expect((render.mock.calls[0] as unknown as [ExportRenderRequest])[0]).not.toHaveProperty('fps')
 		} finally {
 			harness.destroy()
 			expect(revokeObjectURL).toHaveBeenCalledWith('blob:project-video-export')
@@ -428,7 +428,7 @@ describe('createVideoEditorHarness actions', () => {
 			const resource = getResourceEntities(registryBeforeExport, project!)[0]
 			expect(resource).toBeDefined()
 			const resourceId = resource.id
-			expect(resource.attrs as ResourceAttrs).toMatchObject({
+			expect(resource.attrs as unknown as ResourceAttrs).toMatchObject({
 				url: '',
 				status: 'missing',
 				source: { kind: 'p2p', ownerPeerId: 'peer-owner' },
@@ -438,8 +438,8 @@ describe('createVideoEditorHarness actions', () => {
 
 			expect(result).not.toBeNull()
 			expect(render).toHaveBeenCalledTimes(1)
-			const exportResource = render.mock.calls[0][0].registry.entitiesById[resourceId]
-			expect(exportResource.attrs as ResourceAttrs).toMatchObject({
+			const exportResource = (render.mock.calls[0] as [ExportRenderRequest])[0].registry.entitiesById[resourceId]
+			expect(exportResource.attrs as unknown as ResourceAttrs).toMatchObject({
 				url: 'blob:p2p-clip.webm',
 				status: 'ready',
 				data: expect.objectContaining({
@@ -447,7 +447,7 @@ describe('createVideoEditorHarness actions', () => {
 					loadedBytes: 'video-bytes'.length,
 				}),
 			})
-			expect(harness.projects$.get().entitiesById[resourceId].attrs as ResourceAttrs).toMatchObject({
+			expect(harness.projects$.get().entitiesById[resourceId].attrs as unknown as ResourceAttrs).toMatchObject({
 				url: '',
 				status: 'missing',
 			})
@@ -685,9 +685,9 @@ describe('createVideoEditorHarness actions', () => {
 					duration: 1,
 					frameCount: 30,
 					manifest: {
-						format: 'video-webm',
+						format: 'video-webm' as const,
 						projectId: 'project:1',
-						range: { type: 'project' },
+						range: { type: 'project' as const },
 						start: 0,
 						duration: 1,
 						fps: 30,

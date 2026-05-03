@@ -3,7 +3,7 @@ import { applyPatchEnvelopeInPlace } from './applyPatchInPlace'
 import { applyPatchEnvelopeToRegistry } from './applyPatch'
 import { createEmptyRegistry } from './createProject'
 import { getAudioTrack, getClipIdsForTrack, getResourceDerived, getTracks, getVideoTrack } from './selectors'
-import { CMD, PATCH, type Command, type ResourceAttrs } from './types'
+import { CMD, PATCH, type Command, type ResourceAttrs, type TransformAttrs } from './types'
 
 const containsBinaryPayload = (value: unknown): boolean => {
 	if (!value || typeof value !== 'object') {
@@ -43,7 +43,7 @@ describe('command validation', () => {
 
 		const resourceId = String(importResult.createdIds?.resourceId)
 		const resource = registry.entitiesById[resourceId]
-		const resourceAttrs = resource.attrs as ResourceAttrs
+		const resourceAttrs = resource.attrs as unknown as ResourceAttrs
 		expect(resourceAttrs.source).toEqual({ kind: 'p2p', ownerPeerId: 'peer-a' })
 		expect(resourceAttrs.data.status).toBe('missing')
 		expect(resourceAttrs.status).toBe('missing')
@@ -446,8 +446,8 @@ describe('command validation', () => {
 
 		const effects = registry.entitiesById[clipId].rels.effects
 		expect(Array.isArray(effects)).toBe(true)
-		expect(effects).toHaveLength(2)
-		expect(String(effects[0])).not.toBe(String(effects[1]))
+		expect(effects!).toHaveLength(2)
+		expect(String(effects![0])).not.toBe(String(effects![1]))
 	})
 
 	it('removes one effect without touching siblings and rejects detached effect ids', () => {
@@ -598,7 +598,7 @@ describe('command validation', () => {
 
 		const updateResult = buildDispatchResult(registry, {
 			c: CMD.CLIP_UPDATE_ATTRS,
-			p: { id: clipId, attrs: { transform: { y: { value: 42 } } } },
+			p: { id: clipId, attrs: { transform: { y: { value: 42 } } as unknown as TransformAttrs } },
 		})
 		expect(updateResult.envelope.patches).toEqual([
 			{ c: PATCH.SCALAR_SET, p: { id: clipId, path: 'transform.y.value', value: 42 } },

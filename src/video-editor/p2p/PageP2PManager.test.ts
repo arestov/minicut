@@ -103,7 +103,7 @@ class MockRTCPeerConnection {
 	}
 
 	async setLocalDescription(desc: RTCSessionDescriptionInit): Promise<void> {
-		this.localDescription = { toJSON: () => desc as Record<string, unknown> }
+		this.localDescription = { toJSON: () => desc as unknown as Record<string, unknown> }
 	}
 
 	async setRemoteDescription(desc?: unknown): Promise<void> {
@@ -306,7 +306,7 @@ describe('PageP2PManager', () => {
 		})
 
 		transport.send({ m: -1, p: { test: true } })
-		expect(JSON.parse(dc.sent[0])).toMatchObject({ m: -1 })
+		expect(JSON.parse(dc.sent[0] as string)).toMatchObject({ m: -1 })
 
 		dc.simulateMessage({ m: -4, p: { ok: true } })
 		expect(received).toEqual([{ m: -4, p: { ok: true } }])
@@ -503,7 +503,7 @@ describe('PageP2PManager', () => {
 		expect(MockSharedWorker.instances[0].port.sent[0]).toEqual({ m: -1, p: { request: true } })
 
 		MockSharedWorker.instances[0].port.onmessage?.({ data: { m: -2, p: { snapshot: true } } })
-		expect(JSON.parse(remoteDc.sent[0])).toEqual({ m: -2, p: { snapshot: true } })
+		expect(JSON.parse(remoteDc.sent[0] as string)).toEqual({ m: -2, p: { snapshot: true } })
 
 		manager.destroy()
 	})
