@@ -27,6 +27,7 @@ If you need a different backend URL or TURN credentials at build time, set `MINI
 
 - [Architecture review (EN)](docs/architecture-review-en-2026-05-03.md): independent architecture assessment, idea-to-implementation mapping, Idea 2 and Idea 4 fit analysis, risks, and recommendations.
 - [Business logic data flow (EN)](docs/business-logic-data-flow-en-2026-05-03.md): command/patch/reactivity/indexes flow across project/timeline domain, with Mermaid diagrams and source-file links.
+- [Runtime trace walkthrough (EN)](docs/runtime-trace-import-cut-effect-export-en-2026-05-03.md): end-to-end runtime scenario from import to timeline edits, split, effect, patch propagation, export render, and final downloadable file.
 - [Test coverage review (EN)](docs/test-coverage-review-en-2026-05-03.md): coverage analysis for model editing, export/rendering, WebRTC/P2P integration, and ffmpeg/ffprobe artifact validation.
 
 ### What These Docs Contain
