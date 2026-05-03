@@ -22,8 +22,8 @@ export type BridgeSignalingFactory = (params: {
 	events: BridgeSignalingEvents
 }) => BridgeSignaling
 
-const MAX_CONNECT_RETRIES = 4
-const RETRY_BASE_MS = 300
+const MAX_CONNECT_RETRIES = 3
+const RETRY_BASE_MS = 250
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
 	value && typeof value === 'object' ? value as Record<string, unknown> : null

@@ -405,11 +405,11 @@ describe('createDoSignalingFactory', () => {
 			events,
 		})
 
-		for (let index = 0; index < 5; index += 1) {
+		for (let index = 0; index < 4; index += 1) {
 			const ws = MockWebSocket.instances[index]
 			ws.simulateError()
-			if (index < 4) {
-				await vi.advanceTimersByTimeAsync(300 * 2 ** index + 10)
+			if (index < 3) {
+				await vi.advanceTimersByTimeAsync(250 * 2 ** index + 10)
 			}
 		}
 
