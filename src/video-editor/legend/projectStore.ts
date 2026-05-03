@@ -44,21 +44,34 @@ export const applyPatchEnvelope = (
 
 				case PATCH.SCALAR_SET: {
 					const path = patch.p.path.split('.')
-					let node = projects$.entitiesById[patch.p.id].attrs
+					let node = projects$.entitiesById[patch.p.id].attrs as unknown as Record<string, Observable<unknown>>
+					let leaf: Observable<unknown> | undefined
 					for (const key of path) {
-						node = node[key]
+						const next = node[key]
+						if (!next) {
+							leaf = undefined
+							break
+						}
+
+						leaf = next
+						node = next as unknown as Record<string, Observable<unknown>>
 					}
-					node.set(patch.p.value)
+
+					leaf?.set(patch.p.value)
 					break
 				}
 
 				case PATCH.REL_SPLICE: {
-					const rel$ = projects$.entitiesById[patch.p.id].rels[patch.p.rel]
+					const rel$ = projects$.entitiesById[patch.p.id].rels[patch.p.rel] as unknown as Observable<string[]>
 					if (!Array.isArray(rel$.get())) {
 						rel$.set([])
 					}
 
-					rel$.splice(patch.p.index, patch.p.deleteCount, ...patch.p.insert)
+					rel$.set((previous) => {
+						const next = Array.isArray(previous) ? [...previous] : []
+						next.splice(patch.p.index, patch.p.deleteCount, ...patch.p.insert)
+						return next
+					})
 					break
 				}
 
