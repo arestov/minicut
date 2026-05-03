@@ -322,14 +322,13 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			},
 
 			onSessionLost(reason) {
-				console.warn('[minicut:p2p] session lost; falling back to local authority', {
+				console.warn('[minicut:p2p] session lost; waiting for role re-assignment', {
 					roomId: config.roomId,
 					peerId: manager.peerId,
 					reason,
 				})
 				cleanupActiveClient()
 				failPending(new Error(`P2P session lost: ${reason}`))
-				activateClient('server', createLocalAuthority())
 				config.onSessionLost?.(reason)
 			},
 
