@@ -15,19 +15,20 @@ import type {
 } from '../domain/types'
 import { CMD } from '../domain/types'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
-import {
-	createBrowserVideoExportRenderer,
-	type ExportProgressEvent,
-	type ExportRenderer,
-	type ExportRenderResult,
+import type {
+	ExportProgressEvent,
+	ExportRenderer,
+	ExportRenderResult,
 } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
-import { createAuthorityClient, type CreateAuthorityClientOptions } from '../worker/createAuthorityClient'
+import type { CreateAuthorityClientOptions } from '../worker/createAuthorityClient'
 import type { P2PRawTransportLike } from '../p2p/PageP2PManager'
+import {
+	createBrowserHarnessPlatform,
+	type VideoEditorHarnessPlatform,
+} from './platform'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
-const fallbackMediaDuration = 6
-const imageDuration = 1
 const SNAPSHOT_BOOTSTRAP_RETRY_MS = 250
 
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
@@ -53,45 +54,6 @@ const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	}
 
 	return null
-}
-
-const getMediaDuration = (
-	url: string,
-	kind: 'video' | 'audio',
-	fallbackDuration = fallbackMediaDuration,
-): Promise<number> => new Promise((resolve) => {
-	const element = document.createElement(kind)
-	let settled = false
-	const timeoutId = window.setTimeout(() => finish(fallbackDuration), 3000)
-
-	const finish = (duration: number): void => {
-		if (settled) {
-			return
-		}
-
-		settled = true
-		window.clearTimeout(timeoutId)
-		element.removeAttribute('src')
-		element.load()
-		resolve(Number.isFinite(duration) && duration > 0 ? duration : fallbackDuration)
-	}
-
-	element.preload = 'metadata'
-	element.onloadedmetadata = () => finish(element.duration)
-	element.onerror = () => finish(fallbackDuration)
-	element.src = url
-	element.load()
-})
-
-const getImportedResourceDuration = async (
-	url: string,
-	kind: 'video' | 'audio' | 'image',
-): Promise<number> => {
-	if (kind === 'image') {
-		return imageDuration
-	}
-
-	return getMediaDuration(url, kind)
 }
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
@@ -167,6 +129,7 @@ interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
 	exportRenderer?: ExportRenderer
 	authorityOptions?: CreateAuthorityClientOptions
+	platform?: VideoEditorHarnessPlatform
 	mediaTransferOptions?: {
 		chunkSize?: number
 		chunkSendDelayMs?: number
@@ -217,10 +180,15 @@ export const createVideoEditorHarness = (
 				},
 			}
 		: options.authorityOptions
-	const authorityClient = authority ?? createAuthorityClient(authorityOptions)
+	const platform = options.platform
+		?? createBrowserHarnessPlatform({
+			authorityOptions,
+			exportRenderer: options.exportRenderer,
+		})
+	const authorityClient = authority ?? platform.createAuthorityClient()
 	authorityClientRef = authorityClient
 	const autoCreateInitialProject = options.autoCreateInitialProject ?? true
-	const exportRenderer = options.exportRenderer ?? createBrowserVideoExportRenderer()
+	const exportRenderer = options.exportRenderer ?? platform.createExportRenderer()
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const playbackDuration$ = createPlaybackDuration$(projects$, session$)
@@ -250,7 +218,7 @@ export const createVideoEditorHarness = (
 
 	const clearInitialProjectRetry = (): void => {
 		if (initialProjectRetryTimer) {
-			clearTimeout(initialProjectRetryTimer)
+			platform.clearTimeout(initialProjectRetryTimer)
 			initialProjectRetryTimer = null
 		}
 	}
@@ -260,7 +228,7 @@ export const createVideoEditorHarness = (
 			return
 		}
 
-		initialProjectRetryTimer = setTimeout(() => {
+		initialProjectRetryTimer = platform.setTimeout(() => {
 			initialProjectRetryTimer = null
 			ensureInitialProject()
 		}, SNAPSHOT_BOOTSTRAP_RETRY_MS)
@@ -343,7 +311,7 @@ export const createVideoEditorHarness = (
 			}
 
 			if (snapshotBootstrapRetryTimer) {
-				clearTimeout(snapshotBootstrapRetryTimer)
+				platform.clearTimeout(snapshotBootstrapRetryTimer)
 				snapshotBootstrapRetryTimer = null
 			}
 
@@ -357,7 +325,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			snapshotBootstrapRetryTimer = setTimeout(() => {
+			snapshotBootstrapRetryTimer = platform.setTimeout(() => {
 				snapshotBootstrapRetryTimer = null
 				bootstrapSnapshot()
 			}, SNAPSHOT_BOOTSTRAP_RETRY_MS)
@@ -483,10 +451,13 @@ export const createVideoEditorHarness = (
 					continue
 				}
 
-				const url = URL.createObjectURL(file)
+				const url = platform.createObjectUrl(file)
+				if (!url) {
+					continue
+				}
 				importedObjectUrls.add(url)
 				importFilesQueue = importFilesQueue.then(async () => {
-					const duration = await getImportedResourceDuration(url, kind)
+					const duration = await platform.getImportedResourceDuration(url, kind)
 					if (isDestroyed) {
 						return
 					}
@@ -826,8 +797,8 @@ export const createVideoEditorHarness = (
 			const result = onProgress
 				? await exportRenderer.render(request, onProgress)
 				: await exportRenderer.render(request)
-			if (typeof URL.createObjectURL === 'function') {
-				const downloadUrl = URL.createObjectURL(result.blob)
+			const downloadUrl = platform.createObjectUrl(result.blob)
+			if (downloadUrl) {
 				exportObjectUrls.add(downloadUrl)
 				return { ...result, downloadUrl }
 			}
@@ -853,8 +824,8 @@ export const createVideoEditorHarness = (
 			const result = onProgress
 				? await exportRenderer.render(request, onProgress)
 				: await exportRenderer.render(request)
-			if (typeof URL.createObjectURL === 'function') {
-				const downloadUrl = URL.createObjectURL(result.blob)
+			const downloadUrl = platform.createObjectUrl(result.blob)
+			if (downloadUrl) {
 				exportObjectUrls.add(downloadUrl)
 				return { ...result, downloadUrl }
 			}
@@ -927,17 +898,17 @@ export const createVideoEditorHarness = (
 			isDestroyed = true
 			clearInitialProjectRetry()
 			if (snapshotBootstrapRetryTimer) {
-				clearTimeout(snapshotBootstrapRetryTimer)
+				platform.clearTimeout(snapshotBootstrapRetryTimer)
 				snapshotBootstrapRetryTimer = null
 			}
 			unsubscribe()
 			for (const url of importedObjectUrls) {
-				URL.revokeObjectURL(url)
+				platform.revokeObjectUrl(url)
 			}
 			resourceTransferManager.destroy()
 			authorityClient.destroy?.()
 			for (const url of exportObjectUrls) {
-				URL.revokeObjectURL(url)
+				platform.revokeObjectUrl(url)
 			}
 		},
 	}
