@@ -23,6 +23,19 @@ If you need a different backend URL or TURN credentials at build time, set `MINI
 - `npm run test:integration` runs the Playwright integration tests and starts both local services automatically.
 - `npm --prefix backend run test` runs backend Durable Object tests.
 
+## Architecture and Review Docs
+
+- [Architecture review (EN)](docs/architecture-review-en-2026-05-03.md): independent architecture assessment, idea-to-implementation mapping, Idea 2 and Idea 4 fit analysis, risks, and recommendations.
+- [Business logic data flow (EN)](docs/business-logic-data-flow-en-2026-05-03.md): command/patch/reactivity/indexes flow across project/timeline domain, with Mermaid diagrams and source-file links.
+- [Test coverage review (EN)](docs/test-coverage-review-en-2026-05-03.md): coverage analysis for model editing, export/rendering, WebRTC/P2P integration, and ffmpeg/ffprobe artifact validation.
+
+### What These Docs Contain
+
+- Architecture intent and current implementation mapping.
+- End-to-end business-logic flow through command, authority, patch, store, and derived layers.
+- Test coverage depth for domain invariants, browser export artifacts, and multi-peer WebRTC behavior.
+- File-level references for fast navigation from docs to implementation/tests.
+
 ## Cloudflare
 
 The deploy command expects Cloudflare auth to already be available through `wrangler`.
