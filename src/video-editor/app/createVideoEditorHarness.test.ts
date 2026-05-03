@@ -5,6 +5,7 @@ import { CMD, type ResourceAttrs } from '../domain/types'
 import { createEmptyRegistry } from '../domain/createProject'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import type { ExportProgressEvent, ExportRenderRequest } from '../render/exportRenderer'
+import type { VideoEditorHarnessPlatform } from './platform'
 
 const flushMicrotasks = async () => {
 	for (let index = 0; index < 8; index += 1) {
@@ -176,6 +177,70 @@ describe('createVideoEditorHarness actions', () => {
 			createElement.mockRestore()
 			createObjectURL.mockRestore()
 			revokeObjectURL.mockRestore()
+		}
+	})
+
+	it('uses injected platform adapters for media duration and object URL lifecycle', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const createObjectUrl = vi.fn((blob: Blob) => {
+			if (blob instanceof File) {
+				return `custom:${blob.name}`
+			}
+
+			return 'custom:export'
+		})
+		const revokeObjectUrl = vi.fn()
+		const getImportedResourceDuration = vi.fn(async () => 7.5)
+		const platform: VideoEditorHarnessPlatform = {
+			createAuthorityClient: () => authority,
+			createExportRenderer: () => ({
+				render: async () => ({
+					id: 'export-platform',
+					fileName: 'platform.webm',
+					mimeType: 'video/webm',
+					blob: new Blob(['video'], { type: 'video/webm' }),
+					size: 5,
+					duration: 1,
+					frameCount: 30,
+					manifest: {
+						format: 'video-webm',
+						projectId: 'project:1',
+						range: { type: 'project' },
+						start: 0,
+						duration: 1,
+						fps: 30,
+						frameCount: 30,
+						clips: [],
+						frames: [],
+					},
+				}),
+			}),
+			getImportedResourceDuration,
+			createObjectUrl,
+			revokeObjectUrl,
+			setTimeout: (handler, timeoutMs) => setTimeout(handler, timeoutMs),
+			clearTimeout: (timerId) => clearTimeout(timerId),
+		}
+
+		const harness = createVideoEditorHarness(undefined, { platform })
+
+		try {
+			await settleHarness()
+
+			harness.actions.importFiles([new File(['video'], 'clip.webm', { type: 'video/webm' })])
+			await settleHarness()
+
+			const registry = harness.projects$.get()
+			const project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			const resources = getResourceEntities(registry, project!)
+			expect(resources).toHaveLength(1)
+			expect((resources[0].attrs as unknown as ResourceAttrs).duration).toBe(7.5)
+			expect(getImportedResourceDuration).toHaveBeenCalledWith('custom:clip.webm', 'video')
+			expect(createObjectUrl).toHaveBeenCalled()
+		} finally {
+			harness.destroy()
+			expect(revokeObjectUrl).toHaveBeenCalledWith('custom:clip.webm')
 		}
 	})
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { VideoEditorProvider } from './VideoEditorContext'
 import { createVideoEditorHarness, type VideoEditorHarness } from './createVideoEditorHarness'
+import { createBrowserHarnessPlatform } from './platform'
 import { VideoEditorApp } from '../ui/VideoEditorApp'
 import { CMD } from '../domain/types'
 import { createDefaultRtcConfig } from '../p2p/PageP2PManager'
@@ -131,30 +132,34 @@ export const VideoEditorHarnessApp = ({
 		}
 
 		if (!resolvedRoom || !signalUrl) {
-			return createVideoEditorHarness()
+			return createVideoEditorHarness(undefined, {
+				platform: createBrowserHarnessPlatform(),
+			})
+		}
+
+		const authorityOptions = {
+			p2p: {
+				roomId: resolvedRoom.roomId,
+				signalUrl,
+				rtcConfig,
+				onSessionLost(reason: string) {
+					console.warn('[minicut:p2p] app observed session loss', {
+						roomId: resolvedRoom.roomId,
+						reason,
+					})
+				},
+				onError(error: unknown) {
+					console.warn('[minicut:p2p] app observed p2p error', {
+						roomId: resolvedRoom.roomId,
+						error,
+					})
+				},
+			},
 		}
 
 		return createVideoEditorHarness(undefined, {
 			mediaTransferOptions,
-			authorityOptions: {
-				p2p: {
-					roomId: resolvedRoom.roomId,
-					signalUrl,
-					rtcConfig,
-					onSessionLost(reason) {
-						console.warn('[minicut:p2p] app observed session loss', {
-							roomId: resolvedRoom.roomId,
-							reason,
-						})
-					},
-					onError(error) {
-						console.warn('[minicut:p2p] app observed p2p error', {
-							roomId: resolvedRoom.roomId,
-							error,
-						})
-					},
-				},
-			},
+			platform: createBrowserHarnessPlatform({ authorityOptions }),
 		})
 	}, [mediaTransferOptions, providedHarness, resolvedRoom, rtcConfig, signalUrl])
 
