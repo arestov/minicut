@@ -95,7 +95,26 @@ const PreviewPlaybackButton = observer(({
 	)
 })
 
-const PreviewTransport = observer(({
+const PreviewCursorReadout = observer(({ frame$ }: { frame$: Observable<PreviewFrame> }) => {
+	const cursor = frame$.cursor.get()
+
+	return (
+		<>
+			<span className="ve-sr-only">Cursor at {formatSeconds(cursor)}</span>
+			<span>{formatSeconds(cursor)}</span>
+		</>
+	)
+})
+
+const PreviewActiveClipsReadout = observer(({ frame$ }: { frame$: Observable<PreviewFrame> }) => {
+	const activeClipNames = frame$.activeClipNames.get()
+
+	return (
+		<span>{activeClipNames.length > 0 ? activeClipNames.join(', ') : 'No active clips'}</span>
+	)
+})
+
+const PreviewTransport = ({
 	frame$,
 	session$,
 	onTogglePlayback,
@@ -104,21 +123,18 @@ const PreviewTransport = observer(({
 	session$: Observable<EditorSessionState>
 	onTogglePlayback: () => void
 }) => {
-	const frame = frame$.get()
-
 	return (
 		<div className="ve-preview-transport" aria-label="Preview transport status">
 			<div>
 				<Timer size={15} aria-hidden="true" />
-				<span className="ve-sr-only">Cursor at {formatSeconds(frame.cursor)}</span>
-				<span>{formatSeconds(frame.cursor)}</span>
+				<PreviewCursorReadout frame$={frame$} />
 			</div>
 			<div>
 				<Gauge size={15} aria-hidden="true" />
 				<span>Draft preview</span>
 			</div>
 			<div className="ve-preview-transport__active">
-				<span>{frame.activeClipNames.length > 0 ? frame.activeClipNames.join(', ') : 'No active clips'}</span>
+				<PreviewActiveClipsReadout frame$={frame$} />
 			</div>
 			<div className="ve-preview-transport__playback">
 				<PreviewPlaybackButton
@@ -128,7 +144,7 @@ const PreviewTransport = observer(({
 			</div>
 		</div>
 	)
-})
+}
 
 export const PreviewPanel = () => {
 	const { projects$, session$, actions, resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
