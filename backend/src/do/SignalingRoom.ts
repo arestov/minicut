@@ -46,7 +46,7 @@ export class SignalingRoom {
       if (typeof this.state.acceptWebSocket === 'function') {
         this.state.acceptWebSocket(server)
       } else {
-        server.accept()
+        server.accept?.()
         this.bindSocket(server)
       }
 
@@ -118,6 +118,21 @@ export class SignalingRoom {
       if (peerId) {
         this.removePeer(peerId, ws)
       }
+      return
+    }
+
+    if (type === 'ping') {
+      const peerId = this.getPeerId(ws)
+      if (!peerId || (typeof msg.roomId === 'string' && msg.roomId !== this.roomId)) {
+        return
+      }
+
+      this.sendTo(ws, {
+        type: 'pong',
+        roomId: this.roomId,
+        peerId,
+        ts: Date.now(),
+      })
       return
     }
 
@@ -324,8 +339,12 @@ export class SignalingRoom {
     for (const peer of this.peers?.values() ?? []) {
       try {
         peer.socket.send(payload)
-      } catch {
-        // peer may be closing
+      } catch (error) {
+        console.warn('[minicut:signal-room] broadcast send failed', {
+          roomId: this.roomId,
+          peerId: peer.peerId,
+          error,
+        })
       }
     }
   }
@@ -333,8 +352,13 @@ export class SignalingRoom {
   private sendTo(ws: WebSocket, msg: Record<string, unknown>) {
     try {
       ws.send(JSON.stringify(msg))
-    } catch {
-      // noop
+    } catch (error) {
+      console.warn('[minicut:signal-room] direct send failed', {
+        roomId: this.roomId,
+        targetPeerId: this.getPeerId(ws),
+        type: msg.type,
+        error,
+      })
     }
   }
 }

@@ -548,7 +548,7 @@ export const createPageP2PManager = (
 
 			if (ArrayBuffer.isView(data)) {
 				const view = data as ArrayBufferView
-				const normalized = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
+				const normalized = new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice().buffer
 				const payload = consumeBinaryFrame(normalized)
 				if (payload) {
 					enqueueDelivery(() => {
@@ -656,12 +656,35 @@ export const createPageP2PManager = (
 	}
 
 	const setupServerProxy = (remotePeerId: string, dc: RTCDataChannel, pc: RTCPeerConnection): void => {
-		const proxyWorker = new SharedWorker(config.workerUrl, {
-			type: 'module',
-			name: sharedWorkerName,
-		})
+		let proxyWorker: SharedWorker
+		try {
+			proxyWorker = new SharedWorker(config.workerUrl, {
+				type: 'module',
+				name: sharedWorkerName,
+			})
+		} catch (error) {
+			console.warn('[minicut:p2p] failed to create server proxy SharedWorker', {
+				remotePeerId,
+				error,
+			})
+			events.onError(error)
+			dc.close()
+			return
+		}
 		const proxyPort = proxyWorker.port
 		proxyPort.start()
+		proxyWorker.onerror = () => {
+			const error = new Error('P2P server proxy SharedWorker failed to load')
+			console.warn('[minicut:p2p] server proxy SharedWorker failed', { remotePeerId })
+			events.onError(error)
+			cleanupProxy(remotePeerId)
+		}
+		proxyPort.onmessageerror = () => {
+			const error = new Error('P2P server proxy SharedWorker port message error')
+			console.warn('[minicut:p2p] server proxy port message error', { remotePeerId })
+			events.onError(error)
+			cleanupProxy(remotePeerId)
+		}
 
 		dc.onmessage = (event) => {
 			if (destroyed) {
@@ -707,6 +730,10 @@ export const createPageP2PManager = (
 		sessionLostNotified = false
 		serverPeerId = null
 		role = 'server'
+		console.info('[minicut:p2p] page manager role=server', {
+			roomId: config.roomId,
+			peerId,
+		})
 		events.onBecomeServer()
 	}
 
@@ -727,6 +754,11 @@ export const createPageP2PManager = (
 		serverPeerId = targetPeerId
 		clientTransportReady = false
 		sessionLostNotified = false
+		console.info('[minicut:p2p] page manager role=client', {
+			roomId: config.roomId,
+			peerId,
+			serverPeerId: targetPeerId,
+		})
 
 		const pc = new RTCPeerConnection(rtcConfig)
 		peerConnections.set(targetPeerId, pc)

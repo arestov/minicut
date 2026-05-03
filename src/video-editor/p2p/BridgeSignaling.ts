@@ -24,6 +24,7 @@ export type BridgeSignalingFactory = (params: {
 
 const MAX_CONNECT_RETRIES = 3
 const RETRY_BASE_MS = 250
+const HEARTBEAT_INTERVAL_MS = 15_000
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
 	value && typeof value === 'object' ? value as Record<string, unknown> : null
@@ -37,6 +38,7 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 		let lastLeaderEpoch = -1
 		let retryCount = 0
 		let retryTimer: ReturnType<typeof setTimeout> | null = null
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
 		const wsUrl = signalUrl.includes('/api/signal/')
 			? signalUrl
@@ -67,6 +69,12 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 				return
 			}
 
+			console.warn('[minicut:signal] reconnecting WebSocket signaling', {
+				roomId,
+				peerId,
+				retryCount,
+			})
+			stopHeartbeat()
 			try {
 				ws?.close()
 			} catch {
@@ -80,6 +88,10 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 
 		const scheduleRetry = (): void => {
 			if (destroyed || retryCount >= MAX_CONNECT_RETRIES) {
+				console.warn('[minicut:signal] WebSocket signaling exhausted retries', {
+					roomId,
+					peerId,
+				})
 				events.onError(new Error('WebSocket signaling error'))
 				return
 			}
@@ -87,6 +99,31 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 			const delay = RETRY_BASE_MS * 2 ** retryCount
 			retryCount += 1
 			retryTimer = setTimeout(connect, delay)
+		}
+
+		const stopHeartbeat = (): void => {
+			if (!heartbeatTimer) {
+				return
+			}
+
+			clearInterval(heartbeatTimer)
+			heartbeatTimer = null
+		}
+
+		const startHeartbeat = (): void => {
+			stopHeartbeat()
+			heartbeatTimer = setInterval(() => {
+				if (destroyed || !ws || ws.readyState !== WebSocket.OPEN) {
+					return
+				}
+
+				ws.send(JSON.stringify({
+					type: 'ping',
+					roomId,
+					peerId,
+					ts: Date.now(),
+				}))
+			}, HEARTBEAT_INTERVAL_MS)
 		}
 
 		const onMessage = (event: MessageEvent): void => {
@@ -141,6 +178,9 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
 					break
 				}
+
+				case 'pong':
+					break
 
 				case 'offer':
 				case 'answer':
@@ -204,6 +244,12 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 					return
 				}
 
+				console.info('[minicut:signal] WebSocket signaling connected', {
+					roomId,
+					peerId,
+					url: wsUrl,
+				})
+				startHeartbeat()
 				ws.send(JSON.stringify({ type: 'join', roomId, peerId }))
 			}
 			ws.onmessage = onMessage
@@ -249,6 +295,7 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 					clearTimeout(retryTimer)
 					retryTimer = null
 				}
+				stopHeartbeat()
 				ws?.close()
 				ws = null
 			},

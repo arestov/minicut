@@ -8,6 +8,10 @@ declare global {
     1: WebSocket
   }
 
+  interface WebSocket {
+    accept?(): void
+  }
+
   var WebSocketPair: {
     new (): WebSocketPair
   }

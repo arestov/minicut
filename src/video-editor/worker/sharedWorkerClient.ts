@@ -16,11 +16,13 @@ export interface SharedWorkerAuthorityClientOptions {
 	workerUrl?: string | URL
 	name?: string
 	requestTimeoutMs?: number
+	onError?: (error: Error) => void
 }
 
 export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 	#worker: SharedWorker
 	#requestTimeoutMs: number
+	#onError?: (error: Error) => void
 
 	#listeners = new Set<PatchListener>()
 	#pending = new Map<string, PendingRequest>()
@@ -29,6 +31,7 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 
 	constructor(options: SharedWorkerAuthorityClientOptions = {}) {
 		this.#requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
+		this.#onError = options.onError
 		this.#worker = new SharedWorker(options.workerUrl ?? DEFAULT_SHARED_WORKER_URL, {
 			type: 'module',
 			name: options.name ?? DEFAULT_SHARED_WORKER_NAME,
@@ -94,7 +97,13 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 
 			const timeoutId = setTimeout(() => {
 				this.#pending.delete(requestId)
-				reject(new Error(`SharedWorker request timed out: ${message.m}`))
+				const error = new Error(`SharedWorker request timed out: ${message.m}`)
+				this.#onError?.(error)
+				console.warn('[minicut:worker] SharedWorker request timed out', {
+					message: message.m,
+					requestId,
+				})
+				reject(error)
 			}, this.#requestTimeoutMs)
 
 			this.#pending.set(requestId, {
@@ -108,6 +117,8 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 
 	#failAllPending(error: Error): void {
 		this.#loadFailed = true
+		this.#onError?.(error)
+		console.warn('[minicut:worker] SharedWorker unavailable', error)
 		for (const [requestId, pending] of this.#pending) {
 			clearTimeout(pending.timeoutId)
 			pending.reject(error)

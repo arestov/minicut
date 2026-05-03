@@ -2,8 +2,7 @@ import { nanoid } from 'nanoid'
 import { MSG, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
 import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
 import { createEmptyRegistry } from '../domain/createProject'
-import { MemoryWorkerAuthority } from '../worker/memoryWorker'
-import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from '../worker/sharedWorkerClient'
+import { createFallbackAuthorityClient } from '../worker/fallbackAuthorityClient'
 import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
 import type { BridgeSignalingFactory } from './BridgeSignaling'
 import {
@@ -176,14 +175,10 @@ export interface P2PAuthorityAdapter extends EditorAuthorityClient {
 export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfig): P2PAuthorityAdapter => {
 	const roomScopedWorkerName = `${P2P_SHARED_WORKER_NAME_PREFIX}${toWorkerScopeKey(config.roomId)}`
 	const createLocalAuthority = config.createLocalAuthority ?? (() => {
-		if (canUseSharedWorkerAuthority()) {
-			return new SharedWorkerAuthorityClient({
-				workerUrl: config.workerUrl,
-				name: roomScopedWorkerName,
-			})
-		}
-
-		return new MemoryWorkerAuthority()
+		return createFallbackAuthorityClient({
+			workerUrl: config.workerUrl,
+			name: roomScopedWorkerName,
+		})
 	})
 	const createManager = config.createManager ?? createPageP2PManager
 	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
@@ -299,10 +294,18 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		},
 		{
 			onBecomeServer() {
+				console.info('[minicut:p2p] authority role=server', {
+					roomId: config.roomId,
+					peerId: manager.peerId,
+				})
 				activateClient('server', createLocalAuthority())
 			},
 
 			onBecomeClient(transport) {
+				console.info('[minicut:p2p] authority role=client', {
+					roomId: config.roomId,
+					peerId: manager.peerId,
+				})
 				activateClient('client', createTransportAuthorityClient(transport, requestTimeoutMs))
 			},
 
@@ -319,13 +322,19 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			},
 
 			onSessionLost(reason) {
+				console.warn('[minicut:p2p] session lost; falling back to local authority', {
+					roomId: config.roomId,
+					peerId: manager.peerId,
+					reason,
+				})
 				cleanupActiveClient()
-				role = 'undecided'
 				failPending(new Error(`P2P session lost: ${reason}`))
+				activateClient('server', createLocalAuthority())
 				config.onSessionLost?.(reason)
 			},
 
 			onError(error) {
+				console.warn('[minicut:p2p] manager error', error)
 				config.onError?.(error)
 			},
 		},

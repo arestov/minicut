@@ -1,9 +1,8 @@
 import type { EditorAuthorityClient } from './authorityClient'
-import { MemoryWorkerAuthority } from './memoryWorker'
-import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from './sharedWorkerClient'
 import type { BridgeSignalingFactory } from '../p2p/BridgeSignaling'
 import type { P2PRawTransportLike, PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from '../p2p/PageP2PManager'
 import { createP2PAuthorityAdapter, type CreateP2PAuthorityAdapterConfig } from '../p2p/P2PAuthorityAdapter'
+import { createFallbackAuthorityClient } from './fallbackAuthorityClient'
 
 export interface CreateAuthorityClientOptions {
 	p2p?: {
@@ -48,9 +47,5 @@ export const createAuthorityClient = (options: CreateAuthorityClientOptions = {}
 		})
 	}
 
-	if (canUseSharedWorkerAuthority()) {
-		return new SharedWorkerAuthorityClient()
-	}
-
-	return new MemoryWorkerAuthority()
+	return createFallbackAuthorityClient()
 }

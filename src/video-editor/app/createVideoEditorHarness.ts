@@ -23,6 +23,7 @@ import {
 } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createAuthorityClient, type CreateAuthorityClientOptions } from '../worker/createAuthorityClient'
+import type { P2PRawTransportLike } from '../p2p/PageP2PManager'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 const fallbackMediaDuration = 6
@@ -198,15 +199,15 @@ export const createVideoEditorHarness = (
 				...options.authorityOptions,
 				p2p: {
 					...options.authorityOptions.p2p,
-					onClientResourceTransport: (transport) => {
+					onClientResourceTransport: (transport: P2PRawTransportLike) => {
 						resourceTransferManager.attachClientTransport(transport)
 						options.authorityOptions?.p2p?.onClientResourceTransport?.(transport)
 					},
-					onServerResourceTransport: (remotePeerId, transport) => {
+					onServerResourceTransport: (remotePeerId: string, transport: P2PRawTransportLike) => {
 						resourceTransferManager.attachServerTransport(remotePeerId, transport)
 						options.authorityOptions?.p2p?.onServerResourceTransport?.(remotePeerId, transport)
 					},
-					onResourcePeerDisconnected: (remotePeerId) => {
+					onResourcePeerDisconnected: (remotePeerId: string) => {
 						resourceTransferManager.detachPeerTransport(remotePeerId)
 						options.authorityOptions?.p2p?.onResourcePeerDisconnected?.(remotePeerId)
 					},

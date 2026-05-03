@@ -140,7 +140,19 @@ export const VideoEditorHarnessApp = ({
 				p2p: {
 					roomId: resolvedRoom.roomId,
 					signalUrl,
-						rtcConfig,
+					rtcConfig,
+					onSessionLost(reason) {
+						console.warn('[minicut:p2p] app observed session loss', {
+							roomId: resolvedRoom.roomId,
+							reason,
+						})
+					},
+					onError(error) {
+						console.warn('[minicut:p2p] app observed p2p error', {
+							roomId: resolvedRoom.roomId,
+							error,
+						})
+					},
 				},
 			},
 		})
