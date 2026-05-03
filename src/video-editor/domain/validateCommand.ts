@@ -1,7 +1,7 @@
 import { getEntity, getProjectEntity, getProjectForEntity, getTrackForClip } from './selectors'
 import { CMD, type ClipAttrs, type Command, type Entity, type ProjectGraph, type ProjectRegistry, type ResourceDataState } from './types'
 
-const assert = (condition: unknown, message: string): asserts condition => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
 	if (!condition) {
 		throw new Error(message)
 	}
