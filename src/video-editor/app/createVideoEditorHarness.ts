@@ -103,6 +103,9 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const getClipEnd = (attrs: ClipAttrs): number => attrs.start + attrs.duration
 
+const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
+const asResourceAttrs = (attrs: Record<string, unknown>): ResourceAttrs => attrs as unknown as ResourceAttrs
+
 const getResizedClipAttrs = (attrs: ClipAttrs, edge: 'start' | 'end', delta: number): Pick<ClipAttrs, 'start' | 'in' | 'duration'> | Pick<ClipAttrs, 'duration'> => {
 	if (edge === 'end') {
 		return {
@@ -380,7 +383,7 @@ export const createVideoEditorHarness = (
 				continue
 			}
 
-			const attrs = entity.attrs as ResourceAttrs
+			const attrs = asResourceAttrs(entity.attrs)
 			const transfer = resourceTransferManager.getTransfer(resourceId)
 			if (!transfer || transfer.status !== 'ready') {
 				continue
@@ -619,7 +622,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const attrs = clip.attrs as ClipAttrs
+			const attrs = asClipAttrs(clip.attrs)
 			const key = edge === 'in' ? 'fadeIn' : 'fadeOut'
 			const current = Number(attrs[key] ?? 0)
 			const nextFade = clamp(roundToTenths(current + delta), 0, attrs.duration)
@@ -638,7 +641,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const attrs = clip.attrs as ClipAttrs
+			const attrs = asClipAttrs(clip.attrs)
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
@@ -661,7 +664,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const attrs = clip.attrs as ClipAttrs
+			const attrs = asClipAttrs(clip.attrs)
 			dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
@@ -682,7 +685,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const attrs = clip.attrs as ClipAttrs
+			const attrs = asClipAttrs(clip.attrs)
 			const nextAttrs = getResizedClipAttrs(attrs, edge, delta)
 
 			dispatch({
@@ -708,7 +711,7 @@ export const createVideoEditorHarness = (
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
 					id: clipId,
-					attrs: getResizedClipAttrs(clip.attrs as ClipAttrs, edge, delta),
+					attrs: getResizedClipAttrs(asClipAttrs(clip.attrs), edge, delta),
 				},
 			})
 		},
@@ -752,7 +755,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const attrs = clip.attrs as ClipAttrs
+			const attrs = asClipAttrs(clip.attrs)
 			const clipEnd = attrs.start + attrs.duration
 			const splitTime = clamp(
 				roundToHundredths(session$.cursor.get()),
@@ -777,7 +780,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const attrs = clip.attrs as ClipAttrs
+			const attrs = asClipAttrs(clip.attrs)
 			const splitTime = clamp(roundToHundredths(time), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
 			dispatch({
 				c: CMD.TIMELINE_SPLIT_CLIP,

@@ -23,6 +23,9 @@ const asEntityIds = (value: Entity['rels'][string]): EntityId[] => {
 	return value ? [value] : []
 }
 
+const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
+const asResourceAttrs = (attrs: Record<string, unknown>): ResourceAttrs => attrs as unknown as ResourceAttrs
+
 export const getProjectEntity = (registry: ProjectRegistry, project: ProjectGraph): Entity =>
 	registry.entitiesById[project.rootEntityId]
 
@@ -155,21 +158,21 @@ export const getSelectedClip = (
 }
 
 export const getClipLabel = (clip: Entity): string => {
-	const attrs = clip.attrs as ClipAttrs
+	const attrs = asClipAttrs(clip.attrs)
 	return `${attrs.name} · ${attrs.start.toFixed(1)}s / ${attrs.duration.toFixed(1)}s`
 }
 
 export const getResourceLabel = (resource: Entity): string => {
-	const attrs = resource.attrs as ResourceAttrs
+	const attrs = asResourceAttrs(resource.attrs)
 	return `${attrs.name} · ${attrs.kind} · ${attrs.mime} · ${attrs.duration.toFixed(1)}s`
 }
 
 export const getResourceDerived = (resource: Entity): ResourceDerived =>
-	deriveResourceData(resource.attrs as ResourceAttrs)
+	deriveResourceData(asResourceAttrs(resource.attrs))
 
 export const getTrackEnd = (registry: ProjectRegistry, trackId: EntityId): number =>
 	getClipEntitiesForTrack(registry, trackId).reduce((max, clip) => {
-		const attrs = clip.attrs as ClipAttrs
+		const attrs = asClipAttrs(clip.attrs)
 		return Math.max(max, attrs.start + attrs.duration)
 	}, 0)
 
@@ -185,10 +188,10 @@ export const getActiveClipNamesAtCursor = (
 	return getTracks(registry, project)
 		.flatMap((track) => getClipEntitiesForTrack(registry, track.id))
 		.filter((clip) => {
-			const attrs = clip.attrs as ClipAttrs
+			const attrs = asClipAttrs(clip.attrs)
 			return session.cursor >= attrs.start && session.cursor < attrs.start + attrs.duration
 		})
-		.map((clip) => String((clip.attrs as ClipAttrs).name))
+		.map((clip) => String(asClipAttrs(clip.attrs).name))
 }
 
 export const withEnvelopeVersion = (

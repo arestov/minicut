@@ -26,6 +26,8 @@ import {
 
 const scalar = (value: number): AnimatedScalar => ({ value })
 
+const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
+
 const createClipEntity = ({
 	resource,
 	start,
@@ -289,7 +291,7 @@ export const buildDispatchResult = (
 		case CMD.TIMELINE_MOVE_CLIP: {
 			const project = assertProjectForEntity(registry, command.p.id)
 			const clip = assertEntity(registry, command.p.id)
-			const clipAttrs = clip.attrs as ClipAttrs
+			const clipAttrs = asClipAttrs(clip.attrs)
 
 			return {
 				envelope: {
@@ -313,7 +315,7 @@ export const buildDispatchResult = (
 		case CMD.TIMELINE_SPLIT_CLIP: {
 			const project = assertProjectForEntity(registry, command.p.id)
 			const clip = assertEntity(registry, command.p.id)
-			const clipAttrs = clip.attrs as ClipAttrs
+			const clipAttrs = asClipAttrs(clip.attrs)
 			const splitTime = command.p.time
 			const clipEnd = clipAttrs.start + clipAttrs.duration
 			const leftDuration = splitTime - clipAttrs.start
@@ -434,9 +436,10 @@ export const buildDispatchResult = (
 		case CMD.CLIP_UPDATE_ATTRS: {
 			const project = assertProjectForEntity(registry, command.p.id)
 			const clip = assertEntity(registry, command.p.id)
-			const { opacity, transform, ...attrs } = command.p.attrs
+			const { opacity, transform, ...attrsWithoutTransform } = command.p.attrs
+			const attrs: Partial<ClipAttrs> = { ...attrsWithoutTransform }
 			const patches: Patch[] = []
-			const clipAttrs = clip.attrs as ClipAttrs
+			const clipAttrs = asClipAttrs(clip.attrs)
 
 			const transformMergeAttrs: Record<string, unknown> = {}
 			if (transform) {
@@ -457,11 +460,10 @@ export const buildDispatchResult = (
 						})
 					}
 
-					const incomingRest = { ...incoming }
-					delete incomingRest.value
+					const { value: _value, ...incomingRest } = incoming
 					if (Object.keys(incomingRest).length > 0) {
 						transformMergeAttrs[key] = {
-							...(clipAttrs.transform[key] as Record<string, unknown>),
+							...(clipAttrs.transform[key] as unknown as Record<string, unknown>),
 							...incomingRest,
 						}
 					}

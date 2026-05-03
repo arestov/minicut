@@ -956,7 +956,7 @@ export const createResourceTransferManager = (
 					continue
 				}
 
-				const snapshot = toSnapshot(resourceId, entity.attrs as ResourceAttrs, defaultChunkSize)
+				const snapshot = toSnapshot(resourceId, entity.attrs as unknown as ResourceAttrs, defaultChunkSize)
 				resourceSnapshots.set(resourceId, snapshot)
 				if (localResources.has(resourceId)) {
 					const local = localResources.get(resourceId)
