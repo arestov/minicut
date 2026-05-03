@@ -1,0 +1,23 @@
+{
+  "operations": [
+    {
+      "op": "project:create",
+      "title": "Headless sample"
+    },
+    {
+      "op": "resource:import",
+      "projectRef": "lastProject",
+      "name": "Sample clip",
+      "kind": "video",
+      "duration": 2
+    },
+    {
+      "op": "timeline:add-clip",
+      "projectRef": "lastProject",
+      "resourceRef": "lastResource"
+    }
+  ],
+  "export": {
+    "type": "project"
+  }
+}

@@ -11,10 +11,13 @@
     "start": "vite --config vite.video-editor.config.js --host 127.0.0.1 --port 4174",
     "test": "vitest --run --config vitest.video-editor.config.js",
     "test:video-editor": "vitest --run --config vitest.video-editor.config.js",
+    "test:video-editor:node": "vitest --run --config vitest.video-editor.node.config.js",
     "bench:video-editor": "vitest bench --run --config vitest.video-editor.config.js src/video-editor/worker/renderIndexProjection.bench.ts",
     "test:integration": "playwright test",
     "video-editor:dev": "vite --config vite.video-editor.config.js",
     "video-editor:build": "vite build --config vite.video-editor.config.js",
+    "node:headless:run": "node --import tsx ./src/video-editor/node/cli.ts --scenario ./tests/fixtures/headless/sample-scenario.json",
+    "node:headless:scenario": "node --import tsx ./src/video-editor/node/cli.ts",
     "deploy:frontend": "node ./scripts/deploy-frontend.mjs",
     "deploy": "npm run deploy:frontend"
   },
@@ -38,6 +41,7 @@
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
     "jsdom": "^29.0.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^7.1.10",
     "vitest": "^4.1.0"
