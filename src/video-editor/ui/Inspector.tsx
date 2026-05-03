@@ -417,7 +417,7 @@ export const Inspector = observer(() => {
 		)
 	}
 
-	const clipId = selectedEntityId
+	const clipId = String(selectedEntityId)
 
 	return (
 		<aside className="ve-panel" aria-label="Inspector">

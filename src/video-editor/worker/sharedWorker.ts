@@ -100,7 +100,9 @@ const handleRedo = (port: MessagePort, requestId: string | undefined): void => {
 	}
 }
 
-self.onconnect = (event: MessageEvent) => {
+const sharedWorkerScope = self as unknown as SharedWorkerGlobalScope
+
+sharedWorkerScope.onconnect = (event: MessageEvent) => {
 	const port = event.ports[0]
 	ports.add(port)
 

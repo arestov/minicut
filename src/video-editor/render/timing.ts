@@ -22,16 +22,22 @@ export const getScalarKeyframeEntities = (
 	registry: ProjectRegistry,
 	scalar: AnimatedScalar,
 ): ScalarKeyframe[] => (scalar.keyframes ?? [])
-	.map((keyframeId) => {
+	.map((keyframeId): ScalarKeyframe | null => {
 		const entity = registry.entitiesById[keyframeId]
 		if (!entity || entity.type !== 'keyframe') {
 			return null
 		}
 
 		const attrs = entity.attrs as unknown as KeyframeAttrs
-		return Number.isFinite(attrs.time) && Number.isFinite(attrs.value)
-			? { time: attrs.time, value: attrs.value, interpolation: attrs.interpolation }
-			: null
+		if (!Number.isFinite(attrs.time) || !Number.isFinite(attrs.value)) {
+			return null
+		}
+
+		const keyframe: ScalarKeyframe = { time: attrs.time, value: attrs.value }
+		if (attrs.interpolation !== undefined) {
+			keyframe.interpolation = attrs.interpolation
+		}
+		return keyframe
 	})
 	.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null)
 
@@ -41,14 +47,14 @@ export const evaluateKeyframedScalar = (
 	resolveKeyframe?: (id: EntityId) => ScalarKeyframe | null,
 ): number => {
 	const keyframes = scalar.keyframes
-		?.map((keyframe) => {
+		?.map((keyframe): ScalarKeyframe | null => {
 			if (isScalarKeyframe(keyframe)) {
 				return keyframe
 			}
 
 			return resolveKeyframe?.(keyframe) ?? null
 		})
-		.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null && Number.isFinite(keyframe.time) && Number.isFinite(keyframe.value)) ?? []
+		.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null) ?? []
 	if (keyframes.length === 0) {
 		return scalar.value
 	}

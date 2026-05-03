@@ -44,6 +44,13 @@ const isWebCodecsAudioSupported = (): boolean =>
 	&& typeof AudioData !== 'undefined'
 	&& typeof document !== 'undefined'
 
+type AudioContextConstructor = typeof AudioContext
+
+const getAudioContextConstructor = (): AudioContextConstructor | null => {
+	const scope = globalThis as typeof globalThis & { webkitAudioContext?: AudioContextConstructor }
+	return scope.AudioContext ?? scope.webkitAudioContext ?? null
+}
+
 export const getWebCodecsAudioConfig = async (
 	numberOfChannels: number,
 	bitrate: number,
@@ -123,7 +130,7 @@ export const mixWebCodecsAudioTrack = async (
 		return null
 	}
 
-	const AudioContextConstructor = globalThis.AudioContext ?? globalThis.webkitAudioContext
+	const AudioContextConstructor = getAudioContextConstructor()
 	if (!AudioContextConstructor) {
 		return null
 	}
@@ -266,7 +273,7 @@ export const createAudioExportMixer = async (
 	exportDuration: number,
 ): Promise<AudioExportMixer> => {
 	const audioClips = getRangeClips(registry, projectId, resolvedRange).filter((clip) => clip.type === 'ef-audio')
-	const AudioContextConstructor = globalThis.AudioContext ?? globalThis.webkitAudioContext
+	const AudioContextConstructor = getAudioContextConstructor()
 	if (audioClips.length === 0 || !AudioContextConstructor) {
 		return { stream: null, start: async () => undefined, stop: async () => undefined }
 	}

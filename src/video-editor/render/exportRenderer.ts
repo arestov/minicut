@@ -493,7 +493,7 @@ export const createBrowserVideoExportRenderer = (
 					}
 				})
 				recorder.addEventListener('stop', () => resolve())
-				recorder.addEventListener('error', () => reject(recorder.error ?? new Error('Export recorder error')))
+				recorder.addEventListener('error', () => reject(new Error('Export recorder error')))
 			})
 
 			const resourceCache = createResourceCache(request.registry.entitiesById)
