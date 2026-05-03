@@ -21,8 +21,6 @@ import type {
 	ExportRenderResult,
 } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
-import type { CreateAuthorityClientOptions } from '../worker/createAuthorityClient'
-import type { P2PRawTransportLike } from '../p2p/PageP2PManager'
 import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
@@ -128,7 +126,6 @@ const isProjectTimelineEmpty = (registry: ProjectRegistry, projectId: string): b
 interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
 	exportRenderer?: ExportRenderer
-	authorityOptions?: CreateAuthorityClientOptions
 	platform?: VideoEditorHarnessPlatform
 	mediaTransferOptions?: {
 		chunkSize?: number
@@ -160,32 +157,21 @@ export const createVideoEditorHarness = (
 		tailBytes: options.mediaTransferOptions?.tailBytes,
 		playheadWindowSeconds: options.mediaTransferOptions?.playheadWindowSeconds,
 	})
-	const authorityOptions = options.authorityOptions?.p2p
-		? {
-				...options.authorityOptions,
-				p2p: {
-					...options.authorityOptions.p2p,
-					onClientResourceTransport: (transport: P2PRawTransportLike) => {
-						resourceTransferManager.attachClientTransport(transport)
-						options.authorityOptions?.p2p?.onClientResourceTransport?.(transport)
-					},
-					onServerResourceTransport: (remotePeerId: string, transport: P2PRawTransportLike) => {
-						resourceTransferManager.attachServerTransport(remotePeerId, transport)
-						options.authorityOptions?.p2p?.onServerResourceTransport?.(remotePeerId, transport)
-					},
-					onResourcePeerDisconnected: (remotePeerId: string) => {
-						resourceTransferManager.detachPeerTransport(remotePeerId)
-						options.authorityOptions?.p2p?.onResourcePeerDisconnected?.(remotePeerId)
-					},
-				},
-			}
-		: options.authorityOptions
 	const platform = options.platform
 		?? createBrowserHarnessPlatform({
-			authorityOptions,
 			exportRenderer: options.exportRenderer,
 		})
-	const authorityClient = authority ?? platform.createAuthorityClient()
+	const authorityClient = authority ?? platform.createAuthorityClient({
+		onClientResourceTransport: (transport) => {
+			resourceTransferManager.attachClientTransport(transport)
+		},
+		onServerResourceTransport: (remotePeerId, transport) => {
+			resourceTransferManager.attachServerTransport(remotePeerId, transport)
+		},
+		onResourcePeerDisconnected: (remotePeerId) => {
+			resourceTransferManager.detachPeerTransport(remotePeerId)
+		},
+	})
 	authorityClientRef = authorityClient
 	const autoCreateInitialProject = options.autoCreateInitialProject ?? true
 	const exportRenderer = options.exportRenderer ?? platform.createExportRenderer()

@@ -5,6 +5,7 @@ import {
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import {
 	createAuthorityClient,
+	type AuthorityResourceBindings,
 	type CreateAuthorityClientOptions,
 } from '../worker/createAuthorityClient'
 
@@ -13,7 +14,7 @@ const imageDuration = 1
 const mediaMetadataTimeoutMs = 3000
 
 export interface VideoEditorHarnessPlatform {
-	createAuthorityClient(): EditorAuthorityClient
+	createAuthorityClient(bindings?: AuthorityResourceBindings): EditorAuthorityClient
 	createExportRenderer(): ExportRenderer
 	getImportedResourceDuration(
 		url: string,
@@ -77,7 +78,31 @@ const getImportedResourceDuration = async (
 export const createBrowserHarnessPlatform = (
 	options: CreateBrowserHarnessPlatformOptions = {},
 ): VideoEditorHarnessPlatform => ({
-	createAuthorityClient: () => createAuthorityClient(options.authorityOptions),
+	createAuthorityClient(bindings) {
+		const p2p = options.authorityOptions?.p2p
+		if (!p2p) {
+			return createAuthorityClient(options.authorityOptions)
+		}
+
+		return createAuthorityClient({
+			...options.authorityOptions,
+			p2p: {
+				...p2p,
+				onClientResourceTransport: (transport) => {
+					bindings?.onClientResourceTransport?.(transport)
+					p2p.onClientResourceTransport?.(transport)
+				},
+				onServerResourceTransport: (remotePeerId, transport) => {
+					bindings?.onServerResourceTransport?.(remotePeerId, transport)
+					p2p.onServerResourceTransport?.(remotePeerId, transport)
+				},
+				onResourcePeerDisconnected: (remotePeerId) => {
+					bindings?.onResourcePeerDisconnected?.(remotePeerId)
+					p2p.onResourcePeerDisconnected?.(remotePeerId)
+				},
+			},
+		})
+	},
 	createExportRenderer: () => options.exportRenderer ?? createBrowserVideoExportRenderer(),
 	getImportedResourceDuration,
 	createObjectUrl(source) {

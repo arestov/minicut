@@ -1,8 +1,20 @@
 import type { EditorAuthorityClient } from './authorityClient'
 import type { BridgeSignalingFactory } from '../p2p/BridgeSignaling'
-import type { P2PRawTransportLike, PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from '../p2p/PageP2PManager'
+import type { PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from '../p2p/PageP2PManager'
 import { createP2PAuthorityAdapter, type CreateP2PAuthorityAdapterConfig } from '../p2p/P2PAuthorityAdapter'
 import { createFallbackAuthorityClient } from './fallbackAuthorityClient'
+
+export interface AuthorityRawTransportLike {
+	send(data: string | ArrayBuffer): void | Promise<void>
+	listen(listener: (data: string | ArrayBuffer) => void): () => void
+	destroy(): void
+}
+
+export interface AuthorityResourceBindings {
+	onClientResourceTransport?: (transport: AuthorityRawTransportLike) => void
+	onServerResourceTransport?: (remotePeerId: string, transport: AuthorityRawTransportLike) => void
+	onResourcePeerDisconnected?: (remotePeerId: string) => void
+}
 
 export interface CreateAuthorityClientOptions {
 	p2p?: {
@@ -16,9 +28,9 @@ export interface CreateAuthorityClientOptions {
 		pendingCallTimeoutMs?: number
 		createManager?: (config: PageP2PManagerConfig, events: PageP2PManagerEvents) => PageP2PManager
 		createLocalAuthority?: CreateP2PAuthorityAdapterConfig['createLocalAuthority']
-		onClientResourceTransport?: (transport: P2PRawTransportLike) => void
-		onServerResourceTransport?: (remotePeerId: string, transport: P2PRawTransportLike) => void
-		onResourcePeerDisconnected?: (remotePeerId: string) => void
+		onClientResourceTransport?: AuthorityResourceBindings['onClientResourceTransport']
+		onServerResourceTransport?: AuthorityResourceBindings['onServerResourceTransport']
+		onResourcePeerDisconnected?: AuthorityResourceBindings['onResourcePeerDisconnected']
 		onSessionLost?: (reason: string) => void
 		onError?: (error: unknown) => void
 	}

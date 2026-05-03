@@ -4,10 +4,10 @@ import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
 import { createEmptyRegistry } from '../domain/createProject'
 import { createFallbackAuthorityClient } from '../worker/fallbackAuthorityClient'
 import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
+import type { AuthorityResourceBindings } from '../worker/createAuthorityClient'
 import type { BridgeSignalingFactory } from './BridgeSignaling'
 import {
 	createPageP2PManager,
-	type P2PRawTransportLike,
 	type P2PTransportLike,
 	type PageP2PManager,
 	type PageP2PManagerConfig,
@@ -160,9 +160,9 @@ export interface CreateP2PAuthorityAdapterConfig {
 	pendingCallTimeoutMs?: number
 	createLocalAuthority?: () => EditorAuthorityClient
 	createManager?: (config: PageP2PManagerConfig, events: PageP2PManagerEvents) => PageP2PManager
-	onClientResourceTransport?: (transport: P2PRawTransportLike) => void
-	onServerResourceTransport?: (remotePeerId: string, transport: P2PRawTransportLike) => void
-	onResourcePeerDisconnected?: (remotePeerId: string) => void
+	onClientResourceTransport?: AuthorityResourceBindings['onClientResourceTransport']
+	onServerResourceTransport?: AuthorityResourceBindings['onServerResourceTransport']
+	onResourcePeerDisconnected?: AuthorityResourceBindings['onResourcePeerDisconnected']
 	onSessionLost?: (reason: string) => void
 	onError?: (error: unknown) => void
 }
