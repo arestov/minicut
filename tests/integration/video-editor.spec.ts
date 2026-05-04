@@ -575,7 +575,6 @@ test('preview playback lets video decode forward without seeking every cursor ti
 		if (!descriptor?.get || !descriptor.set) {
 			return
 		}
-
 		const writes: Array<{ tag: string; value: number }> = []
 		Object.defineProperty(window, '__previewCurrentTimeWrites', { value: writes, configurable: true })
 		Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
@@ -753,21 +752,25 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await clip.click()
 	await setTimelineCursor(page, 0.25)
+	const preview = page.getByRole('region', { name: 'Preview panel' })
+	await expect(preview.getByLabel('Color scopes')).toHaveCount(0)
 
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Color' }).click()
 	await inspector.getByRole('button', { name: 'Add primary correction' }).click()
 	await inspector.getByRole('button', { name: 'Warm' }).click()
 
-	const preview = page.getByRole('region', { name: 'Preview panel' })
 	const renderer = page.getByLabel('Renderer stage')
 	await expect(renderer.locator('.ve-renderer__layer--video').first()).toHaveCSS('filter', /brightness\(1\.12\)/)
 	await expect(preview.getByLabel('Color scopes')).toBeVisible()
 	await expect(preview.getByRole('tab', { name: 'Waveform' })).toHaveAttribute('aria-selected', 'true')
 	await preview.getByRole('tab', { name: 'RGB Parade' }).click()
-	await expect(preview.getByLabel('Red parade buckets')).toBeVisible()
+	await expect(preview.getByLabel('Red parade trace')).toBeVisible()
 	await preview.getByRole('tab', { name: 'Vectorscope' }).click()
 	await expect(preview.getByLabel('Vectorscope points')).toBeVisible()
+	await inspector.getByRole('tab', { name: 'Audio' }).click()
+	await expect(preview.getByLabel('Color scopes')).toHaveCount(0)
+	await inspector.getByRole('tab', { name: 'Color' }).click()
 
 	await preview.getByRole('button', { name: 'Split compare' }).click()
 	await expect(renderer.getByLabel('Split compare preview')).toBeVisible()

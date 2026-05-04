@@ -32,17 +32,22 @@ const PlaybackLoop = observer(() => {
 	return null
 })
 
-export const VideoEditorApp = () => (
-	<div className="ve-shell">
-		<PlaybackLoop />
-		<Toolbar />
-		<main className="ve-main">
-			<div className="ve-main__top">
-				<MediaBin />
-				<PreviewPanel />
-				<Inspector />
-			</div>
-			<TimelineView />
-		</main>
-	</div>
-)
+export const VideoEditorApp = observer(() => {
+	const { session$ } = useVideoEditor()
+	const showColorScopes = session$.activeInspectorTab.get() === 'color'
+
+	return (
+		<div className="ve-shell">
+			<PlaybackLoop />
+			<Toolbar />
+			<main className="ve-main">
+				<div className={`ve-main__top${showColorScopes ? ' ve-main__top--scopes' : ''}`}>
+					<MediaBin />
+					<PreviewPanel />
+					<Inspector />
+				</div>
+				<TimelineView />
+			</main>
+		</div>
+	)
+})

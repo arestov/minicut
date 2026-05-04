@@ -11,6 +11,7 @@ export const createInitialSession = (): EditorSessionState => ({
 	tabId: `tab-${nanoid(6)}`,
 	activeProjectId: null,
 	selectedEntityId: null,
+	activeInspectorTab: 'edit',
 	cursor: 0,
 	isPlaying: false,
 	timelineZoom: TIMELINE_ZOOM_DEFAULT,

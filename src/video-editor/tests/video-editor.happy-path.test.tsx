@@ -230,6 +230,8 @@ describe('video editor harness', () => {
 			await importSampleResource(harness)
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
+			const preview = screen.getByLabelText('Preview panel')
+			expect(within(preview).queryByLabelText('Color scopes')).toBeNull()
 
 			const inspector = screen.getByLabelText('Inspector')
 			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
@@ -253,6 +255,8 @@ describe('video editor harness', () => {
 			await importSampleResource(harness)
 			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
+			const preview = screen.getByLabelText('Preview panel')
+			expect(within(preview).queryByLabelText('Color scopes')).toBeNull()
 
 			const inspector = screen.getByLabelText('Inspector')
 			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
@@ -308,11 +312,13 @@ describe('video editor harness', () => {
 			fireEvent.pointerUp(compareButton)
 			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(true)
 
-			const preview = screen.getByLabelText('Preview panel')
 			expect(within(preview).getByLabelText('Color scopes')).toBeVisible()
 			expect(within(preview).getByRole('tab', { name: 'Waveform' })).toHaveAttribute('aria-selected', 'true')
 			await user.click(within(preview).getByRole('tab', { name: 'RGB Parade' }))
 			expect(within(preview).getByRole('tab', { name: 'RGB Parade' })).toHaveAttribute('aria-selected', 'true')
+			await user.click(within(inspector).getByRole('tab', { name: 'Audio' }))
+			expect(within(preview).queryByLabelText('Color scopes')).toBeNull()
+			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
 			await user.click(within(preview).getByRole('button', { name: 'Split compare' }))
 			expect(within(preview).getByLabelText('Split compare preview')).toBeVisible()
 			expect(within(preview).getByText('Before')).toBeVisible()

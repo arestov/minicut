@@ -3,7 +3,7 @@ import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import type { AnimatedScalar, ColorCorrectionAttrs, EffectAttrs, ResourceAttrs } from '../domain/types'
+import type { AnimatedScalar, ColorCorrectionAttrs, EditorSessionState, EffectAttrs, ResourceAttrs } from '../domain/types'
 import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
 import {
 	clipAttrs$,
@@ -17,7 +17,7 @@ import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRe
 import { Button, IconButton } from './ControlPrimitives'
 import { formatPercent, formatSeconds } from './format'
 
-type InspectorTab = 'edit' | 'color' | 'audio' | 'export'
+type InspectorTab = EditorSessionState['activeInspectorTab']
 
 type ExportStatus =
 	| { state: 'idle' }
@@ -562,8 +562,9 @@ const InspectorExportTabPanel = observer(({ clipId }: { clipId: string }) => {
 })
 
 export const Inspector = observer(() => {
-	const [activeTab, setActiveTab] = useState<InspectorTab>('edit')
 	const { projects$, session$ } = useVideoEditor()
+	const activeTab = session$.activeInspectorTab.get()
+	const setActiveTab = (tab: InspectorTab): void => session$.activeInspectorTab.set(tab)
 	const activeProjectId = getActiveProjectId$(projects$, session$)
 	const selectedEntityId = session$.selectedEntityId.get()
 	const selectedEntity$ = activeProjectId && selectedEntityId

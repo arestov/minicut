@@ -30,7 +30,7 @@ export interface PreviewScopeData {
 	vectorscope: VectorscopeData
 }
 
-const bucketCount = 12
+const bucketCount = 32
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value))
 

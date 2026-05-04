@@ -38,6 +38,7 @@ export interface EditorSessionState {
 	tabId: string
 	activeProjectId: ProjectId | null
 	selectedEntityId: EntityId | null
+	activeInspectorTab: 'edit' | 'color' | 'audio' | 'export'
 	cursor: number
 	isPlaying: boolean
 	timelineZoom: number

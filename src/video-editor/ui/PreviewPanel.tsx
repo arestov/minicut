@@ -79,15 +79,24 @@ const PreviewStage = observer(({
 	)
 })
 
-const ScopeBar = ({ value, tint }: { value: number; tint: string }) => (
-	<span className="ve-scope-bar" style={{ height: `${Math.max(4, value * 100)}%`, backgroundColor: tint }} />
-)
+const clampPercent = (value: number): number => Math.min(96, Math.max(4, value))
 
-const ScopeBars = ({ buckets, tint, label }: { buckets: number[]; tint: string; label: string }) => (
-	<div className="ve-scope-bars" aria-label={label}>
-		{buckets.map((value, index) => <ScopeBar key={index} value={value} tint={tint} />)}
-	</div>
-)
+const getTracePoints = (buckets: number[]): string =>
+	buckets.map((value, index) => {
+		const x = buckets.length <= 1 ? 0 : (index / (buckets.length - 1)) * 100
+		const y = 96 - Math.min(0.96, Math.max(0, value)) * 92
+		return `${x.toFixed(2)},${y.toFixed(2)}`
+	}).join(' ')
+
+const ScopeTrace = ({ buckets, tint, label }: { buckets: number[]; tint: string; label: string }) => {
+	const points = getTracePoints(buckets)
+	return (
+		<svg className="ve-scope-trace" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label={label} role="img">
+			<polygon className="ve-scope-trace__fill" points={`0,100 ${points} 100,100`} style={{ fill: tint }} />
+			<polyline className="ve-scope-trace__line" points={points} style={{ stroke: tint }} />
+		</svg>
+	)
+}
 
 const ColorScopesPanel = observer(({ frame$, mode, onModeChange }: {
 	frame$: Observable<PreviewFrame>
@@ -114,13 +123,13 @@ const ColorScopesPanel = observer(({ frame$, mode, onModeChange }: {
 			<div className="ve-scopes__plot" data-scope-mode={mode}>
 				{isEmpty ? <span className="ve-scopes__empty">No visual clip at cursor</span> : null}
 				{!isEmpty && mode === 'waveform' ? (
-					<ScopeBars buckets={scopes.waveform.buckets} tint="#e4e4e7" label="Waveform luma buckets" />
+					<ScopeTrace buckets={scopes.waveform.buckets} tint="#f4f4f5" label="Waveform luma trace" />
 				) : null}
 				{!isEmpty && mode === 'rgb-parade' ? (
 					<div className="ve-scopes__parade">
-						<ScopeBars buckets={scopes.rgbParade.red} tint="#ef4444" label="Red parade buckets" />
-						<ScopeBars buckets={scopes.rgbParade.green} tint="#22c55e" label="Green parade buckets" />
-						<ScopeBars buckets={scopes.rgbParade.blue} tint="#3b82f6" label="Blue parade buckets" />
+						<ScopeTrace buckets={scopes.rgbParade.red} tint="#ef4444" label="Red parade trace" />
+						<ScopeTrace buckets={scopes.rgbParade.green} tint="#22c55e" label="Green parade trace" />
+						<ScopeTrace buckets={scopes.rgbParade.blue} tint="#3b82f6" label="Blue parade trace" />
 					</div>
 				) : null}
 				{!isEmpty && mode === 'vectorscope' ? (
@@ -130,8 +139,8 @@ const ColorScopesPanel = observer(({ frame$, mode, onModeChange }: {
 								key={index}
 								className="ve-scope-point"
 								style={{
-									left: `${50 + point.x * 70}%`,
-									top: `${50 - point.y * 70}%`,
+									left: `${clampPercent(50 + point.x * 42)}%`,
+									top: `${clampPercent(50 - point.y * 42)}%`,
 									backgroundColor: point.tint,
 								}}
 							/>
@@ -220,6 +229,7 @@ export const PreviewPanel = () => {
 	const { projects$, session$, actions, resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
 	const [compareMode, setCompareMode] = useState<'off' | 'split'>('off')
 	const [scopeMode, setScopeMode] = useState<ScopeMode>('waveform')
+	const showColorScopes = session$.activeInspectorTab.get() === 'color'
 	const previewStructure$ = useMemo(
 		() => createPreviewStructure$(projects$, session$),
 		[projects$, session$],
@@ -252,7 +262,7 @@ export const PreviewPanel = () => {
 				noteResourcePreviewError={noteResourcePreviewError}
 				compareMode={compareMode}
 			/>
-			<ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} />
+			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} /> : null}
 			<PreviewTransport
 				frame$={previewFrame$}
 				session$={session$}

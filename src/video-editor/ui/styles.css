@@ -410,6 +410,15 @@ button:disabled {
 	min-height: 360px;
 }
 
+.ve-main__top--scopes {
+	height: calc(100vh - var(--ve-toolbar-height) - clamp(300px, 34vh, 440px));
+	min-height: 520px;
+}
+
+.ve-main__top--scopes + .ve-timeline {
+	height: clamp(300px, 34vh, 440px);
+}
+
 .ve-panel {
 	padding: 16px;
 	border-top: 0;
@@ -425,6 +434,10 @@ button:disabled {
 .ve-main__top > .ve-panel[aria-label='Inspector'] {
 	max-height: calc(100vh - var(--ve-toolbar-height) - var(--ve-timeline-height));
 	overflow-y: auto;
+}
+
+.ve-main__top--scopes > .ve-panel[aria-label='Inspector'] {
+	max-height: calc(100vh - var(--ve-toolbar-height) - clamp(300px, 34vh, 440px));
 }
 
 .ve-main__top > .ve-panel:last-child,
@@ -1079,12 +1092,12 @@ button:disabled {
 .ve-scopes {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 10px;
 	margin-bottom: 12px;
-	padding: 10px;
+	padding: 12px;
 	border: 1px solid var(--ve-border);
 	border-radius: 8px;
-	background: #fafafa;
+	background: #f4f4f5;
 }
 
 .ve-scopes__header {
@@ -1128,13 +1141,15 @@ button:disabled {
 	display: flex;
 	align-items: stretch;
 	justify-content: center;
-	height: 96px;
-	padding: 8px;
+	height: 132px;
+	padding: 10px;
 	border-radius: 8px;
+	border: 1px solid rgba(244, 244, 245, 0.08);
 	background:
-		linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(244, 244, 245, 0.08) 1px, transparent 1px),
+		linear-gradient(to right, rgba(244, 244, 245, 0.05) 1px, transparent 1px),
 		#18181b;
-	background-size: 100% 24px;
+	background-size: 100% 25%, 12.5% 100%, 100% 100%;
 	overflow: hidden;
 }
 
@@ -1144,51 +1159,59 @@ button:disabled {
 	font-size: 12px;
 }
 
-.ve-scope-bars,
 .ve-scopes__parade {
 	display: flex;
-	align-items: end;
-	gap: 3px;
+	align-items: stretch;
 	width: 100%;
 	height: 100%;
 }
 
 .ve-scopes__parade {
-	gap: 8px;
+	gap: 10px;
 }
 
-.ve-scopes__parade .ve-scope-bars {
-	gap: 2px;
-}
-
-.ve-scope-bar {
+.ve-scope-trace {
 	display: block;
-	flex: 1 1 0;
-	min-width: 3px;
-	border-radius: 3px 3px 0 0;
-	opacity: 0.9;
+	width: 100%;
+	height: 100%;
+	filter: drop-shadow(0 0 5px rgba(244, 244, 245, 0.18));
+}
+
+.ve-scope-trace__fill {
+	opacity: 0.12;
+}
+
+.ve-scope-trace__line {
+	fill: none;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	vector-effect: non-scaling-stroke;
 }
 
 .ve-scopes__vectors {
 	position: relative;
-	width: min(120px, 100%);
+	width: min(116px, 100%);
 	aspect-ratio: 1;
 	align-self: center;
-	border: 1px solid rgba(244, 244, 245, 0.35);
+	border: 1px solid rgba(244, 244, 245, 0.42);
 	border-radius: 50%;
 	background:
+		radial-gradient(circle, transparent 32%, rgba(244, 244, 245, 0.16) 33%, transparent 34%),
+		radial-gradient(circle, transparent 64%, rgba(244, 244, 245, 0.2) 65%, transparent 66%),
 		linear-gradient(to right, transparent calc(50% - 1px), rgba(244, 244, 245, 0.28) 50%, transparent calc(50% + 1px)),
 		linear-gradient(to bottom, transparent calc(50% - 1px), rgba(244, 244, 245, 0.28) 50%, transparent calc(50% + 1px));
+	box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.24);
 }
 
 .ve-scope-point {
 	position: absolute;
-	width: 9px;
-	height: 9px;
+	width: 8px;
+	height: 8px;
 	border: 1px solid rgba(255, 255, 255, 0.7);
 	border-radius: 50%;
 	transform: translate(-50%, -50%);
-	box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+	box-shadow: 0 0 12px rgba(255, 255, 255, 0.34);
 }
 
 .ve-resource-row__content {
