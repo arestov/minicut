@@ -3,6 +3,7 @@ import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { createPaletteFromHex, sampleVideoFramePalette } from '../color/framePalette'
 import { buildLookColorCorrectionParams, getLookPreset, lookPresets, type LookParam } from '../color/looks'
 import { getContrastResult, hexToOklch, isOklchInSrgbGamut, oklchToHex, parseHexColor, suggestReadableTextColor, type OklchValue } from '../color/oklch'
 import type { AnimatedScalar, ColorCorrectionAttrs, EditorSessionState, EffectAttrs, ResourceAttrs, TextAttrs } from '../domain/types'
@@ -18,6 +19,7 @@ import {
 import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRenderer'
 import { Button, IconButton } from './ControlPrimitives'
 import { formatPercent, formatSeconds } from './format'
+import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 
 type InspectorTab = EditorSessionState['activeInspectorTab']
 
@@ -218,8 +220,9 @@ const InspectorClipHeader = observer(({ clipId }: { clipId: string }) => {
 	)
 })
 
-const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
+const InspectorEditTabPanel = observer(({ clipId, mediaElementRegistry }: { clipId: string; mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
+	const [paletteStatus, setPaletteStatus] = useState<'idle' | 'frame' | 'fallback' | 'unavailable'>('idle')
 	const { projects$, actions } = useVideoEditor()
 	const selectedClip$ = clipAttrs$(projects$, clipId)
 	const selectedClipRels$ = clipRels$(projects$, clipId)
@@ -241,6 +244,23 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 			return
 		}
 		actions.updateSelectedText({ style: { ...text.style, ...style } })
+	}
+	const applyFramePalette = (): void => {
+		if (!text) {
+			return
+		}
+
+		const framePalette = mediaElementRegistry?.getVideos()
+			.map((video) => sampleVideoFramePalette(video))
+			.find((palette) => palette !== null) ?? null
+		const fallbackPalette = framePalette ?? createPaletteFromHex(String(selectedClip$.color.get() ?? '#2563eb'))
+		if (!fallbackPalette) {
+			setPaletteStatus('unavailable')
+			return
+		}
+
+		updateTextStyle({ color: fallbackPalette.textColor, backgroundColor: fallbackPalette.backgroundColor })
+		setPaletteStatus(framePalette ? 'frame' : 'fallback')
 	}
 	const effectIds = selectedClipRels$.effects.get()
 	const effects = Array.isArray(effectIds) ? effectIds : []
@@ -282,6 +302,12 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 					<div className="ve-text-color-feedback" aria-label="Text color feedback">
 						<span className={`ve-status-pill ve-status-pill--${textContrast.status}`}>Contrast {textContrast.ratio}:1</span>
 						<Button type="button" variant="outline" onClick={() => updateTextStyle({ color: suggestReadableTextColor(textColor, textBackgroundColor) })}>Fix contrast</Button>
+					</div>
+					<div className="ve-text-color-feedback" aria-label="Frame palette feedback">
+						<span className="ve-status-pill">
+							{paletteStatus === 'frame' ? 'Frame palette' : paletteStatus === 'fallback' ? 'Fallback palette' : paletteStatus === 'unavailable' ? 'No frame palette' : 'Palette ready'}
+						</span>
+						<Button type="button" variant="secondary" onClick={applyFramePalette}>Generate palette from frame</Button>
 					</div>
 					<OklchColorControls label="Text color" value={textColor} onChange={(value) => updateTextStyle({ color: value })} />
 					<OklchColorControls label="Text background" value={textBackgroundColor} onChange={(value) => updateTextStyle({ backgroundColor: value })} />
@@ -672,7 +698,7 @@ const InspectorExportTabPanel = observer(({ clipId }: { clipId: string }) => {
 	)
 })
 
-export const Inspector = observer(() => {
+export const Inspector = observer(({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const { projects$, session$ } = useVideoEditor()
 	const activeTab = session$.activeInspectorTab.get()
 	const setActiveTab = (tab: InspectorTab): void => session$.activeInspectorTab.set(tab)
@@ -705,7 +731,7 @@ export const Inspector = observer(() => {
 			</div>
 			<InspectorTabs activeTab={activeTab} onChange={setActiveTab} />
 			<InspectorClipHeader clipId={clipId} />
-			{activeTab === 'edit' ? <InspectorEditTabPanel clipId={clipId} /> : null}
+			{activeTab === 'edit' ? <InspectorEditTabPanel clipId={clipId} mediaElementRegistry={mediaElementRegistry} /> : null}
 			{activeTab === 'color' ? <InspectorColorTabPanel clipId={clipId} /> : null}
 			{activeTab === 'audio' ? <InspectorAudioTabPanel clipId={clipId} /> : null}
 			{activeTab === 'export' ? <InspectorExportTabPanel clipId={clipId} /> : null}

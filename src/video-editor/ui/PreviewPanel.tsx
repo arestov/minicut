@@ -15,7 +15,7 @@ import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'
 import { ColorScopesPanel, type ScopeMode } from './ColorScopesPanel'
 import { RendererStage } from './RendererStage'
-import { createPreviewMediaElementRegistry, type PreviewMediaElementRegistry } from './mediaElementRegistry'
+import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const previewWindowRequestIntervalMs = 200
 
@@ -154,11 +154,10 @@ const PreviewTransport = ({
 	)
 }
 
-export const PreviewPanel = () => {
+export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: PreviewMediaElementRegistry }) => {
 	const { projects$, session$, actions, resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
 	const [compareMode, setCompareMode] = useState<'off' | 'split'>('off')
 	const [scopeMode, setScopeMode] = useState<ScopeMode>('waveform')
-	const mediaElementRegistryRef = useRef(createPreviewMediaElementRegistry())
 	const showColorScopes = session$.activeInspectorTab.get() === 'color'
 	const previewStructure$ = useMemo(
 		() => createPreviewStructure$(projects$, session$),
@@ -191,9 +190,9 @@ export const PreviewPanel = () => {
 				requestResourcePlayheadWindow={requestResourcePlayheadWindow}
 				noteResourcePreviewError={noteResourcePreviewError}
 				compareMode={compareMode}
-				mediaElementRegistry={mediaElementRegistryRef.current}
+				mediaElementRegistry={mediaElementRegistry}
 			/>
-			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} mediaElementRegistry={mediaElementRegistryRef.current} /> : null}
+			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} mediaElementRegistry={mediaElementRegistry} /> : null}
 			<PreviewTransport
 				frame$={previewFrame$}
 				session$={session$}

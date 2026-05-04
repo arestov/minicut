@@ -384,6 +384,11 @@ describe('video editor harness', () => {
 			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__text-box')).toHaveStyle({
 				backgroundColor: updatedText.style.backgroundColor,
 			})
+			await user.click(within(textSection).getByRole('button', { name: 'Generate palette from frame' }))
+			expect(within(textSection).getByLabelText('Frame palette feedback')).toHaveTextContent('Fallback palette')
+			const paletteText = harness.projects$.entitiesById[textId].attrs.get() as { style: { color: string; backgroundColor: string } }
+			expect(paletteText.style.color).toMatch(/^#[0-9a-f]{6}$/)
+			expect(paletteText.style.backgroundColor).toMatch(/^#[0-9a-f]{6}$/)
 
 			const opacityHeading = within(inspector).getAllByText('Opacity').find((element) => element.tagName === 'H3')
 			expect(opacityHeading).toBeDefined()

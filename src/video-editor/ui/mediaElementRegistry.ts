@@ -32,6 +32,13 @@ export class PreviewMediaElementRegistry {
 			? entry.element
 			: undefined
 	}
+
+	getVideos(): HTMLVideoElement[] {
+		return Array.from(this.elements.values())
+			.filter((entry): entry is PreviewMediaElementEntry & { element: HTMLVideoElement } =>
+				entry.kind === 'video' && entry.element instanceof HTMLVideoElement)
+			.map((entry) => entry.element)
+	}
 }
 
 export const createPreviewMediaElementRegistry = (): PreviewMediaElementRegistry => new PreviewMediaElementRegistry()

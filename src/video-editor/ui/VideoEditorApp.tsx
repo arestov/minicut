@@ -3,9 +3,10 @@ import { MediaBin } from './MediaBin'
 import { TimelineView } from './TimelineView'
 import { Inspector } from './Inspector'
 import { PreviewPanel } from './PreviewPanel'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { createPreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const playbackUiFrameMs = 1000 / 30
 
@@ -42,6 +43,7 @@ const PlaybackLoop = observer(() => {
 
 export const VideoEditorApp = observer(() => {
 	const { session$ } = useVideoEditor()
+	const mediaElementRegistryRef = useRef(createPreviewMediaElementRegistry())
 	const showColorScopes = session$.activeInspectorTab.get() === 'color'
 
 	return (
@@ -51,8 +53,8 @@ export const VideoEditorApp = observer(() => {
 			<main className="ve-main">
 				<div className={`ve-main__top${showColorScopes ? ' ve-main__top--scopes' : ''}`}>
 					<MediaBin />
-					<PreviewPanel />
-					<Inspector />
+					<PreviewPanel mediaElementRegistry={mediaElementRegistryRef.current} />
+					<Inspector mediaElementRegistry={mediaElementRegistryRef.current} />
 				</div>
 				<TimelineView />
 			</main>
