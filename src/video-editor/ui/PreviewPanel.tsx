@@ -278,8 +278,11 @@ const ColorScopesPanel = observer(({ frame$, mode, onModeChange, resolveResource
 	const sampleFrames = usePreviewScopeSamples(resolvedClips, frame.cursor)
 	const scopeClipKey = useMemo(() => getScopeClipKey(resolvedClips), [resolvedClips])
 	const scopes: PreviewScopeData = useMemo(
-		() => createPreviewScopeData(resolvedClips, sampleFrames),
-		[scopeClipKey, sampleFrames],
+		() => createPreviewScopeData(resolvedClips, sampleFrames, {
+			includeVectorscope: mode === 'vectorscope',
+			includeVectorscopePoints: mode === 'vectorscope',
+		}),
+		[scopeClipKey, sampleFrames, mode],
 	)
 	const isEmpty = scopes.clipCount === 0
 

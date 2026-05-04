@@ -125,6 +125,20 @@ describe('color scopes', () => {
 		expect(countNonZero(scopes.vectorscope.cells)).toBeGreaterThan(6)
 	})
 
+	it('skips vectorscope work when vectorscope mode is disabled', () => {
+		const clip = createClip({ color: '#ffffff' })
+		const sampledFrame = createFrame(32, 16, (x, y) => [x * 8, 128, y * 12])
+		const scopes = createPreviewScopeData([clip], { [clip.id]: sampledFrame }, {
+			includeVectorscope: false,
+			includeVectorscopePoints: false,
+		})
+
+		expect(countNonZero(scopes.waveform.cells)).toBeGreaterThan(20)
+		expect(countNonZero(scopes.rgbParade.red)).toBeGreaterThan(20)
+		expect(scopes.vectorscope.points).toHaveLength(0)
+		expect(countNonZero(scopes.vectorscope.cells)).toBe(0)
+	})
+
 	it('changes sampled density when color correction filters change', () => {
 		const clip = createClip({ color: '#3344aa' })
 		const sampledFrame = createFrame(16, 16, (x, y) => [40 + x * 8, 56 + y * 5, 170])

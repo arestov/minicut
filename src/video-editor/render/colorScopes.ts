@@ -46,6 +46,11 @@ export interface PreviewScopeData {
 	vectorscope: VectorscopeData
 }
 
+export interface PreviewScopeBuildOptions {
+	includeVectorscope?: boolean
+	includeVectorscopePoints?: boolean
+}
+
 export type ScopeSampleFrames = Record<string, RgbaSampleFrame | undefined>
 
 const waveformWidth = 128
@@ -339,7 +344,10 @@ const getVectorscopeCoordinates = (red: number, green: number, blue: number): { 
 export const createPreviewScopeData = (
 	clips: RenderedClip[],
 	sampleFrames: ScopeSampleFrames = {},
+	options: PreviewScopeBuildOptions = {},
 ): PreviewScopeData => {
+	const includeVectorscope = options.includeVectorscope ?? true
+	const includeVectorscopePoints = options.includeVectorscopePoints ?? includeVectorscope
 	const clipScopeSources = buildClipScopeSources(clips, sampleFrames)
 	const visualClips = clipScopeSources.map((source) => source.clip)
 	const waveform = createCells(waveformWidth, waveformHeight)
@@ -361,7 +369,7 @@ export const createPreviewScopeData = (
 		const height = frame.height
 		const data = frame.data
 		const xScale = width > 1 ? 1 / (width - 1) : 0
-		const pointLimit = maxVectorPoints * visualClips.length
+		const pointLimit = includeVectorscopePoints ? maxVectorPoints * visualClips.length : 0
 
 		let pixelIndex = 0
 		for (let y = 0; y < height; y += 1) {
@@ -385,16 +393,18 @@ export const createPreviewScopeData = (
 				addDensity(greenParade, paradeChannelWidth, paradeHeight, x, 1 - green, weight)
 				addDensity(blueParade, paradeChannelWidth, paradeHeight, x, 1 - blue, weight)
 
-				const vector = getVectorscopeCoordinates(red, green, blue)
-				addDensity(vectorscope, vectorscopeSize, vectorscopeSize, (vector.x + 1) / 2, (1 - vector.y) / 2, weight)
-				if (pixelIndex % vectorStep === 0 && vectorscopePoints.length < pointLimit) {
-					const tintRgb: [number, number, number] = [red, green, blue]
-					vectorscopePoints.push({
-						x: Math.round(vector.x * 1000) / 1000,
-						y: Math.round(vector.y * 1000) / 1000,
-						tintRgb,
-						intensity: Math.round(vector.intensity * 1000) / 1000,
-					})
+				if (includeVectorscope) {
+					const vector = getVectorscopeCoordinates(red, green, blue)
+					addDensity(vectorscope, vectorscopeSize, vectorscopeSize, (vector.x + 1) / 2, (1 - vector.y) / 2, weight)
+					if (pixelIndex % vectorStep === 0 && vectorscopePoints.length < pointLimit) {
+						const tintRgb: [number, number, number] = [red, green, blue]
+						vectorscopePoints.push({
+							x: Math.round(vector.x * 1000) / 1000,
+							y: Math.round(vector.y * 1000) / 1000,
+							tintRgb,
+							intensity: Math.round(vector.intensity * 1000) / 1000,
+						})
+					}
 				}
 				sampleCount += 1
 			}
