@@ -362,6 +362,10 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 	const activeLookId = typeof (colorParams as Record<string, unknown>).lookId === 'string'
 		? String((colorParams as Record<string, unknown>).lookId)
 		: 'clean'
+	const activeLookIdRef = useRef(activeLookId)
+	useEffect(() => {
+		activeLookIdRef.current = activeLookId
+	}, [activeLookId])
 	const getParamValue = (key: ColorParamKey, fallback: number): number =>
 		Number((colorParams[key] as AnimatedScalar | undefined)?.value ?? fallback)
 	const updateColorParams = (params: Partial<Record<ColorParamKey, number>> & Record<string, unknown> = {}): void => {
@@ -384,20 +388,23 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 	}
 
 	const updateParam = (key: PrimaryColorParam, value: number): void => {
+		activeLookIdRef.current = 'custom'
 		updateColorParams({ [key]: value, lookId: 'custom' })
 	}
 
-	const activeLook = getLookPreset(activeLookId)
 	const lookIntensity = Number(((colorParams as Record<string, { value?: unknown }>).lookIntensity)?.value ?? 1)
-	const applyLook = (nextLookId: string, nextIntensity = lookIntensity): void => {
+	const applyLook = (nextLookId: string, nextIntensity = nextLookId === activeLookId ? lookIntensity : 1): void => {
+		activeLookIdRef.current = nextLookId
 		updateColorParams(buildLookColorCorrectionParams(nextLookId, nextIntensity))
 	}
 	const updateLookIntensity = (value: number): void => {
-		if (activeLookId === 'custom' || activeLook.id === 'clean') {
+		const intensityLookId = activeLookIdRef.current
+		const intensityLook = getLookPreset(intensityLookId)
+		if (intensityLookId === 'custom' || intensityLook.id === 'clean') {
 			return
 		}
 
-		applyLook(activeLook.id, value)
+		updateColorParams(buildLookColorCorrectionParams(intensityLook.id, value))
 	}
 
 	const toggleBypass = (): void => {
@@ -411,6 +418,7 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 	}
 
 	const resetGrade = (): void => {
+		activeLookIdRef.current = 'clean'
 		updateColorParams({
 			lookId: 'clean',
 			lookIntensity: 1,
@@ -520,7 +528,10 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 									key={preset.id}
 									type="button"
 									variant="outline"
-									onClick={() => updateColorParams({ ...preset.params, lookId: 'custom', lookIntensity: 1 })}
+									onClick={() => {
+										activeLookIdRef.current = 'custom'
+										updateColorParams({ ...preset.params, lookId: 'custom', lookIntensity: 1 })
+									}}
 								>
 									{preset.label}
 								</Button>

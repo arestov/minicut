@@ -304,6 +304,34 @@ describe('video editor harness', () => {
 			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
 				filter: 'brightness(0.98) contrast(1.0791) saturate(0.97) hue-rotate(-2deg)',
 			})
+			fireEvent.change(lookIntensity, { target: { value: '0' } })
+			await user.click(within(inspector).getByRole('button', { name: 'Apply look Golden' }))
+			fireEvent.change(lookIntensity, { target: { value: '100' } })
+			const goldenParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
+				lookId: string
+				lookIntensity: { value: number }
+				temperature: { value: number }
+				hue: { value: number }
+			}
+			expect(goldenParams.lookId).toBe('golden')
+			expect(goldenParams.lookIntensity.value).toBe(1)
+			expect(goldenParams.temperature.value).toBeCloseTo(0.35, 6)
+			expect(goldenParams.hue.value).toBe(5)
+			fireEvent.change(lookIntensity, { target: { value: '0' } })
+			await user.click(within(inspector).getByRole('button', { name: 'Apply look Mono' }))
+			const monoParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
+				lookId: string
+				lookIntensity: { value: number }
+				saturation: { value: number }
+			}
+			expect(monoParams.lookId).toBe('mono')
+			expect(monoParams.lookIntensity.value).toBe(1)
+			expect(monoParams.saturation.value).toBe(0)
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+				filter: 'brightness(1) contrast(1.2444) saturate(0) hue-rotate(0deg)',
+			})
+			await user.click(within(inspector).getByRole('button', { name: 'Apply look Cinema' }))
+			fireEvent.change(lookIntensity, { target: { value: '50' } })
 			fireEvent.change(exposure, { target: { value: '10' } })
 			const customLookParams = harness.projects$.entitiesById[effectId].attrs.params.get() as { lookId: string }
 			expect(customLookParams.lookId).toBe('custom')

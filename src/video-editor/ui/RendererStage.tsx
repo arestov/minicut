@@ -462,6 +462,7 @@ const BeforeVideoSnapshotLayer = ({
 		}
 
 		let frameId = 0
+		let resizeFrameId = 0
 		const draw = () => {
 			drawContainedVideoFrame(canvas, sourceVideo)
 			if (isPlaying) {
@@ -469,7 +470,21 @@ const BeforeVideoSnapshotLayer = ({
 			}
 		}
 		const drawOnce = () => drawContainedVideoFrame(canvas, sourceVideo)
+		const scheduleDrawOnce = () => {
+			if (resizeFrameId) {
+				cancelAnimationFrame(resizeFrameId)
+			}
+			resizeFrameId = requestAnimationFrame(() => {
+				resizeFrameId = 0
+				drawOnce()
+			})
+		}
+		const resizeObserver = typeof ResizeObserver !== 'undefined'
+			? new ResizeObserver(scheduleDrawOnce)
+			: null
 		draw()
+		resizeObserver?.observe(canvas)
+		window.addEventListener('resize', scheduleDrawOnce)
 		sourceVideo.addEventListener('loadeddata', drawOnce)
 		sourceVideo.addEventListener('seeked', drawOnce)
 		sourceVideo.addEventListener('timeupdate', drawOnce)
@@ -478,6 +493,11 @@ const BeforeVideoSnapshotLayer = ({
 			if (frameId) {
 				cancelAnimationFrame(frameId)
 			}
+			if (resizeFrameId) {
+				cancelAnimationFrame(resizeFrameId)
+			}
+			resizeObserver?.disconnect()
+			window.removeEventListener('resize', scheduleDrawOnce)
 			sourceVideo.removeEventListener('loadeddata', drawOnce)
 			sourceVideo.removeEventListener('seeked', drawOnce)
 			sourceVideo.removeEventListener('timeupdate', drawOnce)
