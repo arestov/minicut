@@ -4,8 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { createPaletteFromHex, sampleVideoFramePalette } from '../color/framePalette'
-import { buildLookColorCorrectionParams, getLookPreset, lookPresets, type LookParam } from '../color/looks'
-import { getContrastResult, hexToOklch, isOklchInSrgbGamut, oklchToHex, parseHexColor, suggestReadableTextColor, type OklchValue } from '../color/oklch'
+import { buildLookColorCorrectionParams, getLookPreset, type LookParam } from '../color/looks'
 import type { AnimatedScalar, ColorCorrectionAttrs, EditorSessionState, EffectAttrs, ResourceAttrs, TextAttrs } from '../domain/types'
 import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
 import {
@@ -19,7 +18,10 @@ import {
 import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRenderer'
 import { Button, IconButton } from './ControlPrimitives'
 import { formatPercent, formatSeconds } from './format'
+import type { FramePaletteStatus } from './FramePaletteAction'
+import { LookBrowser } from './LookBrowser'
 import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
+import { TextAppearancePanel } from './TextAppearancePanel'
 
 type InspectorTab = EditorSessionState['activeInspectorTab']
 
@@ -64,57 +66,6 @@ const colorGradePresets: Array<{ id: string, label: string, params: Partial<Reco
 	{ id: 'cool', label: 'Cool', params: { exposure: 0.05, contrast: 1.04, saturation: 0.92, temperature: -0.2 } },
 	{ id: 'punch', label: 'Punch', params: { exposure: 0.08, contrast: 1.2, saturation: 1.35, temperature: 0 } },
 ]
-
-const transparentBackgroundFallback = '#111827'
-
-const cssColorToHex = (value: unknown, fallback: string): string => {
-	if (typeof value !== 'string') {
-		return fallback
-	}
-	if (parseHexColor(value)) {
-		return value.length === 4
-			? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase()
-			: value.toLowerCase()
-	}
-	return fallback
-}
-
-const OklchColorControls = ({
-	label,
-	value,
-	onChange,
-}: {
-	label: string
-	value: string
-	onChange: (value: string) => void
-}) => {
-	const oklch = hexToOklch(value) ?? { l: 1, c: 0, h: 0 }
-	const updateOklch = (partial: Partial<OklchValue>): void => {
-		onChange(oklchToHex({ ...oklch, ...partial }))
-	}
-	const gamutStatus = isOklchInSrgbGamut(oklch) ? 'Gamut safe' : 'Gamut fitted'
-
-	return (
-		<div className="ve-oklch-controls" aria-label={`${label} OKLCH controls`}>
-			<div className="ve-oklch-controls__header">
-				<strong>{label}</strong>
-				<span className="ve-status-pill">{gamutStatus}</span>
-			</div>
-			<label className="ve-slider-field">
-				<span>L {Math.round(oklch.l * 100)}</span>
-				<input type="range" aria-label={`${label} lightness`} min="0" max="100" value={Math.round(oklch.l * 100)} onChange={(event) => updateOklch({ l: Number(event.currentTarget.value) / 100 })} />
-			</label>
-			<label className="ve-slider-field">
-				<span>C {Math.round(oklch.c * 1000)}</span>
-				<input type="range" aria-label={`${label} chroma`} min="0" max="40" value={Math.round(oklch.c * 100)} onChange={(event) => updateOklch({ c: Number(event.currentTarget.value) / 100 })} />
-			</label>
-			<label className="ve-slider-field">
-				<span>H {Math.round(oklch.h)}</span>
-				<input type="range" aria-label={`${label} hue`} min="0" max="360" value={Math.round(oklch.h)} onChange={(event) => updateOklch({ h: Number(event.currentTarget.value) })} />
-			</label>
-		</div>
-	)
-}
 
 const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
 	activeTab: InspectorTab
@@ -222,7 +173,7 @@ const InspectorClipHeader = observer(({ clipId }: { clipId: string }) => {
 
 const InspectorEditTabPanel = observer(({ clipId, mediaElementRegistry }: { clipId: string; mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
-	const [paletteStatus, setPaletteStatus] = useState<'idle' | 'frame' | 'fallback' | 'unavailable'>('idle')
+	const [paletteStatus, setPaletteStatus] = useState<FramePaletteStatus>('idle')
 	const { projects$, actions } = useVideoEditor()
 	const selectedClip$ = clipAttrs$(projects$, clipId)
 	const selectedClipRels$ = clipRels$(projects$, clipId)
@@ -236,9 +187,6 @@ const InspectorEditTabPanel = observer(({ clipId, mediaElementRegistry }: { clip
 	const transform = selectedClip$.transform.get()
 	const textId = selectedClipRels$.text.get()
 	const text = typeof textId === 'string' ? textAttrs$(projects$, textId).get() : null
-	const textColor = cssColorToHex(text?.style.color, '#ffffff')
-	const textBackgroundColor = cssColorToHex(text?.style.backgroundColor, transparentBackgroundFallback)
-	const textContrast = getContrastResult(textColor, textBackgroundColor)
 	const updateTextStyle = (style: Partial<TextAttrs['style']>): void => {
 		if (!text) {
 			return
@@ -284,33 +232,13 @@ const InspectorEditTabPanel = observer(({ clipId, mediaElementRegistry }: { clip
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Edit inspector">
 			{text ? (
 				<InspectorSection title="Text" icon={SlidersHorizontal} ariaLabel="Text controls">
-					<label className="ve-text-field">
-						<span>Content</span>
-						<textarea aria-label="Text content" value={text.content} rows={3} onChange={(event) => actions.updateSelectedText({ content: event.currentTarget.value })} />
-					</label>
-					<div className="ve-field-grid">
-						<label><span>Size</span><input type="number" min="8" max="320" value={text.style.fontSize} onChange={(event) => updateTextStyle({ fontSize: Number(event.currentTarget.value) })} /></label>
-						<label><span>Weight</span><input type="number" min="100" max="900" step="100" value={text.style.fontWeight} onChange={(event) => updateTextStyle({ fontWeight: Number(event.currentTarget.value) })} /></label>
-						<label><span>Color</span><input type="color" aria-label="Text color" value={textColor} onChange={(event) => updateTextStyle({ color: event.currentTarget.value })} /></label>
-						<label><span>Background</span><input type="color" aria-label="Text background color" value={textBackgroundColor} onChange={(event) => updateTextStyle({ backgroundColor: event.currentTarget.value })} /></label>
-						<label><span>Align</span><select aria-label="Text align" value={text.style.align} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, align: event.currentTarget.value as typeof text.style.align } })}>
-							<option value="left">Left</option>
-							<option value="center">Center</option>
-							<option value="right">Right</option>
-						</select></label>
-					</div>
-					<div className="ve-text-color-feedback" aria-label="Text color feedback">
-						<span className={`ve-status-pill ve-status-pill--${textContrast.status}`}>Contrast {textContrast.ratio}:1</span>
-						<Button type="button" variant="outline" onClick={() => updateTextStyle({ color: suggestReadableTextColor(textColor, textBackgroundColor) })}>Fix contrast</Button>
-					</div>
-					<div className="ve-text-color-feedback" aria-label="Frame palette feedback">
-						<span className="ve-status-pill">
-							{paletteStatus === 'frame' ? 'Frame palette' : paletteStatus === 'fallback' ? 'Fallback palette' : paletteStatus === 'unavailable' ? 'No frame palette' : 'Palette ready'}
-						</span>
-						<Button type="button" variant="secondary" onClick={applyFramePalette}>Generate palette from frame</Button>
-					</div>
-					<OklchColorControls label="Text color" value={textColor} onChange={(value) => updateTextStyle({ color: value })} />
-					<OklchColorControls label="Text background" value={textBackgroundColor} onChange={(value) => updateTextStyle({ backgroundColor: value })} />
+					<TextAppearancePanel
+						text={text}
+						paletteStatus={paletteStatus}
+						onContentChange={(content) => actions.updateSelectedText({ content })}
+						onStyleChange={updateTextStyle}
+						onGenerateFramePalette={applyFramePalette}
+					/>
 				</InspectorSection>
 			) : null}
 			<InspectorSection title="Opacity" icon={Gauge}>
@@ -555,31 +483,12 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 								</Button>
 							))}
 						</div>
-						<div className="ve-look-browser" aria-label="Look Browser">
-							<div className="ve-look-browser__header">
-								<strong>Look Browser</strong>
-								<span className="ve-status-pill">{activeLook.label} {Math.round(Math.max(0, Math.min(1, lookIntensity)) * 100)}%</span>
-							</div>
-							<div className="ve-look-browser__grid">
-								{lookPresets.map((look) => (
-									<button
-										key={look.id}
-										type="button"
-										className={look.id === activeLook.id ? 'is-active' : ''}
-										aria-label={`Apply look ${look.label}`}
-										aria-pressed={look.id === activeLook.id}
-										onClick={() => applyLook(look.id)}
-									>
-										<span className="ve-look-browser__thumb" style={{ background: look.preview }} />
-										<span>{look.label}</span>
-									</button>
-								))}
-							</div>
-							<label className="ve-slider-field">
-								<span>Look intensity</span>
-								<input type="range" aria-label="Look intensity" min="0" max="100" value={Math.round(Math.max(0, Math.min(1, lookIntensity)) * 100)} onChange={(event) => updateLookIntensity(Number(event.currentTarget.value) / 100)} />
-							</label>
-						</div>
+						<LookBrowser
+							activeLookId={activeLook.id}
+							intensity={lookIntensity}
+							onApplyLook={applyLook}
+							onIntensityChange={updateLookIntensity}
+						/>
 						<label className="ve-slider-field">
 							<span>Exposure</span>
 							<input type="range" aria-label="Exposure" min="-100" max="100" value={Math.round(getParamValue('exposure', 0) * 100)} onChange={(event) => updateParam('exposure', Number(event.currentTarget.value) / 100)} />
