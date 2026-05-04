@@ -47,6 +47,8 @@ export interface PreviewScopeData {
 }
 
 export interface PreviewScopeBuildOptions {
+	includeWaveform?: boolean
+	includeRgbParade?: boolean
 	includeVectorscope?: boolean
 	includeVectorscopePoints?: boolean
 }
@@ -89,6 +91,7 @@ interface ClipScopeSource {
 }
 
 const createCells = (width: number, height: number): Float32Array => new Float32Array(width * height)
+const createZeroCells = (width: number, height: number): number[] => new Array<number>(width * height).fill(0)
 
 const addDensity = (cells: Float32Array, width: number, height: number, x: number, y: number, weight: number): void => {
 	const scaledX = Math.min(width - 1, Math.max(0, x * (width - 1)))
@@ -346,15 +349,17 @@ export const createPreviewScopeData = (
 	sampleFrames: ScopeSampleFrames = {},
 	options: PreviewScopeBuildOptions = {},
 ): PreviewScopeData => {
+	const includeWaveform = options.includeWaveform ?? true
+	const includeRgbParade = options.includeRgbParade ?? true
 	const includeVectorscope = options.includeVectorscope ?? true
 	const includeVectorscopePoints = options.includeVectorscopePoints ?? includeVectorscope
 	const clipScopeSources = buildClipScopeSources(clips, sampleFrames)
 	const visualClips = clipScopeSources.map((source) => source.clip)
-	const waveform = createCells(waveformWidth, waveformHeight)
-	const redParade = createCells(paradeChannelWidth, paradeHeight)
-	const greenParade = createCells(paradeChannelWidth, paradeHeight)
-	const blueParade = createCells(paradeChannelWidth, paradeHeight)
-	const vectorscope = createCells(vectorscopeSize, vectorscopeSize)
+	const waveform = includeWaveform ? createCells(waveformWidth, waveformHeight) : null
+	const redParade = includeRgbParade ? createCells(paradeChannelWidth, paradeHeight) : null
+	const greenParade = includeRgbParade ? createCells(paradeChannelWidth, paradeHeight) : null
+	const blueParade = includeRgbParade ? createCells(paradeChannelWidth, paradeHeight) : null
+	const vectorscope = includeVectorscope ? createCells(vectorscopeSize, vectorscopeSize) : null
 	const vectorscopePoints: VectorscopePoint[] = []
 	let sampleCount = 0
 	let sampledClipCount = 0
@@ -369,7 +374,7 @@ export const createPreviewScopeData = (
 		const height = frame.height
 		const data = frame.data
 		const xScale = width > 1 ? 1 / (width - 1) : 0
-		const pointLimit = includeVectorscopePoints ? maxVectorPoints * visualClips.length : 0
+		const pointLimit = includeVectorscope && includeVectorscopePoints ? maxVectorPoints * visualClips.length : 0
 
 		let pixelIndex = 0
 		for (let y = 0; y < height; y += 1) {
@@ -385,15 +390,20 @@ export const createPreviewScopeData = (
 				const rawBlue = finiteOr(data[offset + 2], 0) / 255
 				const [red, green, blue] = applyFilterApproximation(rawRed, rawGreen, rawBlue, filterAdjustments)
 				const x = xIndex * xScale
-				const luma = clamp01(red * 0.2126 + green * 0.7152 + blue * 0.0722)
 				const weight = clip.opacity * alpha
 
-				addDensity(waveform, waveformWidth, waveformHeight, x, 1 - luma, weight)
-				addDensity(redParade, paradeChannelWidth, paradeHeight, x, 1 - red, weight)
-				addDensity(greenParade, paradeChannelWidth, paradeHeight, x, 1 - green, weight)
-				addDensity(blueParade, paradeChannelWidth, paradeHeight, x, 1 - blue, weight)
+				if (includeWaveform && waveform) {
+					const luma = clamp01(red * 0.2126 + green * 0.7152 + blue * 0.0722)
+					addDensity(waveform, waveformWidth, waveformHeight, x, 1 - luma, weight)
+				}
 
-				if (includeVectorscope) {
+				if (includeRgbParade && redParade && greenParade && blueParade) {
+					addDensity(redParade, paradeChannelWidth, paradeHeight, x, 1 - red, weight)
+					addDensity(greenParade, paradeChannelWidth, paradeHeight, x, 1 - green, weight)
+					addDensity(blueParade, paradeChannelWidth, paradeHeight, x, 1 - blue, weight)
+				}
+
+				if (includeVectorscope && vectorscope) {
 					const vector = getVectorscopeCoordinates(red, green, blue)
 					addDensity(vectorscope, vectorscopeSize, vectorscopeSize, (vector.x + 1) / 2, (1 - vector.y) / 2, weight)
 					if (pixelIndex % vectorStep === 0 && vectorscopePoints.length < pointLimit) {
@@ -415,15 +425,26 @@ export const createPreviewScopeData = (
 		clipCount: visualClips.length,
 		sampleCount,
 		source: sampledClipCount > 0 ? 'sampled-frame' : 'fallback-color',
-		waveform: { type: 'waveform', width: waveformWidth, height: waveformHeight, cells: normalizeCells(waveform) },
+		waveform: {
+			type: 'waveform',
+			width: waveformWidth,
+			height: waveformHeight,
+			cells: waveform ? normalizeCells(waveform) : createZeroCells(waveformWidth, waveformHeight),
+		},
 		rgbParade: {
 			type: 'rgb-parade',
 			width: paradeChannelWidth,
 			height: paradeHeight,
-			red: normalizeCells(redParade),
-			green: normalizeCells(greenParade),
-			blue: normalizeCells(blueParade),
+			red: redParade ? normalizeCells(redParade) : createZeroCells(paradeChannelWidth, paradeHeight),
+			green: greenParade ? normalizeCells(greenParade) : createZeroCells(paradeChannelWidth, paradeHeight),
+			blue: blueParade ? normalizeCells(blueParade) : createZeroCells(paradeChannelWidth, paradeHeight),
 		},
-		vectorscope: { type: 'vectorscope', width: vectorscopeSize, height: vectorscopeSize, cells: normalizeCells(vectorscope), points: vectorscopePoints },
+		vectorscope: {
+			type: 'vectorscope',
+			width: vectorscopeSize,
+			height: vectorscopeSize,
+			cells: vectorscope ? normalizeCells(vectorscope) : createZeroCells(vectorscopeSize, vectorscopeSize),
+			points: vectorscopePoints,
+		},
 	}
 }
