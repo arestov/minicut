@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
@@ -42,6 +42,22 @@ const inspectorTabs: Array<{ id: InspectorTab, label: string }> = [
 	{ id: 'color', label: 'Color' },
 	{ id: 'audio', label: 'Audio' },
 	{ id: 'export', label: 'Export' },
+]
+
+type PrimaryColorParam = keyof Pick<ColorCorrectionAttrs, 'exposure' | 'contrast' | 'saturation' | 'temperature'>
+
+const defaultColorCorrectionParams: Record<PrimaryColorParam, AnimatedScalar> = {
+	exposure: { value: 0 },
+	contrast: { value: 1 },
+	saturation: { value: 1 },
+	temperature: { value: 0 },
+}
+
+const colorGradePresets: Array<{ id: string, label: string, params: Partial<Record<PrimaryColorParam, number>> }> = [
+	{ id: 'neutral', label: 'Neutral', params: { exposure: 0, contrast: 1, saturation: 1, temperature: 0 } },
+	{ id: 'warm', label: 'Warm', params: { exposure: 0.12, contrast: 1.08, saturation: 1.15, temperature: 0.22 } },
+	{ id: 'cool', label: 'Cool', params: { exposure: 0.05, contrast: 1.04, saturation: 0.92, temperature: -0.2 } },
+	{ id: 'punch', label: 'Punch', params: { exposure: 0.08, contrast: 1.2, saturation: 1.35, temperature: 0 } },
 ]
 
 const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
@@ -304,6 +320,8 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 })
 
 const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
+	const [isComparePressed, setIsComparePressed] = useState(false)
+	const compareRestoreEnabledRef = useRef<boolean | null>(null)
 	const { projects$, actions } = useVideoEditor()
 	const selectedClip$ = clipAttrs$(projects$, clipId)
 	const selectedClipRels$ = clipRels$(projects$, clipId)
@@ -315,19 +333,70 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 		? effectAttrs$(projects$, colorCorrectionEffectId).get() as unknown as EffectAttrs
 		: null
 	const colorParams = (colorCorrectionAttrs?.params ?? {}) as Partial<ColorCorrectionAttrs>
-	const getParamValue = (key: keyof Pick<ColorCorrectionAttrs, 'exposure' | 'contrast' | 'saturation' | 'temperature'>, fallback: number): number =>
+	const isColorCorrectionEnabled = colorCorrectionAttrs?.enabled !== false
+	const getParamValue = (key: PrimaryColorParam, fallback: number): number =>
 		Number((colorParams[key] as AnimatedScalar | undefined)?.value ?? fallback)
-	const updateParam = (key: keyof Pick<ColorCorrectionAttrs, 'exposure' | 'contrast' | 'saturation' | 'temperature'>, value: number): void => {
+	const updateColorParams = (params: Partial<Record<PrimaryColorParam, number>>): void => {
+		if (!colorCorrectionEffectId) {
+			return
+		}
+
+		const nextParams = {
+			...colorParams,
+		}
+		for (const [key, value] of Object.entries(params) as Array<[PrimaryColorParam, number]>) {
+			nextParams[key] = { value }
+		}
+
+		actions.updateEffectAttrs(colorCorrectionEffectId, {
+			params: {
+				...nextParams,
+			},
+		})
+	}
+
+	const updateParam = (key: PrimaryColorParam, value: number): void => {
+		updateColorParams({ [key]: value })
+	}
+
+	const toggleBypass = (): void => {
 		if (!colorCorrectionEffectId) {
 			return
 		}
 
 		actions.updateEffectAttrs(colorCorrectionEffectId, {
-			params: {
-				...colorParams,
-				[key]: { value },
-			},
+			enabled: !isColorCorrectionEnabled,
 		})
+	}
+
+	const resetGrade = (): void => {
+		updateColorParams({
+			exposure: defaultColorCorrectionParams.exposure.value,
+			contrast: defaultColorCorrectionParams.contrast.value,
+			saturation: defaultColorCorrectionParams.saturation.value,
+			temperature: defaultColorCorrectionParams.temperature.value,
+		})
+	}
+
+	const handleCompareStart = (): void => {
+		if (!colorCorrectionEffectId || !isColorCorrectionEnabled || isComparePressed) {
+			return
+		}
+
+		compareRestoreEnabledRef.current = isColorCorrectionEnabled
+		setIsComparePressed(true)
+		actions.updateEffectAttrs(colorCorrectionEffectId, { enabled: false })
+	}
+
+	const handleCompareEnd = (): void => {
+		if (!colorCorrectionEffectId || !isComparePressed) {
+			return
+		}
+
+		const shouldRestoreEnabled = compareRestoreEnabledRef.current
+		compareRestoreEnabledRef.current = null
+		setIsComparePressed(false)
+		actions.updateEffectAttrs(colorCorrectionEffectId, { enabled: shouldRestoreEnabled !== false })
 	}
 
 	return (
@@ -346,6 +415,34 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 			<InspectorSection title="Primary correction" icon={SlidersHorizontal} ariaLabel="Primary color correction">
 				{colorCorrectionEffectId ? (
 					<>
+						<div className="ve-color-grade-actions">
+							<Button type="button" variant="secondary" onClick={toggleBypass}>
+								{isColorCorrectionEnabled ? 'Bypass grade' : 'Enable grade'}
+							</Button>
+							<Button type="button" variant="outline" onClick={resetGrade}>Reset grade</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								onPointerDown={handleCompareStart}
+								onPointerUp={handleCompareEnd}
+								onPointerLeave={handleCompareEnd}
+								onBlur={handleCompareEnd}
+							>
+								Press and hold: Before
+							</Button>
+						</div>
+						<div className="ve-color-grade-presets" aria-label="Grade presets">
+							{colorGradePresets.map((preset) => (
+								<Button
+									key={preset.id}
+									type="button"
+									variant="outline"
+									onClick={() => updateColorParams(preset.params)}
+								>
+									{preset.label}
+								</Button>
+							))}
+						</div>
 						<label className="ve-slider-field">
 							<span>Exposure</span>
 							<input type="range" aria-label="Exposure" min="-100" max="100" value={Math.round(getParamValue('exposure', 0) * 100)} onChange={(event) => updateParam('exposure', Number(event.currentTarget.value) / 100)} />
@@ -362,7 +459,7 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 							<span>Temperature</span>
 							<input type="range" aria-label="Temperature" min="-100" max="100" value={Math.round(getParamValue('temperature', 0) * 100)} onChange={(event) => updateParam('temperature', Number(event.currentTarget.value) / 100)} />
 						</label>
-						<small>Exposure {getParamValue('exposure', 0).toFixed(2)} · Contrast {getParamValue('contrast', 1).toFixed(2)} · Saturation {getParamValue('saturation', 1).toFixed(2)}</small>
+						<small>{isColorCorrectionEnabled ? 'Grade active' : 'Grade bypassed'} · Exposure {getParamValue('exposure', 0).toFixed(2)} · Contrast {getParamValue('contrast', 1).toFixed(2)} · Saturation {getParamValue('saturation', 1).toFixed(2)}</small>
 					</>
 				) : (
 					<Button type="button" variant="secondary" onClick={() => actions.addColorCorrectionToSelectedClip()}>Add primary correction</Button>

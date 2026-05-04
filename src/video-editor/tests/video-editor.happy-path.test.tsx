@@ -270,6 +270,43 @@ describe('video editor harness', () => {
 			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
 				filter: 'brightness(1.25) contrast(1) saturate(1) hue-rotate(0deg)',
 			})
+			expect(within(clipButton).getByText('Grade')).toBeVisible()
+
+			await user.click(within(inspector).getByRole('button', { name: 'Warm' }))
+			const warmParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
+				exposure: { value: number }
+				contrast: { value: number }
+				saturation: { value: number }
+				temperature: { value: number }
+			}
+			expect(warmParams.exposure.value).toBeCloseTo(0.12, 6)
+			expect(warmParams.temperature.value).toBeCloseTo(0.22, 6)
+
+			await user.click(within(inspector).getByRole('button', { name: 'Reset grade' }))
+			const resetParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
+				exposure: { value: number }
+				contrast: { value: number }
+				saturation: { value: number }
+				temperature: { value: number }
+			}
+			expect(resetParams.exposure.value).toBe(0)
+			expect(resetParams.contrast.value).toBe(1)
+			expect(resetParams.saturation.value).toBe(1)
+			expect(resetParams.temperature.value).toBe(0)
+
+			await user.click(within(inspector).getByRole('button', { name: 'Bypass grade' }))
+			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(false)
+			expect(within(clipButton).queryByText('Grade')).toBeNull()
+
+			await user.click(within(inspector).getByRole('button', { name: 'Enable grade' }))
+			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(true)
+			expect(within(clipButton).getByText('Grade')).toBeVisible()
+
+			const compareButton = within(inspector).getByRole('button', { name: 'Press and hold: Before' })
+			fireEvent.pointerDown(compareButton)
+			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(false)
+			fireEvent.pointerUp(compareButton)
+			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(true)
 		} finally {
 			unmount()
 		}

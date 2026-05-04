@@ -1216,6 +1216,29 @@ button:disabled {
 	overflow: hidden;
 }
 
+.ve-clip__title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+}
+
+.ve-clip__badge {
+	display: inline-flex;
+	align-items: center;
+	height: 18px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: #ede9fe;
+	border: 1px solid #c4b5fd;
+	color: #5b21b6;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	flex: 0 0 auto;
+}
+
 .ve-clip:active {
 	cursor: grabbing;
 }
@@ -1452,6 +1475,22 @@ button:disabled {
 	border-radius: 6px;
 	border: 1px solid rgba(24, 24, 27, 0.14);
 	padding: 0;
+}
+
+.ve-color-grade-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.ve-color-grade-presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.ve-color-grade-presets .ve-button {
+	min-width: 86px;
 }
 
 .ve-sr-only {

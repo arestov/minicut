@@ -1,7 +1,7 @@
 import { observer } from '@legendapp/state/react'
 import { useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { clipAttrs$ } from '../legend/observableSelectors'
+import { clipAttrs$, clipRels$, effectAttrs$ } from '../legend/observableSelectors'
 import { formatPercent, formatSeconds } from './format'
 
 type ClipPointerDragState =
@@ -21,11 +21,22 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 	const dragState = useRef<ClipPointerDragState | null>(null)
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0)
 	const clip$ = clipAttrs$(projects$, clipId)
+	const clipRels = clipRels$(projects$, clipId)
 	const name = String(clip$.name.get())
 	const start = Number(clip$.start.get())
 	const duration = Number(clip$.duration.get())
 	const opacity = Number(clip$.opacity.value.get())
 	const color = String(clip$.color.get() ?? '#2563eb')
+	const effectIds = clipRels.effects.get()
+	const hasActiveColorGrade = (Array.isArray(effectIds) ? effectIds : []).some((effectId) => {
+		const effect = projects$.entitiesById[effectId]
+		if (!effect || effect.type.get() !== 'effect') {
+			return false
+		}
+
+		const effectAttrs = effectAttrs$(projects$, effectId)
+		return String(effectAttrs.kind.get()) === 'color-correction' && effectAttrs.enabled.get() !== false
+	})
 	const width = Math.max(36, duration * timelineZoom)
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx)
 	const splitAtPointer = (clientX: number, element: HTMLElement): void => {
@@ -139,7 +150,10 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 					finishPointerDrag(event.clientX)
 				}}
 			/>
-			<span>{name}</span>
+			<div className="ve-clip__title">
+				<span>{name}</span>
+				{hasActiveColorGrade ? <span className="ve-clip__badge" aria-label="Color grade enabled">Grade</span> : null}
+			</div>
 			<small>
 				{name} · {formatSeconds(start)} / {formatSeconds(duration)} · opacity {formatPercent(opacity)}
 			</small>
