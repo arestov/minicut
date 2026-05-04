@@ -129,6 +129,38 @@ export interface AnimatedScalar {
 	keyframes?: EntityId[]
 }
 
+export interface OklchColor {
+	l: number
+	c: number
+	h: number
+	alpha: number
+	gamut?: 'srgb' | 'p3'
+}
+
+export interface ColorCorrectionAttrs {
+	exposure: AnimatedScalar
+	contrast: AnimatedScalar
+	highlights: AnimatedScalar
+	shadows: AnimatedScalar
+	saturation: AnimatedScalar
+	vibrance: AnimatedScalar
+	temperature: AnimatedScalar
+	tint: AnimatedScalar
+	hue: AnimatedScalar
+	gamma: AnimatedScalar
+}
+
+export type EffectKind = 'blur' | 'sharpen' | 'tint' | 'color-correction' | 'vignette' | 'lut'
+
+export interface EffectAttrs {
+	name: string
+	kind: EffectKind
+	enabled: boolean
+	amount?: number
+	params?: Partial<ColorCorrectionAttrs> | Record<string, unknown>
+	color?: OklchColor
+}
+
 export interface KeyframeAttrs {
 	time: number
 	value: number
@@ -205,6 +237,8 @@ export const CMD = {
 	CLIP_UPDATE_ATTRS: -130,
 	EFFECT_ADD: -140,
 	EFFECT_REMOVE: -141,
+	EFFECT_UPDATE_ATTRS: -142,
+	EFFECT_REORDER: -143,
 } as const
 
 export const PATCH = {
@@ -284,8 +318,23 @@ export type Command =
 			c: typeof CMD.EFFECT_ADD
 			p: CommandTargetRef & {
 				name: string
-				kind: 'blur' | 'sharpen' | 'tint'
-				amount: number
+				kind: EffectKind
+				amount?: number
+				params?: Record<string, unknown>
+				color?: OklchColor
+			}
+	  }
+	| {
+			c: typeof CMD.EFFECT_UPDATE_ATTRS
+			p: CommandTargetRef & {
+				attrs: Partial<EffectAttrs>
+			}
+	  }
+	| {
+			c: typeof CMD.EFFECT_REORDER
+			p: CommandTargetRef & {
+				effectId: EntityId
+				toIndex: number
 			}
 	  }
 	| {

@@ -1,5 +1,5 @@
 import { getEntity, getProjectEntity, getProjectForEntity, getTrackForClip } from './selectors'
-import { CMD, type ClipAttrs, type Command, type Entity, type ProjectGraph, type ProjectRegistry, type ResourceDataState } from './types'
+import { CMD, type ClipAttrs, type Command, type EffectAttrs, type Entity, type OklchColor, type ProjectGraph, type ProjectRegistry, type ResourceDataState } from './types'
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
 	if (!condition) {
@@ -10,6 +10,34 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 const isFinitePositive = (value: number): boolean => Number.isFinite(value) && value > 0
 
 const isFiniteNonNegative = (value: number): boolean => Number.isFinite(value) && value >= 0
+
+const effectKinds = ['blur', 'sharpen', 'tint', 'color-correction', 'vignette', 'lut'] as const
+
+const assertOklchColor = (color: OklchColor): void => {
+	assert(Number.isFinite(color.l) && color.l >= 0 && color.l <= 1, 'OKLCH lightness must be between 0 and 1')
+	assert(Number.isFinite(color.c) && color.c >= 0, 'OKLCH chroma must be non-negative')
+	assert(Number.isFinite(color.h) && color.h >= 0 && color.h <= 360, 'OKLCH hue must be between 0 and 360')
+	assert(Number.isFinite(color.alpha) && color.alpha >= 0 && color.alpha <= 1, 'OKLCH alpha must be between 0 and 1')
+	assert(color.gamut === undefined || color.gamut === 'srgb' || color.gamut === 'p3', 'OKLCH gamut is invalid')
+}
+
+const assertEffectAttrs = (attrs: Partial<EffectAttrs>): void => {
+	if (attrs.name !== undefined) {
+		assert(attrs.name.trim().length > 0, 'Effect name is required')
+	}
+	if (attrs.kind !== undefined) {
+		assert(effectKinds.includes(attrs.kind), 'Effect kind is invalid')
+	}
+	if (attrs.enabled !== undefined) {
+		assert(typeof attrs.enabled === 'boolean', 'Effect enabled flag must be boolean')
+	}
+	if (attrs.amount !== undefined) {
+		assert(attrs.amount >= 0 && attrs.amount <= 1, 'Effect amount must be between 0 and 1')
+	}
+	if (attrs.color !== undefined) {
+		assertOklchColor(attrs.color)
+	}
+}
 
 const assertSerializableResourceData = (data: ResourceDataState): void => {
 	assert(['missing', 'partial', 'ready'].includes(data.status), 'Resource data status is invalid')
@@ -211,9 +239,27 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			assertClipTarget(registry, command.p)
 			assertProjectForEntity(registry, command.p.id)
 			assertClipTrackUnlocked(registry, command.p.id)
-			assert(command.p.name.trim().length > 0, 'Effect name is required')
-			assert(['blur', 'sharpen', 'tint'].includes(command.p.kind), 'Effect kind is invalid')
-			assert(command.p.amount >= 0 && command.p.amount <= 1, 'Effect amount must be between 0 and 1')
+			assertEffectAttrs(command.p)
+			assert(effectKinds.includes(command.p.kind), 'Effect kind is invalid')
+			return
+		}
+
+		case CMD.EFFECT_UPDATE_ATTRS: {
+			const effect = assertEntityType(registry, command.p.id, 'effect')
+			assertProjectForEntity(registry, String(effect.rels.clip))
+			assertEffectAttrs(command.p.attrs)
+			return
+		}
+
+		case CMD.EFFECT_REORDER: {
+			const clip = assertClipTarget(registry, command.p)
+			assertProjectForEntity(registry, command.p.id)
+			assertClipTrackUnlocked(registry, command.p.id)
+			const effect = assertEntityType(registry, command.p.effectId, 'effect')
+			const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+			assert(effectIds.includes(command.p.effectId), 'Effect must belong to the target clip')
+			assert(String(effect.rels.clip) === clip.id, 'Effect clip relation must match target clip')
+			assert(Number.isInteger(command.p.toIndex) && command.p.toIndex >= 0, 'Effect reorder index must be a non-negative integer')
 			return
 		}
 

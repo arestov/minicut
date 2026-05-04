@@ -14,10 +14,12 @@ import {
 import {
 	type AnimatedScalar,
 	type ClipAttrs,
+	type ColorCorrectionAttrs,
 	type Command,
 	type DispatchResult,
 	type Entity,
 	type EntityId,
+	type EffectAttrs,
 	type Patch,
 	type ProjectRegistry,
 	CMD,
@@ -25,6 +27,19 @@ import {
 } from './types'
 
 const scalar = (value: number): AnimatedScalar => ({ value })
+
+export const createDefaultColorCorrectionAttrs = (): ColorCorrectionAttrs => ({
+	exposure: scalar(0),
+	contrast: scalar(1),
+	highlights: scalar(0),
+	shadows: scalar(0),
+	saturation: scalar(1),
+	vibrance: scalar(0),
+	temperature: scalar(0),
+	tint: scalar(0),
+	hue: scalar(0),
+	gamma: scalar(1),
+})
 
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
 
@@ -512,13 +527,21 @@ export const buildDispatchResult = (
 			const clip = assertEntity(registry, command.p.id)
 			const effectId = createEntityId()
 			const effects = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+			const baseAttrs: EffectAttrs = {
+				name: command.p.name,
+				kind: command.p.kind,
+				enabled: true,
+				...(command.p.amount !== undefined ? { amount: command.p.amount } : {}),
+				...(command.p.color ? { color: command.p.color } : {}),
+			}
 			const effect: Entity = {
 				id: effectId,
 				type: 'effect',
 				attrs: {
-					name: command.p.name,
-					kind: command.p.kind,
-					amount: command.p.amount,
+					...baseAttrs,
+					...(command.p.kind === 'color-correction'
+						? { params: { ...createDefaultColorCorrectionAttrs(), ...(command.p.params ?? {}) } }
+						: command.p.params ? { params: command.p.params } : {}),
 				},
 				rels: {
 					clip: clip.id,
@@ -544,6 +567,58 @@ export const buildDispatchResult = (
 					],
 				},
 				createdIds: { effectId },
+			}
+		}
+
+		case CMD.EFFECT_UPDATE_ATTRS: {
+			const effect = assertEntity(registry, command.p.id)
+			const project = assertProjectForEntity(registry, String(effect.rels.clip))
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [{ c: PATCH.ATTRS_MERGE, p: { id: effect.id, attrs: command.p.attrs } }],
+				},
+			}
+		}
+
+		case CMD.EFFECT_REORDER: {
+			const project = assertProjectForEntity(registry, command.p.id)
+			const clip = assertEntity(registry, command.p.id)
+			const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+			const fromIndex = effectIds.indexOf(command.p.effectId)
+			const withoutEffect = effectIds.filter((id) => id !== command.p.effectId)
+			const toIndex = Math.max(0, Math.min(command.p.toIndex, withoutEffect.length))
+			const reordered = [...withoutEffect.slice(0, toIndex), command.p.effectId, ...withoutEffect.slice(toIndex)]
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [
+						{
+							c: PATCH.REL_SPLICE,
+							p: {
+								id: clip.id,
+								rel: 'effects',
+								index: Math.max(0, fromIndex),
+								deleteCount: 1,
+								insert: [],
+							},
+						},
+						{
+							c: PATCH.REL_SPLICE,
+							p: {
+								id: clip.id,
+								rel: 'effects',
+								index: reordered.indexOf(command.p.effectId),
+								deleteCount: 0,
+								insert: [command.p.effectId],
+							},
+						},
+					],
+				},
 			}
 		}
 
