@@ -5,13 +5,15 @@ export interface PreviewMediaElementEntry {
 	kind: PreviewMediaElementKind
 	resourceUrl: string
 	element: HTMLMediaElement
+	layerIndex: number
+	updatedAt: number
 }
 
 export class PreviewMediaElementRegistry {
 	private readonly elements = new Map<string, PreviewMediaElementEntry>()
 
-	set(clipId: string, kind: PreviewMediaElementKind, resourceUrl: string, element: HTMLMediaElement): void {
-		this.elements.set(clipId, { clipId, kind, resourceUrl, element })
+	set(clipId: string, kind: PreviewMediaElementKind, resourceUrl: string, element: HTMLMediaElement, layerIndex = 0): void {
+		this.elements.set(clipId, { clipId, kind, resourceUrl, element, layerIndex, updatedAt: performance.now() })
 	}
 
 	delete(clipId: string, element?: HTMLMediaElement | null): void {
@@ -34,10 +36,19 @@ export class PreviewMediaElementRegistry {
 	}
 
 	getVideos(): HTMLVideoElement[] {
+		return this.getVideoEntries()
+			.map((entry) => entry.element)
+	}
+
+	getVideoEntries(): Array<PreviewMediaElementEntry & { element: HTMLVideoElement }> {
 		return Array.from(this.elements.values())
 			.filter((entry): entry is PreviewMediaElementEntry & { element: HTMLVideoElement } =>
 				entry.kind === 'video' && entry.element instanceof HTMLVideoElement)
-			.map((entry) => entry.element)
+			.sort((left, right) => right.layerIndex - left.layerIndex || right.updatedAt - left.updatedAt)
+	}
+
+	getTopmostVideo(): HTMLVideoElement | undefined {
+		return this.getVideoEntries()[0]?.element
 	}
 }
 

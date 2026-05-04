@@ -1,10 +1,10 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { createPaletteFromHex, sampleVideoFramePalette } from '../color/framePalette'
-import { buildLookColorCorrectionParams, getLookPreset, type LookParam } from '../color/looks'
+import { createPaletteFromHex, readVideoFrameImageData, sampleVideoFramePalette } from '../color/framePalette'
+import { buildLookColorCorrectionParams, getLookPreset, lookPresets, type LookParam } from '../color/looks'
 import type { AnimatedScalar, ColorCorrectionAttrs, EditorSessionState, EffectAttrs, ResourceAttrs, TextAttrs } from '../domain/types'
 import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
 import {
@@ -22,6 +22,7 @@ import type { FramePaletteStatus } from './FramePaletteAction'
 import { LookBrowser } from './LookBrowser'
 import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 import { TextAppearancePanel } from './TextAppearancePanel'
+import LookThumbnailWorker from './lookThumbnailWorker?worker'
 
 type InspectorTab = EditorSessionState['activeInspectorTab']
 
@@ -198,9 +199,8 @@ const InspectorEditTabPanel = observer(({ clipId, mediaElementRegistry }: { clip
 			return
 		}
 
-		const framePalette = mediaElementRegistry?.getVideos()
-			.map((video) => sampleVideoFramePalette(video))
-			.find((palette) => palette !== null) ?? null
+		const topmostVideo = mediaElementRegistry?.getTopmostVideo()
+		const framePalette = topmostVideo ? sampleVideoFramePalette(topmostVideo) : null
 		const fallbackPalette = framePalette ?? createPaletteFromHex(String(selectedClip$.color.get() ?? '#2563eb'))
 		if (!fallbackPalette) {
 			setPaletteStatus('unavailable')
@@ -343,8 +343,9 @@ const InspectorEditTabPanel = observer(({ clipId, mediaElementRegistry }: { clip
 	)
 })
 
-const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
+const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { clipId: string, mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const [isComparePressed, setIsComparePressed] = useState(false)
+	const [lookThumbnails, setLookThumbnails] = useState<Record<string, string>>({})
 	const compareRestoreEnabledRef = useRef<boolean | null>(null)
 	const { projects$, actions } = useVideoEditor()
 	const selectedClip$ = clipAttrs$(projects$, clipId)
@@ -439,6 +440,44 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 		actions.updateEffectAttrs(colorCorrectionEffectId, { enabled: shouldRestoreEnabled !== false })
 	}
 
+	useEffect(() => {
+		if (!colorCorrectionEffectId || !mediaElementRegistry) {
+			setLookThumbnails({})
+			return
+		}
+
+		const video = mediaElementRegistry.getTopmostVideo()
+		const frame = video ? readVideoFrameImageData(video, 48) : null
+		if (!frame) {
+			setLookThumbnails({})
+			return
+		}
+
+		let isCancelled = false
+		const worker = new LookThumbnailWorker()
+		worker.onmessage = (event: MessageEvent<{ type: string, thumbnails?: Record<string, string> }>) => {
+			if (!isCancelled && event.data.type === 'look-thumbnails-rendered' && event.data.thumbnails) {
+				setLookThumbnails(event.data.thumbnails)
+			}
+		}
+		const pixels = new Uint8ClampedArray(frame.data)
+		worker.postMessage({
+			type: 'render-look-thumbnails',
+			width: frame.width,
+			height: frame.height,
+			pixels,
+			looks: lookPresets.map((look) => {
+				const { lookId: _lookId, lookIntensity: _lookIntensity, ...params } = buildLookColorCorrectionParams(look.id, lookIntensity)
+				return { id: look.id, params }
+			}),
+		}, [pixels.buffer])
+
+		return () => {
+			isCancelled = true
+			worker.terminate()
+		}
+	}, [colorCorrectionEffectId, lookIntensity, mediaElementRegistry])
+
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Color inspector">
 			<InspectorSection title="Label color" icon={Palette}>
@@ -486,6 +525,7 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 						<LookBrowser
 							activeLookId={activeLook.id}
 							intensity={lookIntensity}
+							thumbnails={lookThumbnails}
 							onApplyLook={applyLook}
 							onIntensityChange={updateLookIntensity}
 						/>
@@ -641,7 +681,7 @@ export const Inspector = observer(({ mediaElementRegistry }: { mediaElementRegis
 			<InspectorTabs activeTab={activeTab} onChange={setActiveTab} />
 			<InspectorClipHeader clipId={clipId} />
 			{activeTab === 'edit' ? <InspectorEditTabPanel clipId={clipId} mediaElementRegistry={mediaElementRegistry} /> : null}
-			{activeTab === 'color' ? <InspectorColorTabPanel clipId={clipId} /> : null}
+			{activeTab === 'color' ? <InspectorColorTabPanel clipId={clipId} mediaElementRegistry={mediaElementRegistry} /> : null}
 			{activeTab === 'audio' ? <InspectorAudioTabPanel clipId={clipId} /> : null}
 			{activeTab === 'export' ? <InspectorExportTabPanel clipId={clipId} /> : null}
 		</aside>

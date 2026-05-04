@@ -67,14 +67,14 @@ export const collectCanvasRgbSamples = (imageData: ImageData, stride = 4): RgbCo
 	return samples
 }
 
-export const sampleVideoFramePalette = (video: HTMLVideoElement): FramePaletteSuggestion | null => {
+export const readVideoFrameImageData = (video: HTMLVideoElement, targetWidth = 32): ImageData | null => {
 	if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) {
 		return null
 	}
 
 	const canvas = document.createElement('canvas')
-	canvas.width = 32
-	canvas.height = Math.max(1, Math.round(32 * (video.videoHeight / video.videoWidth)))
+	canvas.width = Math.max(1, Math.round(targetWidth))
+	canvas.height = Math.max(1, Math.round(canvas.width * (video.videoHeight / video.videoWidth)))
 	const context = canvas.getContext('2d', { willReadFrequently: true })
 	if (!context) {
 		return null
@@ -82,10 +82,15 @@ export const sampleVideoFramePalette = (video: HTMLVideoElement): FramePaletteSu
 
 	try {
 		context.drawImage(video, 0, 0, canvas.width, canvas.height)
-		return createPaletteFromRgbSamples(collectCanvasRgbSamples(context.getImageData(0, 0, canvas.width, canvas.height), 3))
+		return context.getImageData(0, 0, canvas.width, canvas.height)
 	} catch {
 		return null
 	}
+}
+
+export const sampleVideoFramePalette = (video: HTMLVideoElement): FramePaletteSuggestion | null => {
+	const imageData = readVideoFrameImageData(video, 32)
+	return imageData ? createPaletteFromRgbSamples(collectCanvasRgbSamples(imageData, 3)) : null
 }
 
 export const normalizePaletteHex = (value: string, fallback: string): string =>

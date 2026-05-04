@@ -326,6 +326,7 @@ const useMediaElementSync = (
 const VisualClipLayer = ({
 	clip,
 	layerOperation,
+	layerIndex,
 	cursor,
 	mediaElementRegistry,
 	mediaSeekStateRef,
@@ -333,6 +334,7 @@ const VisualClipLayer = ({
 }: {
 	clip: RenderedClip
 	layerOperation: PreviewLayerOperation
+	layerIndex: number
 	cursor: number
 	mediaElementRegistry?: PreviewMediaElementRegistry
 	mediaSeekStateRef?: MutableRefObject<Map<string, MediaSeekState>>
@@ -348,12 +350,12 @@ const VisualClipLayer = ({
 			return
 		}
 		if (element) {
-			mediaElementRegistry.set(clip.id, 'video', clip.resourceUrl, element)
+			mediaElementRegistry.set(clip.id, 'video', clip.resourceUrl, element, layerIndex)
 			return
 		}
 		mediaElementRegistry.delete(clip.id, element)
 		mediaSeekStateRef?.current.delete(clip.id)
-	}, [clip.id, clip.resourceUrl, mediaElementRegistry, mediaSeekStateRef])
+	}, [clip.id, clip.resourceUrl, layerIndex, mediaElementRegistry, mediaSeekStateRef])
 
 	return (
 		<div
@@ -466,11 +468,12 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 				{frame.visualRenderedClips.length === 0 ? (
 					<div className="ve-renderer__empty">No frame at cursor</div>
 				) : (
-					frame.visualRenderedClips.map((clip) => (
+					frame.visualRenderedClips.map((clip, layerIndex) => (
 						<VisualClipLayer
 							key={clip.id}
 							clip={clip}
 							layerOperation={previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)}
+							layerIndex={layerIndex}
 							cursor={frame.cursor}
 							mediaElementRegistry={mediaElementRegistry}
 							mediaSeekStateRef={mediaSeekStateRef}
@@ -481,10 +484,11 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 				{isSplitCompare ? (
 					<div className="ve-renderer__compare" aria-label="Split compare preview">
 						<div className="ve-renderer__compare-before" aria-hidden="true">
-							{frame.visualRenderedClips.map((clip) => (
+							{frame.visualRenderedClips.map((clip, layerIndex) => (
 								<VisualClipLayer
 									key={`before-${clip.id}`}
 									clip={clip}
+									layerIndex={layerIndex}
 									layerOperation={{ ...(previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)), operations: (previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)).operations.filter((operation) => operation.type !== 'effect') }}
 									cursor={frame.cursor}
 									onClipMediaError={onClipMediaError}
