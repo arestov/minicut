@@ -23,6 +23,13 @@ interface MediaSeekState {
 	wasPlaying: boolean
 }
 
+interface PreviewLayerViewModel {
+	clip: RenderedClip
+	layerIndex: number
+	operation: PreviewLayerOperation
+	beforeOperation: PreviewLayerOperation
+}
+
 interface RendererStageProps {
 	structure: PreviewStructure
 	frame: PreviewFrame
@@ -173,6 +180,11 @@ const getLayerStyle = (clip: RenderedClip, filters: string[]): CSSProperties => 
 	borderColor: clip.color,
 	boxShadow: `0 0 0 2px ${clip.color}, 0 20px 45px rgba(0, 0, 0, 0.3)`,
 	transform: `translate(${clip.transform.x}px, ${clip.transform.y}px) scale(${clip.transform.scale}) rotate(${clip.transform.rotation}deg)`,
+})
+
+const withoutEffectOperations = (operation: PreviewLayerOperation): PreviewLayerOperation => ({
+	...operation,
+	operations: operation.operations.filter((item) => item.type !== 'effect'),
 })
 
 const syncMediaPlayback = (
@@ -330,6 +342,7 @@ const VisualClipLayer = ({
 	cursor,
 	mediaElementRegistry,
 	mediaSeekStateRef,
+	renderMedia = true,
 	onClipMediaError,
 }: {
 	clip: RenderedClip
@@ -338,6 +351,7 @@ const VisualClipLayer = ({
 	cursor: number
 	mediaElementRegistry?: PreviewMediaElementRegistry
 	mediaSeekStateRef?: MutableRefObject<Map<string, MediaSeekState>>
+	renderMedia?: boolean
 	onClipMediaError?: (resourceId: string) => void
 }) => {
 	const hasMedia = isRealMediaUrl(clip.resourceUrl)
@@ -362,10 +376,10 @@ const VisualClipLayer = ({
 			className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
 			style={getLayerStyle({ ...clip, opacity, transform }, filters ? [filters] : [])}
 		>
-			{hasMedia && clip.resourceKind === 'image' ? (
+			{renderMedia && hasMedia && clip.resourceKind === 'image' ? (
 				<img src={clip.resourceUrl} alt={clip.resourceName} />
 			) : null}
-			{hasMedia && clip.resourceKind === 'video' ? (
+			{renderMedia && hasMedia && clip.resourceKind === 'video' ? (
 				<video
 					ref={mediaElementRegistry ? handleVideoRef : undefined}
 					src={clip.resourceUrl}
@@ -386,7 +400,7 @@ const VisualClipLayer = ({
 				/>
 			) : null}
 			{clip.resourceKind === 'text' ? renderTextClip({ ...clip, text }) : null}
-			{!hasMedia && clip.resourceKind !== 'text' ? (
+			{(!hasMedia || !renderMedia) && clip.resourceKind !== 'text' ? (
 				<>
 					<strong>{clip.name}</strong>
 					<span>{clip.resourceName}</span>
@@ -452,9 +466,18 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 		() => new Map(previewRenderPlan.layers.map((layer) => [layer.clipId, layer])),
 		[previewRenderPlan],
 	)
+	const visualLayers = useMemo<PreviewLayerViewModel[]>(() => frame.visualRenderedClips.map((clip, layerIndex) => {
+		const operation = previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)
+		return {
+			clip,
+			layerIndex,
+			operation,
+			beforeOperation: withoutEffectOperations(operation),
+		}
+	}), [frame.visualRenderedClips, previewLayerByClipId])
 	useMediaElementSync(mediaElementRegistry, mediaSeekStateRef, frame, isPlaying)
 
-	const isSplitCompare = compareMode === 'split' && frame.visualRenderedClips.length > 0
+	const isSplitCompare = compareMode === 'split' && visualLayers.length > 0
 
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">
@@ -465,14 +488,14 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 					aria-label="Offscreen preview canvas"
 					data-render-mode={renderMode}
 				/>
-				{frame.visualRenderedClips.length === 0 ? (
+				{visualLayers.length === 0 ? (
 					<div className="ve-renderer__empty">No frame at cursor</div>
 				) : (
-					frame.visualRenderedClips.map((clip, layerIndex) => (
+					visualLayers.map(({ clip, layerIndex, operation }) => (
 						<VisualClipLayer
 							key={clip.id}
 							clip={clip}
-							layerOperation={previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)}
+							layerOperation={operation}
 							layerIndex={layerIndex}
 							cursor={frame.cursor}
 							mediaElementRegistry={mediaElementRegistry}
@@ -484,13 +507,14 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 				{isSplitCompare ? (
 					<div className="ve-renderer__compare" aria-label="Split compare preview">
 						<div className="ve-renderer__compare-before" aria-hidden="true">
-							{frame.visualRenderedClips.map((clip, layerIndex) => (
+							{visualLayers.map(({ clip, layerIndex, beforeOperation }) => (
 								<VisualClipLayer
 									key={`before-${clip.id}`}
 									clip={clip}
 									layerIndex={layerIndex}
-									layerOperation={{ ...(previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)), operations: (previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)).operations.filter((operation) => operation.type !== 'effect') }}
+									layerOperation={beforeOperation}
 									cursor={frame.cursor}
+									renderMedia={false}
 									onClipMediaError={onClipMediaError}
 								/>
 							))}
