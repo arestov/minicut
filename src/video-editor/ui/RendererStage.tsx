@@ -8,6 +8,7 @@ import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/der
 //   and the browser can end up requesting a raw `.ts` file with a wrong MIME type.
 // - This direct import guarantees the emitted asset is JavaScript (previewCanvasWorker-*.js).
 import PreviewCanvasWorker from './previewCanvasWorker?worker'
+import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const offscreenWorkers = new WeakMap<HTMLCanvasElement, Worker>()
 const pausedSeekToleranceSeconds = 0.04
@@ -24,6 +25,7 @@ interface RendererStageProps {
 	structure: PreviewStructure
 	frame: PreviewFrame
 	isPlaying: boolean
+	mediaElementRegistry: PreviewMediaElementRegistry
 	compareMode?: 'off' | 'split'
 	onClipMediaError?: (resourceId: string) => void
 }
@@ -274,7 +276,7 @@ const usePreviewCanvasRenderer = (
 }
 
 const useMediaElementSync = (
-	mediaElementsRef: MutableRefObject<Map<string, HTMLMediaElement>>,
+	mediaElementRegistry: PreviewMediaElementRegistry,
 	mediaSeekStateRef: MutableRefObject<Map<string, MediaSeekState>>,
 	frame: PreviewFrame,
 	isPlaying: boolean,
@@ -286,7 +288,7 @@ const useMediaElementSync = (
 				continue
 			}
 
-			const element = mediaElementsRef.current.get(clip.id)
+			const element = mediaElementRegistry.get(clip.id)?.element
 			if (!element) {
 				continue
 			}
@@ -316,36 +318,36 @@ const useMediaElementSync = (
 				syncMediaPlayback(element, isPlaying)
 			}
 		}
-	}, [frame, isPlaying, mediaElementsRef, mediaSeekStateRef])
+	}, [frame, isPlaying, mediaElementRegistry, mediaSeekStateRef])
 }
 
 const VisualClipLayer = ({
 	clip,
 	cursor,
 	filters,
-	mediaElementsRef,
+	mediaElementRegistry,
 	mediaSeekStateRef,
 	onClipMediaError,
 }: {
 	clip: RenderedClip
 	cursor: number
 	filters: string[]
-	mediaElementsRef?: MutableRefObject<Map<string, HTMLMediaElement>>
+	mediaElementRegistry?: PreviewMediaElementRegistry
 	mediaSeekStateRef?: MutableRefObject<Map<string, MediaSeekState>>
 	onClipMediaError?: (resourceId: string) => void
 }) => {
 	const hasMedia = isRealMediaUrl(clip.resourceUrl)
 	const handleVideoRef = useCallback((element: HTMLVideoElement | null) => {
-		if (!mediaElementsRef) {
+		if (!mediaElementRegistry) {
 			return
 		}
 		if (element) {
-			mediaElementsRef.current.set(clip.id, element)
+			mediaElementRegistry.set(clip.id, 'video', clip.resourceUrl, element)
 			return
 		}
-		mediaElementsRef.current.delete(clip.id)
+		mediaElementRegistry.delete(clip.id, element)
 		mediaSeekStateRef?.current.delete(clip.id)
-	}, [clip.id, mediaElementsRef, mediaSeekStateRef])
+	}, [clip.id, clip.resourceUrl, mediaElementRegistry, mediaSeekStateRef])
 
 	return (
 		<div
@@ -357,7 +359,7 @@ const VisualClipLayer = ({
 			) : null}
 			{hasMedia && clip.resourceKind === 'video' ? (
 				<video
-					ref={mediaElementsRef ? handleVideoRef : undefined}
+					ref={mediaElementRegistry ? handleVideoRef : undefined}
 					src={clip.resourceUrl}
 					muted
 					playsInline
@@ -389,24 +391,24 @@ const VisualClipLayer = ({
 const AudioClipElement = ({
 	clip,
 	cursor,
-	mediaElementsRef,
+	mediaElementRegistry,
 	mediaSeekStateRef,
 	onClipMediaError,
 }: {
 	clip: RenderedClip
 	cursor: number
-	mediaElementsRef: MutableRefObject<Map<string, HTMLMediaElement>>
+	mediaElementRegistry: PreviewMediaElementRegistry
 	mediaSeekStateRef: MutableRefObject<Map<string, MediaSeekState>>
 	onClipMediaError?: (resourceId: string) => void
 }) => {
 	const handleAudioRef = useCallback((element: HTMLAudioElement | null) => {
 		if (element) {
-			mediaElementsRef.current.set(clip.id, element)
+			mediaElementRegistry.set(clip.id, 'audio', clip.resourceUrl, element)
 			return
 		}
-		mediaElementsRef.current.delete(clip.id)
+		mediaElementRegistry.delete(clip.id, element)
 		mediaSeekStateRef.current.delete(clip.id)
-	}, [clip.id, mediaElementsRef, mediaSeekStateRef])
+	}, [clip.id, clip.resourceUrl, mediaElementRegistry, mediaSeekStateRef])
 
 	return (
 		<audio
@@ -431,11 +433,10 @@ const AudioClipElement = ({
 	)
 }
 
-export const RendererStage = ({ structure, frame, isPlaying, compareMode = 'off', onClipMediaError }: RendererStageProps) => {
+export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistry, compareMode = 'off', onClipMediaError }: RendererStageProps) => {
 	const { canvasRef, renderMode } = usePreviewCanvasRenderer(structure, frame)
-	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
 	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
-	useMediaElementSync(mediaElementsRef, mediaSeekStateRef, frame, isPlaying)
+	useMediaElementSync(mediaElementRegistry, mediaSeekStateRef, frame, isPlaying)
 
 	const isSplitCompare = compareMode === 'split' && frame.visualRenderedClips.length > 0
 
@@ -457,7 +458,7 @@ export const RendererStage = ({ structure, frame, isPlaying, compareMode = 'off'
 							clip={clip}
 							cursor={frame.cursor}
 							filters={clip.filters}
-							mediaElementsRef={mediaElementsRef}
+							mediaElementRegistry={mediaElementRegistry}
 							mediaSeekStateRef={mediaSeekStateRef}
 							onClipMediaError={onClipMediaError}
 						/>
@@ -488,7 +489,7 @@ export const RendererStage = ({ structure, frame, isPlaying, compareMode = 'off'
 								key={clip.id}
 								clip={clip}
 								cursor={frame.cursor}
-								mediaElementsRef={mediaElementsRef}
+								mediaElementRegistry={mediaElementRegistry}
 								mediaSeekStateRef={mediaSeekStateRef}
 								onClipMediaError={onClipMediaError}
 							/>

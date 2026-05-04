@@ -15,6 +15,7 @@ import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'
 import { ColorScopesPanel, type ScopeMode } from './ColorScopesPanel'
 import { RendererStage } from './RendererStage'
+import { createPreviewMediaElementRegistry, type PreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const previewWindowRequestIntervalMs = 200
 
@@ -26,6 +27,7 @@ const PreviewStage = observer(({
 	requestResourcePlayheadWindow,
 	noteResourcePreviewError,
 	compareMode,
+	mediaElementRegistry,
 }: {
 	frame$: Observable<PreviewFrame>
 	structure$: Observable<PreviewStructure>
@@ -34,6 +36,7 @@ const PreviewStage = observer(({
 	requestResourcePlayheadWindow: (resourceId: string, time: number) => void
 	noteResourcePreviewError: (resourceId: string) => void
 	compareMode: 'off' | 'split'
+	mediaElementRegistry: PreviewMediaElementRegistry
 }) => {
 	const frame = frame$.get()
 	const isPlaying = session$.isPlaying.get()
@@ -71,6 +74,7 @@ const PreviewStage = observer(({
 			structure={structure$.get()}
 			frame={resolvedFrame}
 			isPlaying={isPlaying}
+			mediaElementRegistry={mediaElementRegistry}
 			compareMode={compareMode}
 			onClipMediaError={(resourceId) => noteResourcePreviewError(resourceId)}
 		/>
@@ -154,6 +158,7 @@ export const PreviewPanel = () => {
 	const { projects$, session$, actions, resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
 	const [compareMode, setCompareMode] = useState<'off' | 'split'>('off')
 	const [scopeMode, setScopeMode] = useState<ScopeMode>('waveform')
+	const mediaElementRegistryRef = useRef(createPreviewMediaElementRegistry())
 	const showColorScopes = session$.activeInspectorTab.get() === 'color'
 	const previewStructure$ = useMemo(
 		() => createPreviewStructure$(projects$, session$),
@@ -186,8 +191,9 @@ export const PreviewPanel = () => {
 				requestResourcePlayheadWindow={requestResourcePlayheadWindow}
 				noteResourcePreviewError={noteResourcePreviewError}
 				compareMode={compareMode}
+				mediaElementRegistry={mediaElementRegistryRef.current}
 			/>
-			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} /> : null}
+			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} mediaElementRegistry={mediaElementRegistryRef.current} /> : null}
 			<PreviewTransport
 				frame$={previewFrame$}
 				session$={session$}

@@ -19,6 +19,7 @@ type ScopeProfileEvent = {
 	sampleCount?: number
 	sampled?: boolean
 	resourceKind?: string
+	source?: string
 }
 
 const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
@@ -83,6 +84,11 @@ const summarizeProfile = (events: ScopeProfileEvent[], measuredMs: number) => {
 	const computeDurations = vectorComputes.map((event) => event.durationMs ?? 0)
 	const drawDurations = vectorDraws.map((event) => event.durationMs ?? 0)
 	const sampleDurations = sampleResolves.map((event) => event.durationMs ?? 0)
+	const sampleSources = sampleResolves.reduce<Record<string, number>>((counts, event) => {
+		const source = event.source ?? 'unknown'
+		counts[source] = (counts[source] ?? 0) + 1
+		return counts
+	}, {})
 
 	return {
 		measuredMs,
@@ -105,6 +111,7 @@ const summarizeProfile = (events: ScopeProfileEvent[], measuredMs: number) => {
 		},
 		sampleRequestCount: sampleRequests.length,
 		sampleResolveCount: sampleResolves.length,
+		sampleSources,
 		sampleDurationMs: {
 			p50: Math.round(percentile(sampleDurations, 0.5)),
 			p95: Math.round(percentile(sampleDurations, 0.95)),

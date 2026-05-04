@@ -805,6 +805,10 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 })
 
 test('color grading preview exposes split compare and scopes', async ({ page }) => {
+	await page.addInitScript(() => {
+		const target = window as Window & { __MINICUT_SCOPE_PROFILE__?: { events: unknown[] } }
+		target.__MINICUT_SCOPE_PROFILE__ = { events: [] }
+	})
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
@@ -815,6 +819,14 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 	await setTimelineCursor(page, 0.25)
 	const preview = page.getByRole('region', { name: 'Preview panel' })
 	await expect(preview.getByLabel('Color scopes')).toHaveCount(0)
+	await page.waitForFunction(() => {
+		const video = document.querySelector('[aria-label="Renderer stage"] video') as HTMLVideoElement | null
+		return !!video && video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0
+	})
+	await page.evaluate(() => {
+		const target = window as Window & { __MINICUT_SCOPE_PROFILE__?: { events: unknown[] } }
+		target.__MINICUT_SCOPE_PROFILE__?.events.splice(0)
+	})
 
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Color' }).click()
@@ -824,6 +836,10 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 	const renderer = page.getByLabel('Renderer stage')
 	await expect(renderer.locator('.ve-renderer__layer--video').first()).toHaveCSS('filter', /brightness\(1\.12\)/)
 	await expect(preview.getByLabel('Color scopes')).toBeVisible()
+	await page.waitForFunction(() => {
+		const target = window as Window & { __MINICUT_SCOPE_PROFILE__?: { events: Array<{ type?: string; source?: string }> } }
+		return target.__MINICUT_SCOPE_PROFILE__?.events.some((event) => event.type === 'sample-resolved' && event.source === 'preview-video') ?? false
+	})
 	await expect(preview.getByRole('tab', { name: 'Waveform' })).toHaveAttribute('aria-selected', 'true')
 	await preview.getByRole('tab', { name: 'RGB Parade' }).click()
 	await expect(preview.getByLabel('Red parade density')).toBeVisible()

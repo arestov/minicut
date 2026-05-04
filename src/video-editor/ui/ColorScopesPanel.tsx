@@ -4,14 +4,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RenderedClip, PreviewFrame } from '../legend/derivedTimeline'
 import { createPreviewScopeData, type PreviewScopeData, type RgbaSampleFrame, type ScopeDensityFrame } from '../render/colorScopes'
 import { drawScopeDensityCanvas, drawVectorscopePoints, parseScopeColor, type ScopeRgbColor } from '../render/colorScopeCanvas'
+import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 
 export type ScopeMode = 'waveform' | 'rgb-parade' | 'vectorscope'
 
 type ScopeProfileEvent =
 	| { type: 'sample-request'; clipId: string; resourceKind: string; cursor: number; localTime: number }
-	| { type: 'sample-resolved'; clipId: string; resourceKind: string; durationMs: number; sampled: boolean }
+	| { type: 'sample-resolved'; clipId: string; resourceKind: string; durationMs: number; sampled: boolean; source: ScopeSampleSource }
 	| { type: 'compute'; mode: ScopeMode; durationMs: number; clipCount: number; sampleCount: number }
 	| { type: 'canvas-draw'; label: string; durationMs: number }
+
+type ScopeSampleSource = 'preview-video' | 'image-cache' | 'video-sampler'
+type ScopeSamplingStrategy = 'displayed-preview-frame' | 'state-frame'
 
 declare global {
 	interface Window {
@@ -41,6 +45,8 @@ const scopeSampleWidth = 192
 const scopeSampleHeight = 108
 const scopeSampleRateFps = 12
 const scopeSampleIntervalSeconds = 1 / scopeSampleRateFps
+const stateFramePreviewToleranceSeconds = 0.05
+const getScopeSamplingStrategy = (): ScopeSamplingStrategy => 'displayed-preview-frame'
 const waveformTintColor = parseScopeColor('#f4f4f5')
 const redParadeTintColor = parseScopeColor('#ef4444')
 const greenParadeTintColor = parseScopeColor('#22c55e')
@@ -86,6 +92,34 @@ const drawElementToSampleFrame = (
 	context.drawImage(element, 0, 0, width, height)
 	const image = context.getImageData(0, 0, width, height)
 	return { width, height, data: image.data }
+}
+
+const tryReadPreviewVideoSampleFrame = (
+	clip: RenderedClip,
+	mediaElementRegistry: PreviewMediaElementRegistry,
+	stateLocalTime: number,
+): RgbaSampleFrame | null => {
+	const video = mediaElementRegistry.getVideo(clip.id)
+	if (!video || video.seeking || video.readyState < video.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) {
+		return null
+	}
+
+	const stateDrift = Math.abs(video.currentTime - stateLocalTime)
+	if (getScopeSamplingStrategy() === 'state-frame' && stateDrift > stateFramePreviewToleranceSeconds) {
+		return null
+	}
+
+	try {
+		// The color inspector should describe the frame the user is actually looking at.
+		// During playback the app state is the scheduling intent, while HTMLVideoElement.currentTime
+		// is the decoded frame reality. So the default strategy samples the visible preview video
+		// read-only, even if it is slightly behind/ahead of state. We never seek this element here;
+		// when an exact state frame is required or the preview video is not ready, the private
+		// VideoScopeSampler below performs the seek on its own hidden element instead.
+		return drawElementToSampleFrame(video)
+	} catch {
+		return null
+	}
 }
 
 const loadImageSampleFrame = (url: string): Promise<RgbaSampleFrame | null> => new Promise((resolve) => {
@@ -196,7 +230,11 @@ class VideoScopeSampler {
 	}
 }
 
-const usePreviewScopeSamples = (clips: RenderedClip[], cursor: number): Record<string, RgbaSampleFrame | undefined> => {
+const usePreviewScopeSamples = (
+	clips: RenderedClip[],
+	cursor: number,
+	mediaElementRegistry: PreviewMediaElementRegistry,
+): Record<string, RgbaSampleFrame | undefined> => {
 	const [samples, setSamples] = useState<Record<string, RgbaSampleFrame | undefined>>({})
 	const videoSamplersRef = useRef(new Map<string, VideoScopeSampler>())
 	const sampleKey = useMemo(() => getScopeSampleKey(clips, cursor), [clips, cursor])
@@ -256,6 +294,23 @@ const usePreviewScopeSamples = (clips: RenderedClip[], cursor: number): Record<s
 				localTime,
 			})
 
+			const previewVideoSample = clip.resourceKind === 'video'
+				? tryReadPreviewVideoSampleFrame(clip, mediaElementRegistry, localTime)
+				: null
+			if (previewVideoSample) {
+				recordScopeProfileEvent({
+					type: 'sample-resolved',
+					clipId: clip.id,
+					resourceKind: clip.resourceKind,
+					durationMs: performance.now() - startedAt,
+					sampled: true,
+					source: 'preview-video',
+				})
+				setSamples((current) => current[clip.id] === previewVideoSample ? current : { ...current, [clip.id]: previewVideoSample })
+				continue
+			}
+
+			const sampleSource: ScopeSampleSource = clip.resourceKind === 'image' ? 'image-cache' : 'video-sampler'
 			const samplePromise = clip.resourceKind === 'image'
 				? getCachedImageSampleFrame(clip.resourceUrl)
 				: (() => {
@@ -275,6 +330,7 @@ const usePreviewScopeSamples = (clips: RenderedClip[], cursor: number): Record<s
 					resourceKind: clip.resourceKind,
 					durationMs: performance.now() - startedAt,
 					sampled: frame !== null,
+					source: sampleSource,
 				})
 				if (cancelled || frame === null) {
 					return
@@ -285,7 +341,7 @@ const usePreviewScopeSamples = (clips: RenderedClip[], cursor: number): Record<s
 		return () => {
 			cancelled = true
 		}
-	}, [sampleKey])
+	}, [sampleKey, mediaElementRegistry])
 
 	return samples
 }
@@ -355,11 +411,13 @@ export const ColorScopesPanel = observer(({
 	mode,
 	onModeChange,
 	resolveResourceUrl,
+	mediaElementRegistry,
 }: {
 	frame$: Observable<PreviewFrame>
 	mode: ScopeMode
 	onModeChange: (mode: ScopeMode) => void
 	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string
+	mediaElementRegistry: PreviewMediaElementRegistry
 }) => {
 	const frame = frame$.get()
 	const resolvedClips = useMemo(
@@ -369,7 +427,7 @@ export const ColorScopesPanel = observer(({
 		})),
 		[frame.visualRenderedClips, resolveResourceUrl],
 	)
-	const sampleFrames = usePreviewScopeSamples(resolvedClips, frame.cursor)
+	const sampleFrames = usePreviewScopeSamples(resolvedClips, frame.cursor, mediaElementRegistry)
 	const scopeClipKey = useMemo(() => getScopeClipKey(resolvedClips), [resolvedClips])
 	const scopes: PreviewScopeData = useMemo(() => {
 		const startedAt = performance.now()
