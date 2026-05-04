@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
 import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
 // Keep Vite's worker query import explicit.
 //
@@ -312,7 +312,9 @@ const useMediaElementSync = (
 			element.volume = Math.min(1, Math.max(0, clip.audio.gain))
 			// Pan remains export-only until preview audio is routed through an AudioContext/StereoPannerNode.
 			element.dataset.pan = String(clip.audio.pan)
-			syncMediaPlayback(element, isPlaying)
+			if (playbackStateChanged) {
+				syncMediaPlayback(element, isPlaying)
+			}
 		}
 	}, [frame, isPlaying, mediaElementsRef, mediaSeekStateRef])
 }
@@ -333,6 +335,18 @@ const VisualClipLayer = ({
 	onClipMediaError?: (resourceId: string) => void
 }) => {
 	const hasMedia = isRealMediaUrl(clip.resourceUrl)
+	const handleVideoRef = useCallback((element: HTMLVideoElement | null) => {
+		if (!mediaElementsRef) {
+			return
+		}
+		if (element) {
+			mediaElementsRef.current.set(clip.id, element)
+			return
+		}
+		mediaElementsRef.current.delete(clip.id)
+		mediaSeekStateRef?.current.delete(clip.id)
+	}, [clip.id, mediaElementsRef, mediaSeekStateRef])
+
 	return (
 		<div
 			className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
@@ -343,14 +357,7 @@ const VisualClipLayer = ({
 			) : null}
 			{hasMedia && clip.resourceKind === 'video' ? (
 				<video
-					ref={mediaElementsRef ? (element) => {
-						if (element) {
-							mediaElementsRef.current.set(clip.id, element)
-							return
-						}
-						mediaElementsRef.current.delete(clip.id)
-						mediaSeekStateRef?.current.delete(clip.id)
-					} : undefined}
+					ref={mediaElementsRef ? handleVideoRef : undefined}
 					src={clip.resourceUrl}
 					muted
 					playsInline

@@ -7,6 +7,8 @@ import { useEffect } from 'react'
 import { observer } from '@legendapp/state/react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 
+const playbackUiFrameMs = 1000 / 30
+
 const PlaybackLoop = observer(() => {
 	const { session$, actions } = useVideoEditor()
 	const isPlaying = session$.isPlaying.get()
@@ -17,11 +19,17 @@ const PlaybackLoop = observer(() => {
 		}
 
 		let lastTime = performance.now()
+		let accumulatedMs = 0
 		let frameId = 0
 		const tick = (time: number) => {
-			const deltaSeconds = Math.min((time - lastTime) / 1000, 0.25)
+			const elapsedMs = time - lastTime
 			lastTime = time
-			actions.tickPlayback(deltaSeconds)
+			accumulatedMs += elapsedMs
+			if (accumulatedMs >= playbackUiFrameMs) {
+				const deltaSeconds = Math.min(accumulatedMs / 1000, 0.25)
+				accumulatedMs = 0
+				actions.tickPlayback(deltaSeconds)
+			}
 			frameId = requestAnimationFrame(tick)
 		}
 

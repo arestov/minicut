@@ -575,8 +575,11 @@ test('preview playback lets video decode forward without seeking every cursor ti
 		if (!descriptor?.get || !descriptor.set) {
 			return
 		}
+		const originalPlay = HTMLMediaElement.prototype.play
 		const writes: Array<{ tag: string; value: number }> = []
+		const playCalls: string[] = []
 		Object.defineProperty(window, '__previewCurrentTimeWrites', { value: writes, configurable: true })
+		Object.defineProperty(window, '__previewPlayCalls', { value: playCalls, configurable: true })
 		Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
 			configurable: descriptor.configurable,
 			enumerable: descriptor.enumerable,
@@ -586,6 +589,10 @@ test('preview playback lets video decode forward without seeking every cursor ti
 				descriptor.set?.call(this, value)
 			},
 		})
+		HTMLMediaElement.prototype.play = function play() {
+			playCalls.push(this.tagName.toLowerCase())
+			return originalPlay.call(this)
+		}
 	})
 
 	await page.goto('/')
@@ -598,8 +605,12 @@ test('preview playback lets video decode forward without seeking every cursor ti
 	await expect(video).toHaveCount(1)
 	await expect.poll(async () => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.15)
 	await page.evaluate(() => {
-		const instrumentedWindow = window as Window & { __previewCurrentTimeWrites?: Array<{ tag: string; value: number }> }
+		const instrumentedWindow = window as Window & {
+			__previewCurrentTimeWrites?: Array<{ tag: string; value: number }>
+			__previewPlayCalls?: string[]
+		}
 		instrumentedWindow.__previewCurrentTimeWrites?.splice(0)
+		instrumentedWindow.__previewPlayCalls?.splice(0)
 	})
 
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
@@ -608,7 +619,12 @@ test('preview playback lets video decode forward without seeking every cursor ti
 		const instrumentedWindow = window as Window & { __previewCurrentTimeWrites?: Array<{ tag: string; value: number }> }
 		return instrumentedWindow.__previewCurrentTimeWrites?.filter((write) => write.tag === 'video').length ?? 0
 	})
+	const videoPlayCalls = await page.evaluate(() => {
+		const instrumentedWindow = window as Window & { __previewPlayCalls?: string[] }
+		return instrumentedWindow.__previewPlayCalls?.filter((tag) => tag === 'video').length ?? 0
+	})
 	expect(videoSeekWrites).toBeLessThanOrEqual(2)
+	expect(videoPlayCalls).toBeLessThanOrEqual(2)
 })
 
 test('imports real media files, edits timeline clips, and previews actual media elements', async ({ page }) => {
