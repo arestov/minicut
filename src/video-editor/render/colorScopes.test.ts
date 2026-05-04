@@ -17,6 +17,7 @@ const createClip = (overrides: Partial<RenderedClip> = {}): RenderedClip => ({
 	transform: { x: 0, y: 0, scale: 1, rotation: 0 },
 	audio: { gain: 1, pan: 0 },
 	filters: [],
+	effects: [],
 	text: null,
 	...overrides,
 })

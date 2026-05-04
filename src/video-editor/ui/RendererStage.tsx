@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
 import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
+import { mergeColorProgramCssFilters, type ColorProgram } from '../render/colorProgram'
 import { compilePreviewLayerOperation, compilePreviewRenderPlan, getPreviewOperationValue, type PreviewLayerOperation } from '../render/previewRenderPlan'
 // Keep Vite's worker query import explicit.
 //
@@ -338,7 +339,7 @@ const VisualClipLayer = ({
 	onClipMediaError?: (resourceId: string) => void
 }) => {
 	const hasMedia = isRealMediaUrl(clip.resourceUrl)
-	const filters = getPreviewOperationValue<string[]>(layerOperation.operations, 'effect', [])
+	const filters = mergeColorProgramCssFilters(getPreviewOperationValue<ColorProgram[]>(layerOperation.operations, 'effect', []))
 	const opacity = getPreviewOperationValue<number>(layerOperation.operations, 'opacity', clip.opacity)
 	const transform = getPreviewOperationValue<RenderedClip['transform']>(layerOperation.operations, 'transform', clip.transform)
 	const text = getPreviewOperationValue<RenderedClip['text']>(layerOperation.operations, 'text', clip.text)
@@ -357,7 +358,7 @@ const VisualClipLayer = ({
 	return (
 		<div
 			className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
-			style={getLayerStyle({ ...clip, opacity, transform }, filters)}
+			style={getLayerStyle({ ...clip, opacity, transform }, filters ? [filters] : [])}
 		>
 			{hasMedia && clip.resourceKind === 'image' ? (
 				<img src={clip.resourceUrl} alt={clip.resourceName} />

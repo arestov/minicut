@@ -9,7 +9,7 @@ import type {
 	ResourceAttrs,
 	TextAttrs,
 } from '../domain/types'
-import { getEffectInstructionFilter, toEffectRenderInstruction } from '../render/colorPipeline'
+import { getEffectInstructionFilter, toEffectRenderInstruction, type EffectRenderInstruction } from '../render/colorPipeline'
 import type { ScalarKeyframe } from '../render/timing'
 import { evaluateFadeOpacity, evaluateKeyframedScalar } from '../render/timing'
 import {
@@ -55,6 +55,7 @@ export interface RenderedClip {
 	transform: { x: number; y: number; scale: number; rotation: number }
 	audio: { gain: number; pan: number }
 	filters: string[]
+	effects: EffectRenderInstruction[]
 	text: TextAttrs | null
 }
 
@@ -86,6 +87,7 @@ export interface PreviewClipSource {
 	}
 	audio: { gain: number; pan: number }
 	filters: string[]
+	effects: EffectRenderInstruction[]
 	text: TextAttrs | null
 }
 
@@ -225,13 +227,11 @@ export const getActiveClipRefsAtCursor = (
 	return activeClips
 }
 
-const getEffectFilter$ = (
+const getEffectInstruction$ = (
 	projects$: Observable<ProjectRegistry>,
 	effectId: EntityId,
-): string | null => {
-	const filter = getEffectInstructionFilter(toEffectRenderInstruction(effectAttrs$(projects$, effectId).get() as EffectAttrs))
-	return filter || null
-}
+): EffectRenderInstruction | null =>
+	toEffectRenderInstruction(effectAttrs$(projects$, effectId).get() as EffectAttrs)
 
 const getTextPreviewAttrs$ = (
 	projects$: Observable<ProjectRegistry>,
@@ -317,11 +317,14 @@ const getPreviewClipSource$ = (
 		? 'audio'
 		: String(clip$.mediaKind.get() ?? resource$?.kind.get() ?? 'image') as ResourceAttrs['kind']
 	const effectIds = clipRels.effects.get()
-	const filters = Array.isArray(effectIds)
+	const effects = Array.isArray(effectIds)
 		? effectIds
-				.map((effectId) => getEffectFilter$(projects$, effectId))
-				.filter((filter): filter is string => Boolean(filter))
+				.map((effectId) => getEffectInstruction$(projects$, effectId))
+				.filter((effect): effect is EffectRenderInstruction => effect !== null)
 		: []
+	const filters = effects
+		.map((effect) => getEffectInstructionFilter(effect))
+		.filter((filter): filter is string => Boolean(filter))
 	const opacity = clip$.opacity.get()
 	const transform = clip$.transform.get()
 
@@ -348,6 +351,7 @@ const getPreviewClipSource$ = (
 		},
 		audio: clip$.audio.get() ?? { gain: 1, pan: 0 },
 		filters,
+		effects,
 		text,
 	}
 }
@@ -390,6 +394,7 @@ export const renderPreviewClipSourceAtCursor = (
 		},
 		audio: clip.audio,
 		filters: clip.filters,
+		effects: clip.effects,
 		text: clip.text,
 	}
 }

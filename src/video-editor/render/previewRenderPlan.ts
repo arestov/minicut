@@ -1,5 +1,6 @@
 import type { PreviewFrame, RenderedClip } from '../legend/derivedTimeline'
 import type { ResourceKind, TextAttrs } from '../domain/types'
+import { compileEffectColorProgram, type ColorProgram } from './colorProgram'
 
 export interface PreviewLayerOperation {
 	clipId: string
@@ -10,7 +11,7 @@ export interface PreviewLayerOperation {
 	sourceTime: number
 	operations: Array<
 		| { type: 'transform'; value: RenderedClip['transform'] }
-		| { type: 'effect'; value: string[] }
+		| { type: 'effect'; value: ColorProgram[] }
 		| { type: 'opacity'; value: number }
 		| { type: 'text'; value: TextAttrs }
 		| { type: 'audio'; value: RenderedClip['audio'] }
@@ -34,7 +35,7 @@ export const compilePreviewLayerOperation = (clip: RenderedClip): PreviewLayerOp
 	operations: [
 		{ type: 'transform', value: clip.transform },
 		...(clip.text ? [{ type: 'text' as const, value: clip.text }] : []),
-		...(clip.filters.length > 0 ? [{ type: 'effect' as const, value: clip.filters }] : []),
+		...(clip.effects.length > 0 ? [{ type: 'effect' as const, value: clip.effects.map(compileEffectColorProgram) }] : []),
 		{ type: 'opacity', value: clip.opacity },
 		...(clip.resourceKind === 'audio' ? [{ type: 'audio' as const, value: clip.audio }] : []),
 	],

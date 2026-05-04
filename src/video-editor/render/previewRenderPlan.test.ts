@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { PreviewFrame, RenderedClip } from '../legend/derivedTimeline'
+import type { EffectRenderInstruction } from './colorPipeline'
 import { compilePreviewRenderPlan, getPreviewOperationValue } from './previewRenderPlan'
+
+const blurEffect: EffectRenderInstruction = { name: 'Blur', kind: 'blur', enabled: true, amount: 0.25 }
 
 const createClip = (overrides: Partial<RenderedClip> = {}): RenderedClip => ({
 	id: 'clip:1',
@@ -17,6 +20,7 @@ const createClip = (overrides: Partial<RenderedClip> = {}): RenderedClip => ({
 	transform: { x: 10, y: 20, scale: 1.2, rotation: 5 },
 	audio: { gain: 1, pan: 0 },
 	filters: ['brightness(1.1)', 'contrast(1.2)'],
+	effects: [blurEffect],
 	text: null,
 	...overrides,
 })
@@ -37,7 +41,9 @@ describe('preview render plan', () => {
 		expect(plan.cursor).toBe(1.5)
 		expect(layer).toMatchObject({ clipId: 'clip:1', resourceKind: 'video', sourceTime: 0.5 })
 		expect(getPreviewOperationValue(layer.operations, 'transform', null)).toMatchObject({ x: 10, y: 20, scale: 1.2, rotation: 5 })
-		expect(getPreviewOperationValue(layer.operations, 'effect', [])).toEqual(['brightness(1.1)', 'contrast(1.2)'])
+		expect(getPreviewOperationValue(layer.operations, 'effect', [])).toEqual([
+			{ effectKind: 'blur', enabled: true, operations: [{ type: 'blur', value: 1.5 }] },
+		])
 		expect(getPreviewOperationValue(layer.operations, 'opacity', 1)).toBe(0.8)
 	})
 
@@ -61,6 +67,7 @@ describe('preview render plan', () => {
 				box: { width: 760, height: 220 },
 			},
 			filters: [],
+			effects: [],
 		})
 		const [layer] = compilePreviewRenderPlan(createFrame([textClip])).visualLayers
 
