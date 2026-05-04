@@ -16,6 +16,7 @@ export const LookBrowser = ({
 	const clampedIntensity = Math.max(0, Math.min(1, intensity))
 	const activeLook = lookPresets.find((look) => look.id === activeLookId) ?? null
 	const activeLabel = activeLook ? activeLook.label : 'Custom'
+	const canAdjustIntensity = activeLook !== null && activeLook.id !== 'clean'
 
 	return (
 		<div className="ve-look-browser" aria-label="Look Browser">
@@ -39,8 +40,17 @@ export const LookBrowser = ({
 				))}
 			</div>
 			<label className="ve-slider-field">
-				<span>Look intensity</span>
-				<input type="range" aria-label="Look intensity" min="0" max="100" value={Math.round(clampedIntensity * 100)} onChange={(event) => onIntensityChange(Number(event.currentTarget.value) / 100)} />
+				<span>{canAdjustIntensity ? 'Look intensity' : 'Look intensity unavailable'}</span>
+				<input
+					type="range"
+					aria-label="Look intensity"
+					min="0"
+					max="100"
+					value={Math.round(clampedIntensity * 100)}
+					disabled={!canAdjustIntensity}
+					onChange={(event) => onIntensityChange(Number(event.currentTarget.value) / 100)}
+				/>
+				{canAdjustIntensity ? null : <small>Select Cinema, Golden, Cool, or Mono to adjust intensity.</small>}
 			</label>
 		</div>
 	)

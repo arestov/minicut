@@ -309,6 +309,14 @@ describe('video editor harness', () => {
 			expect(customLookParams.lookId).toBe('custom')
 			expect(within(inspector).getByText('Custom grade')).toBeVisible()
 			expect(within(inspector).getByRole('button', { name: 'Apply look Cinema' })).toHaveAttribute('aria-pressed', 'false')
+			expect(lookIntensity).toBeDisabled()
+			fireEvent.change(lookIntensity, { target: { value: '20' } })
+			const stillCustomLookParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
+				lookId: string
+				exposure: { value: number }
+			}
+			expect(stillCustomLookParams.lookId).toBe('custom')
+			expect(stillCustomLookParams.exposure.value).toBeCloseTo(0.1, 6)
 
 			await user.click(within(inspector).getByRole('button', { name: 'Reset grade' }))
 			const resetParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {

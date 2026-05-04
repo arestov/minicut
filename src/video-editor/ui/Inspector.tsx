@@ -393,6 +393,10 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 		updateColorParams(buildLookColorCorrectionParams(nextLookId, nextIntensity))
 	}
 	const updateLookIntensity = (value: number): void => {
+		if (activeLookId === 'custom' || activeLook.id === 'clean') {
+			return
+		}
+
 		applyLook(activeLook.id, value)
 	}
 
