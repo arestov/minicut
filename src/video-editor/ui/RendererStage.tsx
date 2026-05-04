@@ -178,9 +178,40 @@ const getLayerStyle = (clip: RenderedClip, filters: string[]): CSSProperties => 
 	opacity: clip.opacity,
 	filter: filters.join(' '),
 	borderColor: clip.color,
-	boxShadow: `0 0 0 2px ${clip.color}, 0 20px 45px rgba(0, 0, 0, 0.3)`,
 	transform: `translate(${clip.transform.x}px, ${clip.transform.y}px) scale(${clip.transform.scale}) rotate(${clip.transform.rotation}deg)`,
 })
+
+const drawContainedVideoFrame = (canvas: HTMLCanvasElement, video: HTMLVideoElement): boolean => {
+	if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) {
+		return false
+	}
+
+	const rect = canvas.getBoundingClientRect()
+	const width = Math.max(1, Math.round(rect.width || canvas.clientWidth || fallbackCanvasSize.width))
+	const height = Math.max(1, Math.round(rect.height || canvas.clientHeight || fallbackCanvasSize.height))
+	if (canvas.width !== width) {
+		canvas.width = width
+	}
+	if (canvas.height !== height) {
+		canvas.height = height
+	}
+
+	const context = canvas.getContext('2d')
+	if (!context) {
+		return false
+	}
+
+	const scale = Math.min(width / video.videoWidth, height / video.videoHeight)
+	const drawWidth = video.videoWidth * scale
+	const drawHeight = video.videoHeight * scale
+	const drawX = (width - drawWidth) / 2
+	const drawY = (height - drawHeight) / 2
+	context.clearRect(0, 0, width, height)
+	context.fillStyle = '#09090b'
+	context.fillRect(0, 0, width, height)
+	context.drawImage(video, drawX, drawY, drawWidth, drawHeight)
+	return true
+}
 
 const withoutEffectOperations = (operation: PreviewLayerOperation): PreviewLayerOperation => ({
 	...operation,
@@ -342,7 +373,6 @@ const VisualClipLayer = ({
 	cursor,
 	mediaElementRegistry,
 	mediaSeekStateRef,
-	renderMedia = true,
 	onClipMediaError,
 }: {
 	clip: RenderedClip
@@ -351,7 +381,6 @@ const VisualClipLayer = ({
 	cursor: number
 	mediaElementRegistry?: PreviewMediaElementRegistry
 	mediaSeekStateRef?: MutableRefObject<Map<string, MediaSeekState>>
-	renderMedia?: boolean
 	onClipMediaError?: (resourceId: string) => void
 }) => {
 	const hasMedia = isRealMediaUrl(clip.resourceUrl)
@@ -376,10 +405,10 @@ const VisualClipLayer = ({
 			className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
 			style={getLayerStyle({ ...clip, opacity, transform }, filters ? [filters] : [])}
 		>
-			{renderMedia && hasMedia && clip.resourceKind === 'image' ? (
+			{hasMedia && clip.resourceKind === 'image' ? (
 				<img src={clip.resourceUrl} alt={clip.resourceName} />
 			) : null}
-			{renderMedia && hasMedia && clip.resourceKind === 'video' ? (
+			{hasMedia && clip.resourceKind === 'video' ? (
 				<video
 					ref={mediaElementRegistry ? handleVideoRef : undefined}
 					src={clip.resourceUrl}
@@ -400,13 +429,100 @@ const VisualClipLayer = ({
 				/>
 			) : null}
 			{clip.resourceKind === 'text' ? renderTextClip({ ...clip, text }) : null}
-			{(!hasMedia || !renderMedia) && clip.resourceKind !== 'text' ? (
+			{!hasMedia && clip.resourceKind !== 'text' ? (
 				<>
 					<strong>{clip.name}</strong>
 					<span>{clip.resourceName}</span>
 				</>
 			) : null}
 		</div>
+	)
+}
+
+const BeforeVideoSnapshotLayer = ({
+	clip,
+	layerOperation,
+	mediaElementRegistry,
+	isPlaying,
+}: {
+	clip: RenderedClip
+	layerOperation: PreviewLayerOperation
+	mediaElementRegistry: PreviewMediaElementRegistry
+	isPlaying: boolean
+}) => {
+	const canvasRef = useRef<HTMLCanvasElement | null>(null)
+	const opacity = getPreviewOperationValue<number>(layerOperation.operations, 'opacity', clip.opacity)
+	const transform = getPreviewOperationValue<RenderedClip['transform']>(layerOperation.operations, 'transform', clip.transform)
+
+	useEffect(() => {
+		const canvas = canvasRef.current
+		const sourceVideo = mediaElementRegistry.get(clip.id)?.element
+		if (!canvas || !(sourceVideo instanceof HTMLVideoElement)) {
+			return
+		}
+
+		let frameId = 0
+		const draw = () => {
+			drawContainedVideoFrame(canvas, sourceVideo)
+			if (isPlaying) {
+				frameId = requestAnimationFrame(draw)
+			}
+		}
+		const drawOnce = () => drawContainedVideoFrame(canvas, sourceVideo)
+		draw()
+		sourceVideo.addEventListener('loadeddata', drawOnce)
+		sourceVideo.addEventListener('seeked', drawOnce)
+		sourceVideo.addEventListener('timeupdate', drawOnce)
+
+		return () => {
+			if (frameId) {
+				cancelAnimationFrame(frameId)
+			}
+			sourceVideo.removeEventListener('loadeddata', drawOnce)
+			sourceVideo.removeEventListener('seeked', drawOnce)
+			sourceVideo.removeEventListener('timeupdate', drawOnce)
+		}
+	}, [clip.id, isPlaying, mediaElementRegistry])
+
+	return (
+		<div
+			className="ve-renderer__layer ve-renderer__layer--video ve-renderer__layer--before-snapshot"
+			style={getLayerStyle({ ...clip, opacity, transform }, [])}
+		>
+			<canvas ref={canvasRef} className="ve-renderer__before-snapshot" aria-hidden="true" />
+		</div>
+	)
+}
+
+const BeforeCompareClipLayer = ({
+	clip,
+	layerIndex,
+	layerOperation,
+	cursor,
+	mediaElementRegistry,
+	isPlaying,
+	onClipMediaError,
+}: {
+	clip: RenderedClip
+	layerIndex: number
+	layerOperation: PreviewLayerOperation
+	cursor: number
+	mediaElementRegistry: PreviewMediaElementRegistry
+	isPlaying: boolean
+	onClipMediaError?: (resourceId: string) => void
+}) => {
+	if (clip.resourceKind === 'video' && isRealMediaUrl(clip.resourceUrl)) {
+		return <BeforeVideoSnapshotLayer clip={clip} layerOperation={layerOperation} mediaElementRegistry={mediaElementRegistry} isPlaying={isPlaying} />
+	}
+
+	return (
+		<VisualClipLayer
+			clip={clip}
+			layerIndex={layerIndex}
+			layerOperation={layerOperation}
+			cursor={cursor}
+			onClipMediaError={onClipMediaError}
+		/>
 	)
 }
 
@@ -508,13 +624,14 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 					<div className="ve-renderer__compare" aria-label="Split compare preview">
 						<div className="ve-renderer__compare-before" aria-hidden="true">
 							{visualLayers.map(({ clip, layerIndex, beforeOperation }) => (
-								<VisualClipLayer
+								<BeforeCompareClipLayer
 									key={`before-${clip.id}`}
 									clip={clip}
 									layerIndex={layerIndex}
 									layerOperation={beforeOperation}
 									cursor={frame.cursor}
-									renderMedia={false}
+									mediaElementRegistry={mediaElementRegistry}
+									isPlaying={isPlaying}
 									onClipMediaError={onClipMediaError}
 								/>
 							))}

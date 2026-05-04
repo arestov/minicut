@@ -62,7 +62,7 @@ const createStructure = (clips: RenderedClip[]): PreviewStructure => ({
 })
 
 describe('RendererStage', () => {
-	it('does not mount duplicate video elements for split compare before layers', () => {
+	it('renders split compare before video from a snapshot without mounting duplicate videos', () => {
 		const clips = [createClip()]
 		render(
 			<RendererStage
@@ -74,7 +74,12 @@ describe('RendererStage', () => {
 			/>,
 		)
 
-		expect(screen.getByLabelText('Renderer stage').querySelectorAll('video')).toHaveLength(1)
-		expect(screen.getByLabelText('Split compare preview')).toBeInTheDocument()
+		const renderer = screen.getByLabelText('Renderer stage')
+		const compare = screen.getByLabelText('Split compare preview')
+
+		expect(renderer.querySelectorAll('video')).toHaveLength(1)
+		expect(compare).toBeInTheDocument()
+		expect(compare.querySelector('.ve-renderer__compare-before canvas.ve-renderer__before-snapshot')).not.toBeNull()
+		expect(compare.querySelector('.ve-renderer__compare-before video')).toBeNull()
 	})
 })
