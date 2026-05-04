@@ -245,6 +245,32 @@ describe('video editor harness', () => {
 		}
 	})
 
+	it('adds and edits primary color correction from the color inspector', async () => {
+		const { harness, user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await importSampleResource(harness)
+			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			await user.click(clipButton)
+
+			const inspector = screen.getByLabelText('Inspector')
+			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
+			await user.click(within(inspector).getByRole('button', { name: 'Add primary correction' }))
+			const exposure = await within(inspector).findByRole('slider', { name: 'Exposure' })
+			fireEvent.change(exposure, { target: { value: '25' } })
+
+			const clipId = String(harness.session$.selectedEntityId.get())
+			const effectIds = harness.projects$.entitiesById[clipId].rels.effects.get()
+			expect(Array.isArray(effectIds)).toBe(true)
+			const effectId = Array.isArray(effectIds) ? String(effectIds[0]) : ''
+			expect(harness.projects$.entitiesById[effectId].attrs.kind.get()).toBe('color-correction')
+			expect(harness.projects$.entitiesById[effectId].attrs.params.exposure.value.get()).toBe(0.25)
+		} finally {
+			unmount()
+		}
+	})
+
 	it('interpolates keyframed opacity and transform values in the renderer', async () => {
 		const { harness, user, unmount } = renderVideoEditor()
 

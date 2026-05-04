@@ -3,7 +3,7 @@ import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import type { ResourceAttrs } from '../domain/types'
+import type { AnimatedScalar, ColorCorrectionAttrs, EffectAttrs, ResourceAttrs } from '../domain/types'
 import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
 import {
 	clipAttrs$,
@@ -284,7 +284,30 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 
 const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 	const { projects$, actions } = useVideoEditor()
-	const color = String(clipAttrs$(projects$, clipId).color.get() ?? '#2563eb')
+	const selectedClip$ = clipAttrs$(projects$, clipId)
+	const selectedClipRels$ = clipRels$(projects$, clipId)
+	const color = String(selectedClip$.color.get() ?? '#2563eb')
+	const effectIds = selectedClipRels$.effects.get()
+	const colorCorrectionEffectId = (Array.isArray(effectIds) ? effectIds : []).find((effectId) =>
+		String(effectAttrs$(projects$, effectId).kind.get()) === 'color-correction')
+	const colorCorrectionAttrs = colorCorrectionEffectId
+		? effectAttrs$(projects$, colorCorrectionEffectId).get() as unknown as EffectAttrs
+		: null
+	const colorParams = (colorCorrectionAttrs?.params ?? {}) as Partial<ColorCorrectionAttrs>
+	const getParamValue = (key: keyof Pick<ColorCorrectionAttrs, 'exposure' | 'contrast' | 'saturation' | 'temperature'>, fallback: number): number =>
+		Number((colorParams[key] as AnimatedScalar | undefined)?.value ?? fallback)
+	const updateParam = (key: keyof Pick<ColorCorrectionAttrs, 'exposure' | 'contrast' | 'saturation' | 'temperature'>, value: number): void => {
+		if (!colorCorrectionEffectId) {
+			return
+		}
+
+		actions.updateEffectAttrs(colorCorrectionEffectId, {
+			params: {
+				...colorParams,
+				[key]: { value },
+			},
+		})
+	}
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Color inspector">
@@ -298,6 +321,31 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 						<button key={swatch} type="button" aria-label={`Set color ${swatch}`} style={{ background: swatch }} onClick={() => actions.colorSelectedClip(swatch)} />
 					))}
 				</div>
+			</InspectorSection>
+			<InspectorSection title="Primary correction" icon={SlidersHorizontal} ariaLabel="Primary color correction">
+				{colorCorrectionEffectId ? (
+					<>
+						<label className="ve-slider-field">
+							<span>Exposure</span>
+							<input type="range" aria-label="Exposure" min="-100" max="100" value={Math.round(getParamValue('exposure', 0) * 100)} onChange={(event) => updateParam('exposure', Number(event.currentTarget.value) / 100)} />
+						</label>
+						<label className="ve-slider-field">
+							<span>Contrast</span>
+							<input type="range" aria-label="Contrast" min="0" max="200" value={Math.round(getParamValue('contrast', 1) * 100)} onChange={(event) => updateParam('contrast', Number(event.currentTarget.value) / 100)} />
+						</label>
+						<label className="ve-slider-field">
+							<span>Saturation</span>
+							<input type="range" aria-label="Saturation" min="0" max="250" value={Math.round(getParamValue('saturation', 1) * 100)} onChange={(event) => updateParam('saturation', Number(event.currentTarget.value) / 100)} />
+						</label>
+						<label className="ve-slider-field">
+							<span>Temperature</span>
+							<input type="range" aria-label="Temperature" min="-100" max="100" value={Math.round(getParamValue('temperature', 0) * 100)} onChange={(event) => updateParam('temperature', Number(event.currentTarget.value) / 100)} />
+						</label>
+						<small>Exposure {getParamValue('exposure', 0).toFixed(2)} · Contrast {getParamValue('contrast', 1).toFixed(2)} · Saturation {getParamValue('saturation', 1).toFixed(2)}</small>
+					</>
+				) : (
+					<Button type="button" variant="secondary" onClick={() => actions.addColorCorrectionToSelectedClip()}>Add primary correction</Button>
+				)}
 			</InspectorSection>
 		</div>
 	)

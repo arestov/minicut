@@ -6,6 +6,7 @@ import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import { getActiveProject, getAudioTrack, getClipIdsForTrack, getProjectMetaList, getSelectedClip, getTracks, getVideoTrack } from '../domain/selectors'
 import type {
 	ClipAttrs,
+	EffectAttrs,
 	Command,
 	DispatchResult,
 	EditorSessionState,
@@ -687,6 +688,29 @@ export const createVideoEditorHarness = (
 					kind,
 					amount: kind === 'tint' ? 0.35 : 0.25,
 				},
+			})
+		},
+
+		addColorCorrectionToSelectedClip(): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			if (!clip) {
+				return
+			}
+
+			dispatch({
+				c: CMD.EFFECT_ADD,
+				p: {
+					id: clip.id,
+					name: 'Primary Correction',
+					kind: 'color-correction',
+				},
+			})
+		},
+
+		updateEffectAttrs(effectId: string, attrs: Partial<EffectAttrs>): void {
+			dispatch({
+				c: CMD.EFFECT_UPDATE_ATTRS,
+				p: { id: effectId, attrs },
 			})
 		},
 
