@@ -86,6 +86,17 @@ const PreviewStage = observer(({
 const getScopeSampleKey = (clips: RenderedClip[], cursor: number): string =>
 	clips.map((clip) => `${clip.id}:${clip.resourceUrl}:${Math.round((cursor - clip.start + clip.inPoint) * 2) / 2}`).join('|')
 
+const getScopeClipKey = (clips: RenderedClip[]): string =>
+	clips.map((clip) => [
+		clip.id,
+		clip.resourceId,
+		clip.resourceKind,
+		clip.resourceUrl,
+		clip.color,
+		clip.opacity.toFixed(3),
+		clip.filters.join(','),
+	].join(':')).join('|')
+
 const drawElementToSampleFrame = (
 	element: CanvasImageSource,
 	width = scopeSampleWidth,
@@ -260,9 +271,10 @@ const ColorScopesPanel = observer(({ frame$, mode, onModeChange, resolveResource
 		[frame.visualRenderedClips, resolveResourceUrl],
 	)
 	const sampleFrames = usePreviewScopeSamples(resolvedClips, frame.cursor)
+	const scopeClipKey = useMemo(() => getScopeClipKey(resolvedClips), [resolvedClips])
 	const scopes: PreviewScopeData = useMemo(
 		() => createPreviewScopeData(resolvedClips, sampleFrames),
-		[resolvedClips, sampleFrames],
+		[scopeClipKey, sampleFrames],
 	)
 	const isEmpty = scopes.clipCount === 0
 
