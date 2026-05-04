@@ -1,5 +1,5 @@
 import { getEntity, getProjectEntity, getProjectForEntity, getTrackForClip } from './selectors'
-import { CMD, type ClipAttrs, type Command, type EffectAttrs, type Entity, type OklchColor, type ProjectGraph, type ProjectRegistry, type ResourceDataState } from './types'
+import { CMD, type ClipAttrs, type Command, type EffectAttrs, type Entity, type OklchColor, type ProjectGraph, type ProjectRegistry, type ResourceDataState, type TextAttrs } from './types'
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
 	if (!condition) {
@@ -36,6 +36,37 @@ const assertEffectAttrs = (attrs: Partial<EffectAttrs>): void => {
 	}
 	if (attrs.color !== undefined) {
 		assertOklchColor(attrs.color)
+	}
+}
+
+const assertTextAttrs = (attrs: Partial<TextAttrs>): void => {
+	if (attrs.content !== undefined) {
+		assert(typeof attrs.content === 'string' && attrs.content.length <= 500, 'Text content must be a string under 500 characters')
+	}
+	if (attrs.style !== undefined) {
+		const style = attrs.style
+		if (style.fontFamily !== undefined) {
+			assert(style.fontFamily.trim().length > 0, 'Text font family is required')
+		}
+		if (style.fontSize !== undefined) {
+			assert(Number.isFinite(style.fontSize) && style.fontSize >= 8 && style.fontSize <= 320, 'Text font size is invalid')
+		}
+		if (style.fontWeight !== undefined) {
+			assert(Number.isFinite(style.fontWeight) && style.fontWeight >= 100 && style.fontWeight <= 900, 'Text font weight is invalid')
+		}
+		if (style.lineHeight !== undefined) {
+			assert(Number.isFinite(style.lineHeight) && style.lineHeight >= 0.8 && style.lineHeight <= 3, 'Text line height is invalid')
+		}
+		if (style.letterSpacing !== undefined) {
+			assert(Number.isFinite(style.letterSpacing) && style.letterSpacing >= -20 && style.letterSpacing <= 80, 'Text letter spacing is invalid')
+		}
+		if (style.align !== undefined) {
+			assert(['left', 'center', 'right'].includes(style.align), 'Text alignment is invalid')
+		}
+	}
+	if (attrs.box !== undefined) {
+		assert(Number.isFinite(attrs.box.width) && attrs.box.width >= 20, 'Text box width is invalid')
+		assert(Number.isFinite(attrs.box.height) && attrs.box.height >= 20, 'Text box height is invalid')
 	}
 }
 
@@ -125,7 +156,7 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			const project = assertProject(registry, command.p.projectId)
 			assertProjectGraphShape(registry, project)
 			assert(command.p.name.trim().length > 0, 'Resource name is required')
-			assert(['video', 'audio', 'image'].includes(command.p.kind), 'Resource kind is invalid')
+			assert(['video', 'audio', 'image', 'text'].includes(command.p.kind), 'Resource kind is invalid')
 			assert(isFinitePositive(command.p.duration), 'Resource duration must be positive')
 			assert(!command.p.url || typeof command.p.url === 'string', 'Resource url must be a string')
 			assert(!command.p.mime || typeof command.p.mime === 'string', 'Resource mime must be a string')
@@ -271,6 +302,31 @@ export const validateCommand = (registry: ProjectRegistry, command: Command): vo
 			const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
 			assert(effectIds.includes(command.p.effectId), 'Effect must belong to the target clip')
 			assert(String(effect.rels.clip) === clip.id, 'Effect clip relation must match target clip')
+			return
+		}
+
+		case CMD.TEXT_ADD: {
+			const project = assertProject(registry, command.p.projectId)
+			assertProjectGraphShape(registry, project)
+			if (command.p.trackId) {
+				const track = assertEntityType(registry, command.p.trackId, 'track')
+				assert(track.attrs.kind === 'video', 'Text clips must target a video track')
+				assert(track.attrs.locked !== true, 'Cannot add text to a locked track')
+			}
+			if (command.p.start !== undefined) {
+				assert(Number.isFinite(command.p.start) && command.p.start >= 0, 'Text clip start must be non-negative')
+			}
+			if (command.p.duration !== undefined) {
+				assert(isFinitePositive(command.p.duration), 'Text clip duration must be positive')
+			}
+			assertTextAttrs({ ...command.p.attrs, content: command.p.attrs?.content ?? command.p.content })
+			return
+		}
+
+		case CMD.TEXT_UPDATE_ATTRS: {
+			assertEntityType(registry, command.p.id, 'text')
+			assertProjectForEntity(registry, command.p.id)
+			assertTextAttrs(command.p.attrs)
 			return
 		}
 

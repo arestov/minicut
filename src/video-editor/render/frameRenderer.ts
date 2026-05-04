@@ -1,4 +1,4 @@
-import type { ResourceAttrs } from '../domain/types'
+import type { ResourceAttrs, TextAttrs } from '../domain/types'
 import { getEffectInstructionFilter, type EffectRenderInstruction } from './colorPipeline'
 import type { ClipFrameOperation } from './renderPlan'
 
@@ -11,7 +11,7 @@ interface RenderableResource {
 
 interface PreparedFrameOperation {
 	operation: ClipFrameOperation
-	resource: RenderableResource
+	resource?: RenderableResource
 	sourceWidth: number
 	sourceHeight: number
 	drawSource?: CanvasImageSource
@@ -42,6 +42,30 @@ const getOperationEffects = (operations: ClipFrameOperation['operations']): Effe
 		.map((operation) => toEffectInstruction(operation.value))
 
 const getEffectFilter = (effect: EffectRenderInstruction): string => getEffectInstructionFilter(effect)
+
+const drawTextOperation = (context: CanvasRenderingContext2D, text: TextAttrs): void => {
+	const boxWidth = Math.max(20, text.box.width)
+	const boxHeight = Math.max(20, text.box.height)
+	const fontSize = Math.max(8, text.style.fontSize)
+	const lineHeight = fontSize * Math.max(0.8, text.style.lineHeight)
+	const lines = text.content.split(/\r?\n/)
+	const totalTextHeight = lineHeight * lines.length
+	const startY = -totalTextHeight / 2 + lineHeight / 2
+	const textX = text.style.align === 'left' ? -boxWidth / 2 : text.style.align === 'right' ? boxWidth / 2 : 0
+
+	if (text.style.backgroundColor && text.style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+		context.fillStyle = text.style.backgroundColor
+		context.fillRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight)
+	}
+
+	context.fillStyle = text.style.color
+	context.font = `${text.style.fontWeight} ${fontSize}px ${text.style.fontFamily}`
+	context.textAlign = text.style.align
+	context.textBaseline = 'middle'
+	for (const [lineIndex, line] of lines.entries()) {
+		context.fillText(line, textX, startY + lineIndex * lineHeight, boxWidth)
+	}
+}
 
 const clampTimeToDuration = (time: number, duration: number): number => {
 	if (!Number.isFinite(duration) || duration <= 0) {
@@ -164,6 +188,15 @@ export const prepareFrameOperations = async (
 	const realtimeSeekTolerance = options.realtimeSeekTolerance ?? 0.15
 
 	for (const operation of operations) {
+		if (operation.resourceKind === 'text') {
+			prepared.push({
+				operation,
+				sourceWidth: width,
+				sourceHeight: height,
+			})
+			continue
+		}
+
 		const resource = resourceCache.get(operation.resourceId)
 		if (!resource) {
 			continue
@@ -275,7 +308,10 @@ export const drawPreparedFrameOperations = (
 		context.rotate((transform.rotation * Math.PI) / 180)
 		context.scale(transform.scale, transform.scale)
 
-		if (drawSource) {
+		const text = getOperationValue<TextAttrs | null>(operation.operations, 'text', null)
+		if (text) {
+			drawTextOperation(context, text)
+		} else if (drawSource) {
 			const fitScale = Math.min(width / sourceWidth, height / sourceHeight)
 			const drawWidth = sourceWidth * fitScale
 			const drawHeight = sourceHeight * fitScale

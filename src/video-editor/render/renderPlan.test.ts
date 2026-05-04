@@ -66,6 +66,23 @@ describe('render plan compiler', () => {
 		expect(compileEditframeClips(registry, projectId)).toEqual(compileEditframeClips(registry, projectId))
 	})
 
+	it('compiles text clips into text draw operations without editframe media entries', () => {
+		let { registry, projectId } = createRenderedProject()
+		const textResult = buildDispatchResult(registry, {
+			c: CMD.TEXT_ADD,
+			p: { projectId, content: 'Overlay', start: 0.5, duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, textResult.envelope)
+
+		const textOperation = compileFrameOperations(registry, projectId, 0.75).find((operation) => operation.resourceKind === 'text')
+
+		expect(textOperation).toBeDefined()
+		expect(textOperation?.resourceId).toBe(textResult.createdIds?.textId)
+		expect(textOperation?.operations.map((operation) => operation.type)).toEqual(['transform', 'text', 'opacity'])
+		expect(textOperation?.operations.find((operation) => operation.type === 'text')?.value).toMatchObject({ content: 'Overlay' })
+		expect(compileEditframeClips(registry, projectId).map((clip) => clip.id)).not.toContain(textResult.createdIds?.clipId)
+	})
+
 	it('does not leak effects between clips', () => {
 		const { registry, projectId } = createRenderedProject()
 		const project = registry.projects[projectId]

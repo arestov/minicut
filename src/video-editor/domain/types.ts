@@ -2,7 +2,7 @@ export type ProjectId = string
 export type EntityId = string
 export type RelValue = EntityId | EntityId[] | null
 
-export type EntityType = 'project' | 'timeline' | 'track' | 'resource' | 'clip' | 'effect' | 'keyframe'
+export type EntityType = 'project' | 'timeline' | 'track' | 'resource' | 'clip' | 'effect' | 'text' | 'keyframe'
 
 export interface Entity {
 	id: EntityId
@@ -44,7 +44,7 @@ export interface EditorSessionState {
 }
 
 
-export type ResourceKind = 'video' | 'audio' | 'image'
+export type ResourceKind = 'video' | 'audio' | 'image' | 'text'
 export type ResourceSourceKind = 'local' | 'p2p'
 export type ResourceDataStatus = 'missing' | 'partial' | 'ready'
 export type ResourceChunkStatus = 'missing' | 'loading' | 'ready'
@@ -167,6 +167,28 @@ export interface KeyframeAttrs {
 	interpolation?: 'linear' | 'hold'
 }
 
+export interface TextStyleAttrs {
+	fontFamily: string
+	fontSize: number
+	fontWeight: number
+	lineHeight: number
+	letterSpacing: number
+	color: string
+	backgroundColor?: string
+	align: 'left' | 'center' | 'right'
+}
+
+export interface TextBoxAttrs {
+	width: number
+	height: number
+}
+
+export interface TextAttrs {
+	content: string
+	style: TextStyleAttrs
+	box: TextBoxAttrs
+}
+
 export interface CommandTargetRef {
 	id: EntityId
 }
@@ -181,7 +203,7 @@ export interface TransformAttrs {
 export interface ClipAttrs {
 	name: string
 	color?: string
-	mediaKind?: ResourceAttrs['kind']
+	mediaKind?: ResourceKind
 	start: number
 	duration: number
 	in: number
@@ -239,6 +261,8 @@ export const CMD = {
 	EFFECT_REMOVE: -141,
 	EFFECT_UPDATE_ATTRS: -142,
 	EFFECT_REORDER: -143,
+	TEXT_ADD: -150,
+	TEXT_UPDATE_ATTRS: -151,
 } as const
 
 export const PATCH = {
@@ -343,6 +367,23 @@ export type Command =
 				effectId: EntityId
 			}
 	  }
+	| {
+			c: typeof CMD.TEXT_ADD
+			p: {
+				projectId: ProjectId
+				trackId?: EntityId
+				content?: string
+				start?: number
+				duration?: number
+				attrs?: Partial<TextAttrs>
+			}
+	  }
+	| {
+			c: typeof CMD.TEXT_UPDATE_ATTRS
+			p: CommandTargetRef & {
+				attrs: Partial<TextAttrs>
+			}
+	  }
 
 export type Patch =
 	| {
@@ -386,7 +427,7 @@ export type Patch =
 
 export interface DispatchResult {
 	envelope: PatchEnvelope
-	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId' | 'audioClipId' | 'effectId', EntityId>>
+	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId' | 'audioClipId' | 'effectId' | 'textId', EntityId>>
 	deletedIds?: EntityId[]
 }
 

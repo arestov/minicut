@@ -1,5 +1,5 @@
 import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
-import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
+import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs, ResourceKind, TextAttrs } from '../domain/types'
 import type { EffectRenderInstruction } from './colorPipeline'
 import { compileClipFrameOperation, type EvaluatedTransformAttrs } from './renderPlan'
 
@@ -12,7 +12,7 @@ export interface DrawCall {
 	clipId: string
 	trackId: string
 	trackIndex: number
-	resourceKind: ResourceAttrs['kind']
+	resourceKind: ResourceKind
 	x: number
 	y: number
 	width: number
@@ -49,14 +49,23 @@ const getEffectKind = (value: unknown): string => {
 	return String(value)
 }
 
-const getResourceAttrs = (registry: ProjectRegistry, clip: Entity): ResourceAttrs => {
+
+type DebugSourceAttrs = Pick<ResourceAttrs, 'kind' | 'width' | 'height'>
+
+const getSourceAttrs = (registry: ProjectRegistry, clip: Entity): DebugSourceAttrs => {
+	const clipAttrs = clip.attrs as unknown as ClipAttrs
+	if (clipAttrs.mediaKind === 'text' && typeof clip.rels.text === 'string') {
+		const textAttrs = registry.entitiesById[clip.rels.text]?.attrs as unknown as TextAttrs | undefined
+		return { kind: 'text', width: textAttrs?.box.width, height: textAttrs?.box.height }
+	}
+
 	const resourceId = String(clip.rels.resource)
 	const resource = registry.entitiesById[resourceId]
 	return resource.attrs as unknown as ResourceAttrs
 }
 
 const getDrawBounds = (
-	resourceAttrs: ResourceAttrs,
+	resourceAttrs: DebugSourceAttrs,
 	transform: EvaluatedTransformAttrs,
 	viewport: DebugRenderViewport,
 ): Pick<DrawCall, 'x' | 'y' | 'width' | 'height' | 'scale' | 'rotation'> => {
@@ -100,7 +109,7 @@ export const renderFrameDebug = (
 				'transform',
 				{ x: 0, y: 0, scale: 1, rotation: 0 },
 			)
-			const resourceAttrs = getResourceAttrs(registry, clip)
+			const resourceAttrs = getSourceAttrs(registry, clip)
 			const opacity = clamp(finiteOr(Number(getOperationValue(frameOperation.operations, 'opacity', 1)), 1), 0, 1)
 			const effects = frameOperation.operations
 				.filter((operation) => operation.type === 'effect')

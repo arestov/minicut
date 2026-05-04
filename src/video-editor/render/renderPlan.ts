@@ -1,4 +1,4 @@
-import type { ClipAttrs, EffectAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
+import type { ClipAttrs, EffectAttrs, Entity, ProjectRegistry, ResourceAttrs, ResourceKind, TextAttrs } from '../domain/types'
 import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
 import { evaluateAnimatedScalar, evaluateFadeOpacity } from './timing'
 import { toEffectRenderInstruction, type EffectRenderInstruction } from './colorPipeline'
@@ -6,12 +6,12 @@ import { toEffectRenderInstruction, type EffectRenderInstruction } from './color
 export interface ClipFrameOperation {
 	clipId: string
 	resourceId: string
-	resourceKind: ResourceAttrs['kind']
+	resourceKind: ResourceKind
 	start: number
 	duration: number
 	localTime: number
 	sourceTime: number
-	operations: Array<{ type: 'transform' | 'effect' | 'opacity' | 'audio', value: unknown }>
+	operations: Array<{ type: 'transform' | 'effect' | 'opacity' | 'audio' | 'text', value: unknown }>
 }
 
 export interface EvaluatedTransformAttrs {
@@ -52,10 +52,12 @@ const getEditframeType = (kind: ResourceAttrs['kind']): EditframeClip['type'] =>
 
 export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entity, time?: number): ClipFrameOperation => {
 	const attrs = clip.attrs as unknown as ClipAttrs
-	const resourceId = String(clip.rels.resource)
-	const resource = registry.entitiesById[resourceId]
-	const resourceAttrs = resource.attrs as unknown as ResourceAttrs
-	const resourceKind = attrs.mediaKind ?? resourceAttrs.kind
+	const isTextClip = attrs.mediaKind === 'text' || typeof clip.rels.text === 'string'
+	const resourceId = isTextClip ? String(clip.rels.text) : String(clip.rels.resource)
+	const resource = isTextClip ? null : registry.entitiesById[resourceId]
+	const resourceAttrs = resource?.attrs as ResourceAttrs | undefined
+	const resourceKind: ResourceKind = isTextClip ? 'text' : attrs.mediaKind ?? resourceAttrs?.kind ?? 'image'
+	const textAttrs = isTextClip ? registry.entitiesById[resourceId]?.attrs as unknown as TextAttrs | undefined : undefined
 	const localTime = Math.max(0, (time ?? attrs.start) - attrs.start)
 	const baseOpacity = evaluateAnimatedScalar(registry, attrs.opacity, localTime)
 	const opacity = evaluateFadeOpacity(
@@ -83,6 +85,7 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 		sourceTime: attrs.in + localTime,
 		operations: [
 			{ type: 'transform', value: transform },
+			...(textAttrs ? [{ type: 'text' as const, value: textAttrs }] : []),
 			...getEffectInstructions(registry, clip).map((effect) => ({ type: 'effect' as const, value: effect })),
 			{ type: 'opacity', value: opacity },
 			...(resourceKind === 'audio'
@@ -113,6 +116,7 @@ export const compileEditframeClips = (registry: ProjectRegistry, projectId: stri
 	return getTracks(registry, project)
 		.filter((track) => track.attrs.muted !== true)
 		.flatMap((track) => getClipEntitiesForTrack(registry, track.id))
+		.filter((clip) => (clip.attrs as unknown as ClipAttrs).mediaKind !== 'text')
 		.map((clip) => {
 			const attrs = clip.attrs as unknown as ClipAttrs
 			const resourceId = String(clip.rels.resource)

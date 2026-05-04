@@ -22,6 +22,7 @@ import {
 	type EffectAttrs,
 	type Patch,
 	type ProjectRegistry,
+	type TextAttrs,
 	CMD,
 	PATCH,
 } from './types'
@@ -41,6 +42,24 @@ export const createDefaultColorCorrectionAttrs = (): ColorCorrectionAttrs => ({
 	gamma: scalar(1),
 })
 
+export const createDefaultTextAttrs = (content = 'Text'): TextAttrs => ({
+	content,
+	style: {
+		fontFamily: 'Inter, Segoe UI, sans-serif',
+		fontSize: 64,
+		fontWeight: 700,
+		lineHeight: 1.1,
+		letterSpacing: 0,
+		color: '#ffffff',
+		backgroundColor: 'rgba(0, 0, 0, 0)',
+		align: 'center',
+	},
+	box: {
+		width: 760,
+		height: 220,
+	},
+})
+
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
 
 const createClipEntity = ({
@@ -53,7 +72,7 @@ const createClipEntity = ({
 	resource: Entity
 	start: number
 	duration: number
-	mediaKind?: 'video' | 'audio' | 'image'
+	mediaKind?: ClipAttrs['mediaKind']
 	name?: string
 }): Entity => ({
 	id: createEntityId(),
@@ -77,6 +96,40 @@ const createClipEntity = ({
 	},
 	rels: {
 		resource: resource.id,
+		effects: [],
+	},
+})
+
+const createTextClipEntity = ({
+	text,
+	start,
+	duration,
+}: {
+	text: Entity
+	start: number
+	duration: number
+}): Entity => ({
+	id: createEntityId(),
+	type: 'clip',
+	attrs: {
+		name: 'Text',
+		mediaKind: 'text',
+		start,
+		duration,
+		in: 0,
+		fadeIn: 0,
+		fadeOut: 0,
+		audio: { gain: 1, pan: 0 },
+		opacity: scalar(1),
+		transform: {
+			x: scalar(0),
+			y: scalar(0),
+			scale: scalar(1),
+			rotation: scalar(0),
+		},
+	},
+	rels: {
+		text: text.id,
 		effects: [],
 	},
 })
@@ -246,7 +299,7 @@ export const buildDispatchResult = (
 				resource,
 				start: clipStart,
 				duration: clipDuration,
-				mediaKind: resourceKind as 'video' | 'audio' | 'image',
+				mediaKind: resourceKind as ClipAttrs['mediaKind'],
 			})
 			const patches: Patch[] = [
 				{ c: PATCH.ENTITY_SET, p: { entity: clip } },
@@ -300,6 +353,68 @@ export const buildDispatchResult = (
 					patches,
 				},
 				createdIds: { clipId: clip.id, audioClipId },
+			}
+		}
+
+		case CMD.TEXT_ADD: {
+			const project = assertProject(registry, command.p.projectId)
+			const targetTrack = command.p.trackId
+				? assertEntity(registry, command.p.trackId)
+				: getVideoTrack(registry, project)
+
+			if (!targetTrack) {
+				throw new Error('No video track available for text insertion')
+			}
+
+			const text: Entity = {
+				id: createEntityId(),
+				type: 'text',
+				attrs: {
+					...createDefaultTextAttrs(command.p.content),
+					...command.p.attrs,
+					content: command.p.attrs?.content ?? command.p.content ?? 'Text',
+				},
+				rels: {},
+			}
+			const clip = createTextClipEntity({
+				text,
+				start: command.p.start ?? getTrackEnd(registry, targetTrack.id),
+				duration: command.p.duration ?? 5,
+			})
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [
+						{ c: PATCH.ENTITY_SET, p: { entity: text } },
+						{ c: PATCH.ENTITY_SET, p: { entity: clip } },
+						{
+							c: PATCH.REL_SPLICE,
+							p: {
+								id: targetTrack.id,
+								rel: 'clips',
+								index: getClipIdsForTrack(registry, targetTrack.id).length,
+								deleteCount: 0,
+								insert: [clip.id],
+							},
+						},
+					],
+				},
+				createdIds: { clipId: clip.id, textId: text.id },
+			}
+		}
+
+		case CMD.TEXT_UPDATE_ATTRS: {
+			const project = assertProjectForEntity(registry, command.p.id)
+			const text = assertEntity(registry, command.p.id)
+
+			return {
+				envelope: {
+					projectId: project.id,
+					version: project.version + 1,
+					patches: [{ c: PATCH.ATTRS_MERGE, p: { id: text.id, attrs: command.p.attrs } }],
+				},
 			}
 		}
 
