@@ -87,4 +87,52 @@ describe('derived timeline selectors', () => {
 		expect(previewScene$.get().renderedClips).toEqual([])
 		expect(previewScene$.get().activeClipNames).toEqual([])
 	})
+
+	it('derives primary color correction filters for the active preview frame', () => {
+		let { registry, projectId, clipId } = createRegistryFixture()
+		registry = applyPatchEnvelopeToRegistry(registry, buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: { id: clipId, name: 'Primary', kind: 'color-correction' },
+		}).envelope)
+		const effectId = String(registry.entitiesById[clipId].rels.effects?.[0])
+		registry = applyPatchEnvelopeToRegistry(registry, buildDispatchResult(registry, {
+			c: CMD.EFFECT_UPDATE_ATTRS,
+			p: {
+				id: effectId,
+				attrs: { params: { exposure: { value: 0.25 }, contrast: { value: 1.2 }, saturation: { value: 1.5 } } },
+			},
+		}).envelope)
+
+		const projects$ = createProjectsStore()
+		const session$ = createSessionStore()
+		applySnapshot(projects$, registry)
+		session$.activeProjectId.set(projectId)
+		session$.cursor.set(0.5)
+
+		expect(createPreviewScene$(projects$, session$).get().renderedClips[0].filters).toEqual([
+			'brightness(1.25) contrast(1.2) saturate(1.5) hue-rotate(0deg)',
+		])
+	})
+
+	it('derives edited text attrs for the active preview frame', () => {
+		let { registry, projectId } = createRegistryFixture()
+		const textResult = buildDispatchResult(registry, {
+			c: CMD.TEXT_ADD,
+			p: { projectId, content: 'Original title', start: 0, duration: 2 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, textResult.envelope)
+		registry = applyPatchEnvelopeToRegistry(registry, buildDispatchResult(registry, {
+			c: CMD.TEXT_UPDATE_ATTRS,
+			p: { id: String(textResult.createdIds?.textId), attrs: { content: 'Edited title' } },
+		}).envelope)
+
+		const projects$ = createProjectsStore()
+		const session$ = createSessionStore()
+		applySnapshot(projects$, registry)
+		session$.activeProjectId.set(projectId)
+		session$.cursor.set(0.5)
+
+		const textClip = createPreviewScene$(projects$, session$).get().renderedClips.find((clip) => clip.resourceKind === 'text')
+		expect(textClip?.text?.content).toBe('Edited title')
+	})
 })

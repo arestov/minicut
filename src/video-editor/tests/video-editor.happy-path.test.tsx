@@ -267,6 +267,9 @@ describe('video editor harness', () => {
 			expect(harness.projects$.entitiesById[effectId].attrs.kind.get()).toBe('color-correction')
 			const params = harness.projects$.entitiesById[effectId].attrs.params.get() as { exposure: { value: number } }
 			expect(params.exposure.value).toBe(0.25)
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+				filter: 'brightness(1.25) contrast(1) saturate(1) hue-rotate(0deg)',
+			})
 		} finally {
 			unmount()
 		}
@@ -287,6 +290,14 @@ describe('video editor harness', () => {
 			const textId = String(harness.projects$.entitiesById[clipId].rels.text.get())
 			expect(harness.projects$.entitiesById[clipId].attrs.mediaKind.get()).toBe('text')
 			expect(harness.projects$.entitiesById[textId].attrs.content.get()).toBe('Edited title')
+			expect(screen.getByLabelText('Renderer stage')).toHaveTextContent('Edited title')
+
+			const textSection = within(inspector).getByLabelText('Text controls')
+			const opacityHeading = within(inspector).getAllByText('Opacity').find((element) => element.tagName === 'H3')
+			expect(opacityHeading).toBeDefined()
+			const opacitySection = opacityHeading?.closest('section')
+			expect(opacitySection).not.toBeNull()
+			expect(textSection.compareDocumentPosition(opacitySection as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 		} finally {
 			unmount()
 		}
