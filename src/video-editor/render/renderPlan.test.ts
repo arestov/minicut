@@ -1,4 +1,5 @@
 import { buildDispatchResult } from '../domain/applyCommand'
+import { buildLookColorCorrectionParams } from '../color/looks'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
 import { getAudioTrack, getClipIdsForTrack, getTracks, getVideoTrack } from '../domain/selectors'
@@ -57,6 +58,25 @@ describe('render plan compiler', () => {
 
 		expect(operation.operations.map((item) => item.type)).toEqual(['transform', 'effect', 'opacity'])
 		expect(operation.operations[1]).toMatchObject({ type: 'effect', value: { kind: 'blur', amount: 0.25, enabled: true } })
+	})
+
+	it('exports look browser params in color correction frame operations', () => {
+		let { registry, projectId, firstClipId } = createRenderedProject()
+		registry = applyPatchEnvelopeToRegistry(registry, buildDispatchResult(registry, {
+			c: CMD.EFFECT_ADD,
+			p: {
+				id: firstClipId,
+				name: 'Primary Correction',
+				kind: 'color-correction',
+				params: buildLookColorCorrectionParams('cinema', 0.5),
+			},
+		}).envelope)
+
+		const effect = compileFrameOperations(registry, projectId, 0.5)[0].operations
+			.find((operation) => operation.type === 'effect' && (operation.value as { kind?: string }).kind === 'color-correction')?.value
+
+		expect(effect).toMatchObject({ kind: 'color-correction', params: { lookId: 'cinema', lookIntensity: 0.5, hue: -2 } })
+		expect((effect as { params: { contrast: number } }).params.contrast).toBeCloseTo(1.09, 6)
 	})
 
 	it('is deterministic for the same registry and time input', () => {

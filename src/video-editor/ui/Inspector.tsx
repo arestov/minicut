@@ -3,6 +3,7 @@ import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { buildLookColorCorrectionParams, getLookPreset, lookPresets, type LookParam } from '../color/looks'
 import { getContrastResult, hexToOklch, isOklchInSrgbGamut, oklchToHex, parseHexColor, suggestReadableTextColor, type OklchValue } from '../color/oklch'
 import type { AnimatedScalar, ColorCorrectionAttrs, EditorSessionState, EffectAttrs, ResourceAttrs, TextAttrs } from '../domain/types'
 import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
@@ -46,6 +47,7 @@ const inspectorTabs: Array<{ id: InspectorTab, label: string }> = [
 ]
 
 type PrimaryColorParam = keyof Pick<ColorCorrectionAttrs, 'exposure' | 'contrast' | 'saturation' | 'temperature'>
+type ColorParamKey = PrimaryColorParam | LookParam
 
 const defaultColorCorrectionParams: Record<PrimaryColorParam, AnimatedScalar> = {
 	exposure: { value: 0 },
@@ -402,18 +404,18 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 		: null
 	const colorParams = (colorCorrectionAttrs?.params ?? {}) as Partial<ColorCorrectionAttrs>
 	const isColorCorrectionEnabled = colorCorrectionAttrs?.enabled !== false
-	const getParamValue = (key: PrimaryColorParam, fallback: number): number =>
+	const getParamValue = (key: ColorParamKey, fallback: number): number =>
 		Number((colorParams[key] as AnimatedScalar | undefined)?.value ?? fallback)
-	const updateColorParams = (params: Partial<Record<PrimaryColorParam, number>>): void => {
+	const updateColorParams = (params: Partial<Record<ColorParamKey, number>> & Record<string, unknown> = {}): void => {
 		if (!colorCorrectionEffectId) {
 			return
 		}
 
-		const nextParams = {
+		const nextParams: Record<string, unknown> = {
 			...colorParams,
 		}
-		for (const [key, value] of Object.entries(params) as Array<[PrimaryColorParam, number]>) {
-			nextParams[key] = { value }
+		for (const [key, value] of Object.entries(params)) {
+			nextParams[key] = typeof value === 'number' ? { value } : value
 		}
 
 		actions.updateEffectAttrs(colorCorrectionEffectId, {
@@ -425,6 +427,18 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 
 	const updateParam = (key: PrimaryColorParam, value: number): void => {
 		updateColorParams({ [key]: value })
+	}
+
+	const lookId = typeof (colorParams as Record<string, unknown>).lookId === 'string'
+		? String((colorParams as Record<string, unknown>).lookId)
+		: 'clean'
+	const activeLook = getLookPreset(lookId)
+	const lookIntensity = Number(((colorParams as Record<string, { value?: unknown }>).lookIntensity)?.value ?? 1)
+	const applyLook = (nextLookId: string, nextIntensity = lookIntensity): void => {
+		updateColorParams(buildLookColorCorrectionParams(nextLookId, nextIntensity))
+	}
+	const updateLookIntensity = (value: number): void => {
+		applyLook(activeLook.id, value)
 	}
 
 	const toggleBypass = (): void => {
@@ -439,10 +453,14 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 
 	const resetGrade = (): void => {
 		updateColorParams({
+			lookId: 'clean',
+			lookIntensity: 1,
 			exposure: defaultColorCorrectionParams.exposure.value,
 			contrast: defaultColorCorrectionParams.contrast.value,
 			saturation: defaultColorCorrectionParams.saturation.value,
 			temperature: defaultColorCorrectionParams.temperature.value,
+			hue: 0,
+			gamma: 1,
 		})
 	}
 
@@ -510,6 +528,31 @@ const InspectorColorTabPanel = observer(({ clipId }: { clipId: string }) => {
 									{preset.label}
 								</Button>
 							))}
+						</div>
+						<div className="ve-look-browser" aria-label="Look Browser">
+							<div className="ve-look-browser__header">
+								<strong>Look Browser</strong>
+								<span className="ve-status-pill">{activeLook.label} {Math.round(Math.max(0, Math.min(1, lookIntensity)) * 100)}%</span>
+							</div>
+							<div className="ve-look-browser__grid">
+								{lookPresets.map((look) => (
+									<button
+										key={look.id}
+										type="button"
+										className={look.id === activeLook.id ? 'is-active' : ''}
+										aria-label={`Apply look ${look.label}`}
+										aria-pressed={look.id === activeLook.id}
+										onClick={() => applyLook(look.id)}
+									>
+										<span className="ve-look-browser__thumb" style={{ background: look.preview }} />
+										<span>{look.label}</span>
+									</button>
+								))}
+							</div>
+							<label className="ve-slider-field">
+								<span>Look intensity</span>
+								<input type="range" aria-label="Look intensity" min="0" max="100" value={Math.round(Math.max(0, Math.min(1, lookIntensity)) * 100)} onChange={(event) => updateLookIntensity(Number(event.currentTarget.value) / 100)} />
+							</label>
 						</div>
 						<label className="ve-slider-field">
 							<span>Exposure</span>

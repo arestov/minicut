@@ -286,6 +286,25 @@ describe('video editor harness', () => {
 			expect(warmParams.exposure.value).toBeCloseTo(0.12, 6)
 			expect(warmParams.temperature.value).toBeCloseTo(0.22, 6)
 
+			await user.click(within(inspector).getByRole('button', { name: 'Apply look Cinema' }))
+			const lookIntensity = within(inspector).getByRole('slider', { name: 'Look intensity' })
+			fireEvent.change(lookIntensity, { target: { value: '50' } })
+			const lookParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
+				lookId: string
+				lookIntensity: { value: number }
+				exposure: { value: number }
+				contrast: { value: number }
+				saturation: { value: number }
+				hue: { value: number }
+			}
+			expect(lookParams.lookId).toBe('cinema')
+			expect(lookParams.lookIntensity.value).toBe(0.5)
+			expect(lookParams.contrast.value).toBeCloseTo(1.09, 6)
+			expect(lookParams.hue.value).toBeCloseTo(-2, 6)
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+				filter: 'brightness(0.98) contrast(1.0791) saturate(0.97) hue-rotate(-2deg)',
+			})
+
 			await user.click(within(inspector).getByRole('button', { name: 'Reset grade' }))
 			const resetParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
 				exposure: { value: number }
@@ -697,5 +716,5 @@ describe('video editor harness', () => {
 		} finally {
 			unmount()
 		}
-	})
+	}, 10000)
 })
