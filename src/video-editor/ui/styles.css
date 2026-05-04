@@ -1541,6 +1541,20 @@ button:disabled {
 	background: #09090b;
 }
 
+.ve-renderer__text-box {
+	display: flex;
+	justify-content: center;
+	max-width: 92%;
+	padding: 12px;
+	white-space: pre-wrap;
+}
+
+.ve-renderer__text-content {
+	display: block;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+}
+
 .ve-renderer__audio-elements {
 	position: absolute;
 	left: 0;

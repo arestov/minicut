@@ -3,10 +3,13 @@ import type {
 	AnimatedScalar,
 	EditorSessionState,
 	EntityId,
+	EffectAttrs,
 	KeyframeAttrs,
 	ProjectRegistry,
 	ResourceAttrs,
+	TextAttrs,
 } from '../domain/types'
+import { getEffectInstructionFilter, toEffectRenderInstruction } from '../render/colorPipeline'
 import type { ScalarKeyframe } from '../render/timing'
 import { evaluateFadeOpacity, evaluateKeyframedScalar } from '../render/timing'
 import {
@@ -23,6 +26,7 @@ import {
 	projectEntityRels$,
 	resourceAttrs$,
 	trackAttrs$,
+	textAttrs$,
 } from './observableSelectors'
 
 const fallbackPlaybackDuration = 20
@@ -51,6 +55,7 @@ export interface RenderedClip {
 	transform: { x: number; y: number; scale: number; rotation: number }
 	audio: { gain: number; pan: number }
 	filters: string[]
+	text: TextAttrs | null
 }
 
 export interface ResolvedAnimatedScalar {
@@ -81,6 +86,7 @@ export interface PreviewClipSource {
 	}
 	audio: { gain: number; pan: number }
 	filters: string[]
+	text: TextAttrs | null
 }
 
 export interface PreviewStructure {
@@ -223,23 +229,32 @@ const getEffectFilter$ = (
 	projects$: Observable<ProjectRegistry>,
 	effectId: EntityId,
 ): string | null => {
-	const effect$ = effectAttrs$(projects$, effectId)
-	const kind = String(effect$.kind.get())
-	const amount = Number(effect$.amount.get()) || 0
+	const filter = getEffectInstructionFilter(toEffectRenderInstruction(effectAttrs$(projects$, effectId).get() as EffectAttrs))
+	return filter || null
+}
 
-	if (kind === 'blur') {
-		return `blur(${Math.round(amount * 10)}px)`
+const getTextPreviewAttrs$ = (
+	projects$: Observable<ProjectRegistry>,
+	textId: EntityId,
+): TextAttrs => {
+	const text$ = textAttrs$(projects$, textId)
+	return {
+		content: String(text$.content.get()),
+		style: {
+			fontFamily: String(text$.style.fontFamily.get()),
+			fontSize: Number(text$.style.fontSize.get()),
+			fontWeight: Number(text$.style.fontWeight.get()),
+			lineHeight: Number(text$.style.lineHeight.get()),
+			letterSpacing: Number(text$.style.letterSpacing.get()),
+			color: String(text$.style.color.get()),
+			backgroundColor: text$.style.backgroundColor.get(),
+			align: text$.style.align.get(),
+		},
+		box: {
+			width: Number(text$.box.width.get()),
+			height: Number(text$.box.height.get()),
+		},
 	}
-
-	if (kind === 'sharpen') {
-		return `contrast(${1 + amount}) saturate(${1 + amount * 0.5})`
-	}
-
-	if (kind === 'tint') {
-		return `sepia(${amount}) saturate(${1 + amount})`
-	}
-
-	return null
 }
 
 const createKeyframeResolver = (
@@ -291,8 +306,12 @@ const getPreviewClipSource$ = (
 	const start = Number(clip$.start.get())
 	const duration = Number(clip$.duration.get())
 	const resourceId = clipRels.resource.get()
+	const textId = clipRels.text.get()
 	const resource$ = typeof resourceId === 'string'
 		? resourceAttrs$(projects$, resourceId)
+		: null
+	const text = typeof textId === 'string' && projects$.entitiesById[textId]?.type.get() === 'text'
+		? getTextPreviewAttrs$(projects$, textId)
 		: null
 	const resourceKind = clipRef.trackKind === 'audio'
 		? 'audio'
@@ -329,6 +348,7 @@ const getPreviewClipSource$ = (
 		},
 		audio: clip$.audio.get() ?? { gain: 1, pan: 0 },
 		filters,
+		text,
 	}
 }
 
@@ -370,6 +390,7 @@ export const renderPreviewClipSourceAtCursor = (
 		},
 		audio: clip.audio,
 		filters: clip.filters,
+		text: clip.text,
 	}
 }
 

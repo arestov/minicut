@@ -16,6 +16,8 @@ interface PreviewCanvasClipSource {
 	name: string
 	color: string
 	kind: string
+	filters: string[]
+	text: { content: string } | null
 	start: number
 	duration: number
 	fadeIn: number
@@ -39,6 +41,8 @@ interface PreviewCanvasRenderedClip {
 	name: string
 	color: string
 	kind: string
+	filters: string[]
+	text: { content: string } | null
 	opacity: number
 }
 
@@ -111,6 +115,8 @@ const renderClipsAtCursor = (cursor: number): PreviewCanvasRenderedClip[] =>
 			name: clip.name,
 			color: clip.color,
 			kind: clip.kind,
+			filters: clip.filters,
+			text: clip.text,
 			opacity: evaluateFadeOpacity(cursor, clip),
 		}))
 		.filter((clip) => clip.opacity > 0)
@@ -150,12 +156,14 @@ const drawPreview = (
 	clips.forEach((clip, index) => {
 		const y = 54 + index * 28
 		ctx.globalAlpha = Math.max(0.2, clip.opacity)
+		ctx.filter = clip.filters.join(' ') || 'none'
 		ctx.fillStyle = clip.color
 		ctx.fillRect(22, y, Math.min(width - 44, 260), 20)
+		ctx.filter = 'none'
 		ctx.globalAlpha = 1
 		ctx.fillStyle = '#18181b'
 		ctx.font = '600 12px Inter, Segoe UI, sans-serif'
-		ctx.fillText(`${clip.kind}: ${clip.name}`, 30, y + 14)
+		ctx.fillText(`${clip.kind}: ${clip.text?.content ?? clip.name}`, 30, y + 14)
 	})
 }
 

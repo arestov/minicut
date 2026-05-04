@@ -31,6 +31,8 @@ interface PreviewCanvasClipSource {
 	name: string
 	color: string
 	kind: string
+	filters: string[]
+	text: PreviewStructure['clipSources'][number]['text']
 	start: number
 	duration: number
 	fadeIn: number
@@ -55,6 +57,8 @@ const getCanvasClipSources = (structure: PreviewStructure): PreviewCanvasClipSou
 		name: clip.name,
 		color: clip.color,
 		kind: clip.resourceKind,
+		filters: clip.filters,
+		text: clip.text,
 		start: clip.start,
 		duration: clip.duration,
 		fadeIn: clip.fadeIn,
@@ -108,8 +112,51 @@ const drawFallbackPreview = (
 		context.globalAlpha = 1
 		context.fillStyle = '#18181b'
 		context.font = '600 12px Inter, Segoe UI, sans-serif'
-		context.fillText(`${clip.resourceKind}: ${clip.name}`, 30, y + 14)
+		context.fillText(`${clip.resourceKind}: ${clip.text?.content ?? clip.name}`, 30, y + 14)
 	})
+}
+
+const getTextAlignItems = (align: NonNullable<RenderedClip['text']>['style']['align']): 'flex-start' | 'center' | 'flex-end' => {
+	if (align === 'left') {
+		return 'flex-start'
+	}
+	if (align === 'right') {
+		return 'flex-end'
+	}
+	return 'center'
+}
+
+const renderTextClip = (clip: RenderedClip) => {
+	if (!clip.text) {
+		return null
+	}
+
+	return (
+		<div
+			className="ve-renderer__text-box"
+			style={{
+				width: `${clip.text.box.width}px`,
+				minHeight: `${clip.text.box.height}px`,
+				backgroundColor: clip.text.style.backgroundColor ?? 'transparent',
+				alignItems: getTextAlignItems(clip.text.style.align),
+			}}
+		>
+			<span
+				className="ve-renderer__text-content"
+				style={{
+					color: clip.text.style.color,
+					fontFamily: clip.text.style.fontFamily,
+					fontSize: `${clip.text.style.fontSize}px`,
+					fontWeight: clip.text.style.fontWeight,
+					lineHeight: clip.text.style.lineHeight,
+					letterSpacing: `${clip.text.style.letterSpacing}px`,
+					textAlign: clip.text.style.align,
+				}}
+			>
+				{clip.text.content}
+			</span>
+		</div>
+	)
 }
 
 const getClipLocalMediaTime = (clip: RenderedClip, cursor: number): number =>
@@ -323,7 +370,8 @@ export const RendererStage = ({ structure, frame, isPlaying, onClipMediaError }:
 										}}
 									/>
 								) : null}
-								{!hasMedia ? (
+								{clip.resourceKind === 'text' ? renderTextClip(clip) : null}
+								{!hasMedia && clip.resourceKind !== 'text' ? (
 									<>
 										<strong>{clip.name}</strong>
 										<span>{clip.resourceName}</span>

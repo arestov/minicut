@@ -183,6 +183,24 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Edit inspector">
+			{text ? (
+				<InspectorSection title="Text" icon={SlidersHorizontal} ariaLabel="Text controls">
+					<label className="ve-text-field">
+						<span>Content</span>
+						<textarea aria-label="Text content" value={text.content} rows={3} onChange={(event) => actions.updateSelectedText({ content: event.currentTarget.value })} />
+					</label>
+					<div className="ve-field-grid">
+						<label><span>Size</span><input type="number" min="8" max="320" value={text.style.fontSize} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, fontSize: Number(event.currentTarget.value) } })} /></label>
+						<label><span>Weight</span><input type="number" min="100" max="900" step="100" value={text.style.fontWeight} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, fontWeight: Number(event.currentTarget.value) } })} /></label>
+						<label><span>Color</span><input type="color" aria-label="Text color" value={text.style.color} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, color: event.currentTarget.value } })} /></label>
+						<label><span>Align</span><select aria-label="Text align" value={text.style.align} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, align: event.currentTarget.value as typeof text.style.align } })}>
+							<option value="left">Left</option>
+							<option value="center">Center</option>
+							<option value="right">Right</option>
+						</select></label>
+					</div>
+				</InspectorSection>
+			) : null}
 			<InspectorSection title="Opacity" icon={Gauge}>
 				<label className="ve-slider-field">
 					<span>Opacity</span>
@@ -232,24 +250,6 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 					<label><span>Rotate</span><input type="number" value={transform.rotation.value} onChange={(event) => actions.updateSelectedClipTransform({ rotation: Number(event.currentTarget.value) })} /></label>
 				</div>
 			</InspectorSection>
-			{text ? (
-				<InspectorSection title="Text" icon={SlidersHorizontal} ariaLabel="Text controls">
-					<label className="ve-text-field">
-						<span>Content</span>
-						<textarea aria-label="Text content" value={text.content} rows={3} onChange={(event) => actions.updateSelectedText({ content: event.currentTarget.value })} />
-					</label>
-					<div className="ve-field-grid">
-						<label><span>Size</span><input type="number" min="8" max="320" value={text.style.fontSize} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, fontSize: Number(event.currentTarget.value) } })} /></label>
-						<label><span>Weight</span><input type="number" min="100" max="900" step="100" value={text.style.fontWeight} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, fontWeight: Number(event.currentTarget.value) } })} /></label>
-						<label><span>Color</span><input type="color" aria-label="Text color" value={text.style.color} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, color: event.currentTarget.value } })} /></label>
-						<label><span>Align</span><select aria-label="Text align" value={text.style.align} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, align: event.currentTarget.value as typeof text.style.align } })}>
-							<option value="left">Left</option>
-							<option value="center">Center</option>
-							<option value="right">Right</option>
-						</select></label>
-					</div>
-				</InspectorSection>
-			) : null}
 			<InspectorSection title="Effects" icon={Sparkles} ariaLabel="Effects editor">
 				<div className="ve-button-grid">
 					<IconButton type="button" icon={Wand2} label="Blur" variant="secondary" onClick={() => actions.addEffectToSelectedClip('blur')}>Blur</IconButton>
