@@ -359,6 +359,9 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 		: null
 	const colorParams = (colorCorrectionAttrs?.params ?? {}) as Partial<ColorCorrectionAttrs>
 	const isColorCorrectionEnabled = colorCorrectionAttrs?.enabled !== false
+	const activeLookId = typeof (colorParams as Record<string, unknown>).lookId === 'string'
+		? String((colorParams as Record<string, unknown>).lookId)
+		: 'clean'
 	const getParamValue = (key: ColorParamKey, fallback: number): number =>
 		Number((colorParams[key] as AnimatedScalar | undefined)?.value ?? fallback)
 	const updateColorParams = (params: Partial<Record<ColorParamKey, number>> & Record<string, unknown> = {}): void => {
@@ -381,13 +384,10 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 	}
 
 	const updateParam = (key: PrimaryColorParam, value: number): void => {
-		updateColorParams({ [key]: value })
+		updateColorParams({ [key]: value, lookId: 'custom' })
 	}
 
-	const lookId = typeof (colorParams as Record<string, unknown>).lookId === 'string'
-		? String((colorParams as Record<string, unknown>).lookId)
-		: 'clean'
-	const activeLook = getLookPreset(lookId)
+	const activeLook = getLookPreset(activeLookId)
 	const lookIntensity = Number(((colorParams as Record<string, { value?: unknown }>).lookIntensity)?.value ?? 1)
 	const applyLook = (nextLookId: string, nextIntensity = lookIntensity): void => {
 		updateColorParams(buildLookColorCorrectionParams(nextLookId, nextIntensity))
@@ -516,14 +516,14 @@ const InspectorColorTabPanel = observer(({ clipId, mediaElementRegistry }: { cli
 									key={preset.id}
 									type="button"
 									variant="outline"
-									onClick={() => updateColorParams(preset.params)}
+									onClick={() => updateColorParams({ ...preset.params, lookId: 'custom', lookIntensity: 1 })}
 								>
 									{preset.label}
 								</Button>
 							))}
 						</div>
 						<LookBrowser
-							activeLookId={activeLook.id}
+							activeLookId={activeLookId}
 							intensity={lookIntensity}
 							thumbnails={lookThumbnails}
 							onApplyLook={applyLook}

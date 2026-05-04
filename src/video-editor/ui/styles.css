@@ -19,6 +19,8 @@
 	--ve-radius: 8px;
 	--ve-toolbar-height: 56px;
 	--ve-timeline-height: clamp(420px, 42vh, 540px);
+	--ve-color-timeline-height: clamp(210px, 24vh, 280px);
+	--ve-inspector-width: 280px;
 	color-scheme: light;
 	font-family: Inter, "Segoe UI", sans-serif;
 	background: var(--ve-background);
@@ -404,19 +406,55 @@ button:disabled {
 
 .ve-main__top {
 	display: grid;
-	grid-template-columns: 280px minmax(0, 1fr) 280px;
+	grid-template-columns: 280px minmax(360px, 1fr) 8px var(--ve-inspector-width);
 	gap: 0;
 	height: calc(100vh - var(--ve-toolbar-height) - var(--ve-timeline-height));
 	min-height: 360px;
 }
 
 .ve-main__top--scopes {
-	height: calc(100vh - var(--ve-toolbar-height) - clamp(300px, 34vh, 440px));
-	min-height: 520px;
+	height: calc(100vh - var(--ve-toolbar-height) - var(--ve-color-timeline-height));
+	min-height: 560px;
 }
 
 .ve-main__top--scopes + .ve-timeline {
-	height: clamp(300px, 34vh, 440px);
+	height: var(--ve-color-timeline-height);
+}
+
+.ve-panel-resizer {
+	position: relative;
+	z-index: 3;
+	width: 8px;
+	min-width: 8px;
+	border-top: 0;
+	border-left: 1px solid var(--ve-border);
+	border-right: 1px solid var(--ve-border);
+	background: #f4f4f5;
+	cursor: col-resize;
+	touch-action: none;
+}
+
+.ve-panel-resizer::before {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 2px;
+	height: 46px;
+	transform: translate(-50%, -50%);
+	border-radius: 999px;
+	background: #d4d4d8;
+}
+
+.ve-panel-resizer:hover::before,
+.ve-panel-resizer:focus-visible::before,
+.ve-panel-resizer.is-dragging::before {
+	background: #2563eb;
+}
+
+.ve-panel-resizer:focus-visible {
+	outline: 2px solid var(--ve-ring);
+	outline-offset: -2px;
 }
 
 .ve-panel {
@@ -1726,6 +1764,32 @@ button:disabled {
 	background: #fafafa;
 }
 
+.ve-oklch-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px;
+	border: 1px solid #dbeafe;
+	border-radius: 8px;
+	background: #f8fafc;
+}
+
+.ve-oklch-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.ve-oklch-panel__header strong {
+	font-size: 12px;
+}
+
+.ve-oklch-panel__header span {
+	color: var(--ve-muted-foreground);
+	font-size: 11px;
+}
+
 .ve-oklch-controls__header {
 	display: flex;
 	align-items: center;
@@ -1835,7 +1899,7 @@ button:disabled {
 	background: transparent;
 	color: #18181b;
 	transform-origin: center;
-	box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
+	box-shadow: none;
 	overflow: hidden;
 	z-index: 2;
 }
@@ -2066,6 +2130,10 @@ button:disabled {
 		grid-template-columns: 1fr;
 		height: auto;
 		min-height: 0;
+	}
+
+	.ve-panel-resizer {
+		display: none;
 	}
 
 	.ve-main__top > .ve-panel {

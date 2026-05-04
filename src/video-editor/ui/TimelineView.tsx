@@ -119,6 +119,7 @@ export const TimelineView = observer(() => {
 		x: number
 		scrollLeft: number
 	} | null>(null)
+	const playheadDragPointerId = useRef<number | null>(null)
 	const { projects$, session$, actions } = useVideoEditor()
 	const activeProjectId = getActiveProjectId$(projects$, session$)
 	const timelineZoom = session$.timelineZoom.get()
@@ -151,33 +152,53 @@ export const TimelineView = observer(() => {
 	const canZoomOut = timelineZoom > TIMELINE_ZOOM_MIN
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 
-	const updateCursorFromPointer = (
-		event: ReactPointerEvent<HTMLDivElement>,
-	): void => {
+	const canStartPlayheadDrag = (event: ReactPointerEvent<HTMLDivElement>): boolean => {
 		if (activeTool === 'hand') {
-			return
-		}
-
-		if (event.type === 'pointermove' && (event.buttons & 1) === 0) {
-			return
+			return false
 		}
 
 		const target = event.target as HTMLElement | null
-		if (
+		return !(
 			target?.closest('.ve-clip') ||
 			target?.closest('button, input, label')
-		) {
+		)
+	}
+
+	const updateCursorFromPointer = (
+		event: ReactPointerEvent<HTMLDivElement>,
+	): void => {
+		if (playheadDragPointerId.current !== event.pointerId) {
+			return
+		}
+
+		if ((event.buttons & 1) === 0) {
+			playheadDragPointerId.current = null
 			return
 		}
 
 		const rect = event.currentTarget.getBoundingClientRect()
 		const timelineX = event.clientX - rect.left + event.currentTarget.scrollLeft
-		if (timelineX < 0) {
+		actions.setCursor(Math.max(0, timelineX / timelineZoom))
+		event.preventDefault()
+	}
+
+	const handlePlayheadPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		if (!canStartPlayheadDrag(event)) {
 			return
 		}
 
-		actions.setCursor(Math.max(0, timelineX / timelineZoom))
-		event.preventDefault()
+		playheadDragPointerId.current = event.pointerId
+		event.currentTarget.setPointerCapture?.(event.pointerId)
+		updateCursorFromPointer(event)
+	}
+
+	const stopPlayheadDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		if (playheadDragPointerId.current !== event.pointerId) {
+			return
+		}
+
+		playheadDragPointerId.current = null
+		event.currentTarget.releasePointerCapture?.(event.pointerId)
 	}
 
 	const handleHandPan = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -375,11 +396,19 @@ export const TimelineView = observer(() => {
 								data-snapping={snappingEnabled ? 'on' : 'off'}
 								onPointerDown={(event) => {
 									handleHandPan(event)
-									updateCursorFromPointer(event)
+									handlePlayheadPointerDown(event)
 								}}
 								onPointerMove={(event) => {
 									handleHandPan(event)
 									updateCursorFromPointer(event)
+								}}
+								onPointerUp={(event) => {
+									handleHandPan(event)
+									stopPlayheadDrag(event)
+								}}
+								onPointerCancel={(event) => {
+									handleHandPan(event)
+									stopPlayheadDrag(event)
 								}}
 							>
 								<div className="ve-track-lane-column">

@@ -19,10 +19,12 @@ export const OklchColorField = ({
 	label,
 	value,
 	onChange,
+	defaultOpen = true,
 }: {
 	label: string
 	value: string
 	onChange: (value: string) => void
+	defaultOpen?: boolean
 }) => {
 	const fieldId = useId()
 	const oklch = hexToOklch(value) ?? { l: 1, c: 0, h: 0 }
@@ -32,7 +34,7 @@ export const OklchColorField = ({
 	const gamutStatus = isOklchInSrgbGamut(oklch) ? 'Gamut safe' : 'Gamut fitted'
 
 	return (
-		<details className="ve-oklch-controls" aria-label={`${label} OKLCH controls`}>
+		<details className="ve-oklch-controls" aria-label={`${label} OKLCH controls`} open={defaultOpen}>
 			<summary className="ve-oklch-controls__header">
 				<strong>{label} OKLCH</strong>
 				<span className="ve-status-pill">{gamutStatus}</span>

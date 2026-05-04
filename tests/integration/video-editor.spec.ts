@@ -830,6 +830,7 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 	await clip.click()
 	await setTimelineCursor(page, 0.25)
 	const preview = page.getByRole('region', { name: 'Preview panel' })
+	const previewHeightBeforeColor = (await preview.boundingBox())?.height ?? 0
 	await expect(preview.getByLabel('Color scopes')).toHaveCount(0)
 	await page.waitForFunction(() => {
 		const video = document.querySelector('[aria-label="Renderer stage"] video') as HTMLVideoElement | null
@@ -842,6 +843,21 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Color' }).click()
+	await expect.poll(async () => (await preview.boundingBox())?.height ?? 0).toBeGreaterThan(previewHeightBeforeColor + 80)
+	await expect(timeline.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
+	const resizeHandle = page.getByRole('separator', { name: 'Resize preview and inspector panels' })
+	const inspectorWidthBeforeResize = (await inspector.boundingBox())?.width ?? 0
+	const resizeBox = await resizeHandle.boundingBox()
+	if (!resizeBox) {
+		throw new Error('Preview/inspector resize handle is unavailable')
+	}
+	const resizeStartX = resizeBox.x + resizeBox.width / 2
+	const resizeStartY = resizeBox.y + resizeBox.height / 2
+	await page.mouse.move(resizeStartX, resizeStartY)
+	await page.mouse.down()
+	await page.mouse.move(resizeStartX - 90, resizeStartY)
+	await page.mouse.up()
+	await expect.poll(async () => (await inspector.boundingBox())?.width ?? 0).toBeGreaterThan(inspectorWidthBeforeResize + 40)
 	await inspector.getByRole('button', { name: 'Add primary correction' }).click()
 	await inspector.getByRole('button', { name: 'Warm' }).click()
 
@@ -853,6 +869,9 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 	await setRangeValue(inspector.getByLabel('Look intensity'), 50)
 	await expect(inspector.getByText('Cinema 50%')).toBeVisible()
 	await expect(renderer.locator('.ve-renderer__layer--video').first()).toHaveCSS('filter', /brightness\(0\.98\).*contrast\(1\.0791\).*saturate\(0\.97\).*hue-rotate\(-2deg\)/)
+	await setRangeValue(inspector.getByLabel('Exposure'), 8)
+	await expect(inspector.getByText('Custom grade')).toBeVisible()
+	await expect(inspector.getByRole('button', { name: 'Apply look Cinema' })).toHaveAttribute('aria-pressed', 'false')
 	await setTimelineCursor(page, 0.6)
 	const previewVideo = renderer.locator('video').first()
 	await expect.poll(async () => previewVideo.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.5)
@@ -894,9 +913,8 @@ test('text OKLCH controls render in browser and frame palette samples preview fr
 	await setTimelineCursor(page, 0.25)
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByLabel('Text content').fill('Palette title')
-	await inspector.getByText('Text color OKLCH').click()
+	await expect(inspector.getByLabel('Advanced OKLCH controls')).toBeVisible()
 	await setRangeValue(inspector.getByLabel('Text color hue'), 220)
-	await inspector.getByText('Text background OKLCH').click()
 	await setRangeValue(inspector.getByLabel('Text background lightness'), 18)
 
 	const renderer = page.getByLabel('Renderer stage')
@@ -938,6 +956,19 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	await importFixtureVideo(page)
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const laneScroll = timeline.locator('.ve-track-lane-scroll')
+	const laneBox = await laneScroll.boundingBox()
+	if (!laneBox) {
+		throw new Error('Timeline lane scroll area is unavailable')
+	}
+	await page.mouse.move(laneBox.x + 24, laneBox.y + Math.min(80, laneBox.height - 20))
+	await page.mouse.down()
+	await page.mouse.move(laneBox.x + laneBox.width + 160, laneBox.y + Math.min(80, laneBox.height - 20))
+	await expect.poll(async () => Number((await timeline.getByLabel('Current time').textContent() ?? '0').replace('s', ''))).toBeGreaterThan(1)
+	await page.mouse.up()
+	const releasedTime = Number((await timeline.getByLabel('Current time').textContent() ?? '0').replace('s', ''))
+	await page.mouse.move(laneBox.x + 8, laneBox.y + Math.min(80, laneBox.height - 20))
+	await expect.poll(async () => Number((await timeline.getByLabel('Current time').textContent() ?? '0').replace('s', ''))).toBe(releasedTime)
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
 	const zoomIn = timeline.getByRole('button', { name: 'Zoom in' })
 	const zoomOut = timeline.getByRole('button', { name: 'Zoom out' })

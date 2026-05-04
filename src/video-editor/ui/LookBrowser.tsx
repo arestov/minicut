@@ -14,22 +14,23 @@ export const LookBrowser = ({
 	onIntensityChange: (intensity: number) => void
 }) => {
 	const clampedIntensity = Math.max(0, Math.min(1, intensity))
-	const activeLook = lookPresets.find((look) => look.id === activeLookId) ?? lookPresets[0]
+	const activeLook = lookPresets.find((look) => look.id === activeLookId) ?? null
+	const activeLabel = activeLook ? activeLook.label : 'Custom'
 
 	return (
 		<div className="ve-look-browser" aria-label="Look Browser">
 			<div className="ve-look-browser__header">
 				<strong>Look Browser</strong>
-				<span className="ve-status-pill">{activeLook.label} {Math.round(clampedIntensity * 100)}%</span>
+				<span className="ve-status-pill">{activeLabel} {activeLook ? `${Math.round(clampedIntensity * 100)}%` : 'grade'}</span>
 			</div>
 			<div className="ve-look-browser__grid">
 				{lookPresets.map((look) => (
 					<button
 						key={look.id}
 						type="button"
-						className={look.id === activeLook.id ? 'is-active' : ''}
+						className={activeLook?.id === look.id ? 'is-active' : ''}
 						aria-label={`Apply look ${look.label}`}
-						aria-pressed={look.id === activeLook.id}
+						aria-pressed={activeLook?.id === look.id}
 						onClick={() => onApplyLook(look.id)}
 					>
 						<span className="ve-look-browser__thumb" data-look-id={look.id} style={{ background: thumbnails?.[look.id] ?? look.preview }} />

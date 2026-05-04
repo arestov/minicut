@@ -43,8 +43,14 @@ export const TextAppearancePanel = ({
 				<Button type="button" variant="outline" onClick={() => onStyleChange({ color: suggestReadableTextColor(textColor, textBackgroundColor) })}>Fix contrast</Button>
 			</div>
 			<FramePaletteAction status={paletteStatus} onGenerate={onGenerateFramePalette} />
-			<OklchColorField label="Text color" value={textColor} onChange={(value) => onStyleChange({ color: value })} />
-			<OklchColorField label="Text background" value={textBackgroundColor} onChange={(value) => onStyleChange({ backgroundColor: value })} />
+			<div className="ve-oklch-panel" aria-label="Advanced OKLCH controls">
+				<div className="ve-oklch-panel__header">
+					<strong>Advanced OKLCH controls</strong>
+					<span>Lightness, chroma, hue</span>
+				</div>
+				<OklchColorField label="Text color" value={textColor} onChange={(value) => onStyleChange({ color: value })} />
+				<OklchColorField label="Text background" value={textBackgroundColor} onChange={(value) => onStyleChange({ backgroundColor: value })} />
+			</div>
 		</>
 	)
 }

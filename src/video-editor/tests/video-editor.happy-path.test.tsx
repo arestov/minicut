@@ -304,6 +304,11 @@ describe('video editor harness', () => {
 			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
 				filter: 'brightness(0.98) contrast(1.0791) saturate(0.97) hue-rotate(-2deg)',
 			})
+			fireEvent.change(exposure, { target: { value: '10' } })
+			const customLookParams = harness.projects$.entitiesById[effectId].attrs.params.get() as { lookId: string }
+			expect(customLookParams.lookId).toBe('custom')
+			expect(within(inspector).getByText('Custom grade')).toBeVisible()
+			expect(within(inspector).getByRole('button', { name: 'Apply look Cinema' })).toHaveAttribute('aria-pressed', 'false')
 
 			await user.click(within(inspector).getByRole('button', { name: 'Reset grade' }))
 			const resetParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
@@ -369,6 +374,9 @@ describe('video editor harness', () => {
 			expect(screen.getByLabelText('Renderer stage')).toHaveTextContent('Edited title')
 
 			const textSection = within(inspector).getByLabelText('Text controls')
+			expect(within(textSection).getByLabelText('Advanced OKLCH controls')).toBeVisible()
+			expect(within(textSection).getByRole('group', { name: 'Text color OKLCH controls' })).toBeVisible()
+			expect(within(textSection).getByRole('group', { name: 'Text background OKLCH controls' })).toBeVisible()
 			fireEvent.change(within(textSection).getByLabelText('Text color'), { target: { value: '#475569' } })
 			fireEvent.change(within(textSection).getByLabelText('Text background color'), { target: { value: '#334155' } })
 			expect(within(textSection).getByLabelText('Text color feedback')).toHaveTextContent(/Contrast/)
