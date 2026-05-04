@@ -11,6 +11,7 @@ import {
 	type PreviewStructure,
 } from '../legend/derivedTimeline'
 import { createPreviewScopeData, type PreviewScopeData, type RgbaSampleFrame, type ScopeDensityFrame } from '../render/colorScopes'
+import { drawScopeDensityCanvas, drawVectorscopePoints } from '../render/colorScopeCanvas'
 import type { EditorSessionState } from '../domain/types'
 import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'
@@ -81,8 +82,6 @@ const PreviewStage = observer(({
 		/>
 	)
 })
-
-const clampPercent = (value: number): number => Math.min(97, Math.max(3, value))
 
 const getScopeSampleKey = (clips: RenderedClip[], cursor: number): string =>
 	clips.map((clip) => `${clip.id}:${clip.resourceUrl}:${Math.round((cursor - clip.start + clip.inPoint) * 2) / 2}`).join('|')
@@ -206,41 +205,43 @@ const usePreviewScopeSamples = (clips: RenderedClip[], cursor: number): Record<s
 	return samples
 }
 
-const getVisibleDensityCells = (frame: ScopeDensityFrame, maxCells = 4200): Array<{ key: string; x: number; y: number; value: number }> => {
-	const cells = frame.cells
-		.map((value, index) => ({
-			key: `${index}`,
-			x: index % frame.width,
-			y: Math.floor(index / frame.width),
-			value,
-		}))
-		.filter((cell) => cell.value > 0)
-
-	return cells.length > maxCells
-		? cells.sort((left, right) => right.value - left.value).slice(0, maxCells)
-		: cells
-}
-
-const ScopeDensitySvg = ({ frame, tint, label, className = '' }: {
+const ScopeDensityCanvas = ({ frame, tint, label, className = '', vectorscopePoints = [] }: {
 	frame: ScopeDensityFrame
 	tint: string
 	label: string
 	className?: string
+	vectorscopePoints?: PreviewScopeData['vectorscope']['points']
 }) => {
-	const cells = getVisibleDensityCells(frame)
+	const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+	useEffect(() => {
+		if (navigator.userAgent.includes('jsdom')) {
+			return
+		}
+
+		const canvas = canvasRef.current
+		const context = canvas?.getContext('2d')
+		if (!canvas || !context) {
+			return
+		}
+
+		canvas.width = frame.width
+		canvas.height = frame.height
+		drawScopeDensityCanvas(context, frame, tint)
+		if (vectorscopePoints.length > 0) {
+			drawVectorscopePoints(context, vectorscopePoints, frame.width, frame.height)
+		}
+	}, [frame, tint, vectorscopePoints])
+
 	return (
-		<svg className={`ve-scope-density ${className}`} viewBox={`0 0 ${frame.width} ${frame.height}`} preserveAspectRatio="none" aria-label={label} role="img">
-			{cells.map((cell) => (
-				<rect
-					key={cell.key}
-					x={cell.x}
-					y={cell.y}
-					width="1"
-					height="1"
-					style={{ fill: tint, opacity: 0.12 + Math.min(0.88, cell.value * 0.88) }}
-				/>
-			))}
-		</svg>
+		<canvas
+			ref={canvasRef}
+			className={`ve-scope-density ${className}`}
+			aria-label={label}
+			role="img"
+			width={frame.width}
+			height={frame.height}
+		/>
 	)
 }
 
@@ -278,29 +279,18 @@ const ColorScopesPanel = observer(({ frame$, mode, onModeChange, resolveResource
 			<div className="ve-scopes__plot" data-scope-mode={mode}>
 				{isEmpty ? <span className="ve-scopes__empty">No visual clip at cursor</span> : null}
 				{!isEmpty && mode === 'waveform' ? (
-					<ScopeDensitySvg frame={scopes.waveform} tint="#f4f4f5" label="Waveform luma density" />
+					<ScopeDensityCanvas frame={scopes.waveform} tint="#f4f4f5" label="Waveform luma density" />
 				) : null}
 				{!isEmpty && mode === 'rgb-parade' ? (
 					<div className="ve-scopes__parade">
-						<ScopeDensitySvg frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.red }} tint="#ef4444" label="Red parade density" />
-						<ScopeDensitySvg frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.green }} tint="#22c55e" label="Green parade density" />
-						<ScopeDensitySvg frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.blue }} tint="#3b82f6" label="Blue parade density" />
+						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.red }} tint="#ef4444" label="Red parade density" />
+						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.green }} tint="#22c55e" label="Green parade density" />
+						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.blue }} tint="#3b82f6" label="Blue parade density" />
 					</div>
 				) : null}
 				{!isEmpty && mode === 'vectorscope' ? (
 					<div className="ve-scopes__vectors" aria-label="Vectorscope points">
-						<ScopeDensitySvg frame={scopes.vectorscope} tint="#a1a1aa" label="Vectorscope chroma density" className="ve-scope-density--vectors" />
-						{scopes.vectorscope.points.map((point, index) => (
-							<span
-								key={index}
-								className="ve-scope-point"
-								style={{
-									left: `${clampPercent(50 + point.x * 42)}%`,
-									top: `${clampPercent(50 - point.y * 42)}%`,
-									backgroundColor: point.tint,
-								}}
-							/>
-						))}
+						<ScopeDensityCanvas frame={scopes.vectorscope} tint="#a1a1aa" label="Vectorscope chroma density" className="ve-scope-density--vectors" vectorscopePoints={scopes.vectorscope.points} />
 					</div>
 				) : null}
 			</div>

@@ -1201,17 +1201,6 @@ button:disabled {
 	filter: drop-shadow(0 0 7px rgba(244, 244, 245, 0.24));
 }
 
-.ve-scope-point {
-	position: absolute;
-	width: 4px;
-	height: 4px;
-	border: 1px solid rgba(255, 255, 255, 0.5);
-	border-radius: 50%;
-	transform: translate(-50%, -50%);
-	box-shadow: 0 0 8px rgba(255, 255, 255, 0.28);
-	opacity: 0.72;
-}
-
 .ve-resource-row__content {
 	display: flex;
 	flex-direction: column;
