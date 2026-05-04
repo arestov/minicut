@@ -4,10 +4,12 @@ import type {
 	EditorSessionState,
 	Entity,
 	EntityId,
+	EffectAttrs,
 	ProjectAttrs,
 	ProjectRegistry,
 	RelValue,
 	ResourceAttrs,
+	TextAttrs,
 	TimelineAttrs,
 	TrackAttrs,
 } from '../domain/types'
@@ -20,7 +22,8 @@ type EntityAttrsByType = {
 	track: TrackAttrs
 	resource: ResourceAttrs
 	clip: ClipAttrs
-	effect: { name: string; kind: 'blur' | 'sharpen' | 'tint'; amount: number }
+	effect: EffectAttrs
+	text: TextAttrs
 	keyframe: { time: number; value: number; interpolation?: 'linear' | 'hold' }
 }
 
@@ -34,12 +37,14 @@ type EntityRelsByType = {
 	track: { clips: EntityId[] }
 	resource: Record<string, RelValue>
 	clip: {
-		resource: EntityId
+		resource?: EntityId
+		text?: EntityId
 		effects: EntityId[]
 		linkedAudioClip?: EntityId
 		linkedVideoClip?: EntityId
 	}
 	effect: { clip: EntityId }
+	text: Record<string, RelValue>
 	keyframe: Record<string, RelValue>
 }
 
@@ -92,6 +97,11 @@ export const effectAttrs$ = (
 	projects$: ProjectsObservable,
 	effectId: EntityId,
 ): Observable<EntityAttrsByType['effect']> => attrs$<'effect'>(projects$, effectId)
+
+export const textAttrs$ = (
+	projects$: ProjectsObservable,
+	textId: EntityId,
+): Observable<TextAttrs> => attrs$<'text'>(projects$, textId)
 
 export const projectEntityAttrs$ = (
 	projects$: ProjectsObservable,

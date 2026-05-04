@@ -265,7 +265,28 @@ describe('video editor harness', () => {
 			expect(Array.isArray(effectIds)).toBe(true)
 			const effectId = Array.isArray(effectIds) ? String(effectIds[0]) : ''
 			expect(harness.projects$.entitiesById[effectId].attrs.kind.get()).toBe('color-correction')
-			expect(harness.projects$.entitiesById[effectId].attrs.params.exposure.value.get()).toBe(0.25)
+			const params = harness.projects$.entitiesById[effectId].attrs.params.get() as { exposure: { value: number } }
+			expect(params.exposure.value).toBe(0.25)
+		} finally {
+			unmount()
+		}
+	})
+
+	it('adds a text clip and edits text content from the inspector', async () => {
+		const { harness, user, unmount } = renderVideoEditor()
+
+		try {
+			await createProjectFromMenu(user)
+			await user.click(screen.getByRole('button', { name: 'Add text' }))
+			const inspector = screen.getByLabelText('Inspector')
+			const content = await within(inspector).findByRole('textbox', { name: 'Text content' })
+			await user.clear(content)
+			await user.type(content, 'Edited title')
+
+			const clipId = String(harness.session$.selectedEntityId.get())
+			const textId = String(harness.projects$.entitiesById[clipId].rels.text.get())
+			expect(harness.projects$.entitiesById[clipId].attrs.mediaKind.get()).toBe('text')
+			expect(harness.projects$.entitiesById[textId].attrs.content.get()).toBe('Edited title')
 		} finally {
 			unmount()
 		}

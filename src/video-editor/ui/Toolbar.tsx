@@ -1,6 +1,6 @@
 import { observer } from '@legendapp/state/react'
 import { useState } from 'react'
-import { Download, FolderPlus, Redo2, Undo2 } from 'lucide-react'
+import { Download, FolderPlus, Redo2, Type, Undo2 } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ExportProgressEvent } from '../render/exportRenderer'
 import { IconButton } from './ControlPrimitives'
@@ -73,6 +73,16 @@ export const Toolbar = observer(() => {
 				</IconButton>
 			</div>
 			<div className="ve-toolbar__actions">
+				<IconButton
+					type="button"
+					icon={Type}
+					label="Add text"
+					variant="secondary"
+					onClick={() => actions.addTextClip()}
+					disabled={!activeProjectId}
+				>
+					Text
+				</IconButton>
 				<div className="ve-toolbar__history" aria-label="History controls">
 					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" onClick={() => actions.undo()} disabled={!canUndo} />
 					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" onClick={() => actions.redo()} disabled={!canRedo} />

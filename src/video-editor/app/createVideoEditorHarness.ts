@@ -13,6 +13,7 @@ import type {
 	HistoryState,
 	ProjectRegistry,
 	ResourceAttrs,
+	TextAttrs,
 } from '../domain/types'
 import { CMD } from '../domain/types'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
@@ -514,6 +515,32 @@ export const createVideoEditorHarness = (
 			}).then((result) => {
 				const clipId = String(result.createdIds?.clipId)
 				session$.selectedEntityId.set(clipId)
+			})
+		},
+
+		addTextClip(content = 'Title'): void {
+			const projectId = getActiveProjectId(projects$, session$)
+			dispatch({
+				c: CMD.TEXT_ADD,
+				p: { projectId, content },
+			}).then((result) => {
+				const clipId = result.createdIds?.clipId
+				if (clipId) {
+					session$.selectedEntityId.set(String(clipId))
+				}
+			})
+		},
+
+		updateSelectedText(attrs: Partial<TextAttrs>): void {
+			const clip = getSelectedClip(projects$.get(), session$.get())
+			const textId = clip?.rels.text
+			if (typeof textId !== 'string') {
+				return
+			}
+
+			dispatch({
+				c: CMD.TEXT_UPDATE_ATTRS,
+				p: { id: textId, attrs },
 			})
 		},
 
