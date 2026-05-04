@@ -73,13 +73,31 @@ describe('render plan compiler', () => {
 			p: { projectId, content: 'Overlay', start: 0.5, duration: 2 },
 		})
 		registry = applyPatchEnvelopeToRegistry(registry, textResult.envelope)
+		registry = applyPatchEnvelopeToRegistry(registry, buildDispatchResult(registry, {
+			c: CMD.TEXT_UPDATE_ATTRS,
+			p: {
+				id: String(textResult.createdIds?.textId),
+				attrs: {
+					style: {
+						fontFamily: 'Inter, Segoe UI, sans-serif',
+						fontSize: 64,
+						fontWeight: 700,
+						lineHeight: 1.1,
+						letterSpacing: 0,
+						color: '#f8fafc',
+						backgroundColor: '#0f172a',
+						align: 'center',
+					},
+				},
+			},
+		}).envelope)
 
 		const textOperation = compileFrameOperations(registry, projectId, 0.75).find((operation) => operation.resourceKind === 'text')
 
 		expect(textOperation).toBeDefined()
 		expect(textOperation?.resourceId).toBe(textResult.createdIds?.textId)
 		expect(textOperation?.operations.map((operation) => operation.type)).toEqual(['transform', 'text', 'opacity'])
-		expect(textOperation?.operations.find((operation) => operation.type === 'text')?.value).toMatchObject({ content: 'Overlay' })
+		expect(textOperation?.operations.find((operation) => operation.type === 'text')?.value).toMatchObject({ content: 'Overlay', style: { color: '#f8fafc', backgroundColor: '#0f172a' } })
 		expect(compileEditframeClips(registry, projectId).map((clip) => clip.id)).not.toContain(textResult.createdIds?.clipId)
 	})
 

@@ -350,6 +350,22 @@ describe('video editor harness', () => {
 			expect(screen.getByLabelText('Renderer stage')).toHaveTextContent('Edited title')
 
 			const textSection = within(inspector).getByLabelText('Text controls')
+			fireEvent.change(within(textSection).getByLabelText('Text color'), { target: { value: '#475569' } })
+			fireEvent.change(within(textSection).getByLabelText('Text background color'), { target: { value: '#334155' } })
+			expect(within(textSection).getByLabelText('Text color feedback')).toHaveTextContent(/Contrast/)
+			await user.click(within(textSection).getByRole('button', { name: 'Fix contrast' }))
+			fireEvent.change(within(textSection).getByRole('slider', { name: 'Text background hue' }), { target: { value: '220' } })
+
+			const updatedText = harness.projects$.entitiesById[textId].attrs.get() as { style: { color: string; backgroundColor: string } }
+			expect(updatedText.style.color).toMatch(/^#[0-9a-f]{6}$/)
+			expect(updatedText.style.backgroundColor).toMatch(/^#[0-9a-f]{6}$/)
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__text-content')).toHaveStyle({
+				color: updatedText.style.color,
+			})
+			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__text-box')).toHaveStyle({
+				backgroundColor: updatedText.style.backgroundColor,
+			})
+
 			const opacityHeading = within(inspector).getAllByText('Opacity').find((element) => element.tagName === 'H3')
 			expect(opacityHeading).toBeDefined()
 			const opacitySection = opacityHeading?.closest('section')

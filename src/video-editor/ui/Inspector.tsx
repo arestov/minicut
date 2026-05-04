@@ -3,7 +3,8 @@ import { observer } from '@legendapp/state/react'
 import type { LucideIcon } from 'lucide-react'
 import { Download, Gauge, Move, Palette, Scissors, SlidersHorizontal, Sparkles, Volume2, Wand2, X } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import type { AnimatedScalar, ColorCorrectionAttrs, EditorSessionState, EffectAttrs, ResourceAttrs } from '../domain/types'
+import { getContrastResult, hexToOklch, isOklchInSrgbGamut, oklchToHex, parseHexColor, suggestReadableTextColor, type OklchValue } from '../color/oklch'
+import type { AnimatedScalar, ColorCorrectionAttrs, EditorSessionState, EffectAttrs, ResourceAttrs, TextAttrs } from '../domain/types'
 import { createSelectedClipTrackPosition$ } from '../legend/derivedTimeline'
 import {
 	clipAttrs$,
@@ -59,6 +60,57 @@ const colorGradePresets: Array<{ id: string, label: string, params: Partial<Reco
 	{ id: 'cool', label: 'Cool', params: { exposure: 0.05, contrast: 1.04, saturation: 0.92, temperature: -0.2 } },
 	{ id: 'punch', label: 'Punch', params: { exposure: 0.08, contrast: 1.2, saturation: 1.35, temperature: 0 } },
 ]
+
+const transparentBackgroundFallback = '#111827'
+
+const cssColorToHex = (value: unknown, fallback: string): string => {
+	if (typeof value !== 'string') {
+		return fallback
+	}
+	if (parseHexColor(value)) {
+		return value.length === 4
+			? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase()
+			: value.toLowerCase()
+	}
+	return fallback
+}
+
+const OklchColorControls = ({
+	label,
+	value,
+	onChange,
+}: {
+	label: string
+	value: string
+	onChange: (value: string) => void
+}) => {
+	const oklch = hexToOklch(value) ?? { l: 1, c: 0, h: 0 }
+	const updateOklch = (partial: Partial<OklchValue>): void => {
+		onChange(oklchToHex({ ...oklch, ...partial }))
+	}
+	const gamutStatus = isOklchInSrgbGamut(oklch) ? 'Gamut safe' : 'Gamut fitted'
+
+	return (
+		<div className="ve-oklch-controls" aria-label={`${label} OKLCH controls`}>
+			<div className="ve-oklch-controls__header">
+				<strong>{label}</strong>
+				<span className="ve-status-pill">{gamutStatus}</span>
+			</div>
+			<label className="ve-slider-field">
+				<span>L {Math.round(oklch.l * 100)}</span>
+				<input type="range" aria-label={`${label} lightness`} min="0" max="100" value={Math.round(oklch.l * 100)} onChange={(event) => updateOklch({ l: Number(event.currentTarget.value) / 100 })} />
+			</label>
+			<label className="ve-slider-field">
+				<span>C {Math.round(oklch.c * 1000)}</span>
+				<input type="range" aria-label={`${label} chroma`} min="0" max="40" value={Math.round(oklch.c * 100)} onChange={(event) => updateOklch({ c: Number(event.currentTarget.value) / 100 })} />
+			</label>
+			<label className="ve-slider-field">
+				<span>H {Math.round(oklch.h)}</span>
+				<input type="range" aria-label={`${label} hue`} min="0" max="360" value={Math.round(oklch.h)} onChange={(event) => updateOklch({ h: Number(event.currentTarget.value) })} />
+			</label>
+		</div>
+	)
+}
 
 const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
 	activeTab: InspectorTab
@@ -179,6 +231,15 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 	const transform = selectedClip$.transform.get()
 	const textId = selectedClipRels$.text.get()
 	const text = typeof textId === 'string' ? textAttrs$(projects$, textId).get() : null
+	const textColor = cssColorToHex(text?.style.color, '#ffffff')
+	const textBackgroundColor = cssColorToHex(text?.style.backgroundColor, transparentBackgroundFallback)
+	const textContrast = getContrastResult(textColor, textBackgroundColor)
+	const updateTextStyle = (style: Partial<TextAttrs['style']>): void => {
+		if (!text) {
+			return
+		}
+		actions.updateSelectedText({ style: { ...text.style, ...style } })
+	}
 	const effectIds = selectedClipRels$.effects.get()
 	const effects = Array.isArray(effectIds) ? effectIds : []
 	const effectEntries = effects
@@ -206,15 +267,22 @@ const InspectorEditTabPanel = observer(({ clipId }: { clipId: string }) => {
 						<textarea aria-label="Text content" value={text.content} rows={3} onChange={(event) => actions.updateSelectedText({ content: event.currentTarget.value })} />
 					</label>
 					<div className="ve-field-grid">
-						<label><span>Size</span><input type="number" min="8" max="320" value={text.style.fontSize} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, fontSize: Number(event.currentTarget.value) } })} /></label>
-						<label><span>Weight</span><input type="number" min="100" max="900" step="100" value={text.style.fontWeight} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, fontWeight: Number(event.currentTarget.value) } })} /></label>
-						<label><span>Color</span><input type="color" aria-label="Text color" value={text.style.color} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, color: event.currentTarget.value } })} /></label>
+						<label><span>Size</span><input type="number" min="8" max="320" value={text.style.fontSize} onChange={(event) => updateTextStyle({ fontSize: Number(event.currentTarget.value) })} /></label>
+						<label><span>Weight</span><input type="number" min="100" max="900" step="100" value={text.style.fontWeight} onChange={(event) => updateTextStyle({ fontWeight: Number(event.currentTarget.value) })} /></label>
+						<label><span>Color</span><input type="color" aria-label="Text color" value={textColor} onChange={(event) => updateTextStyle({ color: event.currentTarget.value })} /></label>
+						<label><span>Background</span><input type="color" aria-label="Text background color" value={textBackgroundColor} onChange={(event) => updateTextStyle({ backgroundColor: event.currentTarget.value })} /></label>
 						<label><span>Align</span><select aria-label="Text align" value={text.style.align} onChange={(event) => actions.updateSelectedText({ style: { ...text.style, align: event.currentTarget.value as typeof text.style.align } })}>
 							<option value="left">Left</option>
 							<option value="center">Center</option>
 							<option value="right">Right</option>
 						</select></label>
 					</div>
+					<div className="ve-text-color-feedback" aria-label="Text color feedback">
+						<span className={`ve-status-pill ve-status-pill--${textContrast.status}`}>Contrast {textContrast.ratio}:1</span>
+						<Button type="button" variant="outline" onClick={() => updateTextStyle({ color: suggestReadableTextColor(textColor, textBackgroundColor) })}>Fix contrast</Button>
+					</div>
+					<OklchColorControls label="Text color" value={textColor} onChange={(value) => updateTextStyle({ color: value })} />
+					<OklchColorControls label="Text background" value={textBackgroundColor} onChange={(value) => updateTextStyle({ backgroundColor: value })} />
 				</InspectorSection>
 			) : null}
 			<InspectorSection title="Opacity" icon={Gauge}>
