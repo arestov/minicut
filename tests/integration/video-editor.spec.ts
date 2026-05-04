@@ -826,7 +826,7 @@ test('media resources render metadata and action on separate lines', async ({ pa
 	await importFixtureVideo(page)
 
 	const mediaBin = page.getByLabel('Media bin')
-	const firstResource = mediaBin.locator('.ve-resource-row').first()
+	const firstResource = mediaBin.locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' }).first()
 	const layout = await firstResource.evaluate((row) => {
 		const small = row.querySelector('small')
 		const button = row.querySelector('button')

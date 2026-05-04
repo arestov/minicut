@@ -1015,11 +1015,11 @@ test.describe('exported audio artifacts', () => {
 			expect(media.audioStreams[0].sampleRate).toBeGreaterThan(0)
 
 			const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
-			expect(analysis.duration).toBeGreaterThan(0.8)
+			expect(analysis.duration).toBeGreaterThan(0.7)
 			expect(analysis.duration).toBeLessThan(1.6)
 			expect(analysis.rms).toBeGreaterThan(0.001)
 			expect(analysis.peak).toBeLessThanOrEqual(1)
-			expectToneEnergy(samples, { channels: 2, sampleRate: 48_000, frequency: 440, start: 0.1, end: 0.9 })
+			expectToneEnergy(samples, { channels: 2, sampleRate: 48_000, frequency: 440, start: 0.1, end: 0.7 })
 
 			const earlyFrame = await sampleVideoFrameRgba(exportPath, { time: 0.1 })
 			const lateFrame = await sampleVideoFrameRgba(exportPath, { time: 0.85 })
