@@ -51,8 +51,10 @@ const createSolidPngFile = async (
 
 const createSolidVideoFile = async (
 	page: import('@playwright/test').Page,
+	name = 'solid-red-video.webm',
+	fillStyle = '#e11d48',
 ): Promise<{ name: string; mimeType: string; buffer: Buffer }> => {
-	const result = await page.evaluate(async () => {
+	const result = await page.evaluate(async (color) => {
 		const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8', 'video/webm']
 			.find((candidate) => MediaRecorder.isTypeSupported(candidate))
 		if (!mimeType) {
@@ -95,7 +97,7 @@ const createSolidVideoFile = async (
 		recorder.start()
 		oscillator.start()
 		for (let frame = 0; frame < 12; frame += 1) {
-			context.fillStyle = '#e11d48'
+			context.fillStyle = color
 			context.fillRect(0, 0, canvas.width, canvas.height)
 			videoTrack?.requestFrame?.()
 			await new Promise((resolve) => setTimeout(resolve, 125))
@@ -110,9 +112,9 @@ const createSolidVideoFile = async (
 
 		const blob = new Blob(chunks, { type: recorder.mimeType || mimeType })
 		return { mimeType: blob.type || 'video/webm', bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) }
-	})
+	}, fillStyle)
 
-	return { name: 'solid-red-video.webm', mimeType: result.mimeType, buffer: Buffer.from(result.bytes) }
+	return { name, mimeType: result.mimeType, buffer: Buffer.from(result.bytes) }
 }
 
 const createToneWavFile = (name = 'solid-tone.wav'): { name: string; mimeType: string; buffer: Buffer } => {
@@ -308,6 +310,16 @@ const setTimelineCursor = async (
 			y: Math.max(12, laneBox.height - 12),
 		},
 	})
+}
+
+const setRangeValue = async (locator: import('@playwright/test').Locator, value: number): Promise<void> => {
+	await locator.evaluate((element, nextValue) => {
+		const input = element as HTMLInputElement
+		const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+		valueSetter?.call(input, String(nextValue))
+		input.dispatchEvent(new Event('input', { bubbles: true }))
+		input.dispatchEvent(new Event('change', { bubbles: true }))
+	}, value)
 }
 
 test('user can finish the harness happy path in the browser', async ({ page }) => {
@@ -835,6 +847,15 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 
 	const renderer = page.getByLabel('Renderer stage')
 	await expect(renderer.locator('.ve-renderer__layer--video').first()).toHaveCSS('filter', /brightness\(1\.12\)/)
+	await expect.poll(async () => inspector.locator('.ve-look-browser__thumb').first().evaluate((element) => getComputedStyle(element).backgroundImage)).toContain('data:image/svg+xml')
+	await inspector.getByRole('button', { name: 'Apply look Cinema' }).click()
+	await expect(inspector.getByText('Cinema 100%')).toBeVisible()
+	await setRangeValue(inspector.getByLabel('Look intensity'), 50)
+	await expect(inspector.getByText('Cinema 50%')).toBeVisible()
+	await expect(renderer.locator('.ve-renderer__layer--video').first()).toHaveCSS('filter', /brightness\(0\.98\).*contrast\(1\.0791\).*saturate\(0\.97\).*hue-rotate\(-2deg\)/)
+	await setTimelineCursor(page, 0.6)
+	const previewVideo = renderer.locator('video').first()
+	await expect.poll(async () => previewVideo.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.5)
 	await expect(preview.getByLabel('Color scopes')).toBeVisible()
 	await page.waitForFunction(() => {
 		const target = window as Window & { __MINICUT_SCOPE_PROFILE__?: { events: Array<{ type?: string; source?: string }> } }
@@ -851,8 +872,64 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 
 	await preview.getByRole('button', { name: 'Split compare' }).click()
 	await expect(renderer.getByLabel('Split compare preview')).toBeVisible()
+	await expect(renderer.locator('video')).toHaveCount(1)
 	await expect(renderer.getByText('Before')).toBeVisible()
 	await expect(renderer.getByText('After')).toBeVisible()
+})
+
+test('text OKLCH controls render in browser and frame palette samples preview frame', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+	await page.waitForFunction(() => {
+		const video = document.querySelector('[aria-label="Renderer stage"] video') as HTMLVideoElement | null
+		return !!video && video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0
+	})
+
+	await page.getByLabel('Media bin').getByRole('button', { name: 'Add Text to Timeline' }).click()
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const clipActions = timeline.getByLabel('Clip edit actions')
+	await clipActions.getByRole('button', { name: 'Nudge -0.5s' }).click()
+	await clipActions.getByRole('button', { name: 'Nudge -0.5s' }).click()
+	await setTimelineCursor(page, 0.25)
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByLabel('Text content').fill('Palette title')
+	await inspector.getByText('Text color OKLCH').click()
+	await setRangeValue(inspector.getByLabel('Text color hue'), 220)
+	await inspector.getByText('Text background OKLCH').click()
+	await setRangeValue(inspector.getByLabel('Text background lightness'), 18)
+
+	const renderer = page.getByLabel('Renderer stage')
+	await expect(renderer.locator('.ve-renderer__text-content')).toContainText('Palette title')
+	await expect(renderer.locator('.ve-renderer__text-content')).toHaveCSS('color', /rgb\(/)
+	await expect(renderer.locator('.ve-renderer__text-box')).toHaveCSS('background-color', /rgb\(/)
+
+	await inspector.getByRole('button', { name: 'Generate palette from frame' }).click()
+	await expect(inspector.getByLabel('Frame palette feedback')).toContainText('Frame palette')
+})
+
+test('selected look affects preview filter and exported pixels', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await page.getByLabel('Import media files').setInputFiles(await createSolidVideoFile(page, 'mono-red-video.webm', '#e11d48'))
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	await timeline.getByRole('button', { name: /mono-red-video.webm/i }).first().click()
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('tab', { name: 'Color' }).click()
+	await inspector.getByRole('button', { name: 'Add primary correction' }).click()
+	await inspector.getByRole('button', { name: 'Apply look Mono' }).click()
+	await expect(page.getByLabel('Renderer stage').locator('.ve-renderer__layer--video').first()).toHaveCSS('filter', /saturate\(0\)/)
+
+	const downloadPromise = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export project' }).click()
+	const download = await downloadPromise
+	const downloadPath = await download.path()
+	expect(downloadPath).toBeTruthy()
+	const exportedBytes = await fs.readFile(downloadPath as string)
+	const sample = await sampleWebmFrame(page, exportedBytes)
+	expect(Math.abs(sample.rgba[0] - sample.rgba[1])).toBeLessThan(20)
+	expect(Math.abs(sample.rgba[1] - sample.rgba[2])).toBeLessThan(20)
 })
 
 test('timeline zoom controls and inspector trim boundary states behave correctly', async ({ page }) => {
