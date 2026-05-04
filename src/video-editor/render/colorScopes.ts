@@ -28,7 +28,6 @@ export interface RgbParadeScopeData {
 export interface VectorscopePoint {
 	x: number
 	y: number
-	tint: string
 	tintRgb: [number, number, number]
 	intensity: number
 }
@@ -58,9 +57,35 @@ const maxVectorPoints = 360
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value))
 
-const createCells = (width: number, height: number): number[] => Array.from({ length: width * height }, () => 0)
+interface CompiledFilterAdjustments {
+	brightness: number
+	contrast: number
+	saturation: number
+	hue: {
+		enabled: boolean
+		m00: number
+		m01: number
+		m02: number
+		m10: number
+		m11: number
+		m12: number
+		m20: number
+		m21: number
+		m22: number
+	}
+}
 
-const addDensity = (cells: number[], width: number, height: number, x: number, y: number, weight: number): void => {
+interface ClipScopeSource {
+	clip: RenderedClip
+	frame: RgbaSampleFrame
+	sampled: boolean
+	filterAdjustments: CompiledFilterAdjustments
+	vectorStep: number
+}
+
+const createCells = (width: number, height: number): Float32Array => new Float32Array(width * height)
+
+const addDensity = (cells: Float32Array, width: number, height: number, x: number, y: number, weight: number): void => {
 	const scaledX = Math.min(width - 1, Math.max(0, x * (width - 1)))
 	const scaledY = Math.min(height - 1, Math.max(0, y * (height - 1)))
 	const left = Math.floor(scaledX)
@@ -75,9 +100,25 @@ const addDensity = (cells: number[], width: number, height: number, x: number, y
 	cells[bottom * width + right] += weight * xWeight * yWeight
 }
 
-const normalizeCells = (cells: number[]): number[] => {
-	const max = Math.max(0, ...cells)
-	return cells.map((value) => max > 0 ? Math.round((value / max) * 1000) / 1000 : 0)
+const normalizeCells = (cells: ArrayLike<number>): number[] => {
+	let max = 0
+	for (let index = 0; index < cells.length; index += 1) {
+		const value = cells[index]
+		if (value > max) {
+			max = value
+		}
+	}
+
+	const normalized = new Array<number>(cells.length)
+	if (max <= 0) {
+		normalized.fill(0)
+		return normalized
+	}
+
+	for (let index = 0; index < cells.length; index += 1) {
+		normalized[index] = Math.round((cells[index] / max) * 1000) / 1000
+	}
+	return normalized
 }
 
 const finiteOr = (value: unknown, fallback: number): number =>
@@ -96,56 +137,153 @@ const parseHexColor = (color: string): [number, number, number] => {
 	return [0.5, 0.5, 0.5]
 }
 
-const toCssRgb = ([red, green, blue]: [number, number, number]): string =>
-	`rgb(${Math.round(red * 255)}, ${Math.round(green * 255)}, ${Math.round(blue * 255)})`
-
-const parseFilterValue = (filters: string[], name: string, fallback: number): number => {
-	const expression = filters.join(' ')
-	const match = expression.match(new RegExp(`${name}\\(([-0-9.]+)`))
-	return match ? finiteOr(Number(match[1]), fallback) : fallback
-}
-
-const rotateHueApprox = ([red, green, blue]: [number, number, number], degrees: number): [number, number, number] => {
-	if (!Number.isFinite(degrees) || degrees === 0) {
-		return [red, green, blue]
+const parseFilterToken = (filter: string): { name: string; value: number } | null => {
+	const match = filter.match(/^\s*([a-z-]+)\(([-0-9.]+)/i)
+	if (!match) {
+		return null
 	}
 
-	const radians = (degrees * Math.PI) / 180
+	const name = String(match[1]).toLowerCase()
+	const value = finiteOr(Number(match[2]), Number.NaN)
+	if (!Number.isFinite(value)) {
+		return null
+	}
+
+	return { name, value }
+}
+
+const compileFilterAdjustments = (filters: string[]): CompiledFilterAdjustments => {
+	let brightness = 1
+	let contrast = 1
+	let saturation = 1
+	let hueDegrees = 0
+
+	for (const filter of filters) {
+		const token = parseFilterToken(filter)
+		if (!token) {
+			continue
+		}
+
+		switch (token.name) {
+			case 'brightness':
+				brightness = token.value
+				break
+			case 'contrast':
+				contrast = token.value
+				break
+			case 'saturate':
+				saturation = token.value
+				break
+			case 'hue-rotate':
+				hueDegrees = token.value
+				break
+			default:
+				break
+		}
+	}
+
+	if (!Number.isFinite(hueDegrees) || hueDegrees === 0) {
+		return {
+			brightness,
+			contrast,
+			saturation,
+			hue: {
+				enabled: false,
+				m00: 1,
+				m01: 0,
+				m02: 0,
+				m10: 0,
+				m11: 1,
+				m12: 0,
+				m20: 0,
+				m21: 0,
+				m22: 1,
+			},
+		}
+	}
+
+	const radians = (hueDegrees * Math.PI) / 180
 	const cos = Math.cos(radians)
 	const sin = Math.sin(radians)
-	return [
-		clamp01(red * (0.213 + cos * 0.787 - sin * 0.213) + green * (0.715 - cos * 0.715 - sin * 0.715) + blue * (0.072 - cos * 0.072 + sin * 0.928)),
-		clamp01(red * (0.213 - cos * 0.213 + sin * 0.143) + green * (0.715 + cos * 0.285 + sin * 0.14) + blue * (0.072 - cos * 0.072 - sin * 0.283)),
-		clamp01(red * (0.213 - cos * 0.213 - sin * 0.787) + green * (0.715 - cos * 0.715 + sin * 0.715) + blue * (0.072 + cos * 0.928 + sin * 0.072)),
-	]
+	return {
+		brightness,
+		contrast,
+		saturation,
+		hue: {
+			enabled: true,
+			m00: 0.213 + cos * 0.787 - sin * 0.213,
+			m01: 0.715 - cos * 0.715 - sin * 0.715,
+			m02: 0.072 - cos * 0.072 + sin * 0.928,
+			m10: 0.213 - cos * 0.213 + sin * 0.143,
+			m11: 0.715 + cos * 0.285 + sin * 0.14,
+			m12: 0.072 - cos * 0.072 - sin * 0.283,
+			m20: 0.213 - cos * 0.213 - sin * 0.787,
+			m21: 0.715 - cos * 0.715 + sin * 0.715,
+			m22: 0.072 + cos * 0.928 + sin * 0.072,
+		},
+	}
 }
 
 const applyFilterApproximation = (
-	[baseRed, baseGreen, baseBlue]: [number, number, number],
-	filters: string[],
+	rawRed: number,
+	rawGreen: number,
+	rawBlue: number,
+	filterAdjustments: CompiledFilterAdjustments,
 ): [number, number, number] => {
-	let red = baseRed
-	let green = baseGreen
-	let blue = baseBlue
-	const brightness = parseFilterValue(filters, 'brightness', 1)
-	const contrast = parseFilterValue(filters, 'contrast', 1)
-	const saturation = parseFilterValue(filters, 'saturate', 1)
-	const hue = parseFilterValue(filters, 'hue-rotate', 0)
+ 	let red = rawRed
+	let green = rawGreen
+	let blue = rawBlue
 
-	red = clamp01((red - 0.5) * contrast + 0.5)
-	green = clamp01((green - 0.5) * contrast + 0.5)
-	blue = clamp01((blue - 0.5) * contrast + 0.5)
+	if (filterAdjustments.contrast !== 1) {
+		red = clamp01((red - 0.5) * filterAdjustments.contrast + 0.5)
+		green = clamp01((green - 0.5) * filterAdjustments.contrast + 0.5)
+		blue = clamp01((blue - 0.5) * filterAdjustments.contrast + 0.5)
+	}
 
-	red = clamp01(red * brightness)
-	green = clamp01(green * brightness)
-	blue = clamp01(blue * brightness)
+	if (filterAdjustments.brightness !== 1) {
+		red = clamp01(red * filterAdjustments.brightness)
+		green = clamp01(green * filterAdjustments.brightness)
+		blue = clamp01(blue * filterAdjustments.brightness)
+	}
 
 	const luma = red * 0.2126 + green * 0.7152 + blue * 0.0722
-	red = clamp01(luma + (red - luma) * saturation)
-	green = clamp01(luma + (green - luma) * saturation)
-	blue = clamp01(luma + (blue - luma) * saturation)
+	if (filterAdjustments.saturation !== 1) {
+		red = clamp01(luma + (red - luma) * filterAdjustments.saturation)
+		green = clamp01(luma + (green - luma) * filterAdjustments.saturation)
+		blue = clamp01(luma + (blue - luma) * filterAdjustments.saturation)
+	}
 
-	return rotateHueApprox([red, green, blue], hue)
+	if (!filterAdjustments.hue.enabled) {
+		return [red, green, blue]
+	}
+
+	const hue = filterAdjustments.hue
+	return [
+		clamp01(red * hue.m00 + green * hue.m01 + blue * hue.m02),
+		clamp01(red * hue.m10 + green * hue.m11 + blue * hue.m12),
+		clamp01(red * hue.m20 + green * hue.m21 + blue * hue.m22),
+	]
+}
+
+const buildClipScopeSources = (clips: RenderedClip[], sampleFrames: ScopeSampleFrames): ClipScopeSource[] => {
+	const sources: ClipScopeSource[] = []
+	for (const clip of clips) {
+		if (clip.resourceKind === 'audio' || clip.opacity <= 0) {
+			continue
+		}
+
+		const { frame, sampled } = getClipSampleFrame(clip, sampleFrames)
+		const pixelCount = frame.width * frame.height
+		sources.push({
+			clip,
+			frame,
+			sampled,
+			filterAdjustments: compileFilterAdjustments(clip.filters),
+			vectorStep: Math.max(1, Math.floor(pixelCount / maxVectorPoints)),
+		})
+	}
+
+	return sources
 }
 
 const createFallbackFrame = (clip: RenderedClip): RgbaSampleFrame => {
@@ -202,7 +340,8 @@ export const createPreviewScopeData = (
 	clips: RenderedClip[],
 	sampleFrames: ScopeSampleFrames = {},
 ): PreviewScopeData => {
-	const visualClips = clips.filter((clip) => clip.resourceKind !== 'audio' && clip.opacity > 0)
+	const clipScopeSources = buildClipScopeSources(clips, sampleFrames)
+	const visualClips = clipScopeSources.map((source) => source.clip)
 	const waveform = createCells(waveformWidth, waveformHeight)
 	const redParade = createCells(paradeChannelWidth, paradeHeight)
 	const greenParade = createCells(paradeChannelWidth, paradeHeight)
@@ -212,43 +351,53 @@ export const createPreviewScopeData = (
 	let sampleCount = 0
 	let sampledClipCount = 0
 
-	for (const clip of visualClips) {
-		const { frame, sampled } = getClipSampleFrame(clip, sampleFrames)
+	for (const source of clipScopeSources) {
+		const { clip, frame, sampled, filterAdjustments, vectorStep } = source
 		if (sampled) {
 			sampledClipCount += 1
 		}
 
-		const pixelCount = frame.width * frame.height
-		const vectorStep = Math.max(1, Math.floor(pixelCount / maxVectorPoints))
-		for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex += 1) {
-			const [rawRed, rawGreen, rawBlue, alpha] = getPixel(frame, pixelIndex)
-			if (alpha <= 0.01) {
-				continue
+		const width = frame.width
+		const height = frame.height
+		const data = frame.data
+		const xScale = width > 1 ? 1 / (width - 1) : 0
+		const pointLimit = maxVectorPoints * visualClips.length
+
+		let pixelIndex = 0
+		for (let y = 0; y < height; y += 1) {
+			for (let xIndex = 0; xIndex < width; xIndex += 1, pixelIndex += 1) {
+				const offset = pixelIndex * 4
+				const alpha = finiteOr(data[offset + 3], 255) / 255
+				if (alpha <= 0.01) {
+					continue
+				}
+
+				const rawRed = finiteOr(data[offset], 0) / 255
+				const rawGreen = finiteOr(data[offset + 1], 0) / 255
+				const rawBlue = finiteOr(data[offset + 2], 0) / 255
+				const [red, green, blue] = applyFilterApproximation(rawRed, rawGreen, rawBlue, filterAdjustments)
+				const x = xIndex * xScale
+				const luma = clamp01(red * 0.2126 + green * 0.7152 + blue * 0.0722)
+				const weight = clip.opacity * alpha
+
+				addDensity(waveform, waveformWidth, waveformHeight, x, 1 - luma, weight)
+				addDensity(redParade, paradeChannelWidth, paradeHeight, x, 1 - red, weight)
+				addDensity(greenParade, paradeChannelWidth, paradeHeight, x, 1 - green, weight)
+				addDensity(blueParade, paradeChannelWidth, paradeHeight, x, 1 - blue, weight)
+
+				const vector = getVectorscopeCoordinates(red, green, blue)
+				addDensity(vectorscope, vectorscopeSize, vectorscopeSize, (vector.x + 1) / 2, (1 - vector.y) / 2, weight)
+				if (pixelIndex % vectorStep === 0 && vectorscopePoints.length < pointLimit) {
+					const tintRgb: [number, number, number] = [red, green, blue]
+					vectorscopePoints.push({
+						x: Math.round(vector.x * 1000) / 1000,
+						y: Math.round(vector.y * 1000) / 1000,
+						tintRgb,
+						intensity: Math.round(vector.intensity * 1000) / 1000,
+					})
+				}
+				sampleCount += 1
 			}
-
-			const [red, green, blue] = applyFilterApproximation([rawRed, rawGreen, rawBlue], clip.filters)
-			const x = (pixelIndex % frame.width) / Math.max(1, frame.width - 1)
-			const luma = clamp01(red * 0.2126 + green * 0.7152 + blue * 0.0722)
-			const weight = clip.opacity * alpha
-
-			addDensity(waveform, waveformWidth, waveformHeight, x, 1 - luma, weight)
-			addDensity(redParade, paradeChannelWidth, paradeHeight, x, 1 - red, weight)
-			addDensity(greenParade, paradeChannelWidth, paradeHeight, x, 1 - green, weight)
-			addDensity(blueParade, paradeChannelWidth, paradeHeight, x, 1 - blue, weight)
-
-			const vector = getVectorscopeCoordinates(red, green, blue)
-			addDensity(vectorscope, vectorscopeSize, vectorscopeSize, (vector.x + 1) / 2, (1 - vector.y) / 2, weight)
-			if (pixelIndex % vectorStep === 0 && vectorscopePoints.length < maxVectorPoints * visualClips.length) {
-				const tintRgb: [number, number, number] = [red, green, blue]
-				vectorscopePoints.push({
-					x: Math.round(vector.x * 1000) / 1000,
-					y: Math.round(vector.y * 1000) / 1000,
-					tint: toCssRgb(tintRgb),
-					tintRgb,
-					intensity: Math.round(vector.intensity * 1000) / 1000,
-				})
-			}
-			sampleCount += 1
 		}
 	}
 

@@ -11,7 +11,7 @@ import {
 	type PreviewStructure,
 } from '../legend/derivedTimeline'
 import { createPreviewScopeData, type PreviewScopeData, type RgbaSampleFrame, type ScopeDensityFrame } from '../render/colorScopes'
-import { drawScopeDensityCanvas, drawVectorscopePoints } from '../render/colorScopeCanvas'
+import { drawScopeDensityCanvas, drawVectorscopePoints, parseScopeColor, type ScopeRgbColor } from '../render/colorScopeCanvas'
 import type { EditorSessionState } from '../domain/types'
 import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'
@@ -23,6 +23,11 @@ type ScopeMode = 'waveform' | 'rgb-parade' | 'vectorscope'
 
 const scopeSampleWidth = 192
 const scopeSampleHeight = 108
+const waveformTintColor = parseScopeColor('#f4f4f5')
+const redParadeTintColor = parseScopeColor('#ef4444')
+const greenParadeTintColor = parseScopeColor('#22c55e')
+const blueParadeTintColor = parseScopeColor('#3b82f6')
+const vectorscopeTintColor = parseScopeColor('#a1a1aa')
 
 const PreviewStage = observer(({
 	frame$,
@@ -218,7 +223,7 @@ const usePreviewScopeSamples = (clips: RenderedClip[], cursor: number): Record<s
 
 const ScopeDensityCanvas = ({ frame, tint, label, className = '', vectorscopePoints = [] }: {
 	frame: ScopeDensityFrame
-	tint: string
+	tint: ScopeRgbColor
 	label: string
 	className?: string
 	vectorscopePoints?: PreviewScopeData['vectorscope']['points']
@@ -291,18 +296,18 @@ const ColorScopesPanel = observer(({ frame$, mode, onModeChange, resolveResource
 			<div className="ve-scopes__plot" data-scope-mode={mode}>
 				{isEmpty ? <span className="ve-scopes__empty">No visual clip at cursor</span> : null}
 				{!isEmpty && mode === 'waveform' ? (
-					<ScopeDensityCanvas frame={scopes.waveform} tint="#f4f4f5" label="Waveform luma density" />
+					<ScopeDensityCanvas frame={scopes.waveform} tint={waveformTintColor} label="Waveform luma density" />
 				) : null}
 				{!isEmpty && mode === 'rgb-parade' ? (
 					<div className="ve-scopes__parade">
-						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.red }} tint="#ef4444" label="Red parade density" />
-						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.green }} tint="#22c55e" label="Green parade density" />
-						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.blue }} tint="#3b82f6" label="Blue parade density" />
+						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.red }} tint={redParadeTintColor} label="Red parade density" />
+						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.green }} tint={greenParadeTintColor} label="Green parade density" />
+						<ScopeDensityCanvas frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.blue }} tint={blueParadeTintColor} label="Blue parade density" />
 					</div>
 				) : null}
 				{!isEmpty && mode === 'vectorscope' ? (
 					<div className="ve-scopes__vectors" aria-label="Vectorscope points">
-						<ScopeDensityCanvas frame={scopes.vectorscope} tint="#a1a1aa" label="Vectorscope chroma density" className="ve-scope-density--vectors" vectorscopePoints={scopes.vectorscope.points} />
+						<ScopeDensityCanvas frame={scopes.vectorscope} tint={vectorscopeTintColor} label="Vectorscope chroma density" className="ve-scope-density--vectors" vectorscopePoints={scopes.vectorscope.points} />
 					</div>
 				) : null}
 			</div>

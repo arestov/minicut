@@ -62,11 +62,11 @@ export const createScopeDensityBitmap = (
 export const drawScopeDensityCanvas = (
 	context: CanvasRenderingContext2D,
 	frame: ScopeDensityFrame,
-	tint: string,
+	tint: string | ScopeRgbColor,
 	options: ScopeBitmapOptions = {},
 ): void => {
-	context.clearRect(0, 0, frame.width, frame.height)
-	context.putImageData(createScopeDensityBitmap(frame, parseScopeColor(tint), options), 0, 0)
+	const tintColor = typeof tint === 'string' ? parseScopeColor(tint) : tint
+	context.putImageData(createScopeDensityBitmap(frame, tintColor, options), 0, 0)
 }
 
 export const drawVectorscopePoints = (
@@ -81,7 +81,8 @@ export const drawVectorscopePoints = (
 		const x = Math.min(width - 1, Math.max(0, ((point.x + 1) / 2) * width))
 		const y = Math.min(height - 1, Math.max(0, ((1 - point.y) / 2) * height))
 		context.globalAlpha = Math.min(0.72, Math.max(0.18, point.intensity * 0.72))
-		context.fillStyle = point.tint
+		const [red, green, blue] = point.tintRgb
+		context.fillStyle = `rgb(${Math.round(red * 255)}, ${Math.round(green * 255)}, ${Math.round(blue * 255)})`
 		context.beginPath()
 		context.arc(x, y, 1.35, 0, Math.PI * 2)
 		context.fill()
