@@ -744,6 +744,37 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 	await expect(page.getByText('Select a clip to edit opacity or split it.')).toBeVisible()
 })
 
+test('color grading preview exposes split compare and scopes', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
+	await clip.click()
+	await setTimelineCursor(page, 0.25)
+
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await inspector.getByRole('tab', { name: 'Color' }).click()
+	await inspector.getByRole('button', { name: 'Add primary correction' }).click()
+	await inspector.getByRole('button', { name: 'Warm' }).click()
+
+	const preview = page.getByRole('region', { name: 'Preview panel' })
+	const renderer = page.getByLabel('Renderer stage')
+	await expect(renderer.locator('.ve-renderer__layer--video').first()).toHaveCSS('filter', /brightness\(1\.12\)/)
+	await expect(preview.getByLabel('Color scopes')).toBeVisible()
+	await expect(preview.getByRole('tab', { name: 'Waveform' })).toHaveAttribute('aria-selected', 'true')
+	await preview.getByRole('tab', { name: 'RGB Parade' }).click()
+	await expect(preview.getByLabel('Red parade buckets')).toBeVisible()
+	await preview.getByRole('tab', { name: 'Vectorscope' }).click()
+	await expect(preview.getByLabel('Vectorscope points')).toBeVisible()
+
+	await preview.getByRole('button', { name: 'Split compare' }).click()
+	await expect(renderer.getByLabel('Split compare preview')).toBeVisible()
+	await expect(renderer.getByText('Before')).toBeVisible()
+	await expect(renderer.getByText('After')).toBeVisible()
+})
+
 test('timeline zoom controls and inspector trim boundary states behave correctly', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
