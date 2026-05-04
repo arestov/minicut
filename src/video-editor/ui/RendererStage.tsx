@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
 import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
+import { compilePreviewLayerOperation, compilePreviewRenderPlan, getPreviewOperationValue, type PreviewLayerOperation } from '../render/previewRenderPlan'
 // Keep Vite's worker query import explicit.
 //
 // Why this is intentionally verbose:
@@ -323,20 +324,24 @@ const useMediaElementSync = (
 
 const VisualClipLayer = ({
 	clip,
+	layerOperation,
 	cursor,
-	filters,
 	mediaElementRegistry,
 	mediaSeekStateRef,
 	onClipMediaError,
 }: {
 	clip: RenderedClip
+	layerOperation: PreviewLayerOperation
 	cursor: number
-	filters: string[]
 	mediaElementRegistry?: PreviewMediaElementRegistry
 	mediaSeekStateRef?: MutableRefObject<Map<string, MediaSeekState>>
 	onClipMediaError?: (resourceId: string) => void
 }) => {
 	const hasMedia = isRealMediaUrl(clip.resourceUrl)
+	const filters = getPreviewOperationValue<string[]>(layerOperation.operations, 'effect', [])
+	const opacity = getPreviewOperationValue<number>(layerOperation.operations, 'opacity', clip.opacity)
+	const transform = getPreviewOperationValue<RenderedClip['transform']>(layerOperation.operations, 'transform', clip.transform)
+	const text = getPreviewOperationValue<RenderedClip['text']>(layerOperation.operations, 'text', clip.text)
 	const handleVideoRef = useCallback((element: HTMLVideoElement | null) => {
 		if (!mediaElementRegistry) {
 			return
@@ -352,7 +357,7 @@ const VisualClipLayer = ({
 	return (
 		<div
 			className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
-			style={getLayerStyle(clip, filters)}
+			style={getLayerStyle({ ...clip, opacity, transform }, filters)}
 		>
 			{hasMedia && clip.resourceKind === 'image' ? (
 				<img src={clip.resourceUrl} alt={clip.resourceName} />
@@ -377,7 +382,7 @@ const VisualClipLayer = ({
 					}}
 				/>
 			) : null}
-			{clip.resourceKind === 'text' ? renderTextClip(clip) : null}
+			{clip.resourceKind === 'text' ? renderTextClip({ ...clip, text }) : null}
 			{!hasMedia && clip.resourceKind !== 'text' ? (
 				<>
 					<strong>{clip.name}</strong>
@@ -390,17 +395,20 @@ const VisualClipLayer = ({
 
 const AudioClipElement = ({
 	clip,
+	layerOperation,
 	cursor,
 	mediaElementRegistry,
 	mediaSeekStateRef,
 	onClipMediaError,
 }: {
 	clip: RenderedClip
+	layerOperation: PreviewLayerOperation
 	cursor: number
 	mediaElementRegistry: PreviewMediaElementRegistry
 	mediaSeekStateRef: MutableRefObject<Map<string, MediaSeekState>>
 	onClipMediaError?: (resourceId: string) => void
 }) => {
+	const audio = getPreviewOperationValue<RenderedClip['audio']>(layerOperation.operations, 'audio', clip.audio)
 	const handleAudioRef = useCallback((element: HTMLAudioElement | null) => {
 		if (element) {
 			mediaElementRegistry.set(clip.id, 'audio', clip.resourceUrl, element)
@@ -415,8 +423,8 @@ const AudioClipElement = ({
 			ref={handleAudioRef}
 			src={clip.resourceUrl}
 			data-resource-name={clip.resourceName}
-			data-gain={clip.audio.gain}
-			data-pan={clip.audio.pan}
+			data-gain={audio.gain}
+			data-pan={audio.pan}
 			preload="metadata"
 			onLoadedMetadata={(event) =>
 				seekMediaElement(
@@ -436,6 +444,11 @@ const AudioClipElement = ({
 export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistry, compareMode = 'off', onClipMediaError }: RendererStageProps) => {
 	const { canvasRef, renderMode } = usePreviewCanvasRenderer(structure, frame)
 	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
+	const previewRenderPlan = useMemo(() => compilePreviewRenderPlan(frame), [frame])
+	const previewLayerByClipId = useMemo(
+		() => new Map(previewRenderPlan.layers.map((layer) => [layer.clipId, layer])),
+		[previewRenderPlan],
+	)
 	useMediaElementSync(mediaElementRegistry, mediaSeekStateRef, frame, isPlaying)
 
 	const isSplitCompare = compareMode === 'split' && frame.visualRenderedClips.length > 0
@@ -456,8 +469,8 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 						<VisualClipLayer
 							key={clip.id}
 							clip={clip}
+							layerOperation={previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)}
 							cursor={frame.cursor}
-							filters={clip.filters}
 							mediaElementRegistry={mediaElementRegistry}
 							mediaSeekStateRef={mediaSeekStateRef}
 							onClipMediaError={onClipMediaError}
@@ -471,8 +484,8 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 								<VisualClipLayer
 									key={`before-${clip.id}`}
 									clip={clip}
+									layerOperation={{ ...(previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)), operations: (previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)).operations.filter((operation) => operation.type !== 'effect') }}
 									cursor={frame.cursor}
-									filters={[]}
 									onClipMediaError={onClipMediaError}
 								/>
 							))}
@@ -488,6 +501,7 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 							<AudioClipElement
 								key={clip.id}
 								clip={clip}
+								layerOperation={previewLayerByClipId.get(clip.id) ?? compilePreviewLayerOperation(clip)}
 								cursor={frame.cursor}
 								mediaElementRegistry={mediaElementRegistry}
 								mediaSeekStateRef={mediaSeekStateRef}
