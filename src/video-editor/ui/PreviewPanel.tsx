@@ -10,7 +10,7 @@ import {
 	type PreviewFrame,
 	type PreviewStructure,
 } from '../legend/derivedTimeline'
-import { createPreviewScopeData, type PreviewScopeData } from '../render/colorScopes'
+import { createPreviewScopeData, type PreviewScopeData, type RgbaSampleFrame, type ScopeDensityFrame } from '../render/colorScopes'
 import type { EditorSessionState } from '../domain/types'
 import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'
@@ -19,6 +19,9 @@ import { RendererStage } from './RendererStage'
 const previewWindowRequestIntervalMs = 200
 
 type ScopeMode = 'waveform' | 'rgb-parade' | 'vectorscope'
+
+const scopeSampleWidth = 192
+const scopeSampleHeight = 108
 
 const PreviewStage = observer(({
 	frame$,
@@ -79,34 +82,186 @@ const PreviewStage = observer(({
 	)
 })
 
-const clampPercent = (value: number): number => Math.min(96, Math.max(4, value))
+const clampPercent = (value: number): number => Math.min(97, Math.max(3, value))
 
-const getTracePoints = (buckets: number[]): string =>
-	buckets.map((value, index) => {
-		const x = buckets.length <= 1 ? 0 : (index / (buckets.length - 1)) * 100
-		const y = 96 - Math.min(0.96, Math.max(0, value)) * 92
-		return `${x.toFixed(2)},${y.toFixed(2)}`
-	}).join(' ')
+const getScopeSampleKey = (clips: RenderedClip[], cursor: number): string =>
+	clips.map((clip) => `${clip.id}:${clip.resourceUrl}:${Math.round((cursor - clip.start + clip.inPoint) * 2) / 2}`).join('|')
 
-const ScopeTrace = ({ buckets, tint, label }: { buckets: number[]; tint: string; label: string }) => {
-	const points = getTracePoints(buckets)
+const drawElementToSampleFrame = (
+	element: CanvasImageSource,
+	width = scopeSampleWidth,
+	height = scopeSampleHeight,
+): RgbaSampleFrame | null => {
+	const canvas = document.createElement('canvas')
+	canvas.width = width
+	canvas.height = height
+	const context = canvas.getContext('2d', { willReadFrequently: true })
+	if (!context) {
+		return null
+	}
+
+	context.drawImage(element, 0, 0, width, height)
+	const image = context.getImageData(0, 0, width, height)
+	return { width, height, data: image.data }
+}
+
+const loadImageSampleFrame = (url: string): Promise<RgbaSampleFrame | null> => new Promise((resolve) => {
+	const image = new Image()
+	image.crossOrigin = 'anonymous'
+	image.onload = () => {
+		try {
+			resolve(drawElementToSampleFrame(image))
+		} catch {
+			resolve(null)
+		}
+	}
+	image.onerror = () => resolve(null)
+	image.src = url
+})
+
+const loadVideoSampleFrame = (clip: RenderedClip, cursor: number): Promise<RgbaSampleFrame | null> => new Promise((resolve) => {
+	const video = document.createElement('video')
+	let done = false
+	let timeoutId = 0
+	const finish = (frame: RgbaSampleFrame | null) => {
+		if (done) {
+			return
+		}
+		done = true
+		window.clearTimeout(timeoutId)
+		video.removeAttribute('src')
+		video.load()
+		resolve(frame)
+	}
+	const draw = () => {
+		try {
+			finish(drawElementToSampleFrame(video))
+		} catch {
+			finish(null)
+		}
+	}
+	timeoutId = window.setTimeout(() => finish(null), 2200)
+	video.crossOrigin = 'anonymous'
+	video.muted = true
+	video.playsInline = true
+	video.preload = 'auto'
+	video.addEventListener('error', () => {
+		window.clearTimeout(timeoutId)
+		finish(null)
+	}, { once: true })
+	video.addEventListener('loadeddata', () => {
+		const targetTime = Math.max(0, cursor - clip.start + clip.inPoint)
+		if (targetTime <= 0.05) {
+			draw()
+			return
+		}
+		if (Number.isFinite(video.duration) && video.duration > 0) {
+			try {
+				video.currentTime = Math.min(video.duration - 0.05, targetTime)
+			} catch {
+				draw()
+			}
+			return
+		}
+		draw()
+	}, { once: true })
+	video.addEventListener('seeked', () => {
+		draw()
+	}, { once: true })
+	video.src = clip.resourceUrl
+})
+
+const usePreviewScopeSamples = (clips: RenderedClip[], cursor: number): Record<string, RgbaSampleFrame | undefined> => {
+	const [samples, setSamples] = useState<Record<string, RgbaSampleFrame | undefined>>({})
+	const sampleKey = useMemo(() => getScopeSampleKey(clips, cursor), [clips, cursor])
+
+	useEffect(() => {
+		if (typeof document === 'undefined' || navigator.userAgent.includes('jsdom')) {
+			return
+		}
+
+		let cancelled = false
+		const loadSamples = async () => {
+			const entries = await Promise.all(clips.map(async (clip) => {
+				if (!clip.resourceUrl || clip.resourceKind === 'text' || clip.resourceKind === 'audio') {
+					return [clip.id, undefined] as const
+				}
+
+				const frame = clip.resourceKind === 'image'
+					? await loadImageSampleFrame(clip.resourceUrl)
+					: await loadVideoSampleFrame(clip, cursor)
+				return [clip.id, frame ?? undefined] as const
+			}))
+			if (!cancelled) {
+				setSamples(Object.fromEntries(entries))
+			}
+		}
+
+		void loadSamples()
+		return () => {
+			cancelled = true
+		}
+	}, [sampleKey])
+
+	return samples
+}
+
+const getVisibleDensityCells = (frame: ScopeDensityFrame, maxCells = 4200): Array<{ key: string; x: number; y: number; value: number }> => {
+	const cells = frame.cells
+		.map((value, index) => ({
+			key: `${index}`,
+			x: index % frame.width,
+			y: Math.floor(index / frame.width),
+			value,
+		}))
+		.filter((cell) => cell.value > 0)
+
+	return cells.length > maxCells
+		? cells.sort((left, right) => right.value - left.value).slice(0, maxCells)
+		: cells
+}
+
+const ScopeDensitySvg = ({ frame, tint, label, className = '' }: {
+	frame: ScopeDensityFrame
+	tint: string
+	label: string
+	className?: string
+}) => {
+	const cells = getVisibleDensityCells(frame)
 	return (
-		<svg className="ve-scope-trace" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label={label} role="img">
-			<polygon className="ve-scope-trace__fill" points={`0,100 ${points} 100,100`} style={{ fill: tint }} />
-			<polyline className="ve-scope-trace__line" points={points} style={{ stroke: tint }} />
+		<svg className={`ve-scope-density ${className}`} viewBox={`0 0 ${frame.width} ${frame.height}`} preserveAspectRatio="none" aria-label={label} role="img">
+			{cells.map((cell) => (
+				<rect
+					key={cell.key}
+					x={cell.x}
+					y={cell.y}
+					width="1"
+					height="1"
+					style={{ fill: tint, opacity: 0.12 + Math.min(0.88, cell.value * 0.88) }}
+				/>
+			))}
 		</svg>
 	)
 }
 
-const ColorScopesPanel = observer(({ frame$, mode, onModeChange }: {
+const ColorScopesPanel = observer(({ frame$, mode, onModeChange, resolveResourceUrl }: {
 	frame$: Observable<PreviewFrame>
 	mode: ScopeMode
 	onModeChange: (mode: ScopeMode) => void
+	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string
 }) => {
 	const frame = frame$.get()
+	const resolvedClips = useMemo(
+		() => frame.visualRenderedClips.map((clip) => ({
+			...clip,
+			resourceUrl: clip.resourceId ? resolveResourceUrl(clip.resourceId, clip.resourceUrl) : clip.resourceUrl,
+		})),
+		[frame.visualRenderedClips, resolveResourceUrl],
+	)
+	const sampleFrames = usePreviewScopeSamples(resolvedClips, frame.cursor)
 	const scopes: PreviewScopeData = useMemo(
-		() => createPreviewScopeData(frame.visualRenderedClips),
-		[frame.visualRenderedClips],
+		() => createPreviewScopeData(resolvedClips, sampleFrames),
+		[resolvedClips, sampleFrames],
 	)
 	const isEmpty = scopes.clipCount === 0
 
@@ -123,17 +278,18 @@ const ColorScopesPanel = observer(({ frame$, mode, onModeChange }: {
 			<div className="ve-scopes__plot" data-scope-mode={mode}>
 				{isEmpty ? <span className="ve-scopes__empty">No visual clip at cursor</span> : null}
 				{!isEmpty && mode === 'waveform' ? (
-					<ScopeTrace buckets={scopes.waveform.buckets} tint="#f4f4f5" label="Waveform luma trace" />
+					<ScopeDensitySvg frame={scopes.waveform} tint="#f4f4f5" label="Waveform luma density" />
 				) : null}
 				{!isEmpty && mode === 'rgb-parade' ? (
 					<div className="ve-scopes__parade">
-						<ScopeTrace buckets={scopes.rgbParade.red} tint="#ef4444" label="Red parade trace" />
-						<ScopeTrace buckets={scopes.rgbParade.green} tint="#22c55e" label="Green parade trace" />
-						<ScopeTrace buckets={scopes.rgbParade.blue} tint="#3b82f6" label="Blue parade trace" />
+						<ScopeDensitySvg frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.red }} tint="#ef4444" label="Red parade density" />
+						<ScopeDensitySvg frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.green }} tint="#22c55e" label="Green parade density" />
+						<ScopeDensitySvg frame={{ width: scopes.rgbParade.width, height: scopes.rgbParade.height, cells: scopes.rgbParade.blue }} tint="#3b82f6" label="Blue parade density" />
 					</div>
 				) : null}
 				{!isEmpty && mode === 'vectorscope' ? (
 					<div className="ve-scopes__vectors" aria-label="Vectorscope points">
+						<ScopeDensitySvg frame={scopes.vectorscope} tint="#a1a1aa" label="Vectorscope chroma density" className="ve-scope-density--vectors" />
 						{scopes.vectorscope.points.map((point, index) => (
 							<span
 								key={index}
@@ -262,7 +418,7 @@ export const PreviewPanel = () => {
 				noteResourcePreviewError={noteResourcePreviewError}
 				compareMode={compareMode}
 			/>
-			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} /> : null}
+			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} /> : null}
 			<PreviewTransport
 				frame$={previewFrame$}
 				session$={session$}
