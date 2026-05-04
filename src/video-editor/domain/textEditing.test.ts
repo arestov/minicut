@@ -62,6 +62,34 @@ describe('text editing domain', () => {
 		expect(registry.entitiesById[clipId].attrs.duration).toBe(5)
 	})
 
+	it('preserves existing text style fields when a caller sends a partial style update', () => {
+		let { registry, projectId } = createProject()
+		const add = buildDispatchResult(registry, { c: CMD.TEXT_ADD, p: { projectId, content: 'Caption' } })
+		registry = applyPatchEnvelopeToRegistry(registry, add.envelope)
+		const textId = String(add.createdIds?.textId)
+
+		const update = buildDispatchResult(registry, {
+			c: CMD.TEXT_UPDATE_ATTRS,
+			p: {
+				id: textId,
+				attrs: { style: { color: '#111827' } as Partial<TextAttrs['style']> as TextAttrs['style'] },
+			},
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, update.envelope)
+		const attrs = registry.entitiesById[textId].attrs as unknown as TextAttrs
+
+		expect(attrs.style).toMatchObject({
+			fontFamily: 'Inter, Segoe UI, sans-serif',
+			fontSize: 64,
+			fontWeight: 700,
+			lineHeight: 1.1,
+			letterSpacing: 0,
+			color: '#111827',
+			align: 'center',
+		})
+		expect(attrs.box).toEqual({ width: 760, height: 220 })
+	})
+
 	it('rejects text clips on audio tracks', () => {
 		const { registry, projectId } = createProject()
 		const audioTrack = Object.values(registry.entitiesById).find((entity) => entity.type === 'track' && entity.attrs.kind === 'audio')

@@ -62,6 +62,12 @@ export const createDefaultTextAttrs = (content = 'Text'): TextAttrs => ({
 
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
 
+const mergeTextAttrs = (current: TextAttrs, attrs: Partial<TextAttrs>): Partial<TextAttrs> => ({
+	...attrs,
+	...(attrs.style ? { style: { ...current.style, ...attrs.style } } : {}),
+	...(attrs.box ? { box: { ...current.box, ...attrs.box } } : {}),
+})
+
 const createClipEntity = ({
 	resource,
 	start,
@@ -408,12 +414,13 @@ export const buildDispatchResult = (
 		case CMD.TEXT_UPDATE_ATTRS: {
 			const project = assertProjectForEntity(registry, command.p.id)
 			const text = assertEntity(registry, command.p.id)
+			const attrs = mergeTextAttrs(text.attrs as unknown as TextAttrs, command.p.attrs)
 
 			return {
 				envelope: {
 					projectId: project.id,
 					version: project.version + 1,
-					patches: [{ c: PATCH.ATTRS_MERGE, p: { id: text.id, attrs: command.p.attrs } }],
+					patches: [{ c: PATCH.ATTRS_MERGE, p: { id: text.id, attrs } }],
 				},
 			}
 		}
