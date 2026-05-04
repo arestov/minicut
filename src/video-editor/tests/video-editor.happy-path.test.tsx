@@ -280,7 +280,11 @@ describe('video editor harness', () => {
 
 		try {
 			await createProjectFromMenu(user)
-			await user.click(screen.getByRole('button', { name: 'Add text' }))
+			const mediaBin = screen.getByLabelText('Media bin')
+			const textActionButton = within(mediaBin).getByRole('button', { name: 'Add Text to Timeline' })
+			const firstResourceListRow = within(mediaBin).getAllByRole('listitem')[0]
+			expect(within(firstResourceListRow).getByRole('button', { name: 'Add Text to Timeline' })).toBe(textActionButton)
+			await user.click(textActionButton)
 			const inspector = screen.getByLabelText('Inspector')
 			const content = await within(inspector).findByRole('textbox', { name: 'Text content' })
 			await user.clear(content)

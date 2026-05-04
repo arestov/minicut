@@ -1118,6 +1118,34 @@ button:disabled {
 	min-height: 64px;
 }
 
+.ve-resource-row--text-action {
+	min-height: 0;
+	padding-block: 8px;
+	gap: 10px;
+	background: #ffffff;
+}
+
+.ve-resource-thumb--text-action {
+	background: #eef2ff;
+	color: #3730a3;
+	border-color: #c7d2fe;
+}
+
+.ve-resource-row--text-action .ve-resource-row__action-line {
+	margin: 0;
+}
+
+.ve-resource-row--text-action .ve-button {
+	height: 30px;
+	padding-inline: 10px;
+	font-size: 12px;
+}
+
+.ve-resource-list--grid .ve-resource-row--text-action {
+	grid-column: 1 / -1;
+	align-items: center;
+}
+
 .ve-track-row__label {
 	display: flex;
 	flex-direction: column;

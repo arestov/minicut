@@ -1,5 +1,5 @@
 import { observer } from '@legendapp/state/react'
-import { Grid2X2, List, Plus, Search, Upload } from 'lucide-react'
+import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
@@ -9,7 +9,7 @@ import {
 	getProjectResourceIds$,
 	resourceAttrs$,
 } from '../legend/observableSelectors'
-import { IconButton } from './ControlPrimitives'
+import { Button, IconButton } from './ControlPrimitives'
 
 interface ResourceRowProps {
 	resourceId: string
@@ -81,6 +81,30 @@ const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 							Add
 						</IconButton>
 					</div>
+				</div>
+			</div>
+		</li>
+	)
+})
+
+const TextTimelineActionRow = observer(() => {
+	const { actions } = useVideoEditor()
+
+	return (
+		<li className="ve-resource-row ve-resource-row--text-action">
+			<div className="ve-resource-thumb ve-resource-thumb--text-action" aria-hidden="true">
+				<Type size={16} />
+			</div>
+			<div className="ve-resource-row__content">
+				<div className="ve-resource-row__action-line">
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={() => actions.addTextClip()}
+						aria-label="Add Text to Timeline"
+					>
+						Add Text to Timeline
+					</Button>
 				</div>
 			</div>
 		</li>
@@ -179,16 +203,17 @@ export const MediaBin = observer(() => {
 						<p className="ve-empty">No active project.</p>
 						<button type="button" onClick={() => actions.createProject()}>New project</button>
 					</div>
-				) : resources.length === 0 ? (
-					<p className="ve-empty">Import video, image, or audio files to populate the bin.</p>
-				) : filteredResources.length === 0 ? (
-					<p className="ve-empty">No assets match the current filters.</p>
 				) : (
-					<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
-						{filteredResources.map((resourceId) => (
-							<ResourceRow key={resourceId} resourceId={resourceId} />
-						))}
-					</ul>
+					<>
+						<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
+							<TextTimelineActionRow />
+							{filteredResources.map((resourceId) => (
+								<ResourceRow key={resourceId} resourceId={resourceId} />
+							))}
+						</ul>
+						{resources.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
+						{resources.length > 0 && filteredResources.length === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
+					</>
 				)}
 			</div>
 		</section>
