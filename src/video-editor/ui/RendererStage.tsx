@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
 import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
 // Keep Vite's worker query import explicit.
 //
@@ -24,6 +24,7 @@ interface RendererStageProps {
 	structure: PreviewStructure
 	frame: PreviewFrame
 	isPlaying: boolean
+	compareMode?: 'off' | 'split'
 	onClipMediaError?: (resourceId: string) => void
 }
 
@@ -161,6 +162,14 @@ const renderTextClip = (clip: RenderedClip) => {
 
 const getClipLocalMediaTime = (clip: RenderedClip, cursor: number): number =>
 	Math.max(0, clip.inPoint + cursor - clip.start)
+
+const getLayerStyle = (clip: RenderedClip, filters: string[]): CSSProperties => ({
+	opacity: clip.opacity,
+	filter: filters.join(' '),
+	borderColor: clip.color,
+	boxShadow: `0 0 0 2px ${clip.color}, 0 20px 45px rgba(0, 0, 0, 0.3)`,
+	transform: `translate(${clip.transform.x}px, ${clip.transform.y}px) scale(${clip.transform.scale}) rotate(${clip.transform.rotation}deg)`,
+})
 
 const syncMediaPlayback = (
 	element: HTMLMediaElement,
@@ -308,11 +317,75 @@ const useMediaElementSync = (
 	}, [frame, isPlaying, mediaElementsRef, mediaSeekStateRef])
 }
 
-export const RendererStage = ({ structure, frame, isPlaying, onClipMediaError }: RendererStageProps) => {
+const VisualClipLayer = ({
+	clip,
+	cursor,
+	filters,
+	mediaElementsRef,
+	mediaSeekStateRef,
+	onClipMediaError,
+}: {
+	clip: RenderedClip
+	cursor: number
+	filters: string[]
+	mediaElementsRef?: MutableRefObject<Map<string, HTMLMediaElement>>
+	mediaSeekStateRef?: MutableRefObject<Map<string, MediaSeekState>>
+	onClipMediaError?: (resourceId: string) => void
+}) => {
+	const hasMedia = isRealMediaUrl(clip.resourceUrl)
+	return (
+		<div
+			className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
+			style={getLayerStyle(clip, filters)}
+		>
+			{hasMedia && clip.resourceKind === 'image' ? (
+				<img src={clip.resourceUrl} alt={clip.resourceName} />
+			) : null}
+			{hasMedia && clip.resourceKind === 'video' ? (
+				<video
+					ref={mediaElementsRef ? (element) => {
+						if (element) {
+							mediaElementsRef.current.set(clip.id, element)
+							return
+						}
+						mediaElementsRef.current.delete(clip.id)
+						mediaSeekStateRef?.current.delete(clip.id)
+					} : undefined}
+					src={clip.resourceUrl}
+					muted
+					playsInline
+					preload="metadata"
+					onLoadedMetadata={(event) =>
+						seekMediaElement(
+							event.currentTarget,
+							getClipLocalMediaTime(clip, cursor),
+						)
+					}
+					onError={() => {
+						if (clip.resourceId) {
+							onClipMediaError?.(clip.resourceId)
+						}
+					}}
+				/>
+			) : null}
+			{clip.resourceKind === 'text' ? renderTextClip(clip) : null}
+			{!hasMedia && clip.resourceKind !== 'text' ? (
+				<>
+					<strong>{clip.name}</strong>
+					<span>{clip.resourceName}</span>
+				</>
+			) : null}
+		</div>
+	)
+}
+
+export const RendererStage = ({ structure, frame, isPlaying, compareMode = 'off', onClipMediaError }: RendererStageProps) => {
 	const { canvasRef, renderMode } = usePreviewCanvasRenderer(structure, frame)
 	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
 	const mediaSeekStateRef = useRef(new Map<string, MediaSeekState>())
 	useMediaElementSync(mediaElementsRef, mediaSeekStateRef, frame, isPlaying)
+
+	const isSplitCompare = compareMode === 'split' && frame.visualRenderedClips.length > 0
 
 	return (
 		<div className="ve-renderer" aria-label="Renderer stage">
@@ -326,61 +399,36 @@ export const RendererStage = ({ structure, frame, isPlaying, onClipMediaError }:
 				{frame.visualRenderedClips.length === 0 ? (
 					<div className="ve-renderer__empty">No frame at cursor</div>
 				) : (
-					frame.visualRenderedClips.map((clip) => {
-						const hasMedia = isRealMediaUrl(clip.resourceUrl)
-						return (
-							<div
-								key={clip.id}
-								className={`ve-renderer__layer ve-renderer__layer--${clip.resourceKind}`}
-								style={{
-									opacity: clip.opacity,
-									filter: clip.filters.join(' '),
-									borderColor: clip.color,
-									boxShadow: `0 0 0 2px ${clip.color}, 0 20px 45px rgba(0, 0, 0, 0.3)`,
-									transform: `translate(${clip.transform.x}px, ${clip.transform.y}px) scale(${clip.transform.scale}) rotate(${clip.transform.rotation}deg)`,
-								}}
-							>
-								{hasMedia && clip.resourceKind === 'image' ? (
-									<img src={clip.resourceUrl} alt={clip.resourceName} />
-								) : null}
-								{hasMedia && clip.resourceKind === 'video' ? (
-									<video
-										ref={(element) => {
-											if (element) {
-												mediaElementsRef.current.set(clip.id, element)
-												return
-											}
-											mediaElementsRef.current.delete(clip.id)
-											mediaSeekStateRef.current.delete(clip.id)
-										}}
-										src={clip.resourceUrl}
-										muted
-										playsInline
-										preload="metadata"
-										onLoadedMetadata={(event) =>
-											seekMediaElement(
-												event.currentTarget,
-												getClipLocalMediaTime(clip, frame.cursor),
-											)
-										}
-										onError={() => {
-											if (clip.resourceId) {
-												onClipMediaError?.(clip.resourceId)
-											}
-										}}
-									/>
-								) : null}
-								{clip.resourceKind === 'text' ? renderTextClip(clip) : null}
-								{!hasMedia && clip.resourceKind !== 'text' ? (
-									<>
-										<strong>{clip.name}</strong>
-										<span>{clip.resourceName}</span>
-									</>
-								) : null}
-							</div>
-						)
-					})
+					frame.visualRenderedClips.map((clip) => (
+						<VisualClipLayer
+							key={clip.id}
+							clip={clip}
+							cursor={frame.cursor}
+							filters={clip.filters}
+							mediaElementsRef={mediaElementsRef}
+							mediaSeekStateRef={mediaSeekStateRef}
+							onClipMediaError={onClipMediaError}
+						/>
+					))
 				)}
+				{isSplitCompare ? (
+					<div className="ve-renderer__compare" aria-label="Split compare preview">
+						<div className="ve-renderer__compare-before" aria-hidden="true">
+							{frame.visualRenderedClips.map((clip) => (
+								<VisualClipLayer
+									key={`before-${clip.id}`}
+									clip={clip}
+									cursor={frame.cursor}
+									filters={[]}
+									onClipMediaError={onClipMediaError}
+								/>
+							))}
+						</div>
+						<div className="ve-renderer__compare-divider" />
+						<span className="ve-renderer__compare-label ve-renderer__compare-label--before">Before</span>
+						<span className="ve-renderer__compare-label ve-renderer__compare-label--after">After</span>
+					</div>
+				) : null}
 				<div className="ve-renderer__audio-elements" aria-hidden="true">
 					{frame.audioRenderedClips.map((clip) =>
 						isRealMediaUrl(clip.resourceUrl) ? (

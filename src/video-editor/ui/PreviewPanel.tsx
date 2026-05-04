@@ -1,7 +1,7 @@
 import type { Observable } from '@legendapp/state'
 import { observer } from '@legendapp/state/react'
 import { Gauge, Pause, Play, Timer } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import {
 	createPreviewFrame$,
@@ -10,12 +10,15 @@ import {
 	type PreviewFrame,
 	type PreviewStructure,
 } from '../legend/derivedTimeline'
+import { createPreviewScopeData, type PreviewScopeData } from '../render/colorScopes'
 import type { EditorSessionState } from '../domain/types'
 import { formatSeconds } from './format'
-import { IconButton } from './ControlPrimitives'
+import { Button, IconButton } from './ControlPrimitives'
 import { RendererStage } from './RendererStage'
 
 const previewWindowRequestIntervalMs = 200
+
+type ScopeMode = 'waveform' | 'rgb-parade' | 'vectorscope'
 
 const PreviewStage = observer(({
 	frame$,
@@ -24,6 +27,7 @@ const PreviewStage = observer(({
 	resolveResourceUrl,
 	requestResourcePlayheadWindow,
 	noteResourcePreviewError,
+	compareMode,
 }: {
 	frame$: Observable<PreviewFrame>
 	structure$: Observable<PreviewStructure>
@@ -31,6 +35,7 @@ const PreviewStage = observer(({
 	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string
 	requestResourcePlayheadWindow: (resourceId: string, time: number) => void
 	noteResourcePreviewError: (resourceId: string) => void
+	compareMode: 'off' | 'split'
 }) => {
 	const frame = frame$.get()
 	const isPlaying = session$.isPlaying.get()
@@ -68,8 +73,73 @@ const PreviewStage = observer(({
 			structure={structure$.get()}
 			frame={resolvedFrame}
 			isPlaying={isPlaying}
+			compareMode={compareMode}
 			onClipMediaError={(resourceId) => noteResourcePreviewError(resourceId)}
 		/>
+	)
+})
+
+const ScopeBar = ({ value, tint }: { value: number; tint: string }) => (
+	<span className="ve-scope-bar" style={{ height: `${Math.max(4, value * 100)}%`, backgroundColor: tint }} />
+)
+
+const ScopeBars = ({ buckets, tint, label }: { buckets: number[]; tint: string; label: string }) => (
+	<div className="ve-scope-bars" aria-label={label}>
+		{buckets.map((value, index) => <ScopeBar key={index} value={value} tint={tint} />)}
+	</div>
+)
+
+const ColorScopesPanel = observer(({ frame$, mode, onModeChange }: {
+	frame$: Observable<PreviewFrame>
+	mode: ScopeMode
+	onModeChange: (mode: ScopeMode) => void
+}) => {
+	const frame = frame$.get()
+	const scopes: PreviewScopeData = useMemo(
+		() => createPreviewScopeData(frame.visualRenderedClips),
+		[frame.visualRenderedClips],
+	)
+	const isEmpty = scopes.clipCount === 0
+
+	return (
+		<div className="ve-scopes" aria-label="Color scopes">
+			<div className="ve-scopes__header">
+				<strong>Scopes</strong>
+				<div className="ve-scopes__tabs" role="tablist" aria-label="Scope mode">
+					<button type="button" role="tab" aria-selected={mode === 'waveform'} className={mode === 'waveform' ? 'is-active' : ''} onClick={() => onModeChange('waveform')}>Waveform</button>
+					<button type="button" role="tab" aria-selected={mode === 'rgb-parade'} className={mode === 'rgb-parade' ? 'is-active' : ''} onClick={() => onModeChange('rgb-parade')}>RGB Parade</button>
+					<button type="button" role="tab" aria-selected={mode === 'vectorscope'} className={mode === 'vectorscope' ? 'is-active' : ''} onClick={() => onModeChange('vectorscope')}>Vectorscope</button>
+				</div>
+			</div>
+			<div className="ve-scopes__plot" data-scope-mode={mode}>
+				{isEmpty ? <span className="ve-scopes__empty">No visual clip at cursor</span> : null}
+				{!isEmpty && mode === 'waveform' ? (
+					<ScopeBars buckets={scopes.waveform.buckets} tint="#e4e4e7" label="Waveform luma buckets" />
+				) : null}
+				{!isEmpty && mode === 'rgb-parade' ? (
+					<div className="ve-scopes__parade">
+						<ScopeBars buckets={scopes.rgbParade.red} tint="#ef4444" label="Red parade buckets" />
+						<ScopeBars buckets={scopes.rgbParade.green} tint="#22c55e" label="Green parade buckets" />
+						<ScopeBars buckets={scopes.rgbParade.blue} tint="#3b82f6" label="Blue parade buckets" />
+					</div>
+				) : null}
+				{!isEmpty && mode === 'vectorscope' ? (
+					<div className="ve-scopes__vectors" aria-label="Vectorscope points">
+						{scopes.vectorscope.points.map((point, index) => (
+							<span
+								key={index}
+								className="ve-scope-point"
+								style={{
+									left: `${50 + point.x * 70}%`,
+									top: `${50 - point.y * 70}%`,
+									backgroundColor: point.tint,
+								}}
+							/>
+						))}
+					</div>
+				) : null}
+			</div>
+		</div>
 	)
 })
 
@@ -148,6 +218,8 @@ const PreviewTransport = ({
 
 export const PreviewPanel = () => {
 	const { projects$, session$, actions, resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
+	const [compareMode, setCompareMode] = useState<'off' | 'split'>('off')
+	const [scopeMode, setScopeMode] = useState<ScopeMode>('waveform')
 	const previewStructure$ = useMemo(
 		() => createPreviewStructure$(projects$, session$),
 		[projects$, session$],
@@ -161,6 +233,15 @@ export const PreviewPanel = () => {
 		<section className="ve-panel ve-preview-panel" aria-label="Preview panel">
 			<div className="ve-panel__header">
 				<h2>Preview</h2>
+				<div className="ve-preview-tools" aria-label="Preview color tools">
+					<Button
+						type="button"
+						variant={compareMode === 'split' ? 'default' : 'secondary'}
+						onClick={() => setCompareMode((value) => value === 'split' ? 'off' : 'split')}
+					>
+						Split compare
+					</Button>
+				</div>
 			</div>
 			<PreviewStage
 				frame$={previewFrame$}
@@ -169,7 +250,9 @@ export const PreviewPanel = () => {
 				resolveResourceUrl={resolveResourceUrl}
 				requestResourcePlayheadWindow={requestResourcePlayheadWindow}
 				noteResourcePreviewError={noteResourcePreviewError}
+				compareMode={compareMode}
 			/>
+			<ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} />
 			<PreviewTransport
 				frame$={previewFrame$}
 				session$={session$}

@@ -307,6 +307,16 @@ describe('video editor harness', () => {
 			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(false)
 			fireEvent.pointerUp(compareButton)
 			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(true)
+
+			const preview = screen.getByLabelText('Preview panel')
+			expect(within(preview).getByLabelText('Color scopes')).toBeVisible()
+			expect(within(preview).getByRole('tab', { name: 'Waveform' })).toHaveAttribute('aria-selected', 'true')
+			await user.click(within(preview).getByRole('tab', { name: 'RGB Parade' }))
+			expect(within(preview).getByRole('tab', { name: 'RGB Parade' })).toHaveAttribute('aria-selected', 'true')
+			await user.click(within(preview).getByRole('button', { name: 'Split compare' }))
+			expect(within(preview).getByLabelText('Split compare preview')).toBeVisible()
+			expect(within(preview).getByText('Before')).toBeVisible()
+			expect(within(preview).getByText('After')).toBeVisible()
 		} finally {
 			unmount()
 		}
