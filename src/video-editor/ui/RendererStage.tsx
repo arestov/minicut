@@ -386,6 +386,51 @@ const VisualClipLayer = ({
 	)
 }
 
+const AudioClipElement = ({
+	clip,
+	cursor,
+	mediaElementsRef,
+	mediaSeekStateRef,
+	onClipMediaError,
+}: {
+	clip: RenderedClip
+	cursor: number
+	mediaElementsRef: MutableRefObject<Map<string, HTMLMediaElement>>
+	mediaSeekStateRef: MutableRefObject<Map<string, MediaSeekState>>
+	onClipMediaError?: (resourceId: string) => void
+}) => {
+	const handleAudioRef = useCallback((element: HTMLAudioElement | null) => {
+		if (element) {
+			mediaElementsRef.current.set(clip.id, element)
+			return
+		}
+		mediaElementsRef.current.delete(clip.id)
+		mediaSeekStateRef.current.delete(clip.id)
+	}, [clip.id, mediaElementsRef, mediaSeekStateRef])
+
+	return (
+		<audio
+			ref={handleAudioRef}
+			src={clip.resourceUrl}
+			data-resource-name={clip.resourceName}
+			data-gain={clip.audio.gain}
+			data-pan={clip.audio.pan}
+			preload="metadata"
+			onLoadedMetadata={(event) =>
+				seekMediaElement(
+					event.currentTarget,
+					getClipLocalMediaTime(clip, cursor),
+				)
+			}
+			onError={() => {
+				if (clip.resourceId) {
+					onClipMediaError?.(clip.resourceId)
+				}
+			}}
+		/>
+	)
+}
+
 export const RendererStage = ({ structure, frame, isPlaying, compareMode = 'off', onClipMediaError }: RendererStageProps) => {
 	const { canvasRef, renderMode } = usePreviewCanvasRenderer(structure, frame)
 	const mediaElementsRef = useRef(new Map<string, HTMLMediaElement>())
@@ -439,32 +484,13 @@ export const RendererStage = ({ structure, frame, isPlaying, compareMode = 'off'
 				<div className="ve-renderer__audio-elements" aria-hidden="true">
 					{frame.audioRenderedClips.map((clip) =>
 						isRealMediaUrl(clip.resourceUrl) ? (
-							<audio
+							<AudioClipElement
 								key={clip.id}
-								ref={(element) => {
-									if (element) {
-										mediaElementsRef.current.set(clip.id, element)
-										return
-									}
-									mediaElementsRef.current.delete(clip.id)
-									mediaSeekStateRef.current.delete(clip.id)
-								}}
-								src={clip.resourceUrl}
-								data-resource-name={clip.resourceName}
-								data-gain={clip.audio.gain}
-								data-pan={clip.audio.pan}
-								preload="metadata"
-								onLoadedMetadata={(event) =>
-									seekMediaElement(
-										event.currentTarget,
-										getClipLocalMediaTime(clip, frame.cursor),
-									)
-								}
-								onError={() => {
-									if (clip.resourceId) {
-										onClipMediaError?.(clip.resourceId)
-									}
-								}}
+								clip={clip}
+								cursor={frame.cursor}
+								mediaElementsRef={mediaElementsRef}
+								mediaSeekStateRef={mediaSeekStateRef}
+								onClipMediaError={onClipMediaError}
 							/>
 						) : null,
 					)}

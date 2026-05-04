@@ -519,6 +519,30 @@ test('exports image plus wav audio via WebCodecs when available', async ({ page 
 })
 
 test('imports a video with embedded audio as linked tracks and exports audible audio', async ({ page }) => {
+	await page.addInitScript(() => {
+		const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')
+		if (!descriptor?.get || !descriptor.set) {
+			return
+		}
+		const originalPlay = HTMLMediaElement.prototype.play
+		const writes: Array<{ tag: string; value: number }> = []
+		const playCalls: string[] = []
+		Object.defineProperty(window, '__previewCurrentTimeWrites', { value: writes, configurable: true })
+		Object.defineProperty(window, '__previewPlayCalls', { value: playCalls, configurable: true })
+		Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
+			configurable: descriptor.configurable,
+			enumerable: descriptor.enumerable,
+			get: descriptor.get,
+			set(value: number) {
+				writes.push({ tag: this.tagName.toLowerCase(), value })
+				descriptor.set?.call(this, value)
+			},
+		})
+		HTMLMediaElement.prototype.play = function play() {
+			playCalls.push(this.tagName.toLowerCase())
+			return originalPlay.call(this)
+		}
+	})
 	await installExportPathProbe(page)
 
 	await page.goto('/')
@@ -549,10 +573,31 @@ test('imports a video with embedded audio as linked tracks and exports audible a
 	expect(Math.abs((videoTiming?.duration ?? 0) - (audioTiming?.duration ?? 0))).toBeLessThan(0.2)
 
 	await setTimelineCursor(page, 0.4)
+	await page.evaluate(() => {
+		const instrumentedWindow = window as Window & {
+			__previewCurrentTimeWrites?: Array<{ tag: string; value: number }>
+			__previewPlayCalls?: string[]
+		}
+		instrumentedWindow.__previewCurrentTimeWrites?.splice(0)
+		instrumentedWindow.__previewPlayCalls?.splice(0)
+	})
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
 	const previewAudio = page.getByLabel('Renderer stage').locator('audio').first()
 	await expect.poll(async () => previewAudio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.45)
+	const audioSyncStats = await page.evaluate(() => {
+		const instrumentedWindow = window as Window & {
+			__previewCurrentTimeWrites?: Array<{ tag: string; value: number }>
+			__previewPlayCalls?: string[]
+		}
+		return {
+			seekWrites: instrumentedWindow.__previewCurrentTimeWrites?.filter((write) => write.tag === 'audio').length ?? 0,
+			playCalls: instrumentedWindow.__previewPlayCalls?.filter((tag) => tag === 'audio').length ?? 0,
+		}
+	})
+	expect(audioSyncStats.seekWrites).toBeLessThanOrEqual(3)
+	expect(audioSyncStats.playCalls).toBeLessThanOrEqual(2)
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
+	await expect.poll(async () => previewAudio.evaluate((element) => (element as HTMLAudioElement).paused)).toBe(true)
 
 	const downloadPromise = page.waitForEvent('download')
 	await page.getByRole('button', { name: 'Export project' }).click()
