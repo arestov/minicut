@@ -73,6 +73,14 @@ export class MemoryWorkerAuthority implements EditorAuthorityClient {
 		return envelope
 	}
 
+	replaceSnapshot(snapshot: ProjectRegistry): void {
+		this.#registry = structuredClone(snapshot)
+		this.#indexes = buildWorkerDerivedIndexes(this.#registry)
+		this.#undoStack = []
+		this.#redoStack = []
+		this.#notify(createRegistrySetEnvelope(this.#registry))
+	}
+
 	#notify(envelope: PatchEnvelope): void {
 		for (const listener of this.#listeners) {
 			listener(envelope)

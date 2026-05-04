@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { MSG, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { MSG, PATCH, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
 import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
 import { createEmptyRegistry } from '../domain/createProject'
 import { createFallbackAuthorityClient } from '../worker/fallbackAuthorityClient'
@@ -36,6 +36,18 @@ type RestorableAuthorityClient = EditorAuthorityClient & {
 
 const canReplaceSnapshot = (client: EditorAuthorityClient): client is RestorableAuthorityClient =>
 	typeof (client as Partial<RestorableAuthorityClient>).replaceSnapshot === 'function'
+
+const getRegistryEnvelopeProjectId = (snapshot: ProjectRegistry): string =>
+	snapshot.activeProjectId ?? Object.keys(snapshot.projects)[0] ?? '__workspace__'
+
+const createRegistrySetEnvelope = (snapshot: ProjectRegistry): PatchEnvelope => {
+	const projectId = getRegistryEnvelopeProjectId(snapshot)
+	return {
+		projectId,
+		version: snapshot.projects[projectId]?.version ?? 0,
+		patches: [{ c: PATCH.REGISTRY_SET, p: { registry: structuredClone(snapshot) } }],
+	}
+}
 
 const createTransportAuthorityClient = (
 	transport: P2PTransportLike,
@@ -190,6 +202,8 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 	let activeClientUnsubscribe: (() => void) | null = null
 	let hasCachedSnapshot = false
 	let cachedSnapshot = createEmptyRegistry()
+	let activationHydrationPending = false
+	let activationToken = 0
 
 	const listeners = new Set<PatchListener>()
 	const pending: PendingCall<unknown>[] = []
@@ -220,8 +234,13 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			return
 		}
 
+		activationToken += 1
+		const currentActivationToken = activationToken
 		cleanupActiveClient()
 		role = nextRole
+		const shouldRestoreServerSnapshot = nextRole === 'server' && hasCachedSnapshot && canReplaceSnapshot(nextClient)
+		const shouldSyncClientSnapshot = nextRole === 'client'
+		activationHydrationPending = shouldRestoreServerSnapshot || shouldSyncClientSnapshot
 		activeClient = nextClient
 		activeClientUnsubscribe = nextClient.subscribe((envelope) => {
 			if (hasCachedSnapshot) {
@@ -238,6 +257,10 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		})
 
 		const flushQueuedCalls = (): void => {
+			if (destroyed || currentActivationToken !== activationToken || activationHydrationPending) {
+				return
+			}
+
 			const queuedCalls = pending.splice(0, pending.length)
 			for (const call of queuedCalls) {
 				clearTimeout(call.timeoutId)
@@ -245,8 +268,49 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			}
 		}
 
-		if (nextRole === 'server' && hasCachedSnapshot && canReplaceSnapshot(nextClient)) {
-			void nextClient.replaceSnapshot(cachedSnapshot)
+		if (shouldRestoreServerSnapshot) {
+			void Promise.resolve(nextClient.replaceSnapshot(cachedSnapshot)).then(() => {
+				if (destroyed || currentActivationToken !== activationToken) {
+					return
+				}
+
+				activationHydrationPending = false
+				flushQueuedCalls()
+			}).catch((error: unknown) => {
+				if (destroyed || currentActivationToken !== activationToken) {
+					return
+				}
+
+				activationHydrationPending = false
+				config.onError?.(error)
+				flushQueuedCalls()
+			})
+			return
+		}
+
+		if (shouldSyncClientSnapshot) {
+			void Promise.resolve(nextClient.getSnapshot()).then((snapshot) => {
+				if (destroyed || currentActivationToken !== activationToken) {
+					return
+				}
+
+				setCachedSnapshot(snapshot)
+				const envelope = createRegistrySetEnvelope(snapshot)
+				for (const listener of listeners) {
+					listener(envelope)
+				}
+				activationHydrationPending = false
+				flushQueuedCalls()
+			}).catch((error) => {
+				if (destroyed || currentActivationToken !== activationToken) {
+					return
+				}
+
+				activationHydrationPending = false
+				config.onError?.(error)
+				flushQueuedCalls()
+			})
+			return
 		}
 
 		flushQueuedCalls()
@@ -257,7 +321,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			return Promise.reject(new Error('P2P authority adapter is destroyed'))
 		}
 
-		if (activeClient) {
+		if (activeClient && !activationHydrationPending) {
 			return Promise.resolve(operation(activeClient))
 		}
 

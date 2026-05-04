@@ -102,5 +102,31 @@ export const runAuthorityClientContract = ({
 				client.destroy?.()
 			}
 		})
+
+		it('replaces snapshots and notifies subscribers', async () => {
+			const sourceClient = createClient()
+			const targetClient = createClient()
+			const listener = vi.fn<(envelope: PatchEnvelope) => void>()
+			targetClient.subscribe(listener)
+			try {
+				expect(typeof targetClient.replaceSnapshot).toBe('function')
+				const createResult = await asPromise(sourceClient.dispatch({ c: CMD.PROJECT_CREATE, p: { title: 'Restored project' } }))
+				const sourceSnapshot = await asPromise(sourceClient.getSnapshot())
+
+				await asPromise(targetClient.replaceSnapshot?.(sourceSnapshot))
+				const restoredSnapshot = await asPromise(targetClient.getSnapshot())
+
+				expect(Object.keys(restoredSnapshot.projects)).toEqual(Object.keys(sourceSnapshot.projects))
+				expect(restoredSnapshot.projects[String(createResult.createdIds?.projectId)]).toBeDefined()
+				expect(listener).toHaveBeenCalledWith(expect.objectContaining({ patches: expect.any(Array) }))
+				expect(await asPromise(targetClient.getHistoryState())).toEqual({
+					canUndo: false,
+					canRedo: false,
+				})
+			} finally {
+				sourceClient.destroy?.()
+				targetClient.destroy?.()
+			}
+		})
 	})
 }

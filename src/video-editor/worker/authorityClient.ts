@@ -9,5 +9,6 @@ export interface EditorAuthorityClient {
 	dispatch(command: Command): DispatchResult | Promise<DispatchResult>
 	undo(): PatchEnvelope | null | Promise<PatchEnvelope | null>
 	redo(): PatchEnvelope | null | Promise<PatchEnvelope | null>
+	replaceSnapshot?(snapshot: ProjectRegistry): void | Promise<void>
 	destroy?(): void
 }

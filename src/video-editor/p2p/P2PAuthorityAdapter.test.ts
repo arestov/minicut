@@ -1,4 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
+import { buildDispatchResult } from '../domain/applyCommand'
+import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
 import { CMD, MSG, PATCH, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
 import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
@@ -10,6 +12,23 @@ const createRegistryEnvelope = (snapshot: ProjectRegistry): PatchEnvelope => ({
 	version: 1,
 	patches: [{ c: PATCH.REGISTRY_SET, p: { registry: snapshot } }],
 })
+
+const createProjectSnapshot = (title: string): ProjectRegistry => {
+	let registry = createEmptyRegistry()
+	const result = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: { title } })
+	registry = applyPatchEnvelopeToRegistry(registry, result.envelope)
+	return registry
+}
+
+const resolveLastTransportSnapshotRequest = (transport: ReturnType<typeof createTransportHarness>, snapshot = createEmptyRegistry()): void => {
+	const request = [...transport.sent].reverse().find((message) => message.m === MSG.SNAPSHOT_REQUEST)
+	expect(request).toBeDefined()
+	transport.emit({
+		m: MSG.SNAPSHOT,
+		requestId: String(request?.requestId),
+		p: snapshot,
+	})
+}
 
 class FakeAuthorityClient implements EditorAuthorityClient {
 	snapshot: ProjectRegistry
@@ -163,12 +182,14 @@ describe('P2PAuthorityAdapter', () => {
 
 		const snapshotPromise = adapter.getSnapshot()
 		manager.emitBecomeClient(transport.transport)
+		resolveLastTransportSnapshotRequest(transport)
+		await Promise.resolve()
 
-		expect(transport.sent).toHaveLength(1)
-		expect(transport.sent[0].m).toBe(MSG.SNAPSHOT_REQUEST)
-		expect(transport.sent[0].requestId).toBeTypeOf('string')
+		expect(transport.sent).toHaveLength(2)
+		expect(transport.sent[1].m).toBe(MSG.SNAPSHOT_REQUEST)
+		expect(transport.sent[1].requestId).toBeTypeOf('string')
 
-		const requestId = String(transport.sent[0].requestId)
+		const requestId = String(transport.sent[1].requestId)
 		const snapshot = createEmptyRegistry()
 		transport.emit({
 			m: MSG.SNAPSHOT,
@@ -198,9 +219,11 @@ describe('P2PAuthorityAdapter', () => {
 		})
 
 		manager.emitBecomeClient(transport.transport)
+		resolveLastTransportSnapshotRequest(transport)
+		await Promise.resolve()
 		const dispatchPromise = adapter.dispatch({ c: CMD.PROJECT_CREATE, p: {} })
-		expect(transport.sent).toHaveLength(1)
-		expect(transport.sent[0].m).toBe(MSG.COMMAND)
+		expect(transport.sent).toHaveLength(2)
+		expect(transport.sent[1].m).toBe(MSG.COMMAND)
 
 		manager.emitSessionLost('server-gone')
 		await expect(dispatchPromise).rejects.toThrow(/P2P (session lost|authority request cancelled)/)
@@ -227,14 +250,13 @@ describe('P2PAuthorityAdapter', () => {
 
 		manager.emitBecomeClient(transport.transport)
 		const remoteSnapshot = createEmptyRegistry()
-		const snapshotPromise = adapter.getSnapshot()
 		const requestId = String(transport.sent[0].requestId)
 		transport.emit({
 			m: MSG.SNAPSHOT,
 			requestId,
 			p: remoteSnapshot,
 		})
-		await expect(snapshotPromise).resolves.toEqual(remoteSnapshot)
+		await Promise.resolve()
 
 		manager.emitSessionLost('server-gone')
 		manager.emitBecomeServer()
@@ -242,6 +264,77 @@ describe('P2PAuthorityAdapter', () => {
 
 		expect(local.replaceSnapshot).toHaveBeenCalledWith(remoteSnapshot)
 		await expect(adapter.getSnapshot()).resolves.toEqual(remoteSnapshot)
+	})
+
+	test('queues authority calls until the restored server snapshot is ready', async () => {
+		const manager = createManagerHarness()
+		const transport = createTransportHarness()
+		let resolveRestore: () => void = () => {
+			throw new Error('restore promise was not created')
+		}
+		const local = new FakeRestorableAuthorityClient()
+		local.replaceSnapshot = vi.fn(() => new Promise<void>((resolve) => {
+			resolveRestore = resolve
+		}).then(async () => {
+			local.snapshot = createEmptyRegistry()
+		}))
+		const createLocalAuthority = vi.fn(() => local)
+
+		const adapter = createP2PAuthorityAdapter({
+			roomId: 'room-1',
+			signalUrl: 'http://localhost:8787',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createManager: manager.factory,
+			createLocalAuthority,
+		})
+
+		manager.emitBecomeClient(transport.transport)
+		const remoteSnapshot = createEmptyRegistry()
+		const requestId = String(transport.sent[0].requestId)
+		transport.emit({
+			m: MSG.SNAPSHOT,
+			requestId,
+			p: remoteSnapshot,
+		})
+		await Promise.resolve()
+
+		manager.emitSessionLost('server-gone')
+		manager.emitBecomeServer()
+
+		const queuedSnapshot = adapter.getSnapshot()
+		await Promise.resolve()
+		expect(local.replaceSnapshot).toHaveBeenCalledTimes(1)
+		expect(local.getSnapshot).not.toHaveBeenCalled()
+
+		resolveRestore()
+		await expect(queuedSnapshot).resolves.toEqual(remoteSnapshot)
+		expect(local.getSnapshot).toHaveBeenCalledTimes(1)
+	})
+
+	test('restores cached snapshots through the default fallback authority after failover', async () => {
+		const manager = createManagerHarness()
+		const transport = createTransportHarness()
+		const adapter = createP2PAuthorityAdapter({
+			roomId: 'room-default-restore',
+			signalUrl: 'http://localhost:8787',
+			workerUrl: 'http://localhost/sharedWorker.js',
+			createManager: manager.factory,
+		})
+
+		manager.emitBecomeClient(transport.transport)
+		const remoteSnapshot = createProjectSnapshot('Remote authority state')
+		transport.emit({
+			m: MSG.SNAPSHOT,
+			requestId: String(transport.sent[0].requestId),
+			p: remoteSnapshot,
+		})
+		await Promise.resolve()
+
+		manager.emitSessionLost('server-gone')
+		manager.emitBecomeServer()
+
+		await expect(adapter.getSnapshot()).resolves.toEqual(remoteSnapshot)
+		adapter.destroy?.()
 	})
 
 	test('rejects queued calls when role resolution timeout is exceeded', async () => {

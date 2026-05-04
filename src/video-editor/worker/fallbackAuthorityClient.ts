@@ -1,6 +1,14 @@
 import type { EditorAuthorityClient } from './authorityClient'
+import type { ProjectRegistry } from '../domain/types'
 import { MemoryWorkerAuthority } from './memoryWorker'
 import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from './sharedWorkerClient'
+
+type RestorableAuthorityClient = EditorAuthorityClient & {
+	replaceSnapshot(snapshot: ProjectRegistry): void | Promise<void>
+}
+
+const canReplaceSnapshot = (client: EditorAuthorityClient): client is RestorableAuthorityClient =>
+	typeof client.replaceSnapshot === 'function'
 
 export const createFallbackAuthorityClient = (options: {
 	workerUrl?: string | URL
@@ -84,6 +92,15 @@ export const createFallbackAuthorityClient = (options: {
 		},
 		redo() {
 			return invoke((client) => client.redo())
+		},
+		replaceSnapshot(snapshot) {
+			return invoke((client) => {
+				if (!canReplaceSnapshot(client)) {
+					throw new Error('Active authority cannot replace snapshots')
+				}
+
+				return client.replaceSnapshot(snapshot)
+			})
 		},
 		destroy() {
 			unsubscribe?.()
