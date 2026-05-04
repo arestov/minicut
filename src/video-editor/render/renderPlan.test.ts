@@ -56,7 +56,7 @@ describe('render plan compiler', () => {
 		const [operation] = compileFrameOperations(registry, projectId, 0.5)
 
 		expect(operation.operations.map((item) => item.type)).toEqual(['transform', 'effect', 'opacity'])
-		expect(operation.operations[1]).toEqual({ type: 'effect', value: 'blur' })
+		expect(operation.operations[1]).toMatchObject({ type: 'effect', value: { kind: 'blur', amount: 0.25, enabled: true } })
 	})
 
 	it('is deterministic for the same registry and time input', () => {
@@ -75,10 +75,10 @@ describe('render plan compiler', () => {
 		const firstEffects = compileFrameOperations(registry, projectId, 0.5).find((operation) => operation.clipId === firstClipId)?.operations
 		const secondEffects = compileFrameOperations(registry, projectId, 4.5).find((operation) => operation.clipId === secondClipId)?.operations
 
-		expect(firstEffects).toContainEqual({ type: 'effect', value: 'blur' })
-		expect(firstEffects).not.toContainEqual({ type: 'effect', value: 'tint' })
-		expect(secondEffects).toContainEqual({ type: 'effect', value: 'tint' })
-		expect(secondEffects).not.toContainEqual({ type: 'effect', value: 'blur' })
+		expect(firstEffects).toContainEqual(expect.objectContaining({ type: 'effect', value: expect.objectContaining({ kind: 'blur' }) }))
+		expect(firstEffects).not.toContainEqual(expect.objectContaining({ type: 'effect', value: expect.objectContaining({ kind: 'tint' }) }))
+		expect(secondEffects).toContainEqual(expect.objectContaining({ type: 'effect', value: expect.objectContaining({ kind: 'tint' }) }))
+		expect(secondEffects).not.toContainEqual(expect.objectContaining({ type: 'effect', value: expect.objectContaining({ kind: 'blur' }) }))
 	})
 
 	it('evaluates clip-local opacity and transform keyframes in frame operations', () => {

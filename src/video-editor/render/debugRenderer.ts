@@ -1,5 +1,6 @@
 import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
 import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
+import type { EffectRenderInstruction } from './colorPipeline'
 import { compileClipFrameOperation, type EvaluatedTransformAttrs } from './renderPlan'
 
 export interface DebugRenderViewport {
@@ -39,6 +40,14 @@ const getOperationValue = <Value>(
 
 const finiteOr = (value: number, fallback: number): number =>
 	Number.isFinite(value) ? value : fallback
+
+const getEffectKind = (value: unknown): string => {
+	if (value && typeof value === 'object' && 'kind' in value) {
+		return String((value as EffectRenderInstruction).kind)
+	}
+
+	return String(value)
+}
 
 const getResourceAttrs = (registry: ProjectRegistry, clip: Entity): ResourceAttrs => {
 	const resourceId = String(clip.rels.resource)
@@ -95,7 +104,7 @@ export const renderFrameDebug = (
 			const opacity = clamp(finiteOr(Number(getOperationValue(frameOperation.operations, 'opacity', 1)), 1), 0, 1)
 			const effects = frameOperation.operations
 				.filter((operation) => operation.type === 'effect')
-				.map((operation) => String(operation.value))
+				.map((operation) => getEffectKind(operation.value))
 
 			return [{
 				clipId: clip.id,

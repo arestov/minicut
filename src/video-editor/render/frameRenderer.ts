@@ -1,4 +1,5 @@
 import type { ResourceAttrs } from '../domain/types'
+import { getEffectInstructionFilter, type EffectRenderInstruction } from './colorPipeline'
 import type { ClipFrameOperation } from './renderPlan'
 
 interface RenderableResource {
@@ -27,24 +28,20 @@ const getOperationValue = <Value>(
 	fallback: Value,
 ): Value => operations.find((operation) => operation.type === type)?.value as Value ?? fallback
 
-const getOperationEffects = (operations: ClipFrameOperation['operations']): string[] =>
+const toEffectInstruction = (value: unknown): EffectRenderInstruction => {
+	if (value && typeof value === 'object' && 'kind' in value) {
+		return value as EffectRenderInstruction
+	}
+
+	return { kind: String(value) as EffectRenderInstruction['kind'], name: String(value), enabled: true, amount: 1 }
+}
+
+const getOperationEffects = (operations: ClipFrameOperation['operations']): EffectRenderInstruction[] =>
 	operations
 		.filter((operation) => operation.type === 'effect')
-		.map((operation) => String(operation.value))
+		.map((operation) => toEffectInstruction(operation.value))
 
-const getEffectFilter = (effect: string): string => {
-	if (effect === 'blur') {
-		return 'blur(6px)'
-	}
-	if (effect === 'sharpen') {
-		return 'contrast(1.25) saturate(1.125)'
-	}
-	if (effect === 'tint') {
-		return 'sepia(0.35) saturate(1.35)'
-	}
-
-	return ''
-}
+const getEffectFilter = (effect: EffectRenderInstruction): string => getEffectInstructionFilter(effect)
 
 const clampTimeToDuration = (time: number, duration: number): number => {
 	if (!Number.isFinite(duration) || duration <= 0) {

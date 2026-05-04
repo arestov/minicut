@@ -1,6 +1,7 @@
-import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
+import type { ClipAttrs, EffectAttrs, Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
 import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
 import { evaluateAnimatedScalar, evaluateFadeOpacity } from './timing'
+import { toEffectRenderInstruction, type EffectRenderInstruction } from './colorPipeline'
 
 export interface ClipFrameOperation {
 	clipId: string
@@ -31,9 +32,12 @@ export interface EditframeClip {
 	pan?: number
 }
 
-const getEffectNames = (registry: ProjectRegistry, clip: Entity): string[] => {
+const getEffectInstructions = (registry: ProjectRegistry, clip: Entity): EffectRenderInstruction[] => {
 	const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
-	return effectIds.map((effectId) => String(registry.entitiesById[effectId].attrs.kind))
+	return effectIds
+		.map((effectId) => registry.entitiesById[effectId])
+		.filter((effect): effect is Entity => Boolean(effect) && effect.type === 'effect')
+		.map((effect) => toEffectRenderInstruction(effect.attrs as unknown as EffectAttrs))
 }
 
 const getEditframeType = (kind: ResourceAttrs['kind']): EditframeClip['type'] => {
@@ -79,7 +83,7 @@ export const compileClipFrameOperation = (registry: ProjectRegistry, clip: Entit
 		sourceTime: attrs.in + localTime,
 		operations: [
 			{ type: 'transform', value: transform },
-			...getEffectNames(registry, clip).map((effect) => ({ type: 'effect' as const, value: effect })),
+			...getEffectInstructions(registry, clip).map((effect) => ({ type: 'effect' as const, value: effect })),
 			{ type: 'opacity', value: opacity },
 			...(resourceKind === 'audio'
 				? [{ type: 'audio' as const, value: attrs.audio ?? { gain: 1, pan: 0 } }]
