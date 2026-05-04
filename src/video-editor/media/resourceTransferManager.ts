@@ -121,6 +121,7 @@ interface AttachedTransport {
 	transport: P2PRawTransportLike
 	unlisten: () => void
 	pendingChunkMeta: ChunkMetaMessage | null
+	generation: number
 }
 
 export interface CreateResourceTransferManagerOptions {
@@ -560,8 +561,14 @@ export const createResourceTransferManager = (
 		updateTransferView(resourceId)
 	}
 
-	const sendControl = async (peerKey: string, message: ControlMessage): Promise<void> => {
+	const isCurrentTransportGeneration = (peerKey: string, generation: number | undefined): boolean =>
+		generation === undefined || getTransport(peerKey)?.generation === generation
+
+	const sendControl = async (peerKey: string, message: ControlMessage, generation?: number): Promise<void> => {
 		if (destroyed) {
+			return
+		}
+		if (!isCurrentTransportGeneration(peerKey, generation)) {
 			return
 		}
 
@@ -755,9 +762,13 @@ export const createResourceTransferManager = (
 		resource: LocalResourceEntry,
 		ranges: ResourceByteRange[],
 		reason: TransferReason,
+		generation?: number,
 	): Promise<void> => {
 		for (const range of mergeByteRanges(ranges)) {
 			for (const index of getChunkIndexesForRange(range, resource.chunkSize)) {
+				if (!isCurrentTransportGeneration(peerKey, generation)) {
+					return
+				}
 				const start = index * resource.chunkSize
 				const end = typeof resource.size === 'number'
 					? Math.min(resource.size, start + resource.chunkSize)
@@ -782,7 +793,10 @@ export const createResourceTransferManager = (
 					sourceKind: resource.sourceKind,
 					fallbackUrl: resource.fallbackUrl,
 					reason,
-				})
+				}, generation)
+				if (!isCurrentTransportGeneration(peerKey, generation)) {
+					return
+				}
 				await getTransport(peerKey)?.transport.send(buffer)
 				await wait(chunkSendDelayMs)
 			}
@@ -791,7 +805,7 @@ export const createResourceTransferManager = (
 			type: 'resource-chunk-complete',
 			resourceId: resource.resourceId,
 			reason,
-		})
+		}, generation)
 	}
 
 	const serveMirroredRanges = async (
@@ -799,9 +813,13 @@ export const createResourceTransferManager = (
 		state: RemoteResourceState,
 		ranges: ResourceByteRange[],
 		reason: TransferReason,
+		generation?: number,
 	): Promise<void> => {
 		for (const range of mergeByteRanges(ranges)) {
 			for (const index of getChunkIndexesForRange(range, state.chunkSize)) {
+				if (!isCurrentTransportGeneration(peerKey, generation)) {
+					return
+				}
 				const buffer = state.chunks.get(index)
 				if (!buffer) {
 					continue
@@ -824,7 +842,10 @@ export const createResourceTransferManager = (
 					sourceKind: state.sourceKind,
 					fallbackUrl: state.fallbackUrl,
 					reason,
-				})
+				}, generation)
+				if (!isCurrentTransportGeneration(peerKey, generation)) {
+					return
+				}
 				await getTransport(peerKey)?.transport.send(buffer.slice(0))
 				await wait(chunkSendDelayMs)
 			}
@@ -833,15 +854,16 @@ export const createResourceTransferManager = (
 			type: 'resource-chunk-complete',
 			resourceId: state.resourceId,
 			reason,
-		})
+		}, generation)
 	}
 
 	const handleRequest = (peerKey: string, message: RequestMessage): void => {
+		const generation = getTransport(peerKey)?.generation
 		const local = localResources.get(message.resourceId)
 		if (local) {
 			enqueuePeerServe(peerKey, async () => {
 				try {
-					await serveLocalBlobRanges(peerKey, local, message.ranges, message.reason)
+					await serveLocalBlobRanges(peerKey, local, message.ranges, message.reason, generation)
 				} catch (error) {
 					sendResourceError(peerKey, message.resourceId, error)
 				}
@@ -862,7 +884,7 @@ export const createResourceTransferManager = (
 
 		enqueuePeerServe(peerKey, async () => {
 			try {
-				await serveMirroredRanges(peerKey, state, message.ranges, message.reason)
+				await serveMirroredRanges(peerKey, state, message.ranges, message.reason, generation)
 			} catch (error) {
 				sendResourceError(peerKey, message.resourceId, error)
 			}
@@ -929,6 +951,7 @@ export const createResourceTransferManager = (
 	}
 
 	const attachTransport = (peerKey: string, transport: P2PRawTransportLike): void => {
+		const previousGeneration = transports.get(peerKey)?.generation ?? 0
 		transports.get(peerKey)?.unlisten()
 		transports.get(peerKey)?.transport.destroy()
 		const unlisten = transport.listen((data) => {
@@ -940,6 +963,7 @@ export const createResourceTransferManager = (
 			transport,
 			unlisten,
 			pendingChunkMeta: null,
+			generation: previousGeneration + 1,
 		})
 	}
 
