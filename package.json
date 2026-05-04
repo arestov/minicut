@@ -8,7 +8,7 @@
   "main": "index.js",
   "scripts": {
     "dev:full": "node ./scripts/dev-full.mjs",
-    "start": "vite --config vite.video-editor.config.js --host 127.0.0.1 --port 4174",
+    "start": "node ./scripts/start.mjs",
     "test": "vitest --run --config vitest.video-editor.config.js",
     "test:video-editor": "vitest --run --config vitest.video-editor.config.js",
     "test:video-editor:node": "vitest --run --config vitest.video-editor.node.config.js",

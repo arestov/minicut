@@ -7,6 +7,7 @@ Video editor harness built from the Linkkraft plan slice.
 ### Local development
 
 - `npm run dev:full` starts the local backend and frontend together, with the frontend pointed at `http://127.0.0.1:8787`.
+- `npm start dev:full` is accepted as a shortcut for the same full-stack startup.
 - `npm --prefix backend run dev` starts only the Cloudflare Worker signaling backend on `http://127.0.0.1:8787`.
 - `npm start` starts only the frontend on `http://127.0.0.1:4174`.
 
