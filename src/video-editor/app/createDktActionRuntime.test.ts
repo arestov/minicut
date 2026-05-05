@@ -1,7 +1,7 @@
 import { observable } from '@legendapp/state'
 import { describe, expect, it, vi } from 'vitest'
 import { createProjectGraph } from '../domain/createProject'
-import type { EditorSessionState, Entity } from '../domain/types'
+import { CMD, type EditorSessionState, type Entity } from '../domain/types'
 import { createDktActionRuntime } from './createDktActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 
@@ -178,7 +178,7 @@ describe('createDktActionRuntime DKT clip wiring', () => {
 		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'splitAt', { time: 2 })
 	})
 
-	it('dispatches text and effect attr edits to DKT before mirroring through authority', () => {
+	it('mirrors text through model commands and effect attrs through DKT proxy actions', async () => {
 		const { env, dispatchTextAction, dispatchEffectAction } = createEnv()
 		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,
@@ -187,15 +187,16 @@ describe('createDktActionRuntime DKT clip wiring', () => {
 
 		actions.updateTextById('text:dkt-runtime-caption', { content: 'After', style: { color: '#111827' } as never })
 		actions.updateEffectAttrs('effect:dkt-runtime-tint', { amount: 0.8 })
+		await Promise.resolve()
 
-		expect(dispatchTextAction).toHaveBeenCalledWith(expect.objectContaining({
-			sourceTextId: 'text:dkt-runtime-caption',
-			content: 'Before',
-		}), 'setTextContent', { content: 'After' })
-		expect(dispatchTextAction).toHaveBeenCalledWith(expect.objectContaining({
-			sourceTextId: 'text:dkt-runtime-caption',
-			content: 'Before',
-		}), 'setTextStyle', { style: { color: '#111827' } })
+		expect(dispatchTextAction).not.toHaveBeenCalled()
+		expect(env.authority.dispatch).toHaveBeenCalledWith({
+			c: CMD.TEXT_UPDATE_ATTRS,
+			p: {
+				id: 'text:dkt-runtime-caption',
+				attrs: { content: 'After', style: { color: '#111827' } },
+			},
+		})
 		expect(dispatchEffectAction).toHaveBeenCalledWith(expect.objectContaining({
 			sourceEffectId: 'effect:dkt-runtime-tint',
 			name: 'Tint',

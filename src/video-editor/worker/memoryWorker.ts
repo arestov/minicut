@@ -51,6 +51,10 @@ export class MemoryWorkerAuthority implements EditorAuthorityClient {
 		return dktSync
 	}
 
+	flushDktSync(): Promise<void> {
+		return this.#dktSyncQueue
+	}
+
 	openDktTransport(): DomSyncTransportLike<MiniCutDktTransportMessage> {
 		const pageListeners = new Set<(message: MiniCutDktTransportMessage) => void>()
 		const workerListeners = new Set<(message: MiniCutDktTransportMessage) => void>()

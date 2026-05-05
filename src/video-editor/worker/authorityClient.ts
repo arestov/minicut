@@ -12,5 +12,6 @@ export interface EditorAuthorityClient {
 	openDktTransport?(): DomSyncTransportLike<MiniCutDktTransportMessage>
 	dispatch(command: Command): DispatchResult | Promise<DispatchResult>
 	replaceSnapshot?(snapshot: ProjectRegistry): void | Promise<void>
+	flushDktSync?(): Promise<void>
 	destroy?(): void
 }
