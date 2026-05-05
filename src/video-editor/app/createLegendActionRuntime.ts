@@ -10,6 +10,7 @@ import { createSessionRootActions } from './sessionRootActions'
 import { createExportActions } from './exportActions'
 import { createMediaImportActions } from './mediaImportActions'
 import { getActionActiveProjectId } from './actionRuntimeSelectors'
+import { executeActionBuildResult } from './actionTransactionExecutor'
 
 const minimumSplitOffset = 0.01
 
@@ -31,9 +32,7 @@ export const createLegendActionRuntime = (
 			registry: env.stores.getRegistry(),
 			activeProjectId: getActionActiveProjectId(env),
 		})
-		if (result.type === 'command') {
-			env.authority.dispatch(result.command)
-		}
+		void executeActionBuildResult(env, result)
 	}
 	const sessionRootActions = createSessionRootActions(env, options, dispatchBuiltCommand)
 	const exportActions = createExportActions(env)
