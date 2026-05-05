@@ -6,7 +6,7 @@ import { buildEditorActionCommand, expectCommand } from '../domain/actionCommand
 import { createEntityActionScope } from '../domain/actionScope'
 import { createProjectGraph } from '../domain/createProject'
 import { CMD } from '../domain/types'
-import { clipUpdateOpacityAction, createClipUpdateOpacityEnvelope } from './clipActions'
+import { clipUpdateOpacityAction, createClipUpdateOpacityEnvelope, reduceDktClipAction } from './clipActions'
 
 const createRegistryWithClip = () => {
 	const { project, entities } = createProjectGraph('DKT clip action', 1)
@@ -65,6 +65,23 @@ describe('clean DKT clip actions', () => {
 		const directWriteEnvelope = createClipUpdateOpacityEnvelope(registry, clipId, 37)
 
 		expect(directWriteEnvelope).toEqual(oracle.envelope)
+	})
+
+	it('reduces remaining simple clip attrs without command descriptors', () => {
+		const clipAttrs = createRegistryWithClip().registry.entitiesById['clip:dkt-opacity'].attrs as Parameters<typeof reduceDktClipAction>[2]
+
+		expect(reduceDktClipAction('rename', { name: 'Renamed' }, clipAttrs)).toEqual({ name: 'Renamed' })
+		expect(reduceDktClipAction('color', { color: '#22c55e' }, clipAttrs)).toEqual({ color: '#22c55e' })
+		expect(reduceDktClipAction('setFade', { edge: 'in', delta: 0.5 }, clipAttrs)).toEqual({ fadeIn: 0.5 })
+		expect(reduceDktClipAction('setAudio', { pan: -0.25 }, clipAttrs)).toEqual({ audio: { gain: 1, pan: -0.25 } })
+		expect(reduceDktClipAction('setTransform', { scale: 1.5 }, clipAttrs)).toEqual({
+			transform: {
+				x: { value: 0 },
+				y: { value: 0 },
+				scale: { value: 1.5 },
+				rotation: { value: 0 },
+			},
+		})
 	})
 
 	it('does not depend on command dispatch bridge code', () => {

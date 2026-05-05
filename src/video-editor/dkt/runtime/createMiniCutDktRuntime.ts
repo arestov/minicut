@@ -27,7 +27,17 @@ export type MiniCutDktClipProxyInput = {
 	sourceClipId: string
 	name?: string
 	color?: string
+	duration?: number
+	fadeIn?: number
+	fadeOut?: number
+	audio?: { gain: number; pan: number }
 	opacity?: { value: number }
+	transform?: {
+		x: { value: number }
+		y: { value: number }
+		scale: { value: number }
+		rotation: { value: number }
+	}
 }
 
 export type MiniCutDktSerializedModel = {

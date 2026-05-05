@@ -109,7 +109,17 @@ describe('createLegendActionRuntime DKT clip wiring', () => {
 			sourceClipId: 'clip:dkt-runtime-opacity',
 			name: 'Runtime opacity clip',
 			color: '#ef4444',
+			duration: 4,
+			fadeIn: 0,
+			fadeOut: 0,
+			audio: { gain: 1, pan: 0 },
 			opacity: { value: 1 },
+			transform: {
+				x: { value: 0 },
+				y: { value: 0 },
+				scale: { value: 1 },
+				rotation: { value: 0 },
+			},
 		}, 'updateOpacity', { opacityPercent: 37 })
 	})
 })

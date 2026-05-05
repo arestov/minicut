@@ -65,15 +65,30 @@ describe('createMiniCutDktRuntime', () => {
 
 	it('creates a DKT clip proxy and dispatches scoped clip actions', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
-		await runtime.dispatchClipAction({
+		const clipProxy = {
 			sourceClipId: 'clip:opacity',
 			name: 'Opacity clip',
 			color: '#ef4444',
+			duration: 4,
+			fadeIn: 0,
+			fadeOut: 0,
+			audio: { gain: 1, pan: 0 },
 			opacity: { value: 1 },
-		}, 'updateOpacity', { opacityPercent: 37 })
+			transform: {
+				x: { value: 0 },
+				y: { value: 0 },
+				scale: { value: 1 },
+				rotation: { value: 0 },
+			},
+		}
+		await runtime.dispatchClipAction(clipProxy, 'updateOpacity', { opacityPercent: 37 })
+		await runtime.dispatchClipAction(clipProxy, 'rename', { name: 'Renamed clip' })
+		await runtime.dispatchClipAction(clipProxy, 'setFade', { edge: 'in', delta: 0.5 })
 
-		const model = await waitForModelAttr(runtime, 'minicut_clip', 'opacity', { value: 0.4 })
+		const model = await waitForModelAttr(runtime, 'minicut_clip', 'fadeIn', 0.5)
 		expect(model?.attrs.sourceClipId).toBe('clip:opacity')
+		expect(model?.attrs.name).toBe('Renamed clip')
+		expect(model?.attrs.fadeIn).toBe(0.5)
 		expect(model?.attrs.opacity).toEqual({ value: 0.4 })
 	})
 })

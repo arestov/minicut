@@ -12,6 +12,7 @@ import { createExportActions } from './exportActions'
 import { createMediaImportActions } from './mediaImportActions'
 import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import { executeActionBuildResult } from './actionTransactionExecutor'
+import type { DktClipActionName } from '../dkt/clipActions'
 
 const minimumSplitOffset = 0.01
 
@@ -35,7 +36,7 @@ export const createLegendActionRuntime = (
 		})
 		void executeActionBuildResult(env, result)
 	}
-	const dispatchDktClipOpacity = (clipId: string, clipAttrs: ClipAttrs, opacityPercent: number): void => {
+	const dispatchDktClipAction = (clipId: string, clipAttrs: ClipAttrs, actionName: DktClipActionName, payload: unknown): void => {
 		const dispatch = env.dkt?.dispatchClipAction
 		if (!dispatch) {
 			return
@@ -45,8 +46,13 @@ export const createLegendActionRuntime = (
 			sourceClipId: clipId,
 			name: clipAttrs.name,
 			color: clipAttrs.color,
+			duration: clipAttrs.duration,
+			fadeIn: clipAttrs.fadeIn,
+			fadeOut: clipAttrs.fadeOut,
+			audio: clipAttrs.audio,
 			opacity: clipAttrs.opacity,
-		}, 'updateOpacity', { opacityPercent })).catch(() => undefined)
+			transform: clipAttrs.transform,
+		}, actionName, payload)).catch(() => undefined)
 	}
 	const applySessionPatch = (patch: Record<string, unknown>): void => {
 		if ('selectedEntityId' in patch) {
@@ -78,6 +84,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'rename', { name })
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'rename', { name })
 		},
 
@@ -94,6 +101,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'color', { color })
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'color', { color })
 		},
 
@@ -110,7 +118,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			dispatchDktClipOpacity(clip.id, asClipAttrs(clip.attrs), opacityPercent)
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'updateOpacity', { opacityPercent })
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setOpacity', { opacityPercent })
 		},
 
@@ -127,6 +135,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'setFade', { edge, delta })
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setFade', { edge, delta })
 		},
 
@@ -143,6 +152,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'setTransform', partial)
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setTransform', partial)
 		},
 
@@ -159,6 +169,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'setAudio', partial)
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setAudio', partial)
 		},
 

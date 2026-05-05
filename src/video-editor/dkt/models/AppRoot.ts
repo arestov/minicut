@@ -39,7 +39,12 @@ const appProps = mergeDcl({
 					sourceClipId?: unknown
 					name?: unknown
 					color?: unknown
+					duration?: unknown
+					fadeIn?: unknown
+					fadeOut?: unknown
+					audio?: unknown
 					opacity?: unknown
+					transform?: unknown
 				} | null
 				if (typeof value?.sourceClipId !== 'string' || !value.sourceClipId) {
 					return {}
@@ -51,7 +56,19 @@ const appProps = mergeDcl({
 							sourceClipId: value.sourceClipId,
 							name: typeof value.name === 'string' ? value.name : 'Clip',
 							color: typeof value.color === 'string' ? value.color : '#2563eb',
+							duration: typeof value.duration === 'number' ? value.duration : 0,
+							fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
+							fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,
+							audio: value.audio && typeof value.audio === 'object' ? value.audio : { gain: 1, pan: 0 },
 							opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
+							transform: value.transform && typeof value.transform === 'object'
+								? value.transform
+								: {
+									x: { value: 0 },
+									y: { value: 0 },
+									scale: { value: 1 },
+									rotation: { value: 0 },
+								},
 						},
 					},
 				}

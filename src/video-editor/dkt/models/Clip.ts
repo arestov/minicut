@@ -1,13 +1,15 @@
 import { model } from 'dkt/model.js'
-import { clipUpdateOpacityAction } from '../clipActions'
+import { defaultClipTransform, reduceDktClipAction } from '../clipActions'
 
-const getOpacityPercent = (payload: unknown): number | null => {
-	if (typeof payload === 'number') {
-		return payload
-	}
-
-	const value = (payload as { opacityPercent?: unknown } | null)?.opacityPercent
-	return typeof value === 'number' ? value : null
+const defaultModelClipAttrs = {
+	name: 'Clip',
+	color: '#2563eb',
+	opacity: { value: 1 },
+	fadeIn: 0,
+	fadeOut: 0,
+	duration: 0,
+	audio: { gain: 1, pan: 0 },
+	transform: defaultClipTransform,
 }
 
 export const Clip = model({
@@ -16,7 +18,12 @@ export const Clip = model({
 		sourceClipId: ['input', null],
 		name: ['input', 'Clip'],
 		color: ['input', '#2563eb'],
+		duration: ['input', 0],
+		fadeIn: ['input', 0],
+		fadeOut: ['input', 0],
+		audio: ['input', { gain: 1, pan: 0 }],
 		opacity: ['input', { value: 1 }],
+		transform: ['input', defaultClipTransform],
 	},
 	actions: {
 		updateOpacity: {
@@ -24,14 +31,79 @@ export const Clip = model({
 				opacity: ['opacity'],
 			},
 			fn: (payload: unknown) => {
-				const opacityPercent = getOpacityPercent(payload)
-				const nextOpacity = opacityPercent === null ? null : clipUpdateOpacityAction.fn(opacityPercent)
-				return nextOpacity ? { opacity: nextOpacity } : '$noop'
+				const patch = reduceDktClipAction('updateOpacity', payload, defaultModelClipAttrs)
+				return patch ? { opacity: patch.opacity } : '$noop'
 			},
+		},
+		rename: {
+			to: {
+				name: ['name'],
+			},
+			fn: (payload: unknown) => {
+				const patch = reduceDktClipAction('rename', payload, defaultModelClipAttrs)
+				return patch ? { name: patch.name } : '$noop'
+			},
+		},
+		color: {
+			to: {
+				color: ['color'],
+			},
+			fn: (payload: unknown) => {
+				const patch = reduceDktClipAction('color', payload, defaultModelClipAttrs)
+				return patch ? { color: patch.color } : '$noop'
+			},
+		},
+		setFade: {
+			to: {
+				fadeIn: ['fadeIn'],
+				fadeOut: ['fadeOut'],
+			},
+			fn: [
+				['fadeIn', 'fadeOut', 'duration'] as const,
+				(payload: unknown, fadeIn: unknown, fadeOut: unknown, duration: unknown) => {
+					const patch = reduceDktClipAction('setFade', payload, {
+						...defaultModelClipAttrs,
+						fadeIn: typeof fadeIn === 'number' ? fadeIn : 0,
+						fadeOut: typeof fadeOut === 'number' ? fadeOut : 0,
+						duration: typeof duration === 'number' ? duration : 0,
+					})
+					return patch ?? '$noop'
+				},
+			],
+		},
+		setAudio: {
+			to: {
+				audio: ['audio'],
+			},
+			fn: [
+				['audio'] as const,
+				(payload: unknown, audio: unknown) => {
+					const patch = reduceDktClipAction('setAudio', payload, {
+						...defaultModelClipAttrs,
+						audio: audio as { gain: number; pan: number },
+					})
+					return patch ?? '$noop'
+				},
+			],
+		},
+		setTransform: {
+			to: {
+				transform: ['transform'],
+			},
+			fn: [
+				['transform'] as const,
+				(payload: unknown, transform: unknown) => {
+					const patch = reduceDktClipAction('setTransform', payload, {
+						...defaultModelClipAttrs,
+						transform: transform as typeof defaultClipTransform,
+					})
+					return patch ?? '$noop'
+				},
+			],
 		},
 	},
 })
 
 export const CLIP_PROXY_CREATION_SHAPE = {
-	attrs: ['sourceClipId', 'name', 'color', 'opacity'],
+	attrs: ['sourceClipId', 'name', 'color', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
 } as const
