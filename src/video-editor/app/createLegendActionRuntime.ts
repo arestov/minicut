@@ -1,4 +1,5 @@
 import { buildEditorActionCommand } from '../domain/actionCommandBuilders'
+import { commandStep, createdIdRef } from '../domain/actionTransactions'
 import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
 import type { EditorActionScope } from '../domain/actionScope'
 import { getSelectedClip } from '../domain/selectors'
@@ -33,6 +34,11 @@ export const createLegendActionRuntime = (
 			activeProjectId: getActionActiveProjectId(env),
 		})
 		void executeActionBuildResult(env, result)
+	}
+	const applySessionPatch = (patch: Record<string, unknown>): void => {
+		if ('selectedEntityId' in patch) {
+			env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
+		}
 	}
 	const sessionRootActions = createSessionRootActions(env, options, dispatchBuiltCommand)
 	const exportActions = createExportActions(env)
@@ -224,11 +230,17 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } }).then(() => {
-				if (env.session.get().selectedEntityId === clipId) {
-					env.session.selectEntity(null)
-				}
-			})
+			const shouldClearSelection = env.session.get().selectedEntityId === clipId
+			const result = shouldClearSelection
+				? {
+						type: 'transaction' as const,
+						steps: [
+							commandStep({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } }),
+							{ type: 'session' as const, patch: { selectedEntityId: null } },
+						],
+				  }
+				: commandStep({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } })
+			void executeActionBuildResult(env, result, { applySessionPatch })
 		},
 
 		deleteSelectedClip(): void {
@@ -246,9 +258,16 @@ export const createLegendActionRuntime = (
 
 			const attrs = asClipAttrs(clip.attrs)
 			const splitTime = clamp(roundToHundredths(env.session.get().cursor), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
-			env.authority.dispatch({ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clip.id, time: splitTime } }).then((result) => {
-				env.session.selectEntity(String(result.createdIds?.clipId))
-			})
+			void executeActionBuildResult(env, {
+				type: 'transaction',
+				steps: [
+					commandStep(
+						{ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clip.id, time: splitTime } },
+						{ holdCreatedIdAs: 'split.clip' },
+					),
+					{ type: 'session', patch: { selectedEntityId: createdIdRef('split.clip') } },
+				],
+			}, { applySessionPatch })
 		},
 
 		splitClipByIdAt(clipId: string, time: number): void {
@@ -259,9 +278,16 @@ export const createLegendActionRuntime = (
 
 			const attrs = asClipAttrs(clip.attrs)
 			const splitTime = clamp(roundToHundredths(time), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
-			env.authority.dispatch({ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clipId, time: splitTime } }).then((result) => {
-				env.session.selectEntity(String(result.createdIds?.clipId))
-			})
+			void executeActionBuildResult(env, {
+				type: 'transaction',
+				steps: [
+					commandStep(
+						{ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clipId, time: splitTime } },
+						{ holdCreatedIdAs: 'split.clip' },
+					),
+					{ type: 'session', patch: { selectedEntityId: createdIdRef('split.clip') } },
+				],
+			}, { applySessionPatch })
 		},
 
 		removeEffectFromClip(clipId: string, effectId: string): void {

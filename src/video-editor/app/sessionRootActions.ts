@@ -4,6 +4,8 @@ import { ROOT_ACTION_SCOPE } from '../domain/actionScope'
 import { CMD, type EditorSessionState } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import { executeActionBuildResult } from './actionTransactionExecutor'
+import { commandStep, createdIdRef } from '../domain/actionTransactions'
 
 export type ScopedCommandDispatcher = <Name extends EditorActionName>(
 	scope: EditorActionScope,
@@ -34,11 +36,34 @@ export const createSessionRootActions = (
 	| 'zoomTimeline'
 > => ({
 	createProject(title?: string): void {
-		env.authority.dispatch({ c: CMD.PROJECT_CREATE, p: { title } }).then((result) => {
-			const projectId = String(result.createdIds?.projectId)
-			env.session.setActiveProject(projectId)
-			env.session.selectEntity(null)
-			env.session.setCursor(0)
+		void executeActionBuildResult(env, {
+			type: 'transaction',
+			steps: [
+				commandStep(
+					{ c: CMD.PROJECT_CREATE, p: { title } },
+					{ holdCreatedIdAs: 'project.new', createdIdKey: 'projectId' },
+				),
+				{
+					type: 'session',
+					patch: {
+						activeProjectId: createdIdRef('project.new'),
+						selectedEntityId: null,
+						cursor: 0,
+					},
+				},
+			],
+		}, {
+			applySessionPatch: (patch) => {
+				if ('activeProjectId' in patch && typeof patch.activeProjectId === 'string') {
+					env.session.setActiveProject(patch.activeProjectId)
+				}
+				if ('selectedEntityId' in patch) {
+					env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
+				}
+				if ('cursor' in patch && typeof patch.cursor === 'number') {
+					env.session.setCursor(patch.cursor)
+				}
+			},
 		})
 	},
 
