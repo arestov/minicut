@@ -1,16 +1,12 @@
-import type { Observable } from '@legendapp/state'
-import { observer } from '@legendapp/state/react'
 import { Gauge, Pause, Play, Timer } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import {
-	createPreviewFrame$,
-	createPreviewStructure$,
-	type RenderedClip,
-	type PreviewFrame,
-	type PreviewStructure,
+import type {
+	RenderedClip,
+	PreviewFrame,
+	PreviewStructure,
 } from '../legend/derivedTimeline'
-import type { EditorSessionState } from '../domain/types'
+import { SESSION_SCOPE, useEditorActions, useEditorAttrs, usePreviewReadModels } from '../render-sync'
 import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'
 import { ColorScopesPanel, type ScopeMode } from './ColorScopesPanel'
@@ -19,27 +15,25 @@ import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const previewWindowRequestIntervalMs = 200
 
-const PreviewStage = observer(({
-	frame$,
-	structure$,
-	session$,
+const PreviewStage = ({
+	frame,
+	structure,
+	isPlaying,
 	resolveResourceUrl,
 	requestResourcePlayheadWindow,
 	noteResourcePreviewError,
 	compareMode,
 	mediaElementRegistry,
 }: {
-	frame$: Observable<PreviewFrame>
-	structure$: Observable<PreviewStructure>
-	session$: Observable<EditorSessionState>
+	frame: PreviewFrame
+	structure: PreviewStructure
+	isPlaying: boolean
 	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string
 	requestResourcePlayheadWindow: (resourceId: string, time: number) => void
 	noteResourcePreviewError: (resourceId: string) => void
 	compareMode: 'off' | 'split'
 	mediaElementRegistry: PreviewMediaElementRegistry
 }) => {
-	const frame = frame$.get()
-	const isPlaying = session$.isPlaying.get()
 	const lastWindowRequestAtRef = useRef(new Map<string, number>())
 	const resolvedClip = (clip: RenderedClip): RenderedClip => ({
 		...clip,
@@ -71,7 +65,7 @@ const PreviewStage = observer(({
 
 	return (
 		<RendererStage
-			structure={structure$.get()}
+			structure={structure}
 			frame={resolvedFrame}
 			isPlaying={isPlaying}
 			mediaElementRegistry={mediaElementRegistry}
@@ -79,94 +73,75 @@ const PreviewStage = observer(({
 			onClipMediaError={(resourceId) => noteResourcePreviewError(resourceId)}
 		/>
 	)
-})
-
-const PreviewPlaybackButton = observer(({
-	session$,
-	onTogglePlayback,
-}: {
-	session$: Observable<EditorSessionState>
-	onTogglePlayback: () => void
-}) => {
-	const isPlaying = session$.isPlaying.get()
-
-	return (
-		<IconButton
-			type="button"
-			icon={isPlaying ? Pause : Play}
-			label={isPlaying ? 'Pause' : 'Play'}
-			variant="default"
-			onClick={onTogglePlayback}
-		>
-			{isPlaying ? 'Pause' : 'Play'}
-		</IconButton>
-	)
-})
-
-const PreviewCursorReadout = observer(({ frame$ }: { frame$: Observable<PreviewFrame> }) => {
-	const cursor = frame$.cursor.get()
-
-	return (
-		<>
-			<span className="ve-sr-only">Cursor at {formatSeconds(cursor)}</span>
-			<span>{formatSeconds(cursor)}</span>
-		</>
-	)
-})
-
-const PreviewActiveClipsReadout = observer(({ frame$ }: { frame$: Observable<PreviewFrame> }) => {
-	const activeClipNames = frame$.activeClipNames.get()
-
-	return (
-		<span>{activeClipNames.length > 0 ? activeClipNames.join(', ') : 'No active clips'}</span>
-	)
-})
-
-const PreviewTransport = ({
-	frame$,
-	session$,
-	onTogglePlayback,
-}: {
-	frame$: Observable<PreviewFrame>
-	session$: Observable<EditorSessionState>
-	onTogglePlayback: () => void
-}) => {
-	return (
-		<div className="ve-preview-transport" aria-label="Preview transport status">
-			<div>
-				<Timer size={15} aria-hidden="true" />
-				<PreviewCursorReadout frame$={frame$} />
-			</div>
-			<div>
-				<Gauge size={15} aria-hidden="true" />
-				<span>Draft preview</span>
-			</div>
-			<div className="ve-preview-transport__active">
-				<PreviewActiveClipsReadout frame$={frame$} />
-			</div>
-			<div className="ve-preview-transport__playback">
-				<PreviewPlaybackButton
-					session$={session$}
-					onTogglePlayback={onTogglePlayback}
-				/>
-			</div>
-		</div>
-	)
 }
 
+const PreviewPlaybackButton = ({
+	isPlaying,
+	onTogglePlayback,
+}: {
+	isPlaying: boolean
+	onTogglePlayback: () => void
+}) => (
+	<IconButton
+		type="button"
+		icon={isPlaying ? Pause : Play}
+		label={isPlaying ? 'Pause' : 'Play'}
+		variant="default"
+		onClick={onTogglePlayback}
+	>
+		{isPlaying ? 'Pause' : 'Play'}
+	</IconButton>
+)
+
+const PreviewCursorReadout = ({ frame }: { frame: PreviewFrame }) => (
+	<>
+		<span className="ve-sr-only">Cursor at {formatSeconds(frame.cursor)}</span>
+		<span>{formatSeconds(frame.cursor)}</span>
+	</>
+)
+
+const PreviewActiveClipsReadout = ({ frame }: { frame: PreviewFrame }) => (
+	<span>{frame.activeClipNames.length > 0 ? frame.activeClipNames.join(', ') : 'No active clips'}</span>
+)
+
+const PreviewTransport = ({
+	frame,
+	isPlaying,
+	onTogglePlayback,
+}: {
+	frame: PreviewFrame
+	isPlaying: boolean
+	onTogglePlayback: () => void
+}) => (
+	<div className="ve-preview-transport" aria-label="Preview transport status">
+		<div>
+			<Timer size={15} aria-hidden="true" />
+			<PreviewCursorReadout frame={frame} />
+		</div>
+		<div>
+			<Gauge size={15} aria-hidden="true" />
+			<span>Draft preview</span>
+		</div>
+		<div className="ve-preview-transport__active">
+			<PreviewActiveClipsReadout frame={frame} />
+		</div>
+		<div className="ve-preview-transport__playback">
+			<PreviewPlaybackButton
+				isPlaying={isPlaying}
+				onTogglePlayback={onTogglePlayback}
+			/>
+		</div>
+	</div>
+)
+
 export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: PreviewMediaElementRegistry }) => {
-	const { projects$, session$, actions, resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
+	const { resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
+	const sessionDispatch = useEditorActions(SESSION_SCOPE)
+	const { activeInspectorTab, isPlaying } = useEditorAttrs<{ activeInspectorTab?: unknown, isPlaying?: unknown }>(['activeInspectorTab', 'isPlaying'], SESSION_SCOPE)
+	const { frame, structure } = usePreviewReadModels()
 	const [compareMode, setCompareMode] = useState<'off' | 'split'>('off')
 	const [scopeMode, setScopeMode] = useState<ScopeMode>('waveform')
-	const showColorScopes = session$.activeInspectorTab.get() === 'color'
-	const previewStructure$ = useMemo(
-		() => createPreviewStructure$(projects$, session$),
-		[projects$, session$],
-	)
-	const previewFrame$ = useMemo(
-		() => createPreviewFrame$(previewStructure$, session$),
-		[previewStructure$, session$],
-	)
+	const showColorScopes = activeInspectorTab === 'color'
 
 	return (
 		<section className="ve-panel ve-preview-panel" aria-label="Preview panel">
@@ -183,20 +158,20 @@ export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: P
 				</div>
 			</div>
 			<PreviewStage
-				frame$={previewFrame$}
-				structure$={previewStructure$}
-				session$={session$}
+				frame={frame}
+				structure={structure}
+				isPlaying={isPlaying === true}
 				resolveResourceUrl={resolveResourceUrl}
 				requestResourcePlayheadWindow={requestResourcePlayheadWindow}
 				noteResourcePreviewError={noteResourcePreviewError}
 				compareMode={compareMode}
 				mediaElementRegistry={mediaElementRegistry}
 			/>
-			{showColorScopes ? <ColorScopesPanel frame$={previewFrame$} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} mediaElementRegistry={mediaElementRegistry} /> : null}
+			{showColorScopes ? <ColorScopesPanel frame={frame} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} mediaElementRegistry={mediaElementRegistry} /> : null}
 			<PreviewTransport
-				frame$={previewFrame$}
-				session$={session$}
-				onTogglePlayback={() => actions.togglePlayback()}
+				frame={frame}
+				isPlaying={isPlaying === true}
+				onTogglePlayback={() => sessionDispatch('togglePlayback')}
 			/>
 		</section>
 	)

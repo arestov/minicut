@@ -1,5 +1,3 @@
-import type { Observable } from '@legendapp/state'
-import { observer } from '@legendapp/state/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RenderedClip, PreviewFrame } from '../legend/derivedTimeline'
 import { createPreviewScopeData, type PreviewScopeData, type RgbaSampleFrame, type ScopeDensityFrame } from '../render/colorScopes'
@@ -406,20 +404,19 @@ const VectorscopeSection = ({ scopes }: { scopes: PreviewScopeData }) => (
 	</div>
 )
 
-export const ColorScopesPanel = observer(({
-	frame$,
+export const ColorScopesPanel = ({
+	frame,
 	mode,
 	onModeChange,
 	resolveResourceUrl,
 	mediaElementRegistry,
 }: {
-	frame$: Observable<PreviewFrame>
+	frame: PreviewFrame
 	mode: ScopeMode
 	onModeChange: (mode: ScopeMode) => void
 	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string
 	mediaElementRegistry: PreviewMediaElementRegistry
 }) => {
-	const frame = frame$.get()
 	const resolvedClips = useMemo(
 		() => frame.visualRenderedClips.map((clip) => ({
 			...clip,
@@ -466,4 +463,4 @@ export const ColorScopesPanel = observer(({
 			</div>
 		</div>
 	)
-})
+}
