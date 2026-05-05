@@ -3,7 +3,10 @@ import { merge as mergeDcl } from 'dkt/dcl/merge.js'
 import { Clip, CLIP_PROXY_CREATION_SHAPE } from './Clip'
 import { Effect, EFFECT_PROXY_CREATION_SHAPE } from './Effect'
 import { EditorSessionRoot } from './SessionRoot'
+import { Project, PROJECT_PROXY_CREATION_SHAPE } from './Project'
+import { Resource, RESOURCE_PROXY_CREATION_SHAPE } from './Resource'
 import { Text, TEXT_PROXY_CREATION_SHAPE } from './Text'
+import { Track, TRACK_PROXY_CREATION_SHAPE } from './Track'
 import { defaultTextBox, defaultTextStyle } from '../dkt/textActions'
 
 const appProps = mergeDcl({
@@ -16,6 +19,9 @@ const appProps = mergeDcl({
 		common_session_root: ['input', { linking: '<< $session_root' }],
 		sessions: ['input', { linking: '<< $session_root', many: true }],
 		free_sessions: ['input', { linking: '<< $session_root', many: true }],
+		project: ['model', Project, { many: true }],
+		track: ['model', Track, { many: true }],
+		resource: ['model', Resource, { many: true }],
 		clip: ['model', Clip, { many: true }],
 		text: ['model', Text, { many: true }],
 		effect: ['model', Effect, { many: true }],
@@ -26,6 +32,108 @@ const appProps = mergeDcl({
 		hasProjects: ['comp', ['projectMetaList'], (projectMetaList: unknown) => Array.isArray(projectMetaList) && projectMetaList.length > 0],
 	},
 	actions: {
+		createProjectProxy: {
+			to: ['<< project << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: PROJECT_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const value = payload as {
+					sourceProjectId?: unknown
+					title?: unknown
+					fps?: unknown
+					width?: unknown
+					height?: unknown
+					duration?: unknown
+					createdAt?: unknown
+					updatedAt?: unknown
+				} | null
+				if (typeof value?.sourceProjectId !== 'string' || !value.sourceProjectId) {
+					return '$noop'
+				}
+
+				return {
+					attrs: {
+						sourceProjectId: value.sourceProjectId,
+						title: typeof value.title === 'string' ? value.title : 'Untitled project',
+						fps: typeof value.fps === 'number' ? value.fps : 30,
+						width: typeof value.width === 'number' ? value.width : 1920,
+						height: typeof value.height === 'number' ? value.height : 1080,
+						duration: typeof value.duration === 'number' ? value.duration : 0,
+						createdAt: typeof value.createdAt === 'number' ? value.createdAt : 0,
+						updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : 0,
+					},
+				}
+			},
+		},
+		createTrackProxy: {
+			to: ['<< track << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: TRACK_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const value = payload as { sourceTrackId?: unknown; kind?: unknown; name?: unknown; muted?: unknown; locked?: unknown; height?: unknown } | null
+				if (typeof value?.sourceTrackId !== 'string' || !value.sourceTrackId) {
+					return '$noop'
+				}
+
+				return {
+					attrs: {
+						sourceTrackId: value.sourceTrackId,
+						kind: value.kind === 'audio' ? 'audio' : 'video',
+						name: typeof value.name === 'string' ? value.name : 'Track',
+						muted: typeof value.muted === 'boolean' ? value.muted : false,
+						locked: typeof value.locked === 'boolean' ? value.locked : false,
+						height: typeof value.height === 'number' ? value.height : 84,
+					},
+				}
+			},
+		},
+		createResourceProxy: {
+			to: ['<< resource << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: RESOURCE_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const value = payload as {
+					sourceResourceId?: unknown
+					name?: unknown
+					kind?: unknown
+					url?: unknown
+					mime?: unknown
+					duration?: unknown
+					width?: unknown
+					height?: unknown
+					size?: unknown
+					source?: unknown
+					status?: unknown
+					data?: unknown
+				} | null
+				if (typeof value?.sourceResourceId !== 'string' || !value.sourceResourceId) {
+					return '$noop'
+				}
+
+				return {
+					attrs: {
+						sourceResourceId: value.sourceResourceId,
+						name: typeof value.name === 'string' ? value.name : 'Resource',
+						kind: typeof value.kind === 'string' ? value.kind : 'video',
+						url: typeof value.url === 'string' ? value.url : '',
+						mime: typeof value.mime === 'string' ? value.mime : 'application/octet-stream',
+						duration: typeof value.duration === 'number' ? value.duration : 0,
+						width: typeof value.width === 'number' ? value.width : null,
+						height: typeof value.height === 'number' ? value.height : null,
+						size: typeof value.size === 'number' ? value.size : null,
+						source: value.source && typeof value.source === 'object' ? value.source : { kind: 'local' },
+						status: typeof value.status === 'string' ? value.status : 'missing',
+						data: value.data && typeof value.data === 'object' ? value.data : null,
+					},
+				}
+			},
+		},
 		createTextProxy: {
 			to: ['<< text << #', {
 				method: 'at_end',

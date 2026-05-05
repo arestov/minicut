@@ -23,6 +23,41 @@ type RuntimeLike = {
 	models?: Record<string, RuntimeModelLike>
 }
 
+export type MiniCutDktProjectProxyInput = {
+	sourceProjectId: string
+	title?: string
+	fps?: number
+	width?: number
+	height?: number
+	duration?: number
+	createdAt?: number
+	updatedAt?: number
+}
+
+export type MiniCutDktTrackProxyInput = {
+	sourceTrackId: string
+	kind?: 'video' | 'audio'
+	name?: string
+	muted?: boolean
+	locked?: boolean
+	height?: number
+}
+
+export type MiniCutDktResourceProxyInput = {
+	sourceResourceId: string
+	name?: string
+	kind?: string
+	url?: string
+	mime?: string
+	duration?: number
+	width?: number
+	height?: number
+	size?: number
+	source?: Record<string, unknown>
+	status?: string
+	data?: Record<string, unknown>
+}
+
 export type MiniCutDktClipProxyInput = {
 	sourceClipId: string
 	name?: string
@@ -106,6 +141,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
 	let sessionRootPromise: Promise<RuntimeModelLike> | null = null
 	const clipProxyNodeIds = new Map<string, string>()
+	const projectProxyNodeIds = new Map<string, string>()
+	const trackProxyNodeIds = new Map<string, string>()
+	const resourceProxyNodeIds = new Map<string, string>()
 	const textProxyNodeIds = new Map<string, string>()
 	const effectProxyNodeIds = new Map<string, string>()
 	const enabled = options.enabled === true
@@ -227,6 +265,67 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		return findProxyNodeId(modelName, sourceAttrName, sourceId)
+	}
+
+	const ensureProxy = async (
+		cache: Map<string, string>,
+		input: object,
+		modelName: string,
+		sourceAttrName: string,
+		createActionName: string,
+		sourceId: string,
+	): Promise<string> => {
+		const app = await bootstrapApp()
+		if (!app) {
+			throw new Error('MiniCut DKT runtime is disabled')
+		}
+
+		const cachedNodeId = cache.get(sourceId)
+		if (cachedNodeId && getModelById(app.appModel, cachedNodeId)) {
+			return cachedNodeId
+		}
+
+		const existingNodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
+		if (existingNodeId) {
+			cache.set(sourceId, existingNodeId)
+			return existingNodeId
+		}
+
+		await app.appModel.dispatch(createActionName, input)
+		const createdNodeId = await waitForProxyNodeId(modelName, sourceAttrName, sourceId)
+		if (!createdNodeId) {
+			throw new Error(`MiniCut DKT ${modelName} proxy was not created for ${sourceId}`)
+		}
+
+		cache.set(sourceId, createdNodeId)
+		return createdNodeId
+	}
+
+	const dispatchProjectAction = async (
+		project: MiniCutDktProjectProxyInput,
+		actionName: string,
+		payload?: unknown,
+	): Promise<void> => {
+		const nodeId = await ensureProxy(projectProxyNodeIds, project, 'minicut_project', 'sourceProjectId', 'createProjectProxy', project.sourceProjectId)
+		await dispatchAction(actionName, payload, nodeId)
+	}
+
+	const dispatchTrackAction = async (
+		track: MiniCutDktTrackProxyInput,
+		actionName: string,
+		payload?: unknown,
+	): Promise<void> => {
+		const nodeId = await ensureProxy(trackProxyNodeIds, track, 'minicut_track', 'sourceTrackId', 'createTrackProxy', track.sourceTrackId)
+		await dispatchAction(actionName, payload, nodeId)
+	}
+
+	const dispatchResourceAction = async (
+		resource: MiniCutDktResourceProxyInput,
+		actionName: string,
+		payload?: unknown,
+	): Promise<void> => {
+		const nodeId = await ensureProxy(resourceProxyNodeIds, resource, 'minicut_resource', 'sourceResourceId', 'createResourceProxy', resource.sourceResourceId)
+		await dispatchAction(actionName, payload, nodeId)
 	}
 
 	const waitForClipProxyNodeId = async (sourceClipId: string): Promise<string | null> => {
@@ -370,6 +469,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		dispatchAction,
 		dispatchSessionAction,
 		ensureClipProxy,
+		dispatchProjectAction,
+		dispatchTrackAction,
+		dispatchResourceAction,
 		dispatchClipAction,
 		ensureTextProxy,
 		dispatchTextAction,

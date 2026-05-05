@@ -125,4 +125,36 @@ describe('createMiniCutDktRuntime', () => {
 		expect(effect?.attrs.sourceEffectId).toBe('effect:tint')
 		expect(effect?.attrs.amount).toBe(0.8)
 	})
+
+	it('creates structural project, track, and resource proxies', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+
+		await runtime.dispatchProjectAction({
+			sourceProjectId: 'project:main',
+			title: 'Before',
+			fps: 30,
+			width: 1920,
+			height: 1080,
+		}, 'renameProject', { title: 'After' })
+		await runtime.dispatchTrackAction({
+			sourceTrackId: 'track:video',
+			kind: 'video',
+			name: 'Video',
+		}, 'setTrackMuted', { muted: true })
+		await runtime.dispatchResourceAction({
+			sourceResourceId: 'resource:asset',
+			name: 'Asset',
+			kind: 'video',
+			url: 'sample://asset',
+			mime: 'video/sample',
+		}, 'setResourceStatus', { status: 'ready' })
+
+		const project = await waitForModelAttr(runtime, 'minicut_project', 'title', 'After')
+		const track = await waitForModelAttr(runtime, 'minicut_track', 'muted', true)
+		const resource = await waitForModelAttr(runtime, 'minicut_resource', 'status', 'ready')
+
+		expect(project?.attrs.sourceProjectId).toBe('project:main')
+		expect(track?.attrs.sourceTrackId).toBe('track:video')
+		expect(resource?.attrs.sourceResourceId).toBe('resource:asset')
+	})
 })
