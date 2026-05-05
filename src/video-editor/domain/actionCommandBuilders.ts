@@ -116,6 +116,7 @@ const clipActionCommandBuilders: Partial<Record<EditorActionName, ClipActionComm
 	},
 }
 
+/** @deprecated Compatibility command builders retained until all UI writes are DKT scoped model actions. */
 export const buildEditorActionCommand = (
 	request: EditorActionRequest,
 	context: EditorActionCommandBuilderContext,

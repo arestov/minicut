@@ -147,6 +147,7 @@ const isRegistrySnapshot = (value: unknown): value is ProjectRegistry => Boolean
 	&& 'entitiesById' in value,
 )
 
+/** @deprecated Compatibility source for legacy read models while DKT page runtime rollout is incomplete. */
 export const createDktRegistryRenderStore = (initialSnapshot: ProjectRegistry = createEmptyRegistry()): DktRegistryRenderStore => {
 	let snapshot = cloneRegistry(initialSnapshot)
 	const listeners = new Set<Listener>()

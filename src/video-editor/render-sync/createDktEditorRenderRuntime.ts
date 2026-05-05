@@ -239,6 +239,7 @@ const cloneSnapshotValue = (value: unknown): unknown => {
 	return structuredClone(value)
 }
 
+/** @deprecated Compatibility render runtime used as fallback behind createDktPageEditorRenderRuntime. */
 export const createDktEditorRenderRuntime = ({
 	registry,
 	session,

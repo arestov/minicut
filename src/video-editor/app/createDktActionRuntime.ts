@@ -27,6 +27,7 @@ const asEffectAttrs = (attrs: Record<string, unknown>): EffectAttrs => attrs as 
 
 const createScope = (nodeId: string, type: EditorActionScope['type']): EditorActionScope => ({ nodeId, type })
 
+/** @deprecated Compatibility bridge while import/export and preview still mirror through command envelopes. */
 export const createDktActionRuntime = (
 	env: EditorActionEnvironment,
 	options: CreateDktActionRuntimeOptions,
