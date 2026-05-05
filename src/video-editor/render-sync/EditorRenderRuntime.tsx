@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useSyncExternalStore, type PropsWithChildren } from 'react'
 import { ROOT_SCOPE, type EditorScope } from './EditorScope'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
 
-export type EditorScopedDispatch = (actionName: string, payload?: unknown) => void
+export type EditorScopedDispatch = <Name extends EditorActionName>(actionName: Name, payload?: EditorActionPayload<Name>) => void
 
 export interface EditorRenderRuntime {
 	getRootScope(): EditorScope
