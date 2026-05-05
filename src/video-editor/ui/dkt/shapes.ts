@@ -42,6 +42,8 @@ const projectShape = defineShape({
 export const miniCutEditorRootShape = defineShape({
 	attrs: ['activeProjectId', 'selectedEntityId', 'activeInspectorTab', 'cursor', 'isPlaying', 'timelineZoom', 'timelineTool', 'snappingEnabled'],
 	one: {
+		activeProject: projectShape,
+		selectedClip: clipShape,
 		pioneer: defineShape({
 			many: {
 				project: projectShape,

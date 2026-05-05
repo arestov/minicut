@@ -3,15 +3,13 @@ import { Check, ChevronDown, Plus } from 'lucide-react'
 import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
-import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { Button, IconButton } from './ControlPrimitives'
 
 interface ProjectItemProps {
 	activeProjectId: string | null
 	onSelect: () => void
-	projectScope: ReactSyncScopeHandle
 }
 
 interface ProjectAttrs {
@@ -23,7 +21,7 @@ interface ProjectAttrs {
 const ProjectItem = ({ activeProjectId, onSelect }: ProjectItemProps) => {
 	const { actions } = useVideoEditor()
 	const projectAttrs = useAttrs(['sourceProjectId', 'title', 'updatedAt']) as ProjectAttrs
-	const resources = useManyWithAttrs('resources', ['sourceResourceId'])
+	const resources = useMany('resources')
 	const projectId = typeof projectAttrs.sourceProjectId === 'string' ? projectAttrs.sourceProjectId : null
 	const projectTitle = String(projectAttrs.title ?? 'Project')
 	const projectVersion = Number(projectAttrs.updatedAt ?? 1) || 1
@@ -80,7 +78,7 @@ const ProjectDropdownEmptyMenu = ({ onClose }: { onClose: () => void }) => {
 
 const ProjectDropdownMenu = ({ activeProjectId, onClose }: { activeProjectId: string | null; onClose: () => void }) => {
 	const { actions } = useVideoEditor()
-	const projectItems = useManyWithAttrs('project', ['sourceProjectId', 'title', 'updatedAt'])
+	const projectScopes = useMany('project')
 
 	return (
 		<div className="ve-project-dropdown__menu is-open">
@@ -100,14 +98,13 @@ const ProjectDropdownMenu = ({ activeProjectId, onClose }: { activeProjectId: st
 					New project
 				</IconButton>
 			</div>
-			{projectItems.length === 0 ? (
+			{projectScopes.length === 0 ? (
 				<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
 			) : (
 				<ul className="ve-project-list ve-project-dropdown__list">
-					{projectItems.map(({ scope: projectScope }) => (
+					{projectScopes.map((projectScope) => (
 						<ScopeContext.Provider key={projectScope._nodeId} value={projectScope}>
 							<ProjectItem
-								projectScope={projectScope}
 								activeProjectId={activeProjectId}
 								onSelect={onClose}
 							/>
@@ -125,18 +122,16 @@ const ActiveProjectTitle = () => {
 	return <span>{String(attrs.title ?? 'No project')}</span>
 }
 
-const ActiveProjectTitleFromPioneer = ({ activeProjectId }: { activeProjectId: string | null }) => {
-	const projectItems = useManyWithAttrs('project', ['sourceProjectId', 'title'])
-	const activeProjectScope = activeProjectId
-		? projectItems.find(({ attrs }) => attrs.sourceProjectId === activeProjectId)?.scope ?? projectItems[0]?.scope ?? null
-		: projectItems[0]?.scope ?? null
+const FirstProjectTitleFromPioneer = () => {
+	const projectScopes = useMany('project')
+	const firstProjectScope = projectScopes[0] ?? null
 
-	if (!activeProjectScope) {
+	if (!firstProjectScope) {
 		return <span>No project</span>
 	}
 
 	return (
-		<ScopeContext.Provider value={activeProjectScope}>
+		<ScopeContext.Provider value={firstProjectScope}>
 			<ActiveProjectTitle />
 		</ScopeContext.Provider>
 	)
@@ -159,8 +154,8 @@ export const ProjectDropdown = () => {
 				aria-haspopup="menu"
 				onClick={() => setIsOpen((v) => !v)}
 			>
-				<One rel="pioneer" fallback={<span>No project</span>}>
-					<ActiveProjectTitleFromPioneer activeProjectId={activeProjectId} />
+				<One rel="activeProject" fallback={<One rel="pioneer" fallback={<span>No project</span>}><FirstProjectTitleFromPioneer /></One>}>
+					<ActiveProjectTitle />
 				</One>
 				<ChevronDown className="ve-project-dropdown__chevron" size={14} aria-hidden="true" />
 			</Button>

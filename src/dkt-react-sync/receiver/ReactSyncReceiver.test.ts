@@ -63,4 +63,50 @@ describe('ReactSyncReceiver', () => {
 
     expect(onTracks).toHaveBeenCalledTimes(1)
   })
+
+  it('invalidates cached attr snapshots only when requested attr values change', () => {
+    const receiver = new ReactSyncReceiver(null)
+
+    receiver.handleSync(SYNCR_TYPES.SET_DICT, [undefined, 'name', 'status'])
+    receiver.handleSync(SYNCR_TYPES.TREE_ROOT, {
+      node_id: 'project-1',
+      data: [null, null, null],
+    })
+    receiver.handleSync(SYNCR_TYPES.UPDATE, [0, 'project-1', 4, 1, 'Project 1', 2, 'ready'])
+
+    const first = receiver.readRootAttrs(['name'])
+    receiver.handleSync(SYNCR_TYPES.UPDATE, [0, 'project-1', 2, 2, 'loading'])
+    const unchangedSelection = receiver.readRootAttrs(['name'])
+    const changedSelection = receiver.readRootAttrs(['name', 'status'])
+    receiver.handleSync(SYNCR_TYPES.UPDATE, [0, 'project-1', 2, 1, 'Project 2'])
+    const changedName = receiver.readRootAttrs(['name'])
+
+    expect(unchangedSelection).toBe(first)
+    expect(changedSelection).not.toBe(first)
+    expect(changedSelection).toMatchObject({ name: 'Project 1', status: 'loading' })
+    expect(changedName).not.toBe(first)
+    expect(changedName.name).toBe('Project 2')
+  })
+
+  it('returns the previous many snapshot for structurally equal rel arrays', () => {
+    const receiver = new ReactSyncReceiver(null)
+
+    receiver.handleSync(SYNCR_TYPES.SET_DICT, [undefined, 'clips'])
+    receiver.handleSync(SYNCR_TYPES.TREE_ROOT, {
+      node_id: 'track-1',
+      data: [null, null, null],
+    })
+    receiver.handleSync(SYNCR_TYPES.UPDATE, [1, 'track-1', 1, ['clip-1', 'clip-2']])
+
+    const scope = receiver.getRootScope()!
+    const first = receiver.readManyScopes(scope, 'clips')
+    receiver.handleSync(SYNCR_TYPES.UPDATE, [1, 'track-1', 1, ['clip-1', 'clip-2']])
+    const second = receiver.readManyScopes(scope, 'clips')
+    receiver.handleSync(SYNCR_TYPES.UPDATE, [1, 'track-1', 1, ['clip-1', 'clip-2', 'clip-3']])
+    const third = receiver.readManyScopes(scope, 'clips')
+
+    expect(second).toBe(first)
+    expect(third).not.toBe(first)
+    expect(third.map((item) => item._nodeId)).toEqual(['clip-1', 'clip-2', 'clip-3'])
+  })
 })

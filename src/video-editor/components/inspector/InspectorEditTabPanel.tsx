@@ -2,7 +2,7 @@ import { Gauge, Move, Scissors, SlidersHorizontal, Sparkles, Wand2, X } from 'lu
 import { useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
-import { useManyWithAttrs } from '../../../dkt-react-sync/hooks/useManyWithAttrs'
+import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useOne } from '../../../dkt-react-sync/hooks/useOne'
 import { useVideoEditor } from '../../app/VideoEditorContext'
 import { createPaletteFromHex, sampleVideoFramePalette } from '../../color/framePalette'
@@ -87,7 +87,7 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 	const { actions } = useVideoEditor()
 	const attrs = useAttrs(['sourceClipId', 'opacity', 'in', 'fadeIn', 'fadeOut', 'duration', 'start', 'transform', 'color']) as ClipRenderAttrs & { sourceClipId?: unknown }
 	const textScope = useOne('text')
-	const effectItems = useManyWithAttrs('effects', ['sourceEffectId', 'name', 'kind'])
+	const effectScopes = useMany('effects')
 	const sourceClipId = typeof attrs.sourceClipId === 'string' ? attrs.sourceClipId : null
 	const opacity = Number(attrs.opacity?.value ?? 1)
 	const opacityPercent = Math.round(opacity * 100)
@@ -149,17 +149,17 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 					<IconButton type="button" icon={Wand2} label="Tint" variant="secondary" onClick={() => updateClip((clipId) => actions.addEffectToClip(clipId, 'tint'))}>Tint</IconButton>
 				</div>
 				<div className="ve-effects-toolbar">
-					<small>{effectItems.length} effects</small>
-					{effectItems.length > 0 ? (
+					<small>{effectScopes.length} effects</small>
+					{effectScopes.length > 0 ? (
 						<div className="ve-effects-menu">
 							<IconButton type="button" className="ve-effects-menu__trigger" icon={SlidersHorizontal} aria-label="Manage effects" label="Manage effects" variant="outline" aria-expanded={isEffectsMenuOpen} onClick={() => setIsEffectsMenuOpen((value) => !value)}>Manage</IconButton>
 							{isEffectsMenuOpen ? (
 								<ul className="ve-effects-menu__list" aria-label="Active effects">
-									{effectItems.map(({ scope: effectScope }) => (
+									{effectScopes.map((effectScope) => (
 										<ScopeContext.Provider key={effectScope._nodeId} value={effectScope}>
 											<EffectEntry onRemove={(effectId) => {
 												updateClip((clipId) => actions.removeEffectFromClip(clipId, effectId))
-												if (effectItems.length <= 1) {
+												if (effectScopes.length <= 1) {
 													setIsEffectsMenuOpen(false)
 												}
 											}} />

@@ -1,7 +1,7 @@
 import { Eye, Lock, Volume2 } from 'lucide-react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
+import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { IconButton } from './ControlPrimitives'
 import { ClipItem } from './ClipItem'
 
@@ -41,21 +41,16 @@ export const TrackLabel = () => {
 }
 
 export const TrackLane = ({ timelineZoom, activeTool, selectedEntityId }: TrackRowProps) => {
-	const clipItems = useManyWithAttrs('clips', ['start', 'duration'])
-	const trackEnd = clipItems.reduce((maxEnd, { attrs }) => {
-		const start = Number(attrs.start ?? 0)
-		const duration = Number(attrs.duration ?? 0)
-		return Math.max(maxEnd, start + duration)
-	}, 0)
-	const trackWidth = Math.max(960, Math.ceil((trackEnd + 2) * timelineZoom))
+	const clipScopes = useMany('clips')
+	const trackWidth = Math.max(960, clipScopes.length * 180)
 
 	return (
 		<div className="ve-track-row__rail">
-			{clipItems.length === 0 ? (
+			{clipScopes.length === 0 ? (
 				<p className="ve-empty">Drop clips here.</p>
 			) : (
 				<div className="ve-track-row__timeline" style={{ width: `${trackWidth}px` }}>
-					{clipItems.map(({ scope: clipScope }) => (
+					{clipScopes.map((clipScope) => (
 						<ScopeContext.Provider key={clipScope._nodeId} value={clipScope}>
 							<ClipItem timelineZoom={timelineZoom} activeTool={activeTool} selectedEntityId={selectedEntityId} />
 						</ScopeContext.Provider>

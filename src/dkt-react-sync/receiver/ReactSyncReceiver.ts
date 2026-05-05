@@ -309,6 +309,9 @@ export class ReactSyncReceiver {
   }
 
   readManyScopes(scope: ReactSyncScopeHandle, relName: string) {
+    // React 19 requires useSyncExternalStore snapshots to keep identity when
+    // data is unchanged. This cache is the stability boundary used by hooks and
+    // components; do not replace it with array cloning in hook code.
     const cacheKey = `${scope._nodeId}\u001f${relName}`
     const relValue = this.readRel(scope._nodeId, relName)
     const cached = this.manyReadCache.get(cacheKey)
@@ -903,6 +906,8 @@ export class ReactSyncReceiver {
       nextValues[name] = this.readAttrFromNode(node, name)
     }
 
+    // Same external-store contract as readManyScopes: callers must receive the
+    // previous object when requested attrs did not change.
     const cached = this.attrsReadCache.get(cacheKey)
     if (cached && cached.nodeId === nodeId) {
       let changed = false

@@ -1,9 +1,9 @@
 import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
+import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useScope } from '../../dkt-react-sync/hooks/useScope'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { useVideoEditor } from '../app/VideoEditorContext'
@@ -90,6 +90,38 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 	)
 }
 
+const ResourceListItem = ({
+	resourceScope,
+	kindFilter,
+	normalizedQuery,
+	onMatchChange,
+}: ResourceRowProps & {
+	kindFilter: ResourceAttrs['kind'] | 'all'
+	normalizedQuery: string
+	onMatchChange: (nodeId: string, matches: boolean) => void
+}) => {
+	const attrs = useAttrs(['kind', 'name', 'mime']) as Pick<ResourceRenderAttrs, 'kind' | 'name' | 'mime'>
+	const kind = attrs.kind
+	const name = String(attrs.name ?? '')
+	const mime = String(attrs.mime ?? '')
+	const matchesKind = kindFilter === 'all' || kind === kindFilter
+	const matchesQuery = normalizedQuery.length === 0
+		|| name.toLowerCase().includes(normalizedQuery)
+		|| mime.toLowerCase().includes(normalizedQuery)
+	const matches = matchesKind && matchesQuery
+
+	useEffect(() => {
+		onMatchChange(resourceScope._nodeId, matches)
+		return () => onMatchChange(resourceScope._nodeId, false)
+	}, [matches, onMatchChange, resourceScope._nodeId])
+
+	if (!matches) {
+		return null
+	}
+
+	return <ResourceRow resourceScope={resourceScope} />
+}
+
 const TextTimelineActionRow = () => {
 	const { actions } = useVideoEditor()
 
@@ -123,65 +155,58 @@ const ProjectMediaList = ({
 	normalizedQuery: string
 	viewMode: 'list' | 'grid'
 }) => {
-	const resourceItems = useManyWithAttrs('resources', ['kind', 'name', 'mime'])
-	const filteredResourceItems = resourceItems.filter(({ attrs }) => {
-		const kind = attrs.kind
-		const name = String(attrs.name ?? '')
-		const mime = String(attrs.mime ?? '')
-		const matchesKind = kindFilter === 'all' || kind === kindFilter
-		const matchesQuery = normalizedQuery.length === 0
-			|| name.toLowerCase().includes(normalizedQuery)
-			|| mime.toLowerCase().includes(normalizedQuery)
-
-		return matchesKind && matchesQuery
-	})
+	const resourceScopes = useMany('resources')
+	const [matchingResourceIds, setMatchingResourceIds] = useState<ReadonlySet<string>>(() => new Set())
+	const handleMatchChange = useCallback((nodeId: string, matches: boolean) => {
+		setMatchingResourceIds((current) => {
+			const next = new Set(current)
+			if (matches) {
+				next.add(nodeId)
+			} else {
+				next.delete(nodeId)
+			}
+			return next.size === current.size && [...next].every((id) => current.has(id)) ? current : next
+		})
+	}, [])
 
 	return (
 		<>
-			<div className="ve-media-count">{filteredResourceItems.length} of {resourceItems.length} assets</div>
+			<div className="ve-media-count">{matchingResourceIds.size} of {resourceScopes.length} assets</div>
 			<div className="ve-media-bin__body">
 				<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
 					<TextTimelineActionRow />
-					{filteredResourceItems.map(({ scope: resourceScope }) => (
+					{resourceScopes.map((resourceScope) => (
 						<ScopeContext.Provider key={resourceScope._nodeId} value={resourceScope}>
-							<ResourceRow resourceScope={resourceScope} />
+							<ResourceListItem resourceScope={resourceScope} kindFilter={kindFilter} normalizedQuery={normalizedQuery} onMatchChange={handleMatchChange} />
 						</ScopeContext.Provider>
 					))}
 				</ul>
-				{resourceItems.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
-				{resourceItems.length > 0 && filteredResourceItems.length === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
+				{resourceScopes.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
+				{resourceScopes.length > 0 && matchingResourceIds.size === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
 			</div>
 		</>
 	)
 }
 
-const ActiveProjectMediaList = ({
-	activeProjectId,
+const FirstProjectMediaListFromPioneer = ({
 	kindFilter,
 	normalizedQuery,
 	viewMode,
 }: {
-	activeProjectId: string | null
 	kindFilter: ResourceAttrs['kind'] | 'all'
 	normalizedQuery: string
 	viewMode: 'list' | 'grid'
 }) => {
-	const projectItems = useManyWithAttrs('project', ['sourceProjectId'])
-	const activeProjectScope = activeProjectId
-		? projectItems.find(({ attrs }) => attrs.sourceProjectId === activeProjectId)?.scope ?? projectItems[0]?.scope ?? null
-		: projectItems[0]?.scope ?? null
+	const projectScopes = useMany('project')
+	const firstProjectScope = projectScopes[0] ?? null
 
-	if (!activeProjectScope) {
+	if (!firstProjectScope) {
 		return <MediaBinEmptyState />
 	}
 
 	return (
-		<ScopeContext.Provider value={activeProjectScope}>
-			<ProjectMediaList
-				kindFilter={kindFilter}
-				normalizedQuery={normalizedQuery}
-				viewMode={viewMode}
-			/>
+		<ScopeContext.Provider value={firstProjectScope}>
+			<ProjectMediaList kindFilter={kindFilter} normalizedQuery={normalizedQuery} viewMode={viewMode} />
 		</ScopeContext.Provider>
 	)
 }
@@ -306,9 +331,12 @@ const MediaBinWithRootScope = ({
 			setViewMode={setViewMode}
 			viewMode={viewMode}
 		>
-			<One rel="pioneer" fallback={<MediaBinEmptyState />}>
-				<ActiveProjectMediaList
-					activeProjectId={activeProjectId}
+			<One rel="activeProject" fallback={(
+				<One rel="pioneer" fallback={<MediaBinEmptyState />}>
+					<FirstProjectMediaListFromPioneer kindFilter={kindFilter} normalizedQuery={normalizedQuery} viewMode={viewMode} />
+				</One>
+			)}>
+				<ProjectMediaList
 					kindFilter={kindFilter}
 					normalizedQuery={normalizedQuery}
 					viewMode={viewMode}

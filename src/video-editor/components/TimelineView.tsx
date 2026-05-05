@@ -25,7 +25,8 @@ import {
 import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
+import { useMany } from '../../dkt-react-sync/hooks/useMany'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,
@@ -84,7 +85,7 @@ interface TimelineBodyProps {
 	cursorSeconds: number
 	selectedEntityId: string | null
 	timelineZoom: number
-	trackItems: readonly ReturnType<typeof useManyWithAttrs>[number][]
+	trackItems: readonly ReactSyncScopeHandle[]
 	updateCursorFromPointer: (event: ReactPointerEvent<HTMLDivElement>) => void
 }
 
@@ -189,7 +190,7 @@ const TimelineBody = ({
 			<div className="ve-timeline-grid">
 				<div className="ve-track-label-column">
 					<div className="ve-track-label-list">
-						{trackItems.map(({ scope: trackScope }) => (
+						{trackItems.map((trackScope) => (
 							<ScopeContext.Provider key={trackScope._nodeId} value={trackScope}>
 								<TrackLabel />
 							</ScopeContext.Provider>
@@ -212,7 +213,7 @@ const TimelineBody = ({
 					<div className="ve-track-lane-column">
 						<TimelinePlayhead cursorSeconds={cursorSeconds} timelineZoom={timelineZoom} />
 						<div className="ve-track-lane-list">
-							{trackItems.map(({ scope: trackScope }) => (
+							{trackItems.map((trackScope) => (
 								<ScopeContext.Provider key={trackScope._nodeId} value={trackScope}>
 									<TrackLane timelineZoom={timelineZoom} activeTool={activeTool} selectedEntityId={selectedEntityId} />
 								</ScopeContext.Provider>
@@ -239,7 +240,7 @@ const ResolvedProjectTimeline = ({
 	timelineZoom,
 	updateCursorFromPointer,
 }: Omit<TimelineBodyProps, 'trackItems'> & { renderHeader: (trackCount: number) => ReactElement }) => {
-	const trackItems = useManyWithAttrs('tracks', ['sourceTrackId', 'name'])
+	const trackItems = useMany('tracks')
 
 	return (
 		<>
@@ -262,45 +263,17 @@ const ResolvedProjectTimeline = ({
 	)
 }
 
-const ActiveProjectTimeline = ({
-	activeProjectId,
-	activeTool,
-	handleHandPan,
-	handlePlayheadPointerDown,
-	onAddTrack,
-	renderHeader,
-	snappingEnabled,
-	stopPlayheadDrag,
-	cursorSeconds,
-	selectedEntityId,
-	timelineZoom,
-	updateCursorFromPointer,
-}: Omit<TimelineBodyProps, 'trackItems'> & { renderHeader: (trackCount: number) => ReactElement }) => {
-	const projectItems = useManyWithAttrs('project', ['sourceProjectId'])
-	const activeProjectScope = activeProjectId
-		? projectItems.find(({ attrs }) => attrs.sourceProjectId === activeProjectId)?.scope ?? projectItems[0]?.scope ?? null
-		: projectItems[0]?.scope ?? null
+const FirstProjectTimelineFromPioneer = (props: Omit<TimelineBodyProps, 'trackItems'> & { renderHeader: (trackCount: number) => ReactElement }) => {
+	const projectScopes = useMany('project')
+	const firstProjectScope = projectScopes[0] ?? null
 
-	if (!activeProjectScope) {
-		return <>{renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>
+	if (!firstProjectScope) {
+		return <>{props.renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>
 	}
 
 	return (
-		<ScopeContext.Provider value={activeProjectScope}>
-			<ResolvedProjectTimeline
-				activeProjectId={activeProjectId}
-				activeTool={activeTool}
-				handleHandPan={handleHandPan}
-				handlePlayheadPointerDown={handlePlayheadPointerDown}
-				onAddTrack={onAddTrack}
-				renderHeader={renderHeader}
-				snappingEnabled={snappingEnabled}
-				stopPlayheadDrag={stopPlayheadDrag}
-				cursorSeconds={cursorSeconds}
-				selectedEntityId={selectedEntityId}
-				timelineZoom={timelineZoom}
-				updateCursorFromPointer={updateCursorFromPointer}
-			/>
+		<ScopeContext.Provider value={firstProjectScope}>
+			<ResolvedProjectTimeline {...props} />
 		</ScopeContext.Provider>
 	)
 }
@@ -416,8 +389,25 @@ export const TimelineView = () => {
 					<p className="ve-empty">Create a project to allocate timeline tracks.</p>
 				</>
 			) : (
-				<One rel="pioneer" fallback={<>{renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>}>
-					<ActiveProjectTimeline
+				<One rel="activeProject" fallback={(
+					<One rel="pioneer" fallback={<>{renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>}>
+						<FirstProjectTimelineFromPioneer
+							activeProjectId={activeProjectId}
+							activeTool={activeTool}
+							handleHandPan={handleHandPan}
+							handlePlayheadPointerDown={handlePlayheadPointerDown}
+							onAddTrack={(kind) => actions.addTrack(kind)}
+							renderHeader={renderHeader}
+							snappingEnabled={snappingEnabled}
+							stopPlayheadDrag={stopPlayheadDrag}
+							cursorSeconds={cursorSeconds}
+							selectedEntityId={selectedEntityId}
+							timelineZoom={timelineZoom}
+							updateCursorFromPointer={updateCursorFromPointer}
+						/>
+					</One>
+				)}>
+					<ResolvedProjectTimeline
 						activeProjectId={activeProjectId}
 						activeTool={activeTool}
 						handleHandPan={handleHandPan}

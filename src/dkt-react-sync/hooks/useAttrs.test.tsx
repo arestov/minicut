@@ -4,6 +4,7 @@ import { RootScope } from '../scope/RootScope'
 import { useAttrs } from './useAttrs'
 import type { ReactScopeRuntime } from '../runtime/ReactScopeRuntime'
 import type { ReactSyncScopeHandle } from '../scope/ScopeHandle'
+import { createTestReactScopeRuntime } from '../test/createTestReactScopeRuntime'
 
 const createScope = (nodeId: string): ReactSyncScopeHandle => ({ kind: 'scope', _nodeId: nodeId })
 
@@ -122,5 +123,36 @@ describe('useAttrs', () => {
     })
 
     expect(screen.getByText('Clip A:loading')).toBeInTheDocument()
+  })
+
+  it('keeps the same snapshot object when attrs are unchanged across parent renders', () => {
+    const runtime = createTestReactScopeRuntime({
+      attrsByNodeId: {
+        root: { name: 'Stable' },
+      },
+    })
+    const snapshots: Array<Record<string, unknown>> = []
+
+    const Probe = () => {
+      const attrs = useAttrs(['name'])
+      snapshots.push(attrs)
+      return <div>{String(attrs.name)}</div>
+    }
+
+    const { rerender } = render(
+      <RootScope runtime={runtime}>
+        <Probe />
+      </RootScope>,
+    )
+
+    rerender(
+      <RootScope runtime={runtime}>
+        <Probe />
+      </RootScope>,
+    )
+
+    expect(screen.getByText('Stable')).toBeInTheDocument()
+    expect(snapshots).toHaveLength(2)
+    expect(snapshots[1]).toBe(snapshots[0])
   })
 })

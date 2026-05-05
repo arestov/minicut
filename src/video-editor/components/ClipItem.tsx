@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
+import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { AnimatedScalar } from '../domain/types'
 import { formatPercent, formatSeconds } from './format'
@@ -32,15 +33,22 @@ interface ClipRenderAttrs {
 	color?: unknown
 }
 
+const ClipGradeBadge = () => {
+	const attrs = useAttrs(['kind', 'enabled']) as { kind?: unknown; enabled?: unknown }
+
+	return attrs.kind === 'color-correction' && attrs.enabled !== false
+		? <span className="ve-clip__badge" aria-label="Color grade enabled">Grade</span>
+		: null
+}
+
 export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipItemProps) => {
 	const dragState = useRef<ClipPointerDragState | null>(null)
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0)
 	const { actions } = useVideoEditor()
 	const clipAttrs = useAttrs(['sourceClipId', 'name', 'start', 'duration', 'in', 'opacity', 'color']) as ClipRenderAttrs
-	const effectItems = useManyWithAttrs('effects', ['kind', 'enabled'])
+	const effectScopes = useMany('effects')
 	const clipId = typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null
 	const selected = clipId !== null && selectedEntityId === clipId
-	const hasActiveColorGrade = effectItems.some(({ attrs }) => attrs.kind === 'color-correction' && attrs.enabled !== false)
 	const name = String(clipAttrs.name)
 	const start = Number(clipAttrs.start)
 	const duration = Number(clipAttrs.duration)
@@ -192,7 +200,11 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 			/>
 			<div className="ve-clip__title">
 				<span>{name}</span>
-				{hasActiveColorGrade ? <span className="ve-clip__badge" aria-label="Color grade enabled">Grade</span> : null}
+				{effectScopes.map((effectScope) => (
+					<ScopeContext.Provider key={effectScope._nodeId} value={effectScope}>
+						<ClipGradeBadge />
+					</ScopeContext.Provider>
+				))}
 			</div>
 			<small>
 				{name} · {formatSeconds(start)} / {formatSeconds(duration)} · opacity {formatPercent(opacity)}

@@ -7,6 +7,7 @@ import { getActiveProject, getClipIdsForTrack, getTracks } from '../domain/selec
 import { DKT_MSG } from '../dkt/shared/messageTypes'
 import { MemoryWorkerAuthority } from '../worker/memoryWorker'
 import { createDktRegistryRenderStore } from './DktRegistryRenderStore'
+import type { EditorScope } from './EditorScope'
 
 const flushMicrotasks = async () => {
 	for (let index = 0; index < 8; index += 1) {
@@ -30,7 +31,7 @@ const clipShape = defineShape({ attrs: ['sourceClipId', 'name', 'start', 'durati
 const trackShape = defineShape({ attrs: ['sourceTrackId', 'name', 'kind'], rels: ['clips'], many: { clips: clipShape } })
 const projectShape = defineShape({ attrs: ['sourceProjectId', 'title'], rels: ['tracks'], many: { tracks: trackShape } })
 const appShape = defineShape({ rels: ['project'], many: { project: projectShape } })
-const rootShape = defineShape({ attrs: ['cursor', 'timelineZoom', 'activeProjectId'], rels: ['pioneer'], one: { pioneer: appShape } })
+const rootShape = defineShape({ attrs: ['cursor', 'timelineZoom', 'activeProjectId'], rels: ['pioneer', 'activeProject'], one: { pioneer: appShape, activeProject: projectShape } })
 
 const ensurePageRuntimeBooted = async (harness: ReturnType<typeof createVideoEditorHarness>) => {
 	if (!bootstrappedHarnesses.has(harness)) {
@@ -82,6 +83,18 @@ const waitForMockCall = async (mock: { mock: { calls: unknown[] } }) => {
 		}
 		await settleHarness()
 	}
+}
+
+const waitForClipSourceId = async (harness: ReturnType<typeof createVideoEditorHarness>, clipScope: EditorScope, clipId: string) => {
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		const attrs = harness.renderRuntime.readAttrs(clipScope, ['sourceClipId'])
+		if (attrs.sourceClipId === clipId) {
+			return
+		}
+		await flushHarnessDkt(harness)
+	}
+
+	expect(harness.renderRuntime.readAttrs(clipScope, ['sourceClipId']).sourceClipId).toBe(clipId)
 }
 
 describe('createDktEditorRenderRuntime', () => {
@@ -190,7 +203,7 @@ describe('createDktEditorRenderRuntime', () => {
 			)[0]
 			const firstClipScope = harness.renderRuntime.readMany(clipScope, 'clips')[0]
 
-			expect(harness.renderRuntime.readAttrs(firstClipScope, ['sourceClipId']).sourceClipId).toBe(clipId)
+			await waitForClipSourceId(harness, firstClipScope, clipId)
 
 			const dispatch = harness.renderRuntime.getDispatch(firstClipScope)
 			dispatch('select')

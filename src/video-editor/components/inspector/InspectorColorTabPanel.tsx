@@ -1,8 +1,8 @@
 import { Palette, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
-import { useManyWithAttrs } from '../../../dkt-react-sync/hooks/useManyWithAttrs'
+import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useVideoEditor } from '../../app/VideoEditorContext'
 import { readVideoFrameImageData } from '../../color/framePalette'
 import { buildLookColorCorrectionParams, getLookPreset, lookPresets } from '../../color/looks'
@@ -158,13 +158,45 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 	)
 }
 
+const ColorCorrectionEffectSlot = ({
+	effectNodeId,
+	mediaElementRegistry,
+	onPresenceChange,
+}: {
+	effectNodeId: string
+	mediaElementRegistry?: PreviewMediaElementRegistry
+	onPresenceChange: (effectNodeId: string, present: boolean) => void
+}) => {
+	const attrs = useAttrs(['kind']) as { kind?: unknown }
+	const isColorCorrection = attrs.kind === 'color-correction'
+
+	useEffect(() => {
+		onPresenceChange(effectNodeId, isColorCorrection)
+		return () => onPresenceChange(effectNodeId, false)
+	}, [effectNodeId, isColorCorrection, onPresenceChange])
+
+	return isColorCorrection ? <ColorCorrectionControls mediaElementRegistry={mediaElementRegistry} /> : null
+}
+
 export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const { actions } = useVideoEditor()
 	const clipAttrs = useAttrs(['sourceClipId', 'color']) as ClipRenderAttrs & { sourceClipId?: unknown }
-	const effectItems = useManyWithAttrs('effects', ['sourceEffectId', 'kind'])
+	const effectScopes = useMany('effects')
+	const [colorCorrectionEffectIds, setColorCorrectionEffectIds] = useState<ReadonlySet<string>>(() => new Set())
 	const sourceClipId = typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null
 	const color = String(clipAttrs.color ?? '#2563eb')
-	const colorCorrectionEffectScope = effectItems.find(({ attrs }) => attrs.kind === 'color-correction')?.scope ?? null
+	const hasColorCorrectionEffect = colorCorrectionEffectIds.size > 0
+	const handleColorCorrectionPresence = useCallback((effectNodeId: string, present: boolean) => {
+		setColorCorrectionEffectIds((current) => {
+			const next = new Set(current)
+			if (present) {
+				next.add(effectNodeId)
+			} else {
+				next.delete(effectNodeId)
+			}
+			return next.size === current.size && [...next].every((id) => current.has(id)) ? current : next
+		})
+	}, [])
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Color inspector">
@@ -175,13 +207,18 @@ export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementR
 				</div>
 			</InspectorSection>
 			<InspectorSection title="Primary correction" icon={SlidersHorizontal} ariaLabel="Primary color correction">
-				{colorCorrectionEffectScope ? (
-					<ScopeContext.Provider value={colorCorrectionEffectScope}>
-						<ColorCorrectionControls mediaElementRegistry={mediaElementRegistry} />
+				{effectScopes.map((effectScope) => (
+					<ScopeContext.Provider key={effectScope._nodeId} value={effectScope}>
+						<ColorCorrectionEffectSlot
+							effectNodeId={effectScope._nodeId}
+							mediaElementRegistry={mediaElementRegistry}
+							onPresenceChange={handleColorCorrectionPresence}
+						/>
 					</ScopeContext.Provider>
-				) : (
+				))}
+				{!hasColorCorrectionEffect ? (
 					<Button type="button" variant="secondary" onClick={() => sourceClipId ? actions.addColorCorrectionToClip(sourceClipId) : undefined}>Add primary correction</Button>
-				)}
+				) : null}
 			</InspectorSection>
 		</div>
 	)
