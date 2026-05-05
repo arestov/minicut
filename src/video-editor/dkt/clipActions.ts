@@ -4,11 +4,14 @@ import { PATCH, type AnimatedScalar, type ClipAttrs, type PatchEnvelope, type Pr
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
-export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTransform'
+export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTransform' | 'syncAttrs'
 
 export type DktClipActionPatch = Partial<Pick<ClipAttrs,
 	| 'name'
 	| 'color'
+	| 'start'
+	| 'in'
+	| 'duration'
 	| 'opacity'
 	| 'fadeIn'
 	| 'fadeOut'
@@ -93,9 +96,24 @@ export const defaultClipTransform: TransformAttrs = {
 export const reduceDktClipAction = (
 	actionName: DktClipActionName,
 	payload: unknown,
-	clipAttrs: Pick<ClipAttrs, 'name' | 'color' | 'opacity' | 'fadeIn' | 'fadeOut' | 'duration' | 'audio' | 'transform'>,
+	clipAttrs: Pick<ClipAttrs, 'name' | 'color' | 'start' | 'in' | 'opacity' | 'fadeIn' | 'fadeOut' | 'duration' | 'audio' | 'transform'>,
 ): DktClipActionPatch | null => {
 	switch (actionName) {
+		case 'syncAttrs': {
+			const attrs = payload as Partial<ClipAttrs>
+			return {
+				name: typeof attrs.name === 'string' ? attrs.name : clipAttrs.name,
+				color: typeof attrs.color === 'string' ? attrs.color : clipAttrs.color,
+				start: typeof attrs.start === 'number' ? attrs.start : clipAttrs.start,
+				in: typeof attrs.in === 'number' ? attrs.in : clipAttrs.in,
+				duration: typeof attrs.duration === 'number' ? attrs.duration : clipAttrs.duration,
+				fadeIn: typeof attrs.fadeIn === 'number' ? attrs.fadeIn : clipAttrs.fadeIn,
+				fadeOut: typeof attrs.fadeOut === 'number' ? attrs.fadeOut : clipAttrs.fadeOut,
+				audio: attrs.audio ?? clipAttrs.audio,
+				opacity: toAnimatedScalar(attrs.opacity, clipAttrs.opacity),
+				transform: attrs.transform ?? clipAttrs.transform,
+			}
+		}
 		case 'updateOpacity': {
 			const opacityPercent = typeof payload === 'number'
 				? payload

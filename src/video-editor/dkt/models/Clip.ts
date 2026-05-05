@@ -31,6 +31,50 @@ export const Clip = model({
 		transform: ['input', defaultClipTransform],
 	},
 	actions: {
+		syncAttrs: {
+			to: {
+				name: ['name'],
+				color: ['color'],
+				start: ['start'],
+				in: ['in'],
+				duration: ['duration'],
+				fadeIn: ['fadeIn'],
+				fadeOut: ['fadeOut'],
+				audio: ['audio'],
+				opacity: ['opacity'],
+				transform: ['transform'],
+			},
+			fn: [
+				['name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
+				(
+					payload: unknown,
+					name: unknown,
+					color: unknown,
+					start: unknown,
+					inPoint: unknown,
+					duration: unknown,
+					fadeIn: unknown,
+					fadeOut: unknown,
+					audio: unknown,
+					opacity: unknown,
+					transform: unknown,
+				) => {
+					const patch = reduceDktClipAction('syncAttrs', payload, {
+						name: typeof name === 'string' ? name : defaultModelClipAttrs.name,
+						color: typeof color === 'string' ? color : defaultModelClipAttrs.color,
+						start: typeof start === 'number' ? start : defaultModelClipAttrs.start,
+						in: typeof inPoint === 'number' ? inPoint : defaultModelClipAttrs.in,
+						duration: typeof duration === 'number' ? duration : defaultModelClipAttrs.duration,
+						fadeIn: typeof fadeIn === 'number' ? fadeIn : defaultModelClipAttrs.fadeIn,
+						fadeOut: typeof fadeOut === 'number' ? fadeOut : defaultModelClipAttrs.fadeOut,
+						audio: audio as typeof defaultModelClipAttrs.audio,
+						opacity: opacity as typeof defaultModelClipAttrs.opacity,
+						transform: transform as typeof defaultClipTransform,
+					})
+					return patch ?? '$noop'
+				},
+			],
+		},
 		updateOpacity: {
 			to: {
 				opacity: ['opacity'],

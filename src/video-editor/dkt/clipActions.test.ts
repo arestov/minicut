@@ -84,6 +84,24 @@ describe('clean DKT clip actions', () => {
 		})
 	})
 
+	it('reduces full clip attrs for authority replica sync', () => {
+		const clipAttrs = createRegistryWithClip().registry.entitiesById['clip:dkt-opacity'].attrs as Parameters<typeof reduceDktClipAction>[2]
+
+		expect(reduceDktClipAction('syncAttrs', {
+			name: 'Replica clip',
+			start: 2,
+			in: 1,
+			duration: 5,
+			opacity: { value: 0.6 },
+		}, clipAttrs)).toEqual(expect.objectContaining({
+			name: 'Replica clip',
+			start: 2,
+			in: 1,
+			duration: 5,
+			opacity: { value: 0.6 },
+		}))
+	})
+
 	it('does not depend on command dispatch bridge code', () => {
 		const source = readFileSync(path.resolve(process.cwd(), 'src/video-editor/dkt/clipActions.ts'), 'utf8')
 		expect(source).not.toContain('CMD')
