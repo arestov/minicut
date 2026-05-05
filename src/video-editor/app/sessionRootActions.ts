@@ -3,7 +3,7 @@ import type { EditorActionScope } from '../domain/actionScope'
 import { ROOT_ACTION_SCOPE } from '../domain/actionScope'
 import { CMD, type EditorSessionState } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
-import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import { executeActionBuildResult } from './actionTransactionExecutor'
 import { commandStep, createdIdRef } from '../domain/actionTransactions'
 import { type DktSessionActionName, reduceDktSessionAction } from '../dkt/sessionActions'
@@ -61,7 +61,7 @@ const applyDktSessionAction = (
 
 export const createSessionRootActions = (
 	env: EditorActionEnvironment,
-	options: CreateLegendActionRuntimeOptions,
+	options: CreateDktActionRuntimeOptions,
 	dispatchBuiltCommand: ScopedCommandDispatcher,
 ): Pick<VideoEditorHarnessActions,
 	| 'createProject'

@@ -53,7 +53,7 @@ export interface VideoEditorHarnessActions {
 	zoomTimeline(delta: number): void
 }
 
-export interface CreateLegendActionRuntimeOptions {
+export interface CreateDktActionRuntimeOptions {
 	playbackDuration$: Observable<number>
 	resourceChunkSize: number
 }

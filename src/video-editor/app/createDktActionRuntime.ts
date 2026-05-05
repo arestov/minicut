@@ -1,1 +1,1 @@
-export { createLegendActionRuntime as createDktActionRuntime } from './createLegendActionRuntime'
+export { createDktActionRuntime } from './createLegendActionRuntime'

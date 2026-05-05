@@ -75,7 +75,7 @@ export interface ClipTrackPositionSummary {
 	ordinal: number
 }
 
-export interface CreateLegendEditorRenderRuntimeOptions {
+export interface CreateDktEditorRenderRuntimeOptions {
 	projects$: Observable<ProjectRegistry>
 	session$: Observable<EditorSessionState>
 	resourceTransfers$: Observable<Record<string, ResourceTransferView>>
@@ -259,12 +259,12 @@ const cloneSnapshotValue = (value: unknown): unknown => {
 	return structuredClone(value)
 }
 
-export const createLegendEditorRenderRuntime = ({
+export const createDktEditorRenderRuntime = ({
 	projects$,
 	session$,
 	resourceTransfers$,
 	actions,
-}: CreateLegendEditorRenderRuntimeOptions): EditorRenderRuntime => {
+}: CreateDktEditorRenderRuntimeOptions): EditorRenderRuntime => {
 	const readOne = (scope: EditorScope, relName: string): EditorScope | null => {
 		const registry = projects$.get()
 		if (scope.type === 'root' && relName === 'activeProject') {
@@ -599,3 +599,5 @@ export const createLegendEditorRenderRuntime = ({
 
 	return runtime
 }
+
+export const createLegendEditorRenderRuntime = createDktEditorRenderRuntime

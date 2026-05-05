@@ -1,4 +1,4 @@
 export {
-	createLegendEditorRenderRuntime as createDktEditorRenderRuntime,
-	type CreateLegendEditorRenderRuntimeOptions as CreateDktEditorRenderRuntimeOptions,
+	createDktEditorRenderRuntime,
+	type CreateDktEditorRenderRuntimeOptions,
 } from './createLegendEditorRenderRuntime'

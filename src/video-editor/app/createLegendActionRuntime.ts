@@ -6,7 +6,7 @@ import { getSelectedClip } from '../domain/selectors'
 import type { ClipAttrs, EffectAttrs, TextAttrs } from '../domain/types'
 import { CMD } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
-import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import { createSessionRootActions } from './sessionRootActions'
 import { createExportActions } from './exportActions'
 import { createMediaImportActions } from './mediaImportActions'
@@ -28,9 +28,9 @@ const asEffectAttrs = (attrs: Record<string, unknown>): EffectAttrs => attrs as 
 
 const createScope = (nodeId: string, type: EditorActionScope['type']): EditorActionScope => ({ nodeId, type })
 
-export const createLegendActionRuntime = (
+export const createDktActionRuntime = (
 	env: EditorActionEnvironment,
-	options: CreateLegendActionRuntimeOptions,
+	options: CreateDktActionRuntimeOptions,
 ): VideoEditorHarnessActions => {
 	const dispatchBuiltCommand = <Name extends EditorActionName>(scope: EditorActionScope, name: Name, payload: EditorActionPayload<Name>): void => {
 		const result = buildEditorActionCommand({ scope, name, payload }, {
@@ -404,3 +404,5 @@ export const createLegendActionRuntime = (
 
 	return actions
 }
+
+export const createLegendActionRuntime = createDktActionRuntime

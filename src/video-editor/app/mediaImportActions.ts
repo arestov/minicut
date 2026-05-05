@@ -3,14 +3,14 @@ import { createDktImportFilesTaskPayload, DKT_IMPORT_FILES_FX } from '../dkt/imp
 import { getActiveProject, getAudioTrack, getProjectMetaList, getVideoTrack } from '../domain/selectors'
 import { CMD } from '../domain/types'
 import { getActionActiveProjectId, isProjectTimelineEmpty } from './actionRuntimeSelectors'
-import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 
 export const createMediaImportActions = (
 	env: EditorActionEnvironment,
-	options: CreateLegendActionRuntimeOptions,
+	options: CreateDktActionRuntimeOptions,
 	getActions: () => VideoEditorHarnessActions,
 ): Pick<VideoEditorHarnessActions, 'importSampleResource' | 'importFiles' | 'addResourceToTimeline' | 'addTextClip'> => {
 	const resourceChunkSize = options.resourceChunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE
