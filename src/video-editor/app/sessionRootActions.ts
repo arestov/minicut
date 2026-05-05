@@ -18,6 +18,18 @@ const roundToHundredths = (value: number): number => Math.round(value * 100) / 1
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value))
 
+const applySessionRootPatch = (env: EditorActionEnvironment, patch: Record<string, unknown>): void => {
+	if ('activeProjectId' in patch && typeof patch.activeProjectId === 'string') {
+		env.session.setActiveProject(patch.activeProjectId)
+	}
+	if ('selectedEntityId' in patch) {
+		env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
+	}
+	if ('cursor' in patch && typeof patch.cursor === 'number' && Number.isFinite(patch.cursor)) {
+		env.session.setCursor(Math.max(0, patch.cursor))
+	}
+}
+
 export const createSessionRootActions = (
 	env: EditorActionEnvironment,
 	options: CreateLegendActionRuntimeOptions,
@@ -53,25 +65,22 @@ export const createSessionRootActions = (
 				},
 			],
 		}, {
-			applySessionPatch: (patch) => {
-				if ('activeProjectId' in patch && typeof patch.activeProjectId === 'string') {
-					env.session.setActiveProject(patch.activeProjectId)
-				}
-				if ('selectedEntityId' in patch) {
-					env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
-				}
-				if ('cursor' in patch && typeof patch.cursor === 'number') {
-					env.session.setCursor(patch.cursor)
-				}
-			},
+			applySessionPatch: (patch) => applySessionRootPatch(env, patch),
 		})
 	},
 
 	setActiveProject(projectId: string): void {
+		const projectNode = env.stores.getRegistry().entitiesById[projectId]
+		if (!projectNode || projectNode.type !== 'project') {
+			return
+		}
+
 		env.stores.projects$.activeProjectId.set(projectId)
-		env.session.setActiveProject(projectId)
-		env.session.selectEntity(null)
-		env.session.setCursor(0)
+		applySessionRootPatch(env, {
+			activeProjectId: projectId,
+			selectedEntityId: null,
+			cursor: 0,
+		})
 	},
 
 	undo(): void {
@@ -99,7 +108,11 @@ export const createSessionRootActions = (
 	},
 
 	setCursor(value: number): void {
-		env.session.setCursor(roundToHundredths(value))
+		if (!Number.isFinite(value)) {
+			return
+		}
+
+		env.session.setCursor(Math.max(0, roundToHundredths(value)))
 	},
 
 	tickPlayback(deltaSeconds: number): void {
@@ -108,7 +121,12 @@ export const createSessionRootActions = (
 			return
 		}
 
-		env.session.setCursor((session.cursor + deltaSeconds) % options.playbackDuration$.get())
+		const duration = options.playbackDuration$.get()
+		if (!Number.isFinite(duration) || duration <= 0) {
+			return
+		}
+
+		env.session.setCursor((session.cursor + deltaSeconds) % duration)
 	},
 
 	zoomTimeline(delta: number): void {
