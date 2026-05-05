@@ -1,4 +1,3 @@
-import type { Observable } from '@legendapp/state'
 import { getTrackEnd, getTrackForClip } from '../domain/selectors'
 import type {
 	ClipAttrs,
@@ -10,6 +9,7 @@ import type {
 	TextAttrs,
 } from '../domain/types'
 import type { ResourceTransferView } from '../media/resourceTransferManager'
+import type { RegistryRenderSource } from './DktRegistryRenderStore'
 import {
 	createEntityScope,
 	ROOT_SCOPE,
@@ -17,11 +17,6 @@ import {
 	type EditorScope,
 } from './EditorScope'
 import type { EditorRenderRuntime, EditorScopedDispatch } from './EditorRenderRuntime'
-
-type ObservableNode<Value = unknown> = {
-	get(): Value
-	onChange(listener: () => void): () => void
-}
 
 type HarnessActions = {
 	addColorCorrectionToClip(clipId: string): void
@@ -76,25 +71,20 @@ export interface ClipTrackPositionSummary {
 }
 
 export interface CreateDktEditorRenderRuntimeOptions {
-	projects$: Observable<ProjectRegistry>
-	session$: Observable<EditorSessionState>
-	resourceTransfers$: Observable<Record<string, ResourceTransferView>>
+	registry: RegistryRenderSource
+	session: {
+		getSnapshot(): EditorSessionState
+		subscribe(listener: () => void): () => void
+		subscribeFields(fields: readonly string[], listener: () => void): () => void
+	}
+	resourceTransfers: {
+		getSnapshot(): Record<string, ResourceTransferView>
+		subscribe(listener: () => void): () => void
+	}
 	actions: HarnessActions
 }
 
-const EMPTY_CLEANUP = () => {}
-
-const asObservableRecord = (value: unknown): Record<string, ObservableNode> =>
-	value as Record<string, ObservableNode>
-
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
-
-const subscribeNode = (node: unknown, listener: () => void): (() => void) => {
-	const observableNode = node as Partial<ObservableNode>
-	return typeof observableNode?.onChange === 'function'
-		? observableNode.onChange(() => listener())
-		: EMPTY_CLEANUP
-}
 
 const combineCleanups = (cleanups: Array<() => void>): (() => void) => {
 	let active = true
@@ -148,16 +138,6 @@ const getManyRelScopes = (registry: ProjectRegistry, scope: EditorScope, relName
 				return childScope ? [childScope] : []
 			})
 		: []
-}
-
-const getAttrsNode = (projects$: Observable<ProjectRegistry>, scope: EditorScope): Record<string, ObservableNode> | null => {
-	const entityNode = asObservableRecord(projects$.entitiesById)[scope.nodeId]
-	return entityNode ? asObservableRecord((entityNode as unknown as { attrs: unknown }).attrs) : null
-}
-
-const getRelsNode = (projects$: Observable<ProjectRegistry>, scope: EditorScope): Record<string, ObservableNode> | null => {
-	const entityNode = asObservableRecord(projects$.entitiesById)[scope.nodeId]
-	return entityNode ? asObservableRecord((entityNode as unknown as { rels: unknown }).rels) : null
 }
 
 const getClipTimelineEditBounds = (registry: ProjectRegistry, clipId: EntityId): ClipTimelineEditBounds | null => {
@@ -260,21 +240,22 @@ const cloneSnapshotValue = (value: unknown): unknown => {
 }
 
 export const createDktEditorRenderRuntime = ({
-	projects$,
-	session$,
-	resourceTransfers$,
+	registry,
+	session,
+	resourceTransfers,
 	actions,
 }: CreateDktEditorRenderRuntimeOptions): EditorRenderRuntime => {
 	const readOne = (scope: EditorScope, relName: string): EditorScope | null => {
-		const registry = projects$.get()
+		const registrySnapshot = registry.getSnapshot()
+		const sessionSnapshot = session.getSnapshot()
 		if (scope.type === 'root' && relName === 'activeProject') {
-			return getActiveProjectScope(registry, session$.get())
+			return getActiveProjectScope(registrySnapshot, sessionSnapshot)
 		}
 		if (scope.type === 'session' && relName === 'selectedEntity') {
-			return getEntityScope(registry, session$.selectedEntityId.get())
+			return getEntityScope(registrySnapshot, sessionSnapshot.selectedEntityId)
 		}
 
-		return getRelScope(registry, scope, relName)
+		return getRelScope(registrySnapshot, scope, relName)
 	}
 
 	const runtime: EditorRenderRuntime = {
@@ -283,110 +264,86 @@ export const createDktEditorRenderRuntime = ({
 
 		readAttrs(scope, fields) {
 			const source = scope.type === 'session'
-				? session$.get() as unknown as Record<string, unknown>
+				? session.getSnapshot() as unknown as Record<string, unknown>
 					: scope.type === 'root'
 						? {
-							activeProjectId: getActiveProjectId(projects$.get(), session$.get()),
-							projectCount: Object.keys(projects$.get().projects).length,
+							activeProjectId: getActiveProjectId(registry.getSnapshot(), session.getSnapshot()),
+							projectCount: Object.keys(registry.getSnapshot().projects).length,
 						}
-						: getEntityAttrs(projects$.get(), scope) ?? {}
+						: getEntityAttrs(registry.getSnapshot(), scope) ?? {}
 
 			return Object.fromEntries(fields.map((field) => [field, cloneSnapshotValue(source[field])]))
 		},
 
 		subscribeAttrs(scope, fields, listener) {
 			if (scope.type === 'session') {
-				const sessionNode = asObservableRecord(session$)
-				return combineCleanups(fields.map((field) => subscribeNode(sessionNode[field], listener)))
+				return session.subscribeFields(fields, listener)
 			}
-			if (scope.type === 'root') {
-				return combineCleanups([
-					subscribeNode(session$.activeProjectId, listener),
-					subscribeNode(projects$.activeProjectId, listener),
-					subscribeNode(projects$.projects, listener),
-				])
-			}
-
-			const attrsNode = getAttrsNode(projects$, scope)
-			if (!attrsNode) {
-				return EMPTY_CLEANUP
-			}
-
-			return combineCleanups([
-				subscribeNode(attrsNode, listener),
-				...fields.map((field) => subscribeNode(attrsNode[field], listener)),
-			])
+			return scope.type === 'root'
+				? combineCleanups([registry.subscribe(listener), session.subscribeFields(['activeProjectId'], listener)])
+				: registry.subscribe(listener)
 		},
 
 		readOne,
 
 		subscribeOne(scope, relName, listener) {
 			if (scope.type === 'root' && relName === 'activeProject') {
-				return combineCleanups([
-					subscribeNode(session$.activeProjectId, listener),
-					subscribeNode(projects$.activeProjectId, listener),
-					subscribeNode(projects$.projects, listener),
-				])
+				return combineCleanups([registry.subscribe(listener), session.subscribeFields(['activeProjectId'], listener)])
 			}
 			if (scope.type === 'session' && relName === 'selectedEntity') {
-				return subscribeNode(session$.selectedEntityId, listener)
+				return session.subscribeFields(['selectedEntityId'], listener)
 			}
 
-			const relsNode = getRelsNode(projects$, scope)
-			return relsNode ? subscribeNode(relsNode[relName], listener) : EMPTY_CLEANUP
+			return registry.subscribe(listener)
 		},
 
 		readMany(scope, relName) {
-			const registry = projects$.get()
+			const registrySnapshot = registry.getSnapshot()
 			if (scope.type === 'root' && relName === 'projects') {
-				return Object.values(registry.projects).flatMap((project) => {
-					const projectScope = getEntityScope(registry, project.rootEntityId)
+				return Object.values(registrySnapshot.projects).flatMap((project) => {
+					const projectScope = getEntityScope(registrySnapshot, project.rootEntityId)
 					return projectScope ? [projectScope] : []
 				})
 			}
 
-			return getManyRelScopes(registry, scope, relName)
+			return getManyRelScopes(registrySnapshot, scope, relName)
 		},
 
 		subscribeMany(scope, relName, listener) {
-			if (scope.type === 'root' && relName === 'projects') {
-				return subscribeNode(projects$.projects, listener)
-			}
-
-			const relsNode = getRelsNode(projects$, scope)
-			return relsNode ? subscribeNode(relsNode[relName], listener) : EMPTY_CLEANUP
+			return registry.subscribe(listener)
 		},
 
 		readComp(scope, compName) {
-			const registry = projects$.get()
+			const registrySnapshot = registry.getSnapshot()
+			const sessionSnapshot = session.getSnapshot()
 			if (scope.type === 'project' && compName === 'projectVersion') {
-				const project = Object.values(registry.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)
+				const project = Object.values(registrySnapshot.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)
 				return project?.version ?? 0
 			}
 			if (scope.type === 'project' && compName === 'resourceCount') {
-				const resources = registry.entitiesById[scope.nodeId]?.rels.resources
+				const resources = registrySnapshot.entitiesById[scope.nodeId]?.rels.resources
 				return Array.isArray(resources) ? resources.length : 0
 			}
 			if (scope.type === 'project' && compName === 'projectId') {
-				return Object.values(registry.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)?.id ?? null
+				return Object.values(registrySnapshot.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)?.id ?? null
 			}
 			if (scope.type === 'resource' && compName === 'resourceTransfer') {
-				return resourceTransfers$.get()[scope.nodeId] ?? null
+				return resourceTransfers.getSnapshot()[scope.nodeId] ?? null
 			}
 			if (scope.type === 'track' && compName === 'trackEnd') {
-				return getTrackEnd(registry, scope.nodeId)
+				return getTrackEnd(registrySnapshot, scope.nodeId)
 			}
 			if (scope.type === 'clip' && compName === 'timelineEditBounds') {
-				return getClipTimelineEditBounds(registry, scope.nodeId)
+				return getClipTimelineEditBounds(registrySnapshot, scope.nodeId)
 			}
 			if (scope.type === 'clip' && compName === 'hasActiveColorGrade') {
-				return hasActiveColorGrade(registry, scope.nodeId)
+				return hasActiveColorGrade(registrySnapshot, scope.nodeId)
 			}
 			if (scope.type === 'clip' && compName === 'trackPosition') {
-				return getClipTrackPositionSummary(registry, scope.nodeId)
+				return getClipTrackPositionSummary(registrySnapshot, scope.nodeId)
 			}
 			if (scope.type === 'session' && compName === 'selectedClipSummary') {
-				return getSelectedClipSummary(registry, session$.get())
+				return getSelectedClipSummary(registrySnapshot, sessionSnapshot)
 			}
 
 			return null
@@ -394,9 +351,9 @@ export const createDktEditorRenderRuntime = ({
 
 		subscribeComp(_scope, _compName, listener) {
 			return combineCleanups([
-				subscribeNode(projects$, listener),
-				subscribeNode(session$, listener),
-				subscribeNode(resourceTransfers$, listener),
+				registry.subscribe(listener),
+				session.subscribe(listener),
+				resourceTransfers.subscribe(listener),
 			])
 		},
 
