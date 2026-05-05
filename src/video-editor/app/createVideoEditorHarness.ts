@@ -8,7 +8,7 @@ import type {
 	EditorSessionState,
 	ProjectRegistry,
 } from '../domain/types'
-import { CMD } from '../domain/types'
+import { createProjectCreationCommand } from '../domain/actionCommandBuilders'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportRenderer } from '../render/exportRenderer'
 import { createDktEditorRenderRuntime } from '../render-sync/createDktEditorRenderRuntime'
@@ -240,7 +240,7 @@ export const createVideoEditorHarness = (
 		}
 
 		projectBootstrapInFlight = true
-		Promise.resolve(authorityClient.dispatch({ c: CMD.PROJECT_CREATE, p: {} })).then((result) => {
+		Promise.resolve(authorityClient.dispatch(createProjectCreationCommand())).then((result) => {
 			if (isDestroyed) {
 				return
 			}

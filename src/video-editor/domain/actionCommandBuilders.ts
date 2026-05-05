@@ -14,7 +14,47 @@ import type { EditorActionName, EditorActionRequest } from './actionRequests'
 import type { EditorActionScope } from './actionScope'
 import type { ClipAttrs, Command, EffectAttrs, ProjectRegistry, TextAttrs } from './types'
 import { CMD } from './types'
-import { commandStep, type EditorActionBuildResult } from './actionTransactions'
+import { commandStep, createdIdRef, type EditorActionBuildResult } from './actionTransactions'
+
+export interface ResourceImportCommandInput {
+	projectId: string | null
+	name: string
+	kind: 'video' | 'audio' | 'image'
+	duration: number
+	mime?: string
+	url?: string
+	width?: number
+	height?: number
+	size?: number
+	source?: { kind: 'local' } | { kind: 'p2p'; ownerPeerId?: string | null }
+	dataStatus?: 'missing' | 'partial' | 'ready' | 'loading' | 'error'
+	chunkSize?: number
+}
+
+export const createProjectCreationCommand = (title?: string): Command => ({
+	c: CMD.PROJECT_CREATE,
+	p: { title },
+})
+
+export const createResourceImportCommand = (input: ResourceImportCommandInput): Command => ({
+	c: CMD.RESOURCE_IMPORT,
+	p: input,
+})
+
+export const createTimelineAddClipCommand = (input: {
+	projectId: string | null
+	resourceId: string
+	trackId: string
+	includeLinkedAudio?: boolean
+}): Command => ({
+	c: CMD.TIMELINE_ADD_CLIP,
+	p: input,
+})
+
+export const createTextAddCommand = (input: { projectId: string | null; content?: string }): Command => ({
+	c: CMD.TEXT_ADD,
+	p: input,
+})
 
 const noAction = (): EditorActionBuildResult => ({ type: 'none' })
 
@@ -28,6 +68,8 @@ const getClip = (registry: ProjectRegistry, scope: EditorActionScope) => {
 export interface EditorActionCommandBuilderContext {
 	registry: ProjectRegistry
 	activeProjectId: string | null
+	selectedEntityId?: string | null
+	selectCreatedClipOnSplit?: boolean
 }
 
 type ClipActionCommandBuilder = (payload: unknown, clipAttrs: ClipAttrs, clipId: string) => EditorActionBuildResult
@@ -50,6 +92,8 @@ const clipActionCommandBuilders: Partial<Record<EditorActionName, ClipActionComm
 			? commandStep({ c: CMD.TIMELINE_MOVE_CLIP, p: { id: clipId, delta } })
 			: noAction()
 	},
+	deleteClip: (_payload, _clipAttrs, clipId) =>
+		commandStep({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } }),
 	splitAt: (payload, _clipAttrs, clipId) => {
 		const time = (payload as { time?: unknown } | undefined)?.time
 		return typeof time === 'number'
@@ -78,6 +122,29 @@ export const buildEditorActionCommand = (
 ): EditorActionBuildResult => {
 	const { scope, name, payload } = request
 
+	if (name === 'createProject') {
+		const title = typeof payload === 'string'
+			? payload
+			: (payload as { title?: unknown } | undefined)?.title
+		return {
+			type: 'transaction',
+			steps: [
+				commandStep(
+					createProjectCreationCommand(typeof title === 'string' ? title : undefined),
+					{ holdCreatedIdAs: 'project.new', createdIdKey: 'projectId' },
+				),
+				{
+					type: 'session',
+					patch: {
+						activeProjectId: createdIdRef('project.new'),
+						selectedEntityId: null,
+						cursor: 0,
+					},
+				},
+			],
+		}
+	}
+
 	if (name === 'addTrack') {
 		const kind = (payload as { kind?: unknown } | undefined)?.kind
 		if (!context.activeProjectId || (kind !== 'video' && kind !== 'audio')) {
@@ -105,6 +172,33 @@ export const buildEditorActionCommand = (
 	}
 
 	const clipAttrs = asClipAttrs(clip.attrs)
+	if (name === 'deleteClip') {
+		const step = clipActionCommandBuilders.deleteClip?.(payload, clipAttrs, scope.nodeId) ?? noAction()
+		return context.selectedEntityId === scope.nodeId
+			? {
+					type: 'transaction',
+					steps: [
+						step,
+						{ type: 'session', patch: { selectedEntityId: null } },
+					],
+			  }
+			: step
+	}
+	if (name === 'splitAt' && context.selectCreatedClipOnSplit) {
+		const time = (payload as { time?: unknown } | undefined)?.time
+		return typeof time === 'number'
+			? {
+					type: 'transaction',
+					steps: [
+						commandStep(
+							{ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: scope.nodeId, time } },
+							{ holdCreatedIdAs: 'split.clip' },
+						),
+						{ type: 'session', patch: { selectedEntityId: createdIdRef('split.clip') } },
+					],
+			  }
+			: noAction()
+	}
 	return clipActionCommandBuilders[name]?.(payload, clipAttrs, scope.nodeId) ?? noAction()
 }
 

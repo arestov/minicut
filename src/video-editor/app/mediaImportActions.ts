@@ -1,7 +1,7 @@
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import { createProjectImportFilesEffectPayload, PROJECT_IMPORT_FILES_FX } from '../models/Project/effects'
+import { createResourceImportCommand, createTextAddCommand, createTimelineAddClipCommand } from '../domain/actionCommandBuilders'
 import { getActiveProject, getAudioTrack, getProjectMetaList, getVideoTrack } from '../domain/selectors'
-import { CMD } from '../domain/types'
 import { getActionActiveProjectId, isProjectTimelineEmpty } from './actionRuntimeSelectors'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
@@ -38,9 +38,7 @@ export const createMediaImportActions = (
 				? (getProjectMetaList(registry).find((meta) => meta.id === project.id)?.resourceCount ?? 0) + 1
 				: 1
 			const kind = sampleKindCycle[(resourceOrdinal - 1) % sampleKindCycle.length]
-			env.authority.dispatch({
-				c: CMD.RESOURCE_IMPORT,
-				p: {
+			env.authority.dispatch(createResourceImportCommand({
 					projectId,
 					name: `Sample asset ${resourceOrdinal}`,
 					kind,
@@ -49,8 +47,7 @@ export const createMediaImportActions = (
 					url: `sample://asset-${resourceOrdinal}`,
 					width: kind === 'audio' ? undefined : 1920,
 					height: kind === 'audio' ? undefined : 1080,
-				},
-			}).then((result) => {
+			})).then((result) => {
 				const resourceId = result.createdIds?.resourceId
 				if (resourceId) {
 					addResourceToTimelineIfEmpty(projectId, String(resourceId))
@@ -94,9 +91,7 @@ export const createMediaImportActions = (
 						? { kind: 'p2p' as const, ownerPeerId }
 						: { kind: 'local' as const }
 
-					env.authority.dispatch({
-						c: CMD.RESOURCE_IMPORT,
-						p: {
+					env.authority.dispatch(createResourceImportCommand({
 							projectId,
 							name: file.name,
 							kind,
@@ -109,8 +104,7 @@ export const createMediaImportActions = (
 							source,
 							dataStatus: source.kind === 'p2p' ? 'missing' : 'ready',
 							chunkSize: resourceChunkSize,
-						},
-					}).then((result) => {
+					})).then((result) => {
 						const resourceId = result.createdIds?.resourceId
 						if (resourceId) {
 							env.transfers.manager.registerLocalResource(String(resourceId), file, {
@@ -150,10 +144,12 @@ export const createMediaImportActions = (
 				throw new Error('No compatible track available')
 			}
 
-			env.authority.dispatch({
-				c: CMD.TIMELINE_ADD_CLIP,
-				p: { projectId, resourceId, trackId: track.id, includeLinkedAudio: resource?.attrs.kind === 'video' },
-			}).then((result) => {
+			env.authority.dispatch(createTimelineAddClipCommand({
+				projectId,
+				resourceId,
+				trackId: track.id,
+				includeLinkedAudio: resource?.attrs.kind === 'video',
+			})).then((result) => {
 				const clipId = String(result.createdIds?.clipId)
 				env.session.selectEntity(clipId)
 			})
@@ -161,10 +157,7 @@ export const createMediaImportActions = (
 
 		addTextClip(content = 'Title'): void {
 			const projectId = getActionActiveProjectId(env)
-			env.authority.dispatch({
-				c: CMD.TEXT_ADD,
-				p: { projectId, content },
-			}).then((result) => {
+			env.authority.dispatch(createTextAddCommand({ projectId, content })).then((result) => {
 				const clipId = result.createdIds?.clipId
 				if (clipId) {
 					env.session.selectEntity(String(clipId))

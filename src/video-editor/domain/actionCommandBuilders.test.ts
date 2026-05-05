@@ -75,4 +75,55 @@ describe('buildEditorActionCommand', () => {
 
 		expect(command).toEqual({ c: CMD.TRACK_CREATE, p: { projectId, kind: 'audio' } })
 	})
+
+	it('builds createProject as a model action transaction with session activation', () => {
+		const { registry } = createRegistryWithClip()
+		const result = buildEditorActionCommand({
+			scope: { nodeId: '$root', type: 'root' },
+			name: 'createProject',
+			payload: 'New project',
+		}, { registry, activeProjectId: null })
+
+		expect(result).toMatchObject({
+			type: 'transaction',
+			steps: [
+				{ type: 'command', command: { c: CMD.PROJECT_CREATE, p: { title: 'New project' } }, holdCreatedIdAs: 'project.new', createdIdKey: 'projectId' },
+				{ type: 'session', patch: { selectedEntityId: null, cursor: 0 } },
+			],
+		})
+	})
+
+	it('builds deleteClip as a transaction when selected clip should be cleared', () => {
+		const { registry, projectId, clipId } = createRegistryWithClip()
+		const result = buildEditorActionCommand({
+			scope: createEntityActionScope(clipId, 'clip'),
+			name: 'deleteClip',
+			payload: undefined,
+		}, { registry, activeProjectId: projectId, selectedEntityId: clipId })
+
+		expect(result).toEqual({
+			type: 'transaction',
+			steps: [
+				{ type: 'command', command: { c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } } },
+				{ type: 'session', patch: { selectedEntityId: null } },
+			],
+		})
+	})
+
+	it('builds splitAt selection transaction for public clip split actions', () => {
+		const { registry, projectId, clipId } = createRegistryWithClip()
+		const result = buildEditorActionCommand({
+			scope: createEntityActionScope(clipId, 'clip'),
+			name: 'splitAt',
+			payload: { time: 2 },
+		}, { registry, activeProjectId: projectId, selectCreatedClipOnSplit: true })
+
+		expect(result).toMatchObject({
+			type: 'transaction',
+			steps: [
+				{ type: 'command', command: { c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clipId, time: 2 } }, holdCreatedIdAs: 'split.clip' },
+				{ type: 'session' },
+			],
+		})
+	})
 })

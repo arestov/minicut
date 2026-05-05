@@ -1,11 +1,11 @@
 import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
+import type { EditorActionCommandBuilderContext } from '../domain/actionCommandBuilders'
 import type { EditorActionScope } from '../domain/actionScope'
 import { ROOT_ACTION_SCOPE } from '../domain/actionScope'
-import { CMD, type EditorSessionState } from '../domain/types'
+import type { EditorSessionState } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
-import { executeActionBuildResult } from './actionTransactionExecutor'
-import { commandStep, createdIdRef } from '../domain/actionTransactions'
+import type { ExecuteActionTransactionOptions } from './actionTransactionExecutor'
 import {
 	type DktSessionActionName,
 	reduceSessionSelectEntityAction,
@@ -19,6 +19,8 @@ export type ScopedCommandDispatcher = <Name extends EditorActionName>(
 	scope: EditorActionScope,
 	name: Name,
 	payload: EditorActionPayload<Name>,
+	contextOverrides?: Partial<EditorActionCommandBuilderContext>,
+	executionOptions?: ExecuteActionTransactionOptions,
 ) => void
 
 const applySessionRootPatch = (env: EditorActionEnvironment, patch: Record<string, unknown>): void => {
@@ -82,23 +84,7 @@ export const createSessionRootActions = (
 	| 'zoomTimeline'
 > => ({
 	createProject(title?: string): void {
-		void executeActionBuildResult(env, {
-			type: 'transaction',
-			steps: [
-				commandStep(
-					{ c: CMD.PROJECT_CREATE, p: { title } },
-					{ holdCreatedIdAs: 'project.new', createdIdKey: 'projectId' },
-				),
-				{
-					type: 'session',
-					patch: {
-						activeProjectId: createdIdRef('project.new'),
-						selectedEntityId: null,
-						cursor: 0,
-					},
-				},
-			],
-		}, {
+		dispatchBuiltCommand(ROOT_ACTION_SCOPE, 'createProject', title, {}, {
 			applySessionPatch: (patch) => applySessionRootPatch(env, patch),
 		})
 	},

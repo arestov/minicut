@@ -1,17 +1,15 @@
 import { buildEditorActionCommand } from '../domain/actionCommandBuilders'
-import { commandStep, createdIdRef } from '../domain/actionTransactions'
 import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
 import type { EditorActionScope } from '../domain/actionScope'
 import { getSelectedClip } from '../domain/selectors'
 import type { ClipAttrs, EffectAttrs, TextAttrs } from '../domain/types'
-import { CMD } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import { createSessionRootActions } from './sessionRootActions'
 import { createExportActions } from './exportActions'
 import { createMediaImportActions } from './mediaImportActions'
 import { getActionActiveProjectId } from './actionRuntimeSelectors'
-import { executeActionBuildResult } from './actionTransactionExecutor'
+import { executeActionBuildResult, type ExecuteActionTransactionOptions } from './actionTransactionExecutor'
 import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
 import type { DktTextActionName } from '../models/Text/actions'
 import type { DktEffectActionName } from '../models/Effect/actions'
@@ -33,12 +31,20 @@ export const createDktActionRuntime = (
 	env: EditorActionEnvironment,
 	options: CreateDktActionRuntimeOptions,
 ): VideoEditorHarnessActions => {
-	const dispatchBuiltCommand = <Name extends EditorActionName>(scope: EditorActionScope, name: Name, payload: EditorActionPayload<Name>): void => {
+	const dispatchModelAction = <Name extends EditorActionName>(
+		scope: EditorActionScope,
+		name: Name,
+		payload: EditorActionPayload<Name>,
+		contextOverrides: Partial<Parameters<typeof buildEditorActionCommand>[1]> = {},
+		executionOptions: ExecuteActionTransactionOptions = {},
+	): void => {
 		const result = buildEditorActionCommand({ scope, name, payload }, {
 			registry: env.stores.getRegistry(),
-			activeProjectId: getActionActiveProjectId(env),
+			activeProjectId: name === 'createProject' ? null : getActionActiveProjectId(env),
+			selectedEntityId: env.session.get().selectedEntityId,
+			...contextOverrides,
 		})
-		void executeActionBuildResult(env, result)
+		void executeActionBuildResult(env, result, { applySessionPatch, ...executionOptions })
 	}
 	const dispatchDktClipAction = (clipId: string, clipAttrs: ClipAttrs, actionName: DktClipActionName | DktTimelineClipActionName, payload: unknown): void => {
 		const dispatch = env.dkt?.dispatchClipAction
@@ -127,7 +133,7 @@ export const createDktActionRuntime = (
 			env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
 		}
 	}
-	const sessionRootActions = createSessionRootActions(env, options, dispatchBuiltCommand)
+	const sessionRootActions = createSessionRootActions(env, options, dispatchModelAction)
 	const exportActions = createExportActions(env)
 	const mediaImportActions = createMediaImportActions(env, options, () => actions)
 
@@ -153,7 +159,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'rename', { name })
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'rename', { name })
+			dispatchModelAction(createScope(clipId, 'clip'), 'rename', { name })
 		},
 
 		renameSelectedClip(name: string): void {
@@ -170,7 +176,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'color', { color })
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'color', { color })
+			dispatchModelAction(createScope(clipId, 'clip'), 'color', { color })
 		},
 
 		colorSelectedClip(color: string): void {
@@ -187,7 +193,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'updateOpacity', { opacityPercent })
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setOpacity', { opacityPercent })
+			dispatchModelAction(createScope(clipId, 'clip'), 'setOpacity', { opacityPercent })
 		},
 
 		updateSelectedClipOpacity(opacityPercent: number): void {
@@ -204,7 +210,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'setFade', { edge, delta })
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setFade', { edge, delta })
+			dispatchModelAction(createScope(clipId, 'clip'), 'setFade', { edge, delta })
 		},
 
 		updateSelectedClipFade(edge: 'in' | 'out', delta: number): void {
@@ -221,7 +227,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'setTransform', partial)
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setTransform', partial)
+			dispatchModelAction(createScope(clipId, 'clip'), 'setTransform', partial)
 		},
 
 		updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
@@ -238,7 +244,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'setAudio', partial)
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setAudio', partial)
+			dispatchModelAction(createScope(clipId, 'clip'), 'setAudio', partial)
 		},
 
 		updateSelectedClipAudio(partial: Partial<Record<'gain' | 'pan', number>>): void {
@@ -255,7 +261,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'trim', { edge, delta })
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'trim', { edge, delta })
+			dispatchModelAction(createScope(clipId, 'clip'), 'trim', { edge, delta })
 		},
 
 		trimSelectedClip(edge: 'start' | 'end', delta: number): void {
@@ -276,7 +282,7 @@ export const createDktActionRuntime = (
 			}
 
 			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'resize', { edge, delta })
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'resize', { edge, delta })
+			dispatchModelAction(createScope(clipId, 'clip'), 'resize', { edge, delta })
 		},
 
 		addEffectToClip(clipId: string, kind: 'blur' | 'sharpen' | 'tint'): void {
@@ -285,7 +291,7 @@ export const createDktActionRuntime = (
 				return
 			}
 
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'addEffect', { kind })
+			dispatchModelAction(createScope(clipId, 'clip'), 'addEffect', { kind })
 		},
 
 		addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void {
@@ -301,7 +307,7 @@ export const createDktActionRuntime = (
 				return
 			}
 
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'addColorCorrection', undefined)
+			dispatchModelAction(createScope(clipId, 'clip'), 'addColorCorrection', undefined)
 		},
 
 		addColorCorrectionToSelectedClip(): void {
@@ -317,7 +323,7 @@ export const createDktActionRuntime = (
 				dispatchDktTextAction(text.id, asTextAttrs(text.attrs), attrs)
 			}
 
-			dispatchBuiltCommand(createScope(textId, 'text'), 'updateText', attrs)
+			dispatchModelAction(createScope(textId, 'text'), 'updateText', attrs)
 		},
 
 		updateEffectAttrs(effectId, attrs): void {
@@ -326,7 +332,7 @@ export const createDktActionRuntime = (
 				dispatchDktEffectAction(effect.id, asEffectAttrs(effect.attrs), attrs)
 			}
 
-			dispatchBuiltCommand(createScope(effectId, 'effect'), 'updateEffect', attrs)
+			dispatchModelAction(createScope(effectId, 'effect'), 'updateEffect', attrs)
 		},
 
 		deleteClipById(clipId: string): void {
@@ -335,17 +341,7 @@ export const createDktActionRuntime = (
 				return
 			}
 
-			const shouldClearSelection = env.session.get().selectedEntityId === clipId
-			const result = shouldClearSelection
-				? {
-						type: 'transaction' as const,
-						steps: [
-							commandStep({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } }),
-							{ type: 'session' as const, patch: { selectedEntityId: null } },
-						],
-				  }
-				: commandStep({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } })
-			void executeActionBuildResult(env, result, { applySessionPatch })
+			dispatchModelAction(createScope(clipId, 'clip'), 'deleteClip', undefined)
 		},
 
 		deleteSelectedClip(): void {
@@ -364,16 +360,7 @@ export const createDktActionRuntime = (
 			const attrs = asClipAttrs(clip.attrs)
 			const splitTime = clamp(roundToHundredths(env.session.get().cursor), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
 			dispatchDktClipAction(clip.id, attrs, 'splitAt', { time: splitTime })
-			void executeActionBuildResult(env, {
-				type: 'transaction',
-				steps: [
-					commandStep(
-						{ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clip.id, time: splitTime } },
-						{ holdCreatedIdAs: 'split.clip' },
-					),
-					{ type: 'session', patch: { selectedEntityId: createdIdRef('split.clip') } },
-				],
-			}, { applySessionPatch })
+			dispatchModelAction(createScope(clip.id, 'clip'), 'splitAt', { time: splitTime }, { selectCreatedClipOnSplit: true })
 		},
 
 		splitClipByIdAt(clipId: string, time: number): void {
@@ -385,16 +372,7 @@ export const createDktActionRuntime = (
 			const attrs = asClipAttrs(clip.attrs)
 			const splitTime = clamp(roundToHundredths(time), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
 			dispatchDktClipAction(clip.id, attrs, 'splitAt', { time: splitTime })
-			void executeActionBuildResult(env, {
-				type: 'transaction',
-				steps: [
-					commandStep(
-						{ c: CMD.TIMELINE_SPLIT_CLIP, p: { id: clipId, time: splitTime } },
-						{ holdCreatedIdAs: 'split.clip' },
-					),
-					{ type: 'session', patch: { selectedEntityId: createdIdRef('split.clip') } },
-				],
-			}, { applySessionPatch })
+			dispatchModelAction(createScope(clipId, 'clip'), 'splitAt', { time: splitTime }, { selectCreatedClipOnSplit: true })
 		},
 
 		removeEffectFromClip(clipId: string, effectId: string): void {
@@ -403,7 +381,7 @@ export const createDktActionRuntime = (
 				return
 			}
 
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'removeEffect', { effectId })
+			dispatchModelAction(createScope(clipId, 'clip'), 'removeEffect', { effectId })
 		},
 
 		removeEffectFromSelectedClip(effectId: string): void {
@@ -432,7 +410,7 @@ export const createDktActionRuntime = (
 				dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'moveBy', { delta })
 			}
 
-			dispatchBuiltCommand(createScope(clipId, 'clip'), 'moveBy', { delta })
+			dispatchModelAction(createScope(clipId, 'clip'), 'moveBy', { delta })
 		},
 	}
 

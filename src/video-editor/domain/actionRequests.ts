@@ -24,6 +24,7 @@ export interface EditorActionPayloads {
 	selectEntity: { entityId: string | null }
 	moveBy: { delta: number }
 	resize: { edge: TimelineEdge; delta: number }
+	deleteClip: undefined
 	splitAt: { time: number }
 	splitSelectedClip: undefined
 	nudgeSelectedClip: { delta: number }
