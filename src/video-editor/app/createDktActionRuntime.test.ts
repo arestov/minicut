@@ -2,7 +2,7 @@ import { observable } from '@legendapp/state'
 import { describe, expect, it, vi } from 'vitest'
 import { createProjectGraph } from '../domain/createProject'
 import type { EditorSessionState, Entity } from '../domain/types'
-import { createLegendActionRuntime } from './createLegendActionRuntime'
+import { createDktActionRuntime } from './createDktActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 
 const createRegistryWithClip = () => {
@@ -125,10 +125,10 @@ const createEnv = () => {
 	return { env, registry, dispatchClipAction, dispatchTextAction, dispatchEffectAction, dispatch }
 }
 
-describe('createLegendActionRuntime DKT clip wiring', () => {
+describe('createDktActionRuntime DKT clip wiring', () => {
 	it('dispatches opacity edits to DKT clip action before mirroring through the current authority path', () => {
 		const { env, dispatchClipAction } = createEnv()
-		const actions = createLegendActionRuntime(env, {
+		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,
 			resourceChunkSize: 1024,
 		})
@@ -157,7 +157,7 @@ describe('createLegendActionRuntime DKT clip wiring', () => {
 
 	it('dispatches timeline-safe clip attrs to DKT before structural authority mirror', () => {
 		const { env, dispatchClipAction } = createEnv()
-		const actions = createLegendActionRuntime(env, {
+		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,
 			resourceChunkSize: 1024,
 		})
@@ -180,7 +180,7 @@ describe('createLegendActionRuntime DKT clip wiring', () => {
 
 	it('dispatches text and effect attr edits to DKT before mirroring through authority', () => {
 		const { env, dispatchTextAction, dispatchEffectAction } = createEnv()
-		const actions = createLegendActionRuntime(env, {
+		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,
 			resourceChunkSize: 1024,
 		})

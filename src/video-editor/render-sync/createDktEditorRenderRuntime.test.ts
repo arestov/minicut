@@ -13,7 +13,7 @@ const settleHarness = async () => {
 	await flushMicrotasks()
 }
 
-describe('createLegendEditorRenderRuntime', () => {
+describe('createDktEditorRenderRuntime', () => {
 	it('reads session attrs and active project/timeline relations through scopes', async () => {
 		const harness = createVideoEditorHarness(new MemoryWorkerAuthority())
 

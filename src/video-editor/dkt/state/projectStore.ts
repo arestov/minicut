@@ -14,18 +14,18 @@ export const applySnapshot = (
 
 type PatchByCode<Code extends Patch['c']> = Extract<Patch, { c: Code }>
 
-interface LegendPatchApplyContext {
+interface ObservablePatchApplyContext {
 	projects$: Observable<ProjectRegistry>
 	envelope: PatchEnvelope
 	didSetRegistry: boolean
 }
 
-type LegendPatchApplier<PatchType extends Patch = Patch> = (
-	context: LegendPatchApplyContext,
+type ObservablePatchApplier<PatchType extends Patch = Patch> = (
+	context: ObservablePatchApplyContext,
 	patch: PatchType,
 ) => void
 
-const legendPatchAppliers: Partial<Record<Patch['c'], LegendPatchApplier>> = {
+const observablePatchAppliers: Partial<Record<Patch['c'], ObservablePatchApplier>> = {
 	[PATCH.REGISTRY_SET]: (context, patch: PatchByCode<typeof PATCH.REGISTRY_SET>) => {
 		context.projects$.set(patch.p.registry)
 		context.didSetRegistry = true
@@ -84,14 +84,14 @@ export const applyPatchEnvelope = (
 	envelope: PatchEnvelope,
 ): void => {
 	batch(() => {
-		const context: LegendPatchApplyContext = {
+		const context: ObservablePatchApplyContext = {
 			projects$,
 			envelope,
 			didSetRegistry: false,
 		}
 
 		for (const patch of envelope.patches) {
-			const applier = legendPatchAppliers[patch.c]
+			const applier = observablePatchAppliers[patch.c]
 			if (!applier) {
 				throw new Error(`Unsupported patch code ${(patch as { c: number }).c}`)
 			}
