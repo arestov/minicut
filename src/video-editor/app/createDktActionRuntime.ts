@@ -12,10 +12,9 @@ import { createExportActions } from './exportActions'
 import { createMediaImportActions } from './mediaImportActions'
 import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import { executeActionBuildResult } from './actionTransactionExecutor'
-import type { DktClipActionName } from '../dkt/clipActions'
-import type { DktTimelineClipActionName } from '../dkt/timelineActions'
-import type { DktTextActionName } from '../dkt/textActions'
-import type { DktEffectActionName } from '../dkt/effectActions'
+import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
+import type { DktTextActionName } from '../models/Text/actions'
+import type { DktEffectActionName } from '../models/Effect/actions'
 
 const minimumSplitOffset = 0.01
 

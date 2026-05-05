@@ -9,7 +9,7 @@ import { Project, PROJECT_PROXY_CREATION_SHAPE } from './Project'
 import { Resource, RESOURCE_PROXY_CREATION_SHAPE } from './Resource'
 import { Text, TEXT_PROXY_CREATION_SHAPE } from './Text'
 import { Track, TRACK_PROXY_CREATION_SHAPE } from './Track'
-import { defaultTextBox, defaultTextStyle } from '../dkt/textActions'
+import { defaultTextBox, defaultTextStyle } from './Text/defaults'
 
 const appProps = mergeDcl({
 	init: (target: { start_page?: unknown }) => {

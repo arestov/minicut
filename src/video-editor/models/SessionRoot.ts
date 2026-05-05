@@ -1,6 +1,6 @@
 import { model } from 'dkt/model.js'
 import { SessionRoot as BaseSessionRoot } from 'dkt-all/libs/provoda/bwlev/SessionRoot.js'
-import { dktSessionActions } from '../dkt/sessionActions'
+import { dktSessionActions } from './SessionRoot/actions'
 
 export const EditorSessionRoot = model({
 	extends: BaseSessionRoot,

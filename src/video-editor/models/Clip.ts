@@ -7,13 +7,13 @@ import {
 	reduceClipColorAction,
 	reduceClipRenameAction,
 	reduceClipUpdateOpacityAction,
-} from '../dkt/clipActions'
+} from './Clip/actions'
 import {
 	reduceTimelineMoveByAction,
 	reduceTimelineResizeAction,
 	reduceTimelineSplitAtAction,
 	reduceTimelineTrimAction,
-} from '../dkt/timelineActions'
+} from './Clip/actions'
 
 export const Clip = model({
 	model_name: 'minicut_clip',

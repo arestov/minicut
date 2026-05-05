@@ -5,11 +5,11 @@ import {
 	reduceClipColorAction,
 	reduceClipRenameAction,
 	reduceClipUpdateOpacityAction,
-} from '../dkt/clipActions'
+} from '../models/Clip/actions'
 import {
 	reduceTimelineResizeAction,
 	reduceTimelineTrimAction,
-} from '../dkt/timelineActions'
+} from '../models/Clip/actions'
 import type { EditorActionName, EditorActionRequest } from './actionRequests'
 import type { EditorActionScope } from './actionScope'
 import type { ClipAttrs, Command, EffectAttrs, ProjectRegistry, TextAttrs } from './types'

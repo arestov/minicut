@@ -5,11 +5,10 @@ import type { ExportProgressEvent, ExportRenderer, ExportRenderRequest, ExportRe
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import type { VideoEditorHarnessPlatform } from './platform'
 import type { DispatchRuntimeTaskOptions, DispatchRuntimeTaskPayload, RuntimeTaskDescriptor } from './runtimeTaskFacade'
-import type { DktSessionActionName } from '../dkt/sessionActions'
-import type { DktClipActionName } from '../dkt/clipActions'
-import type { DktTimelineClipActionName } from '../dkt/timelineActions'
-import type { DktTextActionName } from '../dkt/textActions'
-import type { DktEffectActionName } from '../dkt/effectActions'
+import type { DktSessionActionName } from '../models/SessionRoot/actions'
+import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
+import type { DktTextActionName } from '../models/Text/actions'
+import type { DktEffectActionName } from '../models/Effect/actions'
 import type { MiniCutDktClipProxyInput, MiniCutDktEffectProxyInput, MiniCutDktTextProxyInput } from '../dkt/runtime/createMiniCutDktRuntime'
 
 export interface EditorStorePort {

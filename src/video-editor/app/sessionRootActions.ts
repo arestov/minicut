@@ -13,7 +13,7 @@ import {
 	reduceSessionSetCursorAction,
 	reduceSessionTogglePlaybackAction,
 	reduceSessionZoomTimelineAction,
-} from '../dkt/sessionActions'
+} from '../models/SessionRoot/actions'
 
 export type ScopedCommandDispatcher = <Name extends EditorActionName>(
 	scope: EditorActionScope,

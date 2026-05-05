@@ -6,18 +6,19 @@ import {
 	reduceEffectKindAction,
 	reduceEffectNameAction,
 	reduceEffectParamsAction,
-} from '../dkt/effectActions'
+} from './Effect/actions'
+import { defaultEffectAttrs } from './Effect/defaults'
 
 export const Effect = model({
 	model_name: 'minicut_effect',
 	attrs: {
 		sourceEffectId: ['input', null],
-		name: ['input', 'Effect'],
-		kind: ['input', 'blur'],
-		enabled: ['input', true],
-		amount: ['input', null],
-		params: ['input', null],
-		color: ['input', null],
+		name: ['input', defaultEffectAttrs.name],
+		kind: ['input', defaultEffectAttrs.kind],
+		enabled: ['input', defaultEffectAttrs.enabled],
+		amount: ['input', defaultEffectAttrs.amount],
+		params: ['input', defaultEffectAttrs.params],
+		color: ['input', defaultEffectAttrs.color],
 	},
 	actions: {
 		setEffectName: {
