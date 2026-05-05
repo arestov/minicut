@@ -5,7 +5,11 @@
 		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"baseUrl": ".",
 		"paths": {
-			"@video-editor/*": ["src/video-editor/*"]
+			"@video-editor/*": ["src/video-editor/*"],
+			"dkt": ["tmp/dkt/js/libs/provoda/provoda"],
+			"dkt/*": ["tmp/dkt/js/libs/provoda/provoda/*"],
+			"dkt-all": ["tmp/dkt/js"],
+			"dkt-all/*": ["tmp/dkt/js/*"]
 		},
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
