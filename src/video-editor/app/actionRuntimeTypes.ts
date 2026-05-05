@@ -15,21 +15,34 @@ export interface VideoEditorHarnessActions {
 	addTrack(kind: 'video' | 'audio'): void
 	selectEntity(entityId: string | null): void
 	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void
+	renameClipById(clipId: string, name: string): void
 	renameSelectedClip(name: string): void
+	colorClipById(clipId: string, color: string): void
 	colorSelectedClip(color: string): void
+	updateClipOpacityById(clipId: string, opacityPercent: number): void
 	updateSelectedClipOpacity(opacityPercent: number): void
+	updateClipFadeById(clipId: string, edge: 'in' | 'out', delta: number): void
 	updateSelectedClipFade(edge: 'in' | 'out', delta: number): void
+	updateClipTransformById(clipId: string, partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void
 	updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void
+	updateClipAudioById(clipId: string, partial: Partial<Record<'gain' | 'pan', number>>): void
 	updateSelectedClipAudio(partial: Partial<Record<'gain' | 'pan', number>>): void
+	trimClipById(clipId: string, edge: 'start' | 'end', delta: number): void
 	trimSelectedClip(edge: 'start' | 'end', delta: number): void
 	resizeClipById(clipId: string, edge: 'start' | 'end', delta: number): void
+	addEffectToClip(clipId: string, kind: 'blur' | 'sharpen' | 'tint'): void
 	addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void
+	addColorCorrectionToClip(clipId: string): void
 	addColorCorrectionToSelectedClip(): void
+	updateTextById(textId: string, attrs: Partial<TextAttrs>): void
 	updateEffectAttrs(effectId: string, attrs: Partial<EffectAttrs>): void
+	deleteClipById(clipId: string): void
 	deleteSelectedClip(): void
 	splitSelectedClip(): void
 	splitClipByIdAt(clipId: string, time: number): void
+	removeEffectFromClip(clipId: string, effectId: string): void
 	removeEffectFromSelectedClip(effectId: string): void
+	queueClipExportById(clipId: string, onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null>
 	queueSelectedClipExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null>
 	queueProjectExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null>
 	nudgeSelectedClip(delta: number): void

@@ -284,10 +284,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({
-				c: CMD.TEXT_UPDATE_ATTRS,
-				p: { id: textId, attrs },
-			})
+			actions.updateTextById(textId, attrs)
 		},
 
 		addTrack(kind: 'video' | 'audio'): void {
@@ -306,35 +303,56 @@ export const createLegendActionRuntime = (
 			env.session.setActiveInspectorTab(tab)
 		},
 
-		renameSelectedClip(name: string): void {
-			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+		renameClipById(clipId: string, name: string): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clip.id, attrs: { name } } })
+			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { name } } })
+		},
+
+		renameSelectedClip(name: string): void {
+			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.renameClipById(clip.id, name)
+			}
+		},
+
+		colorClipById(clipId: string, color: string): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
+			if (!clip) {
+				return
+			}
+
+			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { color } } })
 		},
 
 		colorSelectedClip(color: string): void {
 			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.colorClipById(clip.id, color)
+			}
+		},
+
+		updateClipOpacityById(clipId: string, opacityPercent: number): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clip.id, attrs: { color } } })
+			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { opacity: { value: roundToTenths(opacityPercent / 100) } } } })
 		},
 
 		updateSelectedClipOpacity(opacityPercent: number): void {
 			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
-			if (!clip) {
-				return
+			if (clip) {
+				actions.updateClipOpacityById(clip.id, opacityPercent)
 			}
-
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clip.id, attrs: { opacity: { value: roundToTenths(opacityPercent / 100) } } } })
 		},
 
-		updateSelectedClipFade(edge: 'in' | 'out', delta: number): void {
-			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+		updateClipFadeById(clipId: string, edge: 'in' | 'out', delta: number): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
@@ -343,11 +361,18 @@ export const createLegendActionRuntime = (
 			const key = edge === 'in' ? 'fadeIn' : 'fadeOut'
 			const current = Number(attrs[key] ?? 0)
 			const nextFade = clamp(roundToTenths(current + delta), 0, attrs.duration)
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clip.id, attrs: { [key]: nextFade } } })
+			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { [key]: nextFade } } })
 		},
 
-		updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
+		updateSelectedClipFade(edge: 'in' | 'out', delta: number): void {
 			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.updateClipFadeById(clip.id, edge, delta)
+			}
+		},
+
+		updateClipTransformById(clipId: string, partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
@@ -356,7 +381,7 @@ export const createLegendActionRuntime = (
 			env.authority.dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					id: clip.id,
+					id: clipId,
 					attrs: {
 						transform: {
 							x: { value: partial.x ?? attrs.transform.x.value },
@@ -369,8 +394,15 @@ export const createLegendActionRuntime = (
 			})
 		},
 
-		updateSelectedClipAudio(partial: Partial<Record<'gain' | 'pan', number>>): void {
+		updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
 			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.updateClipTransformById(clip.id, partial)
+			}
+		},
+
+		updateClipAudioById(clipId: string, partial: Partial<Record<'gain' | 'pan', number>>): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
@@ -379,7 +411,7 @@ export const createLegendActionRuntime = (
 			env.authority.dispatch({
 				c: CMD.CLIP_UPDATE_ATTRS,
 				p: {
-					id: clip.id,
+					id: clipId,
 					attrs: {
 						audio: {
 							gain: partial.gain ?? attrs.audio?.gain ?? 1,
@@ -390,13 +422,27 @@ export const createLegendActionRuntime = (
 			})
 		},
 
-		trimSelectedClip(edge: 'start' | 'end', delta: number): void {
+		updateSelectedClipAudio(partial: Partial<Record<'gain' | 'pan', number>>): void {
 			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.updateClipAudioById(clip.id, partial)
+			}
+		},
+
+		trimClipById(clipId: string, edge: 'start' | 'end', delta: number): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clip.id, attrs: getResizedClipAttrs(asClipAttrs(clip.attrs), edge, delta) } })
+			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: getResizedClipAttrs(asClipAttrs(clip.attrs), edge, delta) } })
+		},
+
+		trimSelectedClip(edge: 'start' | 'end', delta: number): void {
+			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.trimClipById(clip.id, edge, delta)
+			}
 		},
 
 		resizeClipById(clipId: string, edge: 'start' | 'end', delta: number): void {
@@ -412,37 +458,64 @@ export const createLegendActionRuntime = (
 			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: getResizedClipAttrs(asClipAttrs(clip.attrs), edge, delta) } })
 		},
 
-		addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void {
-			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+		addEffectToClip(clipId: string, kind: 'blur' | 'sharpen' | 'tint'): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.EFFECT_ADD, p: { id: clip.id, name: `${kind[0].toUpperCase()}${kind.slice(1)}`, kind, amount: kind === 'tint' ? 0.35 : 0.25 } })
+			env.authority.dispatch({ c: CMD.EFFECT_ADD, p: { id: clipId, name: `${kind[0].toUpperCase()}${kind.slice(1)}`, kind, amount: kind === 'tint' ? 0.35 : 0.25 } })
+		},
+
+		addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void {
+			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.addEffectToClip(clip.id, kind)
+			}
+		},
+
+		addColorCorrectionToClip(clipId: string): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
+			if (!clip) {
+				return
+			}
+
+			env.authority.dispatch({ c: CMD.EFFECT_ADD, p: { id: clipId, name: 'Primary Correction', kind: 'color-correction' } })
 		},
 
 		addColorCorrectionToSelectedClip(): void {
 			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
-			if (!clip) {
-				return
+			if (clip) {
+				actions.addColorCorrectionToClip(clip.id)
 			}
+		},
 
-			env.authority.dispatch({ c: CMD.EFFECT_ADD, p: { id: clip.id, name: 'Primary Correction', kind: 'color-correction' } })
+		updateTextById(textId: string, attrs: Partial<TextAttrs>): void {
+			env.authority.dispatch({ c: CMD.TEXT_UPDATE_ATTRS, p: { id: textId, attrs } })
 		},
 
 		updateEffectAttrs(effectId, attrs): void {
 			env.authority.dispatch({ c: CMD.EFFECT_UPDATE_ATTRS, p: { id: effectId, attrs } })
 		},
 
-		deleteSelectedClip(): void {
-			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+		deleteClipById(clipId: string): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clip.id } }).then(() => {
-				env.session.selectEntity(null)
+			env.authority.dispatch({ c: CMD.TIMELINE_DELETE_CLIP, p: { id: clipId } }).then(() => {
+				if (env.session.get().selectedEntityId === clipId) {
+					env.session.selectEntity(null)
+				}
 			})
+		},
+
+		deleteSelectedClip(): void {
+			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.deleteClipById(clip.id)
+			}
 		},
 
 		splitSelectedClip(): void {
@@ -471,25 +544,31 @@ export const createLegendActionRuntime = (
 			})
 		},
 
-		removeEffectFromSelectedClip(effectId: string): void {
-			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+		removeEffectFromClip(clipId: string, effectId: string): void {
+			const clip = env.stores.getRegistry().entitiesById[clipId]
 			if (!clip) {
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.EFFECT_REMOVE, p: { id: clip.id, effectId } })
+			env.authority.dispatch({ c: CMD.EFFECT_REMOVE, p: { id: clipId, effectId } })
 		},
 
-		async queueSelectedClipExport(onProgress) {
+		removeEffectFromSelectedClip(effectId: string): void {
+			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			if (clip) {
+				actions.removeEffectFromClip(clip.id, effectId)
+			}
+		},
+
+		async queueClipExportById(clipId, onProgress) {
 			const registry = env.stores.getRegistry()
-			const session = env.session.get()
-			const project = getActiveProject(registry, session)
-			const clip = getSelectedClip(registry, session)
+			const project = getActiveProject(registry, env.session.get())
+			const clip = registry.entitiesById[clipId]
 			if (!project || !clip) {
 				return null
 			}
 
-			const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'clip', clipId: clip.id }, format: 'video-webm' }, onProgress)
+			const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'clip', clipId }, format: 'video-webm' }, onProgress)
 			const downloadUrl = env.media.createObjectUrl(result.blob)
 			if (downloadUrl) {
 				env.lifecycle.registerObjectUrl(downloadUrl, 'export')
@@ -497,6 +576,11 @@ export const createLegendActionRuntime = (
 			}
 
 			return result
+		},
+
+		async queueSelectedClipExport(onProgress) {
+			const clip = getSelectedClip(env.stores.getRegistry(), env.session.get())
+			return clip ? actions.queueClipExportById(clip.id, onProgress) : null
 		},
 
 		async queueProjectExport(onProgress) {

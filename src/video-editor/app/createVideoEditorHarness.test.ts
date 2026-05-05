@@ -278,6 +278,45 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
+	it('scoped clip actions update the requested clip instead of the selected clip', async () => {
+		const authority = new MemoryWorkerAuthority()
+		const harness = createVideoEditorHarness(authority)
+
+		try {
+			await settleHarness()
+			harness.actions.createProject()
+			await settleHarness()
+			harness.actions.importSampleResource()
+			await settleHarness()
+
+			let registry = harness.projects$.get()
+			let project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			const resource = getResourceEntities(registry, project!)[0]
+			const videoTrack = getVideoTrack(registry, project!)
+			expect(videoTrack).not.toBeNull()
+			const firstClipId = getClipIdsForTrack(registry, String(videoTrack?.id))[0]
+
+			harness.actions.addResourceToTimeline(resource.id)
+			await settleHarness()
+
+			registry = harness.projects$.get()
+			project = getActiveProject(registry, harness.session$.get())
+			expect(project).not.toBeNull()
+			const selectedClipId = String(harness.session$.selectedEntityId.get())
+			expect(selectedClipId).not.toBe(firstClipId)
+
+			harness.actions.renameClipById(firstClipId, 'Scoped target')
+			await settleHarness()
+
+			expect(harness.projects$.get().entitiesById[firstClipId].attrs.name).toBe('Scoped target')
+			expect(harness.projects$.get().entitiesById[selectedClipId].attrs.name).toBe('Sample asset 1')
+			expect(harness.session$.selectedEntityId.get()).toBe(selectedClipId)
+		} finally {
+			harness.destroy()
+		}
+	})
+
 	it('uses session activeProjectId over registry activeProjectId when both are valid', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)

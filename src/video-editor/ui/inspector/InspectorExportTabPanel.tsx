@@ -24,7 +24,7 @@ export const InspectorExportTabPanel = ({ clipScope }: { clipScope: EditorScope 
 					disabled={exportStatus.state === 'rendering'}
 					onClick={() => {
 						setExportStatus({ state: 'rendering', progress: { stage: 'queued', progress: 0 } })
-						actions.queueSelectedClipExport((progress) => {
+						actions.queueClipExportById(clipScope.nodeId, (progress) => {
 							setExportStatus((current) => current.state === 'rendering' ? { state: 'rendering', progress } : current)
 						}).then((result) => {
 							setExportStatus(result ? { state: 'ready', result } : { state: 'error', message: 'Select a clip before exporting.' })

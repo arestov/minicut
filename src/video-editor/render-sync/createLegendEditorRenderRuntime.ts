@@ -5,8 +5,10 @@ import type {
 	EditorSessionState,
 	Entity,
 	EntityId,
+	EffectAttrs,
 	HistoryState,
 	ProjectRegistry,
+	TextAttrs,
 } from '../domain/types'
 import type { ResourceTransferView } from '../media/resourceTransferManager'
 import {
@@ -24,16 +26,22 @@ type ObservableNode<Value = unknown> = {
 }
 
 type HarnessActions = {
+	addColorCorrectionToClip(clipId: string): void
 	addResourceToTimeline(resourceId: string): void
+	addEffectToClip(clipId: string, kind: 'blur' | 'sharpen' | 'tint'): void
 	addTextClip(content?: string): void
 	addTrack(kind: 'video' | 'audio'): void
+	colorClipById(clipId: string, color: string): void
 	createProject(title?: string): void
+	deleteClipById(clipId: string): void
 	deleteSelectedClip(): void
 	importFiles(files: FileList | File[]): void
 	importSampleResource(): void
 	moveClipById(clipId: string, delta: number): void
 	nudgeSelectedClip(delta: number): void
 	redo(): void
+	removeEffectFromClip(clipId: string, effectId: string): void
+	renameClipById(clipId: string, name: string): void
 	resizeClipById(clipId: string, edge: 'start' | 'end', delta: number): void
 	selectEntity(entityId: string | null): void
 	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void
@@ -41,8 +49,15 @@ type HarnessActions = {
 	splitClipByIdAt(clipId: string, time: number): void
 	splitSelectedClip(): void
 	tickPlayback(deltaSeconds: number): void
+	trimClipById(clipId: string, edge: 'start' | 'end', delta: number): void
 	togglePlayback(): void
 	setCursor(value: number): void
+	updateClipAudioById(clipId: string, partial: Partial<Record<'gain' | 'pan', number>>): void
+	updateClipFadeById(clipId: string, edge: 'in' | 'out', delta: number): void
+	updateClipOpacityById(clipId: string, opacityPercent: number): void
+	updateClipTransformById(clipId: string, partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void
+	updateEffectAttrs(effectId: string, attrs: Partial<EffectAttrs>): void
+	updateTextById(textId: string, attrs: Partial<TextAttrs>): void
 	undo(): void
 	zoomTimeline(delta: number): void
 }
@@ -234,6 +249,11 @@ const getClipTrackPositionSummary = (registry: ProjectRegistry, clipId: EntityId
 const asNumberPayload = (payload: unknown, key: string): number | null => {
 	const value = (payload as Record<string, unknown> | null)?.[key]
 	return typeof value === 'number' ? value : null
+}
+
+const asStringPayload = (payload: unknown, key: string): string | null => {
+	const value = (payload as Record<string, unknown> | null)?.[key]
+	return typeof value === 'string' ? value : null
 }
 
 const cloneSnapshotValue = (value: unknown): unknown => {
@@ -488,6 +508,14 @@ export const createLegendEditorRenderRuntime = ({
 					actions.deleteSelectedClip()
 					return
 				}
+				if (scope?.type === 'text' && actionName === 'updateText') {
+					actions.updateTextById(scope.nodeId, payload as Partial<TextAttrs>)
+					return
+				}
+				if (scope?.type === 'effect' && actionName === 'updateEffect') {
+					actions.updateEffectAttrs(scope.nodeId, payload as Partial<EffectAttrs>)
+					return
+				}
 				if (scope?.type !== 'clip') {
 					return
 				}
@@ -516,6 +544,74 @@ export const createLegendEditorRenderRuntime = ({
 					if (time !== null) {
 						actions.splitClipByIdAt(scope.nodeId, time)
 					}
+					return
+				}
+				if (actionName === 'rename') {
+					const name = asStringPayload(payload, 'name')
+					if (name !== null) {
+						actions.renameClipById(scope.nodeId, name)
+					}
+					return
+				}
+				if (actionName === 'color') {
+					const color = asStringPayload(payload, 'color')
+					if (color !== null) {
+						actions.colorClipById(scope.nodeId, color)
+					}
+					return
+				}
+				if (actionName === 'setOpacity') {
+					const opacityPercent = asNumberPayload(payload, 'opacityPercent')
+					if (opacityPercent !== null) {
+						actions.updateClipOpacityById(scope.nodeId, opacityPercent)
+					}
+					return
+				}
+				if (actionName === 'setFade') {
+					const edge = (payload as Record<string, unknown> | null)?.edge
+					const delta = asNumberPayload(payload, 'delta')
+					if ((edge === 'in' || edge === 'out') && delta !== null) {
+						actions.updateClipFadeById(scope.nodeId, edge, delta)
+					}
+					return
+				}
+				if (actionName === 'setTransform') {
+					actions.updateClipTransformById(scope.nodeId, payload as Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>)
+					return
+				}
+				if (actionName === 'setAudio') {
+					actions.updateClipAudioById(scope.nodeId, payload as Partial<Record<'gain' | 'pan', number>>)
+					return
+				}
+				if (actionName === 'trim') {
+					const edge = (payload as Record<string, unknown> | null)?.edge
+					const delta = asNumberPayload(payload, 'delta')
+					if ((edge === 'start' || edge === 'end') && delta !== null) {
+						actions.trimClipById(scope.nodeId, edge, delta)
+					}
+					return
+				}
+				if (actionName === 'addEffect') {
+					const kind = (payload as Record<string, unknown> | null)?.kind
+					if (kind === 'blur' || kind === 'sharpen' || kind === 'tint') {
+						actions.addEffectToClip(scope.nodeId, kind)
+					}
+					return
+				}
+				if (actionName === 'addColorCorrection') {
+					actions.addColorCorrectionToClip(scope.nodeId)
+					return
+				}
+				if (actionName === 'removeEffect') {
+					const effectId = asStringPayload(payload, 'effectId')
+					if (effectId !== null) {
+						actions.removeEffectFromClip(scope.nodeId, effectId)
+					}
+					return
+				}
+				if (actionName === 'deleteSelectedClip') {
+					actions.deleteClipById(scope.nodeId)
+					return
 				}
 			}
 		},

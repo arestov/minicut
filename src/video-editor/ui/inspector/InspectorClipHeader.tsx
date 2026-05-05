@@ -1,5 +1,4 @@
-import { useVideoEditor } from '../../app/VideoEditorContext'
-import { ROOT_SCOPE, useEditorAttrs, useEditorComp, useEditorOne, type ClipTrackPositionSummary } from '../../render-sync'
+import { ROOT_SCOPE, useEditorActions, useEditorAttrs, useEditorComp, useEditorOne, type ClipTrackPositionSummary } from '../../render-sync'
 import type { EditorScope } from '../../render-sync/EditorScope'
 import { formatSeconds } from '../format'
 import type { ClipRenderAttrs, ResourceRenderAttrs } from './types'
@@ -30,7 +29,7 @@ const ClipHeaderPreview = ({ resource, color, name }: {
 }
 
 export const InspectorClipHeader = ({ clipScope }: { clipScope: EditorScope }) => {
-	const { actions } = useVideoEditor()
+	const dispatch = useEditorActions(clipScope)
 	const attrs = useEditorAttrs<ClipRenderAttrs>(['name', 'color', 'start', 'duration'], clipScope)
 	const resourceScope = useEditorOne('resource', clipScope)
 	const resourceAttrs = useEditorAttrs<ResourceRenderAttrs>(['kind', 'url', 'name'], resourceScope ?? ROOT_SCOPE)
@@ -51,7 +50,7 @@ export const InspectorClipHeader = ({ clipScope }: { clipScope: EditorScope }) =
 					type="text"
 					aria-label="Clip name"
 					value={name}
-					onChange={(event) => actions.renameSelectedClip(event.currentTarget.value)}
+					onChange={(event) => dispatch('rename', { name: event.currentTarget.value })}
 				/>
 				<small>Clip {selectedClipOrdinal} - {selectedTrackName} - {formatSeconds(start)} - Duration {formatSeconds(duration)}</small>
 			</div>
