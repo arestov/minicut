@@ -1,9 +1,11 @@
 import { model } from 'dkt/model.js'
+import { EFFECT_PROXY_CREATION_SHAPE } from './Effect'
 import {
 	clipSetAudioAction,
 	clipSetFadeAction,
 	clipSetTransformAction,
 	defaultClipTransform,
+	normalizeEffectCreationAttrs,
 	reduceClipColorAction,
 	reduceClipRenameAction,
 	reduceClipUpdateOpacityAction,
@@ -29,6 +31,11 @@ export const Clip = model({
 		audio: ['input', { gain: 1, pan: 0 }],
 		opacity: ['input', { value: 1 }],
 		transform: ['input', defaultClipTransform],
+	},
+	rels: {
+		effects: ['input', { many: true, linking: '<< effect << #' }],
+		text: ['input', { linking: '<< text << #' }],
+		resource: ['input', { linking: '<< resource << #' }],
 	},
 	actions: {
 		updateOpacity: {
@@ -154,6 +161,17 @@ export const Clip = model({
 					return patch ?? '$noop'
 				},
 			],
+		},
+		addEffect: {
+			to: ['<< effect << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: EFFECT_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const attrs = normalizeEffectCreationAttrs(payload)
+				return attrs ? { attrs } : '$noop'
+			},
 		},
 	},
 })

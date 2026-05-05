@@ -1,4 +1,7 @@
 import { model } from 'dkt/model.js'
+import { RESOURCE_PROXY_CREATION_SHAPE } from './Resource'
+import { TRACK_PROXY_CREATION_SHAPE } from './Track'
+import { normalizeResourceCreationAttrs, normalizeTrackCreationAttrs } from './Project/actions'
 
 export const PROJECT_PROXY_CREATION_SHAPE = {
 	attrs: ['sourceProjectId', 'title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt'],
@@ -18,6 +21,10 @@ export const Project = model({
 		createdAt: ['input', 0],
 		updatedAt: ['input', 0],
 		isLandscape: ['comp', ['width', 'height'], (width: unknown, height: unknown) => asNumber(width, 0) >= asNumber(height, 0)],
+	},
+	rels: {
+		tracks: ['input', { many: true, linking: '<< track << #' }],
+		resources: ['input', { many: true, linking: '<< resource << #' }],
 	},
 	actions: {
 		renameProject: {
@@ -57,6 +64,28 @@ export const Project = model({
 					? payload
 					: (payload as { duration?: unknown } | null)?.duration
 				return typeof duration === 'number' ? { duration: Math.max(0, duration) } : '$noop'
+			},
+		},
+		addTrack: {
+			to: ['<< track << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: TRACK_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const attrs = normalizeTrackCreationAttrs(payload)
+				return attrs ? { attrs } : '$noop'
+			},
+		},
+		importResource: {
+			to: ['<< resource << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: RESOURCE_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const attrs = normalizeResourceCreationAttrs(payload)
+				return attrs ? { attrs } : '$noop'
 			},
 		},
 	},

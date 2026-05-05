@@ -1,4 +1,7 @@
 import { model } from 'dkt/model.js'
+import { CLIP_PROXY_CREATION_SHAPE } from './Clip'
+import { TEXT_PROXY_CREATION_SHAPE } from './Text'
+import { normalizeClipCreationAttrs, normalizeTextCreationAttrs } from './Track/actions'
 
 export const TRACK_PROXY_CREATION_SHAPE = {
 	attrs: ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height'],
@@ -13,6 +16,10 @@ export const Track = model({
 		muted: ['input', false],
 		locked: ['input', false],
 		height: ['input', 84],
+	},
+	rels: {
+		clips: ['input', { many: true, linking: '<< clip << #' }],
+		text: ['input', { many: true, linking: '<< text << #' }],
 	},
 	actions: {
 		renameTrack: {
@@ -46,6 +53,39 @@ export const Track = model({
 					? payload
 					: (payload as { locked?: unknown } | null)?.locked
 				return typeof locked === 'boolean' ? { locked } : '$noop'
+			},
+		},
+		addClip: {
+			to: ['<< clip << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: CLIP_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const attrs = normalizeClipCreationAttrs(payload)
+				return attrs ? { attrs } : '$noop'
+			},
+		},
+		addTextClip: {
+			to: {
+				clip: ['<< clip << #', {
+					method: 'at_end',
+					can_create: true,
+					creation_shape: CLIP_PROXY_CREATION_SHAPE,
+				}],
+				text: ['<< text << #', {
+					method: 'at_end',
+					can_create: true,
+					creation_shape: TEXT_PROXY_CREATION_SHAPE,
+				}],
+			},
+			fn: (payload: unknown) => {
+				const value = payload as { text?: unknown } | null
+				const clipAttrs = normalizeClipCreationAttrs(payload)
+				const textAttrs = normalizeTextCreationAttrs(value?.text)
+				return clipAttrs && textAttrs
+					? { clip: { attrs: clipAttrs }, text: { attrs: textAttrs } }
+					: '$noop'
 			},
 		},
 	},

@@ -174,6 +174,61 @@ describe('createMiniCutDktRuntime', () => {
 		expect(resource?.attrs.sourceResourceId).toBe('resource:asset')
 	})
 
+	it('creates hierarchy children through model-owned DKT actions', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const projectProxy = {
+			sourceProjectId: 'project:hierarchy',
+			title: 'Hierarchy',
+		}
+		const trackProxy = {
+			sourceTrackId: 'track:hierarchy-video',
+			kind: 'video' as const,
+			name: 'Video Track',
+		}
+		const clipProxy = {
+			sourceClipId: 'clip:hierarchy-text',
+			name: 'Text Clip',
+			start: 0,
+			in: 0,
+			duration: 3,
+		}
+
+		await runtime.dispatchProjectAction(projectProxy, 'addTrack', trackProxy)
+		await runtime.dispatchProjectAction(projectProxy, 'importResource', {
+			sourceResourceId: 'resource:hierarchy-video',
+			name: 'Hierarchy Video',
+			kind: 'video',
+			status: 'ready',
+		})
+		await runtime.dispatchTrackAction(trackProxy, 'addClip', clipProxy)
+		await runtime.dispatchTrackAction(trackProxy, 'addTextClip', {
+			...clipProxy,
+			sourceClipId: 'clip:hierarchy-title',
+			text: {
+				sourceTextId: 'text:hierarchy-title',
+				content: 'Title',
+			},
+		})
+		await runtime.dispatchClipAction(clipProxy, 'addEffect', {
+			sourceEffectId: 'effect:hierarchy-blur',
+			name: 'Blur',
+			kind: 'blur',
+			amount: 0.2,
+		})
+
+		const track = await waitForModelAttr(runtime, 'minicut_track', 'sourceTrackId', 'track:hierarchy-video')
+		const resource = await waitForModelAttr(runtime, 'minicut_resource', 'sourceResourceId', 'resource:hierarchy-video')
+		const clip = await waitForModelAttr(runtime, 'minicut_clip', 'sourceClipId', 'clip:hierarchy-text')
+		const text = await waitForModelAttr(runtime, 'minicut_text', 'sourceTextId', 'text:hierarchy-title')
+		const effect = await waitForModelAttr(runtime, 'minicut_effect', 'sourceEffectId', 'effect:hierarchy-blur')
+
+		expect(track?.attrs.name).toBe('Video Track')
+		expect(resource?.attrs.status).toBe('ready')
+		expect(clip?.attrs.duration).toBe(3)
+		expect(text?.attrs.content).toBe('Title')
+		expect(effect?.attrs.amount).toBe(0.2)
+	})
+
 	it('owns command dispatch state as a DKT root registry snapshot', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
 		const result = await runtime.dispatchCommand({ c: CMD.PROJECT_CREATE, p: { title: 'DKT Project' } })
