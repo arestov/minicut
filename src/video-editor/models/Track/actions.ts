@@ -44,3 +44,43 @@ export const normalizeTextCreationAttrs = (payload: unknown) => {
 		box: value.box && typeof value.box === 'object' ? value.box : defaultTextBox,
 	}
 }
+
+const getNodeId = (model: unknown): string | null => (
+	model && typeof model === 'object' && typeof (model as { _node_id?: unknown })._node_id === 'string'
+		? (model as { _node_id: string })._node_id
+		: null
+)
+
+export const removeClipRef = (clips: unknown[], clipId: unknown): unknown[] | null => {
+	if (typeof clipId !== 'string' || !clips.some((clip) => getNodeId(clip) === clipId)) {
+		return null
+	}
+	return clips.filter((clip) => getNodeId(clip) !== clipId)
+}
+
+export const normalizeRightSplitClipAttrs = (payload: unknown) => {
+	const value = payload as TrackAddClipPayload & { splitTime?: unknown; sourceClip?: { start?: unknown; in?: unknown; duration?: unknown } } | null
+	const source = value?.sourceClip
+	const splitTime = typeof value?.splitTime === 'number'
+		? value.splitTime
+		: typeof (payload as { time?: unknown } | null)?.time === 'number'
+			? (payload as { time: number }).time
+			: null
+	const sourceStart = typeof source?.start === 'number' ? source.start : typeof value?.start === 'number' ? value.start : null
+	const sourceIn = typeof source?.in === 'number' ? source.in : typeof value?.in === 'number' ? value.in : 0
+	const sourceDuration = typeof source?.duration === 'number' ? source.duration : typeof value?.duration === 'number' ? value.duration : null
+	if (splitTime === null || sourceStart === null || sourceDuration === null) {
+		return null
+	}
+	const sourceEnd = sourceStart + sourceDuration
+	if (splitTime <= sourceStart || splitTime >= sourceEnd) {
+		return null
+	}
+	const attrs = normalizeClipCreationAttrs({
+		...value,
+		start: splitTime,
+		in: sourceIn + (splitTime - sourceStart),
+		duration: sourceEnd - splitTime,
+	})
+	return attrs
+}

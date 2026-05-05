@@ -236,3 +236,29 @@ export const normalizeEffectCreationAttrs = (payload: unknown) => {
 		color: value?.color && typeof value.color === 'object' ? value.color : null,
 	}
 }
+
+const getNodeId = (model: unknown): string | null => (
+	model && typeof model === 'object' && typeof (model as { _node_id?: unknown })._node_id === 'string'
+		? (model as { _node_id: string })._node_id
+		: null
+)
+
+export const reorderEffectRefs = (effects: unknown[], effectId: unknown, toIndex: unknown): unknown[] | null => {
+	if (typeof effectId !== 'string' || typeof toIndex !== 'number') {
+		return null
+	}
+	const currentIndex = effects.findIndex((effect) => getNodeId(effect) === effectId)
+	if (currentIndex < 0) {
+		return null
+	}
+	const withoutEffect = effects.filter((effect) => getNodeId(effect) !== effectId)
+	const nextIndex = Math.max(0, Math.min(toIndex, withoutEffect.length))
+	return [...withoutEffect.slice(0, nextIndex), effects[currentIndex], ...withoutEffect.slice(nextIndex)]
+}
+
+export const removeEffectRef = (effects: unknown[], effectId: unknown): unknown[] | null => {
+	if (typeof effectId !== 'string' || !effects.some((effect) => getNodeId(effect) === effectId)) {
+		return null
+	}
+	return effects.filter((effect) => getNodeId(effect) !== effectId)
+}

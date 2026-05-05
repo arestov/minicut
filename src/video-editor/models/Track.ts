@@ -1,7 +1,7 @@
 import { model } from 'dkt/model.js'
 import { CLIP_PROXY_CREATION_SHAPE } from './Clip'
 import { TEXT_PROXY_CREATION_SHAPE } from './Text'
-import { normalizeClipCreationAttrs, normalizeTextCreationAttrs } from './Track/actions'
+import { normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef } from './Track/actions'
 
 export const TRACK_PROXY_CREATION_SHAPE = {
 	attrs: ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height'],
@@ -87,6 +87,30 @@ export const Track = model({
 					? { clip: { attrs: clipAttrs }, text: { attrs: textAttrs } }
 					: '$noop'
 			},
+		},
+		splitClipAt: {
+			to: ['<< clip << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: CLIP_PROXY_CREATION_SHAPE,
+			}],
+			fn: (payload: unknown) => {
+				const attrs = normalizeRightSplitClipAttrs(payload)
+				return attrs ? { attrs } : '$noop'
+			},
+		},
+		removeClip: {
+			to: {
+				clips: ['<< clips', { method: 'set_many' }],
+			},
+			fn: [
+				['<< @all:clips'] as const,
+				(payload: unknown, clips: unknown[]) => {
+					const clipId = (payload as { clipId?: unknown } | null)?.clipId ?? payload
+					const nextClips = removeClipRef(Array.isArray(clips) ? clips : [], clipId)
+					return nextClips ? { clips: nextClips } : '$noop'
+				},
+			],
 		},
 	},
 })

@@ -6,6 +6,8 @@ import {
 	clipSetTransformAction,
 	defaultClipTransform,
 	normalizeEffectCreationAttrs,
+	removeEffectRef,
+	reorderEffectRefs,
 	reduceClipColorAction,
 	reduceClipRenameAction,
 	reduceClipUpdateOpacityAction,
@@ -172,6 +174,32 @@ export const Clip = model({
 				const attrs = normalizeEffectCreationAttrs(payload)
 				return attrs ? { attrs } : '$noop'
 			},
+		},
+		removeEffect: {
+			to: {
+				effects: ['<< effects', { method: 'set_many' }],
+			},
+			fn: [
+				['<< @all:effects'] as const,
+				(payload: unknown, effects: unknown[]) => {
+					const effectId = (payload as { effectId?: unknown } | null)?.effectId ?? payload
+					const nextEffects = removeEffectRef(Array.isArray(effects) ? effects : [], effectId)
+					return nextEffects ? { effects: nextEffects } : '$noop'
+				},
+			],
+		},
+		reorderEffect: {
+			to: {
+				effects: ['<< effects', { method: 'set_many' }],
+			},
+			fn: [
+				['<< @all:effects'] as const,
+				(payload: unknown, effects: unknown[]) => {
+					const value = payload as { effectId?: unknown; toIndex?: unknown } | null
+					const nextEffects = reorderEffectRefs(Array.isArray(effects) ? effects : [], value?.effectId, value?.toIndex)
+					return nextEffects ? { effects: nextEffects } : '$noop'
+				},
+			],
 		},
 	},
 })
