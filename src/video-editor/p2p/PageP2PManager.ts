@@ -1,11 +1,12 @@
 import { MSG, type WireMessage } from '../domain/types'
+import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
 import type { BridgeSignalingFactory } from './BridgeSignaling'
 import { createDoSignalingFactory } from './BridgeSignaling'
 import type { SignalMessage } from './types'
 
 export interface P2PTransportLike {
-	send(message: WireMessage): void
-	listen(listener: (message: WireMessage) => void): () => void
+	send(message: WireMessage | MiniCutDktTransportMessage): void
+	listen(listener: (message: WireMessage | MiniCutDktTransportMessage) => void): () => void
 	destroy(): void
 }
 
@@ -24,6 +25,7 @@ export interface PageP2PManagerConfig {
 	dataChannelLabel?: string
 	resourceDataChannelLabel?: string
 	sharedWorkerName?: string
+	workerProtocol?: 'legacy' | 'dkt'
 	connectionTimeoutMs?: number
 }
 
@@ -645,7 +647,9 @@ export const createPageP2PManager = (
 
 		entry.proxyPort.onmessage = null
 		try {
-			entry.proxyPort.postMessage({ m: MSG.DISCONNECT })
+			entry.proxyPort.postMessage(config.workerProtocol === 'dkt'
+				? { type: DKT_MSG.CLOSE_SESSION }
+				: { m: MSG.DISCONNECT })
 		} catch {
 			// noop
 		}
@@ -674,6 +678,11 @@ export const createPageP2PManager = (
 					type: 'module',
 					name: sharedWorkerName,
 				})
+				: config.workerProtocol === 'dkt'
+					? new SharedWorker(new URL('../worker/dktSharedWorker.ts', import.meta.url), {
+						type: 'module',
+						name: sharedWorkerName,
+					})
 				: new SharedWorker(new URL('../worker/sharedWorker.ts', import.meta.url), {
 					type: 'module',
 					name: sharedWorkerName,

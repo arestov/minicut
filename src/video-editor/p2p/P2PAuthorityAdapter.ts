@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
-import { MSG, PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
+import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
 import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
 import { createEmptyRegistry } from '../domain/createProject'
 import { createFallbackAuthorityClient } from '../worker/fallbackAuthorityClient'
@@ -70,33 +71,55 @@ const createTransportAuthorityClient = (
 			return
 		}
 
-		if (message.m === MSG.PATCHES) {
-			for (const listener of listeners) {
-				listener(message.p as PatchEnvelope)
-			}
+		if (!('type' in message)) {
 			return
 		}
 
-		if (!message.requestId) {
+		switch (message.type) {
+			case DKT_MSG.PATCHES:
+				for (const listener of listeners) {
+					listener(message.envelope as PatchEnvelope)
+				}
+				return
+			case DKT_MSG.SNAPSHOT:
+				resolvePending(message.requestId, message.snapshot)
+				return
+			case DKT_MSG.DISPATCH_RESULT:
+				resolvePending(message.requestId, message.result)
+				return
+			case DKT_MSG.RUNTIME_ERROR:
+				rejectPending(message.requestId, new Error(String(message.message ?? 'Unknown P2P DKT authority error')))
+				return
+		}
+	})
+
+	const resolvePending = (requestId: string | undefined, value: unknown): void => {
+		if (!requestId) {
 			return
 		}
-
-		const request = pending.get(message.requestId)
+		const request = pending.get(requestId)
 		if (!request) {
 			return
 		}
-
-		pending.delete(message.requestId)
+		pending.delete(requestId)
 		clearTimeout(request.timeoutId)
-		if (message.m === MSG.ERROR) {
-			request.reject(new Error(String(message.p ?? 'Unknown P2P authority error')))
+		request.resolve(value)
+	}
+
+	const rejectPending = (requestId: string | undefined, error: Error): void => {
+		if (!requestId) {
 			return
 		}
+		const request = pending.get(requestId)
+		if (!request) {
+			return
+		}
+		pending.delete(requestId)
+		clearTimeout(request.timeoutId)
+		request.reject(error)
+	}
 
-		request.resolve(message.p)
-	})
-
-	const request = <T>(message: WireMessage): Promise<T> => new Promise((resolve, reject) => {
+	const request = <T>(message: MiniCutDktTransportMessage): Promise<T> => new Promise((resolve, reject) => {
 		if (destroyed) {
 			reject(new Error('P2P transport authority is destroyed'))
 			return
@@ -105,7 +128,7 @@ const createTransportAuthorityClient = (
 		const requestId = nanoid(8)
 		const timeoutId = setTimeout(() => {
 			pending.delete(requestId)
-			reject(new Error(`P2P authority request timed out: ${message.m}`))
+			reject(new Error(`P2P DKT authority request timed out: ${message.type}`))
 		}, requestTimeoutMs)
 
 		pending.set(requestId, {
@@ -118,7 +141,7 @@ const createTransportAuthorityClient = (
 
 	return {
 		getSnapshot() {
-			return request<ProjectRegistry>({ m: MSG.SNAPSHOT_REQUEST })
+			return request<ProjectRegistry>({ type: DKT_MSG.GET_SNAPSHOT })
 		},
 
 		subscribe(listener) {
@@ -129,7 +152,11 @@ const createTransportAuthorityClient = (
 		},
 
 		dispatch(command) {
-			return request<DispatchResult>({ m: MSG.COMMAND, p: command })
+			return request<DispatchResult>({ type: DKT_MSG.DISPATCH_COMMAND, command })
+		},
+
+		replaceSnapshot(snapshot) {
+			return request<ProjectRegistry>({ type: DKT_MSG.REPLACE_SNAPSHOT, snapshot: structuredClone(snapshot) }).then(() => undefined)
 		},
 
 		destroy() {
@@ -342,6 +369,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			rtcConfig: config.rtcConfig,
 			createSignaling: config.createSignaling,
 			sharedWorkerName: roomScopedWorkerName,
+			workerProtocol: 'dkt',
 			connectionTimeoutMs: config.connectionTimeoutMs,
 		},
 		{

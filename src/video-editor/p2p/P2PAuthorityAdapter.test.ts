@@ -2,7 +2,8 @@ import { describe, expect, test, vi } from 'vitest'
 import { buildDispatchResult } from '../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
-import { CMD, MSG, PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { CMD, PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
+import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
 import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
 import { createP2PAuthorityAdapter } from './P2PAuthorityAdapter'
 import type { P2PTransportLike, PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from './PageP2PManager'
@@ -21,12 +22,12 @@ const createProjectSnapshot = (title: string): ProjectRegistry => {
 }
 
 const resolveLastTransportSnapshotRequest = (transport: ReturnType<typeof createTransportHarness>, snapshot = createEmptyRegistry()): void => {
-	const request = [...transport.sent].reverse().find((message) => message.m === MSG.SNAPSHOT_REQUEST)
+	const request = [...transport.sent].reverse().find((message) => message.type === DKT_MSG.GET_SNAPSHOT)
 	expect(request).toBeDefined()
 	transport.emit({
-		m: MSG.SNAPSHOT,
+		type: DKT_MSG.SNAPSHOT,
 		requestId: String(request?.requestId),
-		p: snapshot,
+		snapshot,
 	})
 }
 
@@ -68,8 +69,8 @@ class FakeRestorableAuthorityClient extends FakeAuthorityClient {
 }
 
 const createTransportHarness = () => {
-	const listeners = new Set<(message: WireMessage) => void>()
-	const sent: WireMessage[] = []
+	const listeners = new Set<(message: MiniCutDktTransportMessage) => void>()
+	const sent: MiniCutDktTransportMessage[] = []
 	const destroy = vi.fn(() => {
 		listeners.clear()
 	})
@@ -91,7 +92,7 @@ const createTransportHarness = () => {
 		transport,
 		sent,
 		destroy,
-		emit(message: WireMessage) {
+		emit(message: MiniCutDktTransportMessage) {
 			for (const listener of listeners) {
 				listener(message)
 			}
@@ -182,15 +183,15 @@ describe('P2PAuthorityAdapter', () => {
 		await Promise.resolve()
 
 		expect(transport.sent).toHaveLength(2)
-		expect(transport.sent[1].m).toBe(MSG.SNAPSHOT_REQUEST)
+		expect(transport.sent[1].type).toBe(DKT_MSG.GET_SNAPSHOT)
 		expect(transport.sent[1].requestId).toBeTypeOf('string')
 
 		const requestId = String(transport.sent[1].requestId)
 		const snapshot = createEmptyRegistry()
 		transport.emit({
-			m: MSG.SNAPSHOT,
+			type: DKT_MSG.SNAPSHOT,
 			requestId,
-			p: snapshot,
+			snapshot,
 		})
 
 		await expect(snapshotPromise).resolves.toEqual(snapshot)
@@ -219,7 +220,7 @@ describe('P2PAuthorityAdapter', () => {
 		await Promise.resolve()
 		const dispatchPromise = adapter.dispatch({ c: CMD.PROJECT_CREATE, p: {} })
 		expect(transport.sent).toHaveLength(2)
-		expect(transport.sent[1].m).toBe(MSG.COMMAND)
+		expect(transport.sent[1].type).toBe(DKT_MSG.DISPATCH_COMMAND)
 
 		manager.emitSessionLost('server-gone')
 		await expect(dispatchPromise).rejects.toThrow(/P2P (session lost|authority request cancelled)/)
@@ -248,9 +249,9 @@ describe('P2PAuthorityAdapter', () => {
 		const remoteSnapshot = createEmptyRegistry()
 		const requestId = String(transport.sent[0].requestId)
 		transport.emit({
-			m: MSG.SNAPSHOT,
+			type: DKT_MSG.SNAPSHOT,
 			requestId,
-			p: remoteSnapshot,
+			snapshot: remoteSnapshot,
 		})
 		await Promise.resolve()
 
@@ -288,9 +289,9 @@ describe('P2PAuthorityAdapter', () => {
 		const remoteSnapshot = createEmptyRegistry()
 		const requestId = String(transport.sent[0].requestId)
 		transport.emit({
-			m: MSG.SNAPSHOT,
+			type: DKT_MSG.SNAPSHOT,
 			requestId,
-			p: remoteSnapshot,
+			snapshot: remoteSnapshot,
 		})
 		await Promise.resolve()
 
@@ -320,9 +321,9 @@ describe('P2PAuthorityAdapter', () => {
 		manager.emitBecomeClient(transport.transport)
 		const remoteSnapshot = createProjectSnapshot('Remote authority state')
 		transport.emit({
-			m: MSG.SNAPSHOT,
+			type: DKT_MSG.SNAPSHOT,
 			requestId: String(transport.sent[0].requestId),
-			p: remoteSnapshot,
+			snapshot: remoteSnapshot,
 		})
 		await Promise.resolve()
 
