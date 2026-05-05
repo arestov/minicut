@@ -3,7 +3,7 @@ import { commandStep, createdIdRef } from '../domain/actionTransactions'
 import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
 import type { EditorActionScope } from '../domain/actionScope'
 import { getSelectedClip } from '../domain/selectors'
-import type { ClipAttrs, TextAttrs } from '../domain/types'
+import type { ClipAttrs, EffectAttrs, TextAttrs } from '../domain/types'
 import { CMD } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
@@ -22,6 +22,8 @@ const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value))
 
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
+const asTextAttrs = (attrs: Record<string, unknown>): TextAttrs => attrs as unknown as TextAttrs
+const asEffectAttrs = (attrs: Record<string, unknown>): EffectAttrs => attrs as unknown as EffectAttrs
 
 const createScope = (nodeId: string, type: EditorActionScope['type']): EditorActionScope => ({ nodeId, type })
 
@@ -53,6 +55,35 @@ export const createLegendActionRuntime = (
 			opacity: clipAttrs.opacity,
 			transform: clipAttrs.transform,
 		}, actionName, payload)).catch(() => undefined)
+	}
+	const dispatchDktTextAction = (textId: string, textAttrs: TextAttrs, attrs: Partial<TextAttrs>): void => {
+		const dispatch = env.dkt?.dispatchTextAction
+		if (!dispatch) {
+			return
+		}
+
+		void Promise.resolve(dispatch({
+			sourceTextId: textId,
+			content: textAttrs.content,
+			style: textAttrs.style,
+			box: textAttrs.box,
+		}, 'updateText', attrs)).catch(() => undefined)
+	}
+	const dispatchDktEffectAction = (effectId: string, effectAttrs: EffectAttrs, attrs: Partial<EffectAttrs>): void => {
+		const dispatch = env.dkt?.dispatchEffectAction
+		if (!dispatch) {
+			return
+		}
+
+		void Promise.resolve(dispatch({
+			sourceEffectId: effectId,
+			name: effectAttrs.name,
+			kind: effectAttrs.kind,
+			enabled: effectAttrs.enabled,
+			amount: effectAttrs.amount,
+			params: effectAttrs.params as Record<string, unknown> | undefined,
+			color: effectAttrs.color as Record<string, unknown> | undefined,
+		}, 'updateAttrs', attrs)).catch(() => undefined)
 	}
 	const applySessionPatch = (patch: Record<string, unknown>): void => {
 		if ('selectedEntityId' in patch) {
@@ -242,10 +273,20 @@ export const createLegendActionRuntime = (
 		},
 
 		updateTextById(textId: string, attrs: Partial<TextAttrs>): void {
+			const text = env.stores.getRegistry().entitiesById[textId]
+			if (text?.type === 'text') {
+				dispatchDktTextAction(text.id, asTextAttrs(text.attrs), attrs)
+			}
+
 			dispatchBuiltCommand(createScope(textId, 'text'), 'updateText', attrs)
 		},
 
 		updateEffectAttrs(effectId, attrs): void {
+			const effect = env.stores.getRegistry().entitiesById[effectId]
+			if (effect?.type === 'effect') {
+				dispatchDktEffectAction(effect.id, asEffectAttrs(effect.attrs), attrs)
+			}
+
 			dispatchBuiltCommand(createScope(effectId, 'effect'), 'updateEffect', attrs)
 		},
 

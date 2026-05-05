@@ -40,6 +40,23 @@ export type MiniCutDktClipProxyInput = {
 	}
 }
 
+export type MiniCutDktTextProxyInput = {
+	sourceTextId: string
+	content?: string
+	style?: Record<string, unknown>
+	box?: Record<string, unknown>
+}
+
+export type MiniCutDktEffectProxyInput = {
+	sourceEffectId: string
+	name?: string
+	kind?: string
+	enabled?: boolean
+	amount?: number
+	params?: Record<string, unknown>
+	color?: Record<string, unknown>
+}
+
 export type MiniCutDktSerializedModel = {
 	nodeId: string | null
 	modelName: string | null
@@ -87,6 +104,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
 	let sessionRootPromise: Promise<RuntimeModelLike> | null = null
 	const clipProxyNodeIds = new Map<string, string>()
+	const textProxyNodeIds = new Map<string, string>()
+	const effectProxyNodeIds = new Map<string, string>()
 	const enabled = options.enabled === true
 
 	const bootstrapApp = async () => {
@@ -178,18 +197,34 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	}
 
 	const findClipProxyNodeId = async (sourceClipId: string): Promise<string | null> => {
+		return findProxyNodeId('minicut_clip', 'sourceClipId', sourceClipId)
+	}
+
+	const findProxyNodeId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
 		const state = await debugDumpAppState()
 		const models = [
 			...(state?.runtimeModels ?? []),
 			...(state?.lined ?? []),
 		]
 		const match = models.find((model) => (
-			model.modelName === 'minicut_clip'
-			&& model.attrs.sourceClipId === sourceClipId
+			model.modelName === modelName
+			&& model.attrs[sourceAttrName] === sourceId
 			&& typeof model.nodeId === 'string'
 		))
 
 		return match?.nodeId ?? null
+	}
+
+	const waitForProxyNodeId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
+		for (let attempt = 0; attempt < 20; attempt++) {
+			const nodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
+			if (nodeId) {
+				return nodeId
+			}
+			await new Promise((resolve) => setTimeout(resolve, 0))
+		}
+
+		return findProxyNodeId(modelName, sourceAttrName, sourceId)
 	}
 
 	const waitForClipProxyNodeId = async (sourceClipId: string): Promise<string | null> => {
@@ -240,6 +275,78 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
+	const ensureTextProxy = async (text: MiniCutDktTextProxyInput): Promise<string> => {
+		const app = await bootstrapApp()
+		if (!app) {
+			throw new Error('MiniCut DKT runtime is disabled')
+		}
+
+		const cachedNodeId = textProxyNodeIds.get(text.sourceTextId)
+		if (cachedNodeId && getModelById(app.appModel, cachedNodeId)) {
+			return cachedNodeId
+		}
+
+		const existingNodeId = await findProxyNodeId('minicut_text', 'sourceTextId', text.sourceTextId)
+		if (existingNodeId) {
+			textProxyNodeIds.set(text.sourceTextId, existingNodeId)
+			return existingNodeId
+		}
+
+		await app.appModel.dispatch('createTextProxy', text)
+		const createdNodeId = await waitForProxyNodeId('minicut_text', 'sourceTextId', text.sourceTextId)
+		if (!createdNodeId) {
+			throw new Error(`MiniCut DKT text proxy was not created for ${text.sourceTextId}`)
+		}
+
+		textProxyNodeIds.set(text.sourceTextId, createdNodeId)
+		return createdNodeId
+	}
+
+	const dispatchTextAction = async (
+		text: MiniCutDktTextProxyInput,
+		actionName: string,
+		payload?: unknown,
+	): Promise<void> => {
+		const nodeId = await ensureTextProxy(text)
+		await dispatchAction(actionName, payload, nodeId)
+	}
+
+	const ensureEffectProxy = async (effect: MiniCutDktEffectProxyInput): Promise<string> => {
+		const app = await bootstrapApp()
+		if (!app) {
+			throw new Error('MiniCut DKT runtime is disabled')
+		}
+
+		const cachedNodeId = effectProxyNodeIds.get(effect.sourceEffectId)
+		if (cachedNodeId && getModelById(app.appModel, cachedNodeId)) {
+			return cachedNodeId
+		}
+
+		const existingNodeId = await findProxyNodeId('minicut_effect', 'sourceEffectId', effect.sourceEffectId)
+		if (existingNodeId) {
+			effectProxyNodeIds.set(effect.sourceEffectId, existingNodeId)
+			return existingNodeId
+		}
+
+		await app.appModel.dispatch('createEffectProxy', effect)
+		const createdNodeId = await waitForProxyNodeId('minicut_effect', 'sourceEffectId', effect.sourceEffectId)
+		if (!createdNodeId) {
+			throw new Error(`MiniCut DKT effect proxy was not created for ${effect.sourceEffectId}`)
+		}
+
+		effectProxyNodeIds.set(effect.sourceEffectId, createdNodeId)
+		return createdNodeId
+	}
+
+	const dispatchEffectAction = async (
+		effect: MiniCutDktEffectProxyInput,
+		actionName: string,
+		payload?: unknown,
+	): Promise<void> => {
+		const nodeId = await ensureEffectProxy(effect)
+		await dispatchAction(actionName, payload, nodeId)
+	}
+
 	const debugDumpAppState = async (): Promise<MiniCutDktDebugState> => {
 		const app = await bootstrapApp()
 		if (!app) {
@@ -262,6 +369,10 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		dispatchSessionAction,
 		ensureClipProxy,
 		dispatchClipAction,
+		ensureTextProxy,
+		dispatchTextAction,
+		ensureEffectProxy,
+		dispatchEffectAction,
 		debugDumpAppState,
 	}
 }

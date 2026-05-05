@@ -30,18 +30,51 @@ const createRegistryWithClip = () => {
 		},
 		rels: { effects: [] },
 	}
+	const text: Entity = {
+		id: 'text:dkt-runtime-caption',
+		type: 'text',
+		attrs: {
+			content: 'Before',
+			style: {
+				fontFamily: 'Inter, Segoe UI, sans-serif',
+				fontSize: 64,
+				fontWeight: 700,
+				lineHeight: 1.1,
+				letterSpacing: 0,
+				color: '#ffffff',
+				backgroundColor: 'rgba(0, 0, 0, 0)',
+				align: 'center',
+			},
+			box: { width: 760, height: 220 },
+		},
+		rels: {},
+	}
+	const effect: Entity = {
+		id: 'effect:dkt-runtime-tint',
+		type: 'effect',
+		attrs: {
+			name: 'Tint',
+			kind: 'tint',
+			enabled: true,
+			amount: 0.25,
+		},
+		rels: { clip: clip.id },
+	}
 	videoTrack.rels = { ...videoTrack.rels, clips: [clip.id] }
+	clip.rels = { ...clip.rels, text: text.id, effects: [effect.id] }
 
 	return {
 		activeProjectId: project.id,
 		projects: { [project.id]: project },
-		entitiesById: Object.fromEntries([...entities, clip].map((entity) => [entity.id, entity])),
+		entitiesById: Object.fromEntries([...entities, clip, text, effect].map((entity) => [entity.id, entity])),
 	}
 }
 
 const createEnv = () => {
 	const registry = createRegistryWithClip()
 	const dispatchClipAction = vi.fn()
+	const dispatchTextAction = vi.fn()
+	const dispatchEffectAction = vi.fn()
 	const dispatch = vi.fn(async () => ({ envelope: { projectId: registry.activeProjectId, version: 2, patches: [] } }))
 	const sessionState: EditorSessionState = {
 		tabId: 'test-tab',
@@ -83,6 +116,8 @@ const createEnv = () => {
 		dkt: {
 			dispatchSessionAction: vi.fn(),
 			dispatchClipAction,
+			dispatchTextAction,
+			dispatchEffectAction,
 		},
 		media: {},
 		export: {},
@@ -92,7 +127,7 @@ const createEnv = () => {
 		platform: {},
 	} as unknown as EditorActionEnvironment
 
-	return { env, registry, dispatchClipAction, dispatch }
+	return { env, registry, dispatchClipAction, dispatchTextAction, dispatchEffectAction, dispatch }
 }
 
 describe('createLegendActionRuntime DKT clip wiring', () => {
@@ -121,5 +156,27 @@ describe('createLegendActionRuntime DKT clip wiring', () => {
 				rotation: { value: 0 },
 			},
 		}, 'updateOpacity', { opacityPercent: 37 })
+	})
+
+	it('dispatches text and effect attr edits to DKT before mirroring through authority', () => {
+		const { env, dispatchTextAction, dispatchEffectAction } = createEnv()
+		const actions = createLegendActionRuntime(env, {
+			playbackDuration$: { get: () => 10 } as never,
+			resourceChunkSize: 1024,
+		})
+
+		actions.updateTextById('text:dkt-runtime-caption', { content: 'After', style: { color: '#111827' } as never })
+		actions.updateEffectAttrs('effect:dkt-runtime-tint', { amount: 0.8 })
+
+		expect(dispatchTextAction).toHaveBeenCalledWith(expect.objectContaining({
+			sourceTextId: 'text:dkt-runtime-caption',
+			content: 'Before',
+		}), 'updateText', { content: 'After', style: { color: '#111827' } })
+		expect(dispatchEffectAction).toHaveBeenCalledWith(expect.objectContaining({
+			sourceEffectId: 'effect:dkt-runtime-tint',
+			name: 'Tint',
+			kind: 'tint',
+			amount: 0.25,
+		}), 'updateAttrs', { amount: 0.8 })
 	})
 })

@@ -1,7 +1,10 @@
 import { appRoot } from 'dkt/appRoot.js'
 import { merge as mergeDcl } from 'dkt/dcl/merge.js'
 import { Clip, CLIP_PROXY_CREATION_SHAPE } from './Clip'
+import { Effect, EFFECT_PROXY_CREATION_SHAPE } from './Effect'
 import { EditorSessionRoot } from './SessionRoot'
+import { Text, TEXT_PROXY_CREATION_SHAPE } from './Text'
+import { defaultTextBox, defaultTextStyle } from '../textActions'
 
 const appProps = mergeDcl({
 	init: (target: { start_page?: unknown }) => {
@@ -14,6 +17,8 @@ const appProps = mergeDcl({
 		sessions: ['input', { linking: '<< $session_root', many: true }],
 		free_sessions: ['input', { linking: '<< $session_root', many: true }],
 		clip: ['model', Clip, { many: true }],
+		text: ['model', Text, { many: true }],
+		effect: ['model', Effect, { many: true }],
 	},
 	attrs: {
 		activeProjectHint: ['input', null],
@@ -23,6 +28,75 @@ const appProps = mergeDcl({
 		hasProjects: ['comp', ['projectMetaList'], (projectMetaList: unknown) => Array.isArray(projectMetaList) && projectMetaList.length > 0],
 	},
 	actions: {
+		createTextProxy: {
+			to: {
+				_textProxy: [
+					'<< text << #',
+					{
+						method: 'at_end',
+						can_create: true,
+						creation_shape: TEXT_PROXY_CREATION_SHAPE,
+					},
+				],
+			},
+			fn: (payload: unknown) => {
+				const value = payload as { sourceTextId?: unknown; content?: unknown; style?: unknown; box?: unknown } | null
+				if (typeof value?.sourceTextId !== 'string' || !value.sourceTextId) {
+					return {}
+				}
+
+				return {
+					_textProxy: {
+						attrs: {
+							sourceTextId: value.sourceTextId,
+							content: typeof value.content === 'string' ? value.content : 'Text',
+							style: value.style && typeof value.style === 'object' ? value.style : defaultTextStyle,
+							box: value.box && typeof value.box === 'object' ? value.box : defaultTextBox,
+						},
+					},
+				}
+			},
+		},
+		createEffectProxy: {
+			to: {
+				_effectProxy: [
+					'<< effect << #',
+					{
+						method: 'at_end',
+						can_create: true,
+						creation_shape: EFFECT_PROXY_CREATION_SHAPE,
+					},
+				],
+			},
+			fn: (payload: unknown) => {
+				const value = payload as {
+					sourceEffectId?: unknown
+					name?: unknown
+					kind?: unknown
+					enabled?: unknown
+					amount?: unknown
+					params?: unknown
+					color?: unknown
+				} | null
+				if (typeof value?.sourceEffectId !== 'string' || !value.sourceEffectId) {
+					return {}
+				}
+
+				return {
+					_effectProxy: {
+						attrs: {
+							sourceEffectId: value.sourceEffectId,
+							name: typeof value.name === 'string' ? value.name : 'Effect',
+							kind: typeof value.kind === 'string' ? value.kind : 'blur',
+							enabled: typeof value.enabled === 'boolean' ? value.enabled : true,
+							amount: typeof value.amount === 'number' ? value.amount : null,
+							params: value.params && typeof value.params === 'object' ? value.params : null,
+							color: value.color && typeof value.color === 'object' ? value.color : null,
+						},
+					},
+				}
+			},
+		},
 		createClipProxy: {
 			to: {
 				_clipProxy: [

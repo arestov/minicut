@@ -91,4 +91,33 @@ describe('createMiniCutDktRuntime', () => {
 		expect(model?.attrs.fadeIn).toBe(0.5)
 		expect(model?.attrs.opacity).toEqual({ value: 0.4 })
 	})
+
+	it('creates DKT text and effect proxies and dispatches attr actions', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		await runtime.dispatchTextAction({
+			sourceTextId: 'text:caption',
+			content: 'Before',
+			style: { fontSize: 64, color: '#ffffff' },
+			box: { width: 760, height: 220 },
+		}, 'updateText', {
+			content: 'After',
+			style: { color: '#111827' },
+		})
+
+		await runtime.dispatchEffectAction({
+			sourceEffectId: 'effect:tint',
+			name: 'Tint',
+			kind: 'tint',
+			enabled: true,
+			amount: 0.25,
+		}, 'updateAttrs', { amount: 0.8 })
+
+		const text = await waitForModelAttr(runtime, 'minicut_text', 'content', 'After')
+		const effect = await waitForModelAttr(runtime, 'minicut_effect', 'amount', 0.8)
+
+		expect(text?.attrs.sourceTextId).toBe('text:caption')
+		expect(text?.attrs.style).toMatchObject({ color: '#111827' })
+		expect(effect?.attrs.sourceEffectId).toBe('effect:tint')
+		expect(effect?.attrs.amount).toBe(0.8)
+	})
 })

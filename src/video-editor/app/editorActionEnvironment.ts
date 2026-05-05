@@ -7,7 +7,9 @@ import type { VideoEditorHarnessPlatform } from './platform'
 import type { DispatchRuntimeTaskOptions, DispatchRuntimeTaskPayload, RuntimeTaskDescriptor } from './runtimeTaskFacade'
 import type { DktSessionActionName } from '../dkt/sessionActions'
 import type { DktClipActionName } from '../dkt/clipActions'
-import type { MiniCutDktClipProxyInput } from '../dkt/runtime/createMiniCutDktRuntime'
+import type { DktTextActionName } from '../dkt/textActions'
+import type { DktEffectActionName } from '../dkt/effectActions'
+import type { MiniCutDktClipProxyInput, MiniCutDktEffectProxyInput, MiniCutDktTextProxyInput } from '../dkt/runtime/createMiniCutDktRuntime'
 
 export interface EditorStorePort {
 	projects$: Observable<ProjectRegistry>
@@ -80,6 +82,8 @@ export interface EditorRuntimeTaskPort {
 export interface EditorDktRuntimePort {
 	dispatchSessionAction(actionName: DktSessionActionName, payload?: unknown): Promise<void> | void
 	dispatchClipAction(clip: MiniCutDktClipProxyInput, actionName: DktClipActionName, payload?: unknown): Promise<void> | void
+	dispatchTextAction(text: MiniCutDktTextProxyInput, actionName: DktTextActionName, payload?: unknown): Promise<void> | void
+	dispatchEffectAction(effect: MiniCutDktEffectProxyInput, actionName: DktEffectActionName, payload?: unknown): Promise<void> | void
 }
 
 export interface EditorActionEnvironment {

@@ -354,6 +354,14 @@ export const createVideoEditorHarness = (
 				const runtime = await getDktRuntime()
 				await runtime.dispatchClipAction(clip, actionName, payload)
 			},
+			dispatchTextAction: async (text, actionName, payload) => {
+				const runtime = await getDktRuntime()
+				await runtime.dispatchTextAction(text, actionName, payload)
+			},
+			dispatchEffectAction: async (effect, actionName, payload) => {
+				const runtime = await getDktRuntime()
+				await runtime.dispatchEffectAction(effect, actionName, payload)
+			},
 		},
 		platform,
 	}
