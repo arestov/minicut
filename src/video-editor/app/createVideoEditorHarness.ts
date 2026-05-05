@@ -131,6 +131,16 @@ export const createVideoEditorHarness = (
 	let snapshotBootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
 	let initialProjectRetryTimer: ReturnType<typeof setTimeout> | null = null
 	const runtimeTasks = createRuntimeTaskFacade()
+	type MiniCutDktRuntime = ReturnType<typeof import('../dkt/runtime/createMiniCutDktRuntime')['createMiniCutDktRuntime']>
+	let dktRuntime: MiniCutDktRuntime | null = null
+	const getDktRuntime = async (): Promise<MiniCutDktRuntime> => {
+		if (!dktRuntime) {
+			const { createMiniCutDktRuntime } = await import('../dkt/runtime/createMiniCutDktRuntime')
+			dktRuntime = createMiniCutDktRuntime({ enabled: true })
+		}
+
+		return dktRuntime
+	}
 
 	const getAuthorityRole = (): 'server' | 'client' | 'undecided' | null => {
 		const role = (authorityClient as Partial<{ role: unknown }>).role
@@ -334,6 +344,12 @@ export const createVideoEditorHarness = (
 			consumeRuntimeRef: (runtimeRefId) => runtimeTasks.consumeRuntimeRef(runtimeRefId),
 			deleteRuntimeRef: (runtimeRefId) => runtimeTasks.deleteRuntimeRef(runtimeRefId),
 			completeTask: (task) => runtimeTasks.completeTask(task),
+		},
+		dkt: {
+			dispatchSessionAction: async (actionName, payload) => {
+				const runtime = await getDktRuntime()
+				await runtime.dispatchSessionAction(actionName, payload)
+			},
 		},
 		platform,
 	}

@@ -5,6 +5,7 @@ import type { ExportProgressEvent, ExportRenderer, ExportRenderRequest, ExportRe
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import type { VideoEditorHarnessPlatform } from './platform'
 import type { DispatchRuntimeTaskOptions, DispatchRuntimeTaskPayload, RuntimeTaskDescriptor } from './runtimeTaskFacade'
+import type { DktSessionActionName } from '../dkt/sessionActions'
 
 export interface EditorStorePort {
 	projects$: Observable<ProjectRegistry>
@@ -74,6 +75,10 @@ export interface EditorRuntimeTaskPort {
 	completeTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
 }
 
+export interface EditorDktRuntimePort {
+	dispatchSessionAction(actionName: DktSessionActionName, payload?: unknown): Promise<void> | void
+}
+
 export interface EditorActionEnvironment {
 	stores: EditorStorePort
 	authority: EditorAuthorityPort
@@ -83,5 +88,6 @@ export interface EditorActionEnvironment {
 	transfers: EditorResourceTransferPort
 	lifecycle: EditorLifecyclePort
 	tasks: EditorRuntimeTaskPort
+	dkt?: EditorDktRuntimePort
 	platform: VideoEditorHarnessPlatform
 }

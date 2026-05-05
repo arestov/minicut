@@ -9,6 +9,7 @@ const createEnv = (overrides?: { playbackDuration?: number; registryProjectId?: 
 	const setPlaying = vi.fn()
 	const setTimelineZoom = vi.fn()
 	const setActiveInspectorTab = vi.fn()
+	const dispatchSessionAction = vi.fn()
 	const sessionGet = vi.fn(() => ({
 		isPlaying: true,
 		cursor: 2,
@@ -42,6 +43,9 @@ const createEnv = (overrides?: { playbackDuration?: number; registryProjectId?: 
 			setTimelineZoom,
 			setActiveInspectorTab,
 		},
+		dkt: {
+			dispatchSessionAction,
+		},
 	} as unknown as EditorActionEnvironment
 
 	const actions = createSessionRootActions(
@@ -50,7 +54,7 @@ const createEnv = (overrides?: { playbackDuration?: number; registryProjectId?: 
 		() => undefined,
 	)
 
-	return { actions, env, setActiveProject, selectEntity, setCursor }
+	return { actions, env, setActiveProject, selectEntity, setCursor, setPlaying, setTimelineZoom, dispatchSessionAction }
 }
 
 describe('createSessionRootActions', () => {
@@ -61,11 +65,24 @@ describe('createSessionRootActions', () => {
 	})
 
 	it('clamps and ignores non-finite cursor updates', () => {
-		const { actions, setCursor } = createEnv()
+		const { actions, setCursor, dispatchSessionAction } = createEnv()
 		actions.setCursor(-4.129)
 		actions.setCursor(Number.NaN)
 		expect(setCursor).toHaveBeenCalledTimes(1)
 		expect(setCursor).toHaveBeenCalledWith(0)
+		expect(dispatchSessionAction).toHaveBeenCalledTimes(1)
+		expect(dispatchSessionAction).toHaveBeenCalledWith('setCursor', -4.129)
+	})
+
+	it('applies playback and zoom through DKT session action semantics', () => {
+		const { actions, setPlaying, setTimelineZoom, dispatchSessionAction } = createEnv()
+		actions.togglePlayback()
+		actions.zoomTimeline(90)
+
+		expect(setPlaying).toHaveBeenCalledWith(false)
+		expect(setTimelineZoom).toHaveBeenCalledWith(96)
+		expect(dispatchSessionAction).toHaveBeenCalledWith('togglePlayback', undefined)
+		expect(dispatchSessionAction).toHaveBeenCalledWith('zoomTimeline', 90)
 	})
 
 	it('skips playback tick when duration is not positive', () => {

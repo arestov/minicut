@@ -6,6 +6,7 @@ import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import { executeActionBuildResult } from './actionTransactionExecutor'
 import { commandStep, createdIdRef } from '../domain/actionTransactions'
+import { type DktSessionActionName, reduceDktSessionAction } from '../dkt/sessionActions'
 
 export type ScopedCommandDispatcher = <Name extends EditorActionName>(
 	scope: EditorActionScope,
@@ -13,14 +14,9 @@ export type ScopedCommandDispatcher = <Name extends EditorActionName>(
 	payload: EditorActionPayload<Name>,
 ) => void
 
-const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
-
-const clamp = (value: number, min: number, max: number): number =>
-	Math.min(max, Math.max(min, value))
-
 const applySessionRootPatch = (env: EditorActionEnvironment, patch: Record<string, unknown>): void => {
-	if ('activeProjectId' in patch && typeof patch.activeProjectId === 'string') {
-		env.session.setActiveProject(patch.activeProjectId)
+	if ('activeProjectId' in patch) {
+		env.session.setActiveProject(typeof patch.activeProjectId === 'string' ? patch.activeProjectId : null)
 	}
 	if ('selectedEntityId' in patch) {
 		env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
@@ -28,6 +24,39 @@ const applySessionRootPatch = (env: EditorActionEnvironment, patch: Record<strin
 	if ('cursor' in patch && typeof patch.cursor === 'number' && Number.isFinite(patch.cursor)) {
 		env.session.setCursor(Math.max(0, patch.cursor))
 	}
+	if ('isPlaying' in patch && typeof patch.isPlaying === 'boolean') {
+		env.session.setPlaying(patch.isPlaying)
+	}
+	if ('timelineZoom' in patch && typeof patch.timelineZoom === 'number' && Number.isFinite(patch.timelineZoom)) {
+		env.session.setTimelineZoom(patch.timelineZoom)
+	}
+}
+
+const dispatchDktSessionAction = (
+	env: EditorActionEnvironment,
+	actionName: DktSessionActionName,
+	payload?: unknown,
+): void => {
+	const dispatch = env.dkt?.dispatchSessionAction
+	if (!dispatch) {
+		return
+	}
+
+	void Promise.resolve(dispatch(actionName, payload)).catch(() => undefined)
+}
+
+const applyDktSessionAction = (
+	env: EditorActionEnvironment,
+	actionName: DktSessionActionName,
+	payload?: unknown,
+): void => {
+	const patch = reduceDktSessionAction(actionName, payload, env.session.get())
+	if (!patch) {
+		return
+	}
+
+	dispatchDktSessionAction(env, actionName, payload)
+	applySessionRootPatch(env, patch)
 }
 
 export const createSessionRootActions = (
@@ -76,11 +105,7 @@ export const createSessionRootActions = (
 		}
 
 		env.stores.projects$.activeProjectId.set(projectId)
-		applySessionRootPatch(env, {
-			activeProjectId: projectId,
-			selectedEntityId: null,
-			cursor: 0,
-		})
+		applyDktSessionAction(env, 'setActiveProject', projectId)
 	},
 
 	undo(): void {
@@ -96,7 +121,7 @@ export const createSessionRootActions = (
 	},
 
 	selectEntity(entityId: string | null): void {
-		env.session.selectEntity(entityId)
+		applyDktSessionAction(env, 'selectEntity', entityId)
 	},
 
 	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void {
@@ -104,15 +129,11 @@ export const createSessionRootActions = (
 	},
 
 	togglePlayback(): void {
-		env.session.setPlaying(!env.session.get().isPlaying)
+		applyDktSessionAction(env, 'togglePlayback')
 	},
 
 	setCursor(value: number): void {
-		if (!Number.isFinite(value)) {
-			return
-		}
-
-		env.session.setCursor(Math.max(0, roundToHundredths(value)))
+		applyDktSessionAction(env, 'setCursor', value)
 	},
 
 	tickPlayback(deltaSeconds: number): void {
@@ -130,7 +151,6 @@ export const createSessionRootActions = (
 	},
 
 	zoomTimeline(delta: number): void {
-		const current = env.session.get().timelineZoom
-		env.session.setTimelineZoom(clamp(current + delta, 8, 96))
+		applyDktSessionAction(env, 'zoomTimeline', delta)
 	},
 })

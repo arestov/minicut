@@ -46,4 +46,17 @@ describe('createMiniCutDktRuntime', () => {
 		expect(appRoot?.attrs.activeProjectHint).toBe('project:dkt')
 		expect(appRoot?.attrs.hasProjects).toBe(false)
 	})
+
+	it('boots a DKT session root and dispatches session actions', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const sessionRoot = await runtime.bootstrapSessionRoot()
+		expect(sessionRoot?.model_name).toBe('minicut_session_root')
+
+		await runtime.dispatchSessionAction('setCursor', 4.129)
+		await runtime.dispatchSessionAction('selectEntity', 'clip:session')
+		const model = await waitForModelAttr(runtime, 'minicut_session_root', 'selectedEntityId', 'clip:session')
+
+		expect(model?.attrs.cursor).toBe(4.13)
+		expect(model?.attrs.selectedEntityId).toBe('clip:session')
+	})
 })

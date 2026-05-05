@@ -1,5 +1,6 @@
 import { prepare as prepareAppRuntime } from 'dkt/runtime/app/prepare.js'
 import { _getCurrentRel, _listRels } from 'dkt-all/libs/provoda/_internal/_listRels.js'
+import { hookSessionRoot } from 'dkt-all/libs/provoda/provoda/BrowseMap.js'
 import { getModelById } from 'dkt-all/libs/provoda/utils/getModelById.js'
 import { MiniCutAppRoot } from '../models/AppRoot'
 
@@ -9,7 +10,9 @@ type RuntimeModelLike = {
 	states?: Record<string, unknown>
 	__getPublicAttrs?: () => readonly string[]
 	getLinedStructure?: (options: unknown, config: unknown) => Promise<readonly RuntimeModelLike[]> | readonly RuntimeModelLike[]
+	input?: (callback: () => void | Promise<void>) => unknown
 	dispatch: (actionName: string, payload?: unknown) => Promise<void> | void
+	start_page?: unknown
 }
 
 type RuntimeLike = {
@@ -65,6 +68,7 @@ const serializeModel = (model: RuntimeModelLike): MiniCutDktSerializedModel => {
 
 export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => {
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
+	let sessionRootPromise: Promise<RuntimeModelLike> | null = null
 	const enabled = options.enabled === true
 
 	const bootstrapApp = async () => {
@@ -96,6 +100,38 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return bootPromise
 	}
 
+	const bootstrapSessionRoot = async (sessionKey = 'minicut-local'): Promise<RuntimeModelLike | null> => {
+		const app = await bootstrapApp()
+		if (!app) {
+			return null
+		}
+
+		if (!sessionRootPromise) {
+			sessionRootPromise = new Promise((resolve, reject) => {
+				const createSessionRoot = async () => {
+					try {
+						const sessionRoot = await hookSessionRoot(app.appModel, app.appModel.start_page, {
+							sessionKey,
+							route: null,
+						})
+						resolve(sessionRoot as RuntimeModelLike)
+					} catch (error) {
+						reject(error)
+					}
+				}
+
+				if (typeof app.appModel.input === 'function') {
+					app.appModel.input(createSessionRoot)
+					return
+				}
+
+				createSessionRoot()
+			})
+		}
+
+		return sessionRootPromise
+	}
+
 	const dispatchAction = async (
 		actionName: string,
 		payload?: unknown,
@@ -112,6 +148,15 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await target.dispatch(actionName, payload)
+	}
+
+	const dispatchSessionAction = async (actionName: string, payload?: unknown): Promise<void> => {
+		const sessionRoot = await bootstrapSessionRoot()
+		if (!sessionRoot) {
+			throw new Error('MiniCut DKT runtime is disabled')
+		}
+
+		await sessionRoot.dispatch(actionName, payload)
 	}
 
 	const debugDumpAppState = async (): Promise<MiniCutDktDebugState> => {
@@ -131,7 +176,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 	return {
 		bootstrapApp,
+		bootstrapSessionRoot,
 		dispatchAction,
+		dispatchSessionAction,
 		debugDumpAppState,
 	}
 }

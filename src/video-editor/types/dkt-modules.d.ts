@@ -41,6 +41,10 @@ declare module 'dkt-all/libs/provoda/bwlev/SessionRoot.js' {
 	export const SessionRoot: unknown
 }
 
+declare module 'dkt-all/libs/provoda/provoda/BrowseMap.js' {
+	export const hookSessionRoot: (appModel: unknown, startPage: unknown, options?: unknown) => Promise<unknown>
+}
+
 declare module 'dkt-all/libs/provoda/_internal/_listRels.js' {
 	export const _listRels: (model: unknown) => Iterable<string>
 	export const _getCurrentRel: (model: unknown, relName: string) => unknown
