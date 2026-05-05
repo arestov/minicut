@@ -1,23 +1,25 @@
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
+import { buildEditorActionCommand } from '../domain/actionCommandBuilders'
+import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
+import type { EditorActionScope } from '../domain/actionScope'
 import { getActiveProject, getAudioTrack, getClipIdsForTrack, getProjectMetaList, getSelectedClip, getTracks, getVideoTrack } from '../domain/selectors'
 import type { ClipAttrs, EditorSessionState, ProjectRegistry, ResourceAttrs, TextAttrs } from '../domain/types'
 import { CMD } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
-import type { ClipResizeAttrs, CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 const minimumSplitOffset = 0.01
 
-const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
 
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value))
 
-const getClipEnd = (attrs: ClipAttrs): number => attrs.start + attrs.duration
-
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
 const asResourceAttrs = (attrs: Record<string, unknown>): ResourceAttrs => attrs as unknown as ResourceAttrs
+
+const createScope = (nodeId: string, type: EditorActionScope['type']): EditorActionScope => ({ nodeId, type })
 
 const getActiveProjectId = (env: EditorActionEnvironment): string => {
 	const registry = env.stores.getRegistry()
@@ -47,23 +49,6 @@ const isProjectTimelineEmpty = (registry: ProjectRegistry, projectId: string): b
 	}
 
 	return getTracks(registry, project).every((track) => getClipIdsForTrack(registry, track.id).length === 0)
-}
-
-const getResizedClipAttrs = (attrs: ClipAttrs, edge: 'start' | 'end', delta: number): ClipResizeAttrs => {
-	if (edge === 'end') {
-		return {
-			duration: clamp(roundToTenths(attrs.duration + delta), 0.5, 120),
-		}
-	}
-
-	const clipEnd = getClipEnd(attrs)
-	const minStart = Math.max(0, attrs.start - attrs.in)
-	const nextStart = clamp(roundToTenths(attrs.start + delta), minStart, clipEnd - 0.5)
-	return {
-		start: nextStart,
-		in: roundToTenths(attrs.in + (nextStart - attrs.start)),
-		duration: roundToTenths(clipEnd - nextStart),
-	}
 }
 
 const createExportRegistrySnapshot = (env: EditorActionEnvironment, registry: ProjectRegistry): ProjectRegistry => {
@@ -122,6 +107,16 @@ export const createLegendActionRuntime = (
 	const getAuthorityPeerId = (): string | null => {
 		const peerId = (env.authority.client as Partial<{ peerId: unknown }>).peerId
 		return typeof peerId === 'string' ? peerId : null
+	}
+
+	const dispatchBuiltCommand = <Name extends EditorActionName>(scope: EditorActionScope, name: Name, payload: EditorActionPayload<Name>): void => {
+		const result = buildEditorActionCommand({ scope, name, payload }, {
+			registry: env.stores.getRegistry(),
+			activeProjectId: getActiveProjectId(env),
+		})
+		if (result.type === 'command') {
+			env.authority.dispatch(result.command)
+		}
 	}
 
 	const actions: VideoEditorHarnessActions = {
@@ -288,11 +283,7 @@ export const createLegendActionRuntime = (
 		},
 
 		addTrack(kind: 'video' | 'audio'): void {
-			const projectId = getActiveProjectId(env)
-			env.authority.dispatch({
-				c: CMD.TRACK_CREATE,
-				p: { projectId, kind },
-			})
+			dispatchBuiltCommand(createScope('$root', 'root'), 'addTrack', { kind })
 		},
 
 		selectEntity(entityId: string | null): void {
@@ -309,7 +300,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { name } } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'rename', { name })
 		},
 
 		renameSelectedClip(name: string): void {
@@ -325,7 +316,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { color } } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'color', { color })
 		},
 
 		colorSelectedClip(color: string): void {
@@ -341,7 +332,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { opacity: { value: roundToTenths(opacityPercent / 100) } } } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setOpacity', { opacityPercent })
 		},
 
 		updateSelectedClipOpacity(opacityPercent: number): void {
@@ -357,11 +348,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			const attrs = asClipAttrs(clip.attrs)
-			const key = edge === 'in' ? 'fadeIn' : 'fadeOut'
-			const current = Number(attrs[key] ?? 0)
-			const nextFade = clamp(roundToTenths(current + delta), 0, attrs.duration)
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: { [key]: nextFade } } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setFade', { edge, delta })
 		},
 
 		updateSelectedClipFade(edge: 'in' | 'out', delta: number): void {
@@ -377,21 +364,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			const attrs = asClipAttrs(clip.attrs)
-			env.authority.dispatch({
-				c: CMD.CLIP_UPDATE_ATTRS,
-				p: {
-					id: clipId,
-					attrs: {
-						transform: {
-							x: { value: partial.x ?? attrs.transform.x.value },
-							y: { value: partial.y ?? attrs.transform.y.value },
-							scale: { value: partial.scale ?? attrs.transform.scale.value },
-							rotation: { value: partial.rotation ?? attrs.transform.rotation.value },
-						},
-					},
-				},
-			})
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setTransform', partial)
 		},
 
 		updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
@@ -407,19 +380,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			const attrs = asClipAttrs(clip.attrs)
-			env.authority.dispatch({
-				c: CMD.CLIP_UPDATE_ATTRS,
-				p: {
-					id: clipId,
-					attrs: {
-						audio: {
-							gain: partial.gain ?? attrs.audio?.gain ?? 1,
-							pan: partial.pan ?? attrs.audio?.pan ?? 0,
-						},
-					},
-				},
-			})
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setAudio', partial)
 		},
 
 		updateSelectedClipAudio(partial: Partial<Record<'gain' | 'pan', number>>): void {
@@ -435,7 +396,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: getResizedClipAttrs(asClipAttrs(clip.attrs), edge, delta) } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'trim', { edge, delta })
 		},
 
 		trimSelectedClip(edge: 'start' | 'end', delta: number): void {
@@ -455,7 +416,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.CLIP_UPDATE_ATTRS, p: { id: clipId, attrs: getResizedClipAttrs(asClipAttrs(clip.attrs), edge, delta) } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'resize', { edge, delta })
 		},
 
 		addEffectToClip(clipId: string, kind: 'blur' | 'sharpen' | 'tint'): void {
@@ -464,7 +425,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.EFFECT_ADD, p: { id: clipId, name: `${kind[0].toUpperCase()}${kind.slice(1)}`, kind, amount: kind === 'tint' ? 0.35 : 0.25 } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'addEffect', { kind })
 		},
 
 		addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void {
@@ -480,7 +441,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.EFFECT_ADD, p: { id: clipId, name: 'Primary Correction', kind: 'color-correction' } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'addColorCorrection', undefined)
 		},
 
 		addColorCorrectionToSelectedClip(): void {
@@ -491,11 +452,11 @@ export const createLegendActionRuntime = (
 		},
 
 		updateTextById(textId: string, attrs: Partial<TextAttrs>): void {
-			env.authority.dispatch({ c: CMD.TEXT_UPDATE_ATTRS, p: { id: textId, attrs } })
+			dispatchBuiltCommand(createScope(textId, 'text'), 'updateText', attrs)
 		},
 
 		updateEffectAttrs(effectId, attrs): void {
-			env.authority.dispatch({ c: CMD.EFFECT_UPDATE_ATTRS, p: { id: effectId, attrs } })
+			dispatchBuiltCommand(createScope(effectId, 'effect'), 'updateEffect', attrs)
 		},
 
 		deleteClipById(clipId: string): void {
@@ -550,7 +511,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.EFFECT_REMOVE, p: { id: clipId, effectId } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'removeEffect', { effectId })
 		},
 
 		removeEffectFromSelectedClip(effectId: string): void {
@@ -614,7 +575,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
-			env.authority.dispatch({ c: CMD.TIMELINE_MOVE_CLIP, p: { id: clipId, delta } })
+			dispatchBuiltCommand(createScope(clipId, 'clip'), 'moveBy', { delta })
 		},
 
 		togglePlayback(): void {
