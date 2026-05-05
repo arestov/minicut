@@ -290,8 +290,8 @@ export const createVideoEditorHarness = (
 
 	const unsubscribe = authorityClient.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
-		renderRegistry.applyPatchEnvelope(envelope)
 		const registry = projects$.get()
+		renderRegistry.setSnapshot(registry)
 		resourceTransferManager.syncRegistry(registry)
 		syncActiveProjectSelection()
 	})
