@@ -28,6 +28,7 @@ import {
 	type VideoEditorHarnessPlatform,
 } from './platform'
 import { createLegendEditorRenderRuntime } from '../render-sync/createLegendEditorRenderRuntime'
+import type { EditorActionEnvironment } from './editorActionEnvironment'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 const SNAPSHOT_BOOTSTRAP_RETRY_MS = 250
@@ -332,6 +333,66 @@ export const createVideoEditorHarness = (
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
 		Promise.resolve(authorityClient.dispatch(command)).finally(syncHistoryState)
+
+	const actionEnvironment: EditorActionEnvironment = {
+		stores: {
+			projects$,
+			history$,
+			getRegistry: () => projects$.get(),
+			applySnapshot: (snapshot) => applySnapshot(projects$, snapshot),
+			applyPatchEnvelope: (envelope) => applyPatchEnvelope(projects$, envelope),
+		},
+		authority: {
+			client: authorityClient,
+			dispatch,
+			undo: () => authorityClient.undo(),
+			redo: () => authorityClient.redo(),
+			getSnapshot: () => authorityClient.getSnapshot(),
+			getHistoryState: () => authorityClient.getHistoryState(),
+			subscribe: (listener) => authorityClient.subscribe(listener),
+		},
+		session: {
+			session$,
+			get: () => session$.get(),
+			setActiveProject: (projectId) => session$.activeProjectId.set(projectId),
+			selectEntity: (entityId) => session$.selectedEntityId.set(entityId),
+			setCursor: (value) => session$.cursor.set(value),
+			setPlaying: (value) => session$.isPlaying.set(value),
+			setTimelineZoom: (value) => session$.timelineZoom.set(value),
+			setActiveInspectorTab: (tab) => session$.activeInspectorTab.set(tab),
+		},
+		media: {
+			getFileKind,
+			createObjectUrl: (blob) => platform.createObjectUrl(blob),
+			revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
+			getImportedResourceDuration: (url, kind) => platform.getImportedResourceDuration(url, kind),
+		},
+		export: {
+			renderer: exportRenderer,
+			render: (request, onProgress) => exportRenderer.render(request, onProgress),
+		},
+		transfers: {
+			manager: resourceTransferManager,
+			syncRegistry: (registry) => resourceTransferManager.syncRegistry(registry),
+			resolveResourceUrl: (resourceId, fallbackUrl) => resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl),
+			requestPlayheadWindow: (resourceId, time) => resourceTransferManager.requestPlayheadWindow(resourceId, time),
+			notePreviewError: (resourceId) => resourceTransferManager.notePreviewError(resourceId),
+		},
+		lifecycle: {
+			isDestroyed: () => isDestroyed,
+			setTimeout: (handler, timeoutMs) => platform.setTimeout(handler, timeoutMs),
+			clearTimeout: (timerId) => platform.clearTimeout(timerId),
+			registerObjectUrl: (url, bucket) => {
+				if (bucket === 'import') {
+					importedObjectUrls.add(url)
+					return
+				}
+
+				exportObjectUrls.add(url)
+			},
+		},
+		platform,
+	}
 
 	const createExportRegistrySnapshot = (registry: ProjectRegistry): ProjectRegistry => {
 		const snapshot = structuredClone(registry)
@@ -934,6 +995,7 @@ export const createVideoEditorHarness = (
 		history$,
 		renderRuntime,
 		resourceTransfers$: resourceTransferManager.transfers$,
+		actionEnvironment,
 		resolveResourceUrl(resourceId: string, fallbackUrl: string): string {
 			return resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl)
 		},
