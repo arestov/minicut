@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CMD } from '../../domain/types'
+import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { createMiniCutDktRuntime } from './createMiniCutDktRuntime'
 
 const findModel = (state: Awaited<ReturnType<ReturnType<typeof createMiniCutDktRuntime>['debugDumpAppState']>>, modelName: string) => {
@@ -44,6 +45,47 @@ const waitForRegistryProject = async (
 	}
 
 	return runtime.getRegistrySnapshot()
+}
+
+const createMemoryTransport = () => {
+	const listeners = new Set<(message: MiniCutDktTransportMessage) => void>()
+	const sent: MiniCutDktTransportMessage[] = []
+
+	return {
+		transport: {
+			send(message: MiniCutDktTransportMessage) {
+				sent.push(message)
+			},
+			listen(listener: (message: MiniCutDktTransportMessage) => void) {
+				listeners.add(listener)
+				return () => listeners.delete(listener)
+			},
+			destroy() {
+				listeners.clear()
+			},
+		},
+		sent,
+		emit(message: MiniCutDktTransportMessage) {
+			for (const listener of [...listeners]) {
+				listener(message)
+			}
+		},
+	}
+}
+
+const waitForTransportMessage = async (
+	transport: ReturnType<typeof createMemoryTransport>,
+	predicate: (message: MiniCutDktTransportMessage) => boolean,
+) => {
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		const match = transport.sent.find(predicate)
+		if (match) {
+			return match
+		}
+		await new Promise((resolve) => setTimeout(resolve, 0))
+	}
+
+	return transport.sent.find(predicate) ?? null
 }
 
 describe('createMiniCutDktRuntime', () => {
@@ -238,5 +280,38 @@ describe('createMiniCutDktRuntime', () => {
 		expect(projectId).toBeTypeOf('string')
 		expect(snapshot.projects[String(projectId)]).toBeTruthy()
 		expect(Object.keys(snapshot.entitiesById).length).toBeGreaterThan(0)
+	})
+
+	it('boots transport sync on the session root and resolves scoped dispatch inside that session tree', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const memory = createMemoryTransport()
+		const connection = runtime.connect(memory.transport)
+
+		try {
+			memory.emit({ type: DKT_MSG.BOOTSTRAP, sessionKey: 'session:transport' })
+			const sessionRoot = await runtime.bootstrapSessionRoot('session:transport')
+			const readyMessage = await waitForTransportMessage(
+				memory,
+				(message) => message.type === DKT_MSG.RUNTIME_READY,
+			)
+
+			expect(readyMessage).toMatchObject({
+				type: DKT_MSG.RUNTIME_READY,
+				sessionKey: 'session:transport',
+				rootNodeId: sessionRoot?._node_id ?? null,
+			})
+
+			memory.emit({
+				type: DKT_MSG.DISPATCH_ACTION,
+				actionName: 'setCursor',
+				payload: 7.25,
+				scopeNodeId: sessionRoot?._node_id ?? null,
+			})
+
+			const model = await waitForModelAttr(runtime, 'minicut_session_root', 'cursor', 7.25)
+			expect(model?.attrs.cursor).toBe(7.25)
+		} finally {
+			connection.destroy()
+		}
 	})
 })

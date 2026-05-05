@@ -168,7 +168,7 @@ const serializeModel = (model: RuntimeModelLike): MiniCutDktSerializedModel => {
 
 export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => {
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
-	let sessionRootPromise: Promise<RuntimeModelLike> | null = null
+	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>()
 	const clipProxyNodeIds = new Map<string, string>()
 	const projectProxyNodeIds = new Map<string, string>()
 	const trackProxyNodeIds = new Map<string, string>()
@@ -212,8 +212,12 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			return null
 		}
 
-		if (!sessionRootPromise) {
-			sessionRootPromise = new Promise((resolve, reject) => {
+		const cached = sessionRootPromises.get(sessionKey)
+		if (cached) {
+			return cached
+		}
+
+		const sessionRootPromise = new Promise<RuntimeModelLike>((resolve, reject) => {
 				const createSessionRoot = async () => {
 					try {
 						const sessionRoot = await hookSessionRoot(app.appModel, app.appModel.start_page, {
@@ -233,12 +237,18 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 				createSessionRoot()
 			})
-		}
+
+		sessionRootPromises.set(sessionKey, sessionRootPromise)
 
 		return sessionRootPromise
 	}
 
-	const dispatchAction = async (actionName: string, payload?: unknown, scopeNodeId?: string | null): Promise<void> => {
+	const dispatchAction = async (
+		actionName: string,
+		payload?: unknown,
+		scopeNodeId?: string | null,
+		sessionKey = 'minicut-local',
+	): Promise<void> => {
 		const app = await bootstrapApp()
 		if (!app) {
 			throw new Error('MiniCut DKT runtime is disabled')
@@ -246,7 +256,12 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 		let target = app.appModel
 		if (typeof scopeNodeId === 'string' && scopeNodeId) {
-			target = (getModelById(app.appModel, scopeNodeId) as RuntimeModelLike | null) ?? target
+			const sessionRoot = await bootstrapSessionRoot(sessionKey)
+			target = (
+				(sessionRoot ? getModelById(sessionRoot, scopeNodeId) as RuntimeModelLike | null : null)
+				?? (getModelById(app.appModel, scopeNodeId) as RuntimeModelLike | null)
+				?? target
+			)
 		}
 
 		await target.dispatch(actionName, payload)
@@ -404,6 +419,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	const connect = (transport: DomSyncTransportLike<MiniCutDktTransportMessage>) => {
 		let destroyed = false
 		let stream: ReturnType<typeof createWorkerStream> | null = null
+		let activeSessionKey = 'minicut-local'
 
 		const sendError = (error: unknown, requestId?: string): void => {
 			transport.send({
@@ -418,21 +434,20 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			if (!app) {
 				throw new Error('MiniCut DKT runtime is disabled')
 			}
+			activeSessionKey = sessionKey || 'minicut-local'
+			const sessionRoot = await bootstrapSessionRoot(activeSessionKey)
+			const streamRoot = sessionRoot ?? app.appModel
 
 			if (!stream) {
 				stream = createWorkerStream(transport)
-				await app.runtime.sync_sender.addSyncStream(app.appModel, stream, [])
-			}
-
-			if (sessionKey) {
-				await bootstrapSessionRoot(sessionKey)
+				await app.runtime.sync_sender.addSyncStream(streamRoot, stream, [])
 			}
 
 			transport.send({
 				type: DKT_MSG.RUNTIME_READY,
 				requestId,
-				sessionKey,
-				rootNodeId: app.appModel._node_id ?? null,
+				sessionKey: activeSessionKey,
+				rootNodeId: streamRoot._node_id ?? null,
 			})
 		}
 
@@ -449,7 +464,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					destroy()
 					return
 				case DKT_MSG.DISPATCH_ACTION:
-					await dispatchAction(message.actionName, message.payload, message.scopeNodeId)
+						await dispatchAction(message.actionName, message.payload, message.scopeNodeId, activeSessionKey)
 					if (message.requestId) {
 						transport.send({ type: DKT_MSG.RUNTIME_READY, requestId: message.requestId, rootNodeId: null })
 					}
