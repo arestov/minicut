@@ -29,13 +29,40 @@ const finiteNumber = (payload: unknown): number | null => {
 	return Number.isFinite(value) ? value : null
 }
 
+export const reduceSessionSelectEntityAction = (payload: unknown): Pick<EditorSessionState, 'selectedEntityId'> => ({
+	selectedEntityId: typeof payload === 'string' ? payload : null,
+})
+
+export const reduceSessionSetActiveProjectAction = (payload: unknown): Pick<EditorSessionState, 'activeProjectId' | 'selectedEntityId' | 'cursor'> => ({
+	activeProjectId: typeof payload === 'string' ? payload : null,
+	selectedEntityId: null,
+	cursor: 0,
+})
+
+export const reduceSessionSetCursorAction = (payload: unknown): Pick<EditorSessionState, 'cursor'> | null => {
+	const value = finiteNumber(payload)
+	return value === null ? null : { cursor: Math.max(0, roundToHundredths(value)) }
+}
+
+export const reduceSessionTogglePlaybackAction = (
+	state: Pick<EditorSessionState, 'isPlaying'>,
+): Pick<EditorSessionState, 'isPlaying'> => ({
+	isPlaying: !state.isPlaying,
+})
+
+export const reduceSessionZoomTimelineAction = (
+	payload: unknown,
+	state: Pick<EditorSessionState, 'timelineZoom'>,
+): Pick<EditorSessionState, 'timelineZoom'> | null => {
+	const delta = finiteNumber(payload)
+	return delta === null ? null : { timelineZoom: clamp(state.timelineZoom + delta, 8, 96) }
+}
+
 export const sessionSelectEntityAction = {
 	to: {
 		selectedEntityId: ['selectedEntityId'],
 	},
-	fn: (payload: unknown) => ({
-		selectedEntityId: typeof payload === 'string' ? payload : null,
-	}),
+	fn: reduceSessionSelectEntityAction,
 } as const satisfies DktActionDescriptor
 
 export const sessionSetActiveProjectAction = {
@@ -44,21 +71,14 @@ export const sessionSetActiveProjectAction = {
 		selectedEntityId: ['selectedEntityId'],
 		cursor: ['cursor'],
 	},
-	fn: (payload: unknown) => ({
-		activeProjectId: typeof payload === 'string' ? payload : null,
-		selectedEntityId: null,
-		cursor: 0,
-	}),
+	fn: reduceSessionSetActiveProjectAction,
 } as const satisfies DktActionDescriptor
 
 export const sessionSetCursorAction = {
 	to: {
 		cursor: ['cursor'],
 	},
-	fn: (payload: unknown) => {
-		const value = finiteNumber(payload)
-		return value === null ? '$noop' : { cursor: Math.max(0, roundToHundredths(value)) }
-	},
+	fn: (payload: unknown) => reduceSessionSetCursorAction(payload) ?? '$noop',
 } as const satisfies DktActionDescriptor
 
 export const sessionTogglePlaybackAction = {
@@ -67,7 +87,7 @@ export const sessionTogglePlaybackAction = {
 	},
 	fn: [
 		['isPlaying'] as const,
-		(_payload: unknown, isPlaying: unknown) => ({ isPlaying: !Boolean(isPlaying) }),
+		(_payload: unknown, isPlaying: unknown) => reduceSessionTogglePlaybackAction({ isPlaying: Boolean(isPlaying) }),
 	],
 } as const satisfies DktActionDescriptor
 
@@ -78,9 +98,8 @@ export const sessionZoomTimelineAction = {
 	fn: [
 		['timelineZoom'] as const,
 		(payload: unknown, timelineZoom: unknown) => {
-			const delta = finiteNumber(payload)
 			const current = typeof timelineZoom === 'number' ? timelineZoom : 16
-			return delta === null ? '$noop' : { timelineZoom: clamp(current + delta, 8, 96) }
+			return reduceSessionZoomTimelineAction(payload, { timelineZoom: current }) ?? '$noop'
 		},
 	],
 } as const satisfies DktActionDescriptor
@@ -92,30 +111,3 @@ export const dktSessionActions = {
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
 } as const satisfies Record<DktSessionActionName, DktActionDescriptor>
-
-const getDeps = (
-	state: Pick<EditorSessionState, 'isPlaying' | 'timelineZoom'>,
-	deps: readonly string[],
-): unknown[] => deps.map((dep) => {
-	switch (dep) {
-		case 'isPlaying':
-			return state.isPlaying
-		case 'timelineZoom':
-			return state.timelineZoom
-		default:
-			return undefined
-	}
-})
-
-export const reduceDktSessionAction = (
-	actionName: DktSessionActionName,
-	payload: unknown,
-	state: Pick<EditorSessionState, 'isPlaying' | 'timelineZoom'>,
-): DktSessionActionPatch | null => {
-	const action = dktSessionActions[actionName]
-	const result = Array.isArray(action.fn)
-		? action.fn[1](payload, ...getDeps(state, action.fn[0]))
-		: action.fn(payload)
-
-	return result === '$noop' ? null : result
-}

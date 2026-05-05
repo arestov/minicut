@@ -6,7 +6,16 @@ import { buildEditorActionCommand, expectCommand } from '../domain/actionCommand
 import { createEntityActionScope } from '../domain/actionScope'
 import { createProjectGraph } from '../domain/createProject'
 import { CMD } from '../domain/types'
-import { clipUpdateOpacityAction, createClipUpdateOpacityEnvelope, reduceDktClipAction } from './clipActions'
+import {
+	clipSetAudioAction,
+	clipSetFadeAction,
+	clipSetTransformAction,
+	clipUpdateOpacityAction,
+	createClipUpdateOpacityEnvelope,
+	reduceClipColorAction,
+	reduceClipRenameAction,
+	reduceClipUpdateOpacityAction,
+} from './clipActions'
 
 const createRegistryWithClip = () => {
 	const { project, entities } = createProjectGraph('DKT clip action', 1)
@@ -68,13 +77,14 @@ describe('clean DKT clip actions', () => {
 	})
 
 	it('reduces remaining simple clip attrs without command descriptors', () => {
-		const clipAttrs = createRegistryWithClip().registry.entitiesById['clip:dkt-opacity'].attrs as Parameters<typeof reduceDktClipAction>[2]
+		const clipAttrs = createRegistryWithClip().registry.entitiesById['clip:dkt-opacity'].attrs
 
-		expect(reduceDktClipAction('rename', { name: 'Renamed' }, clipAttrs)).toEqual({ name: 'Renamed' })
-		expect(reduceDktClipAction('color', { color: '#22c55e' }, clipAttrs)).toEqual({ color: '#22c55e' })
-		expect(reduceDktClipAction('setFade', { edge: 'in', delta: 0.5 }, clipAttrs)).toEqual({ fadeIn: 0.5 })
-		expect(reduceDktClipAction('setAudio', { pan: -0.25 }, clipAttrs)).toEqual({ audio: { gain: 1, pan: -0.25 } })
-		expect(reduceDktClipAction('setTransform', { scale: 1.5 }, clipAttrs)).toEqual({
+		expect(reduceClipUpdateOpacityAction({ opacityPercent: 37 })).toEqual({ opacity: { value: 0.4 } })
+		expect(reduceClipRenameAction({ name: 'Renamed' })).toEqual({ name: 'Renamed' })
+		expect(reduceClipColorAction({ color: '#22c55e' })).toEqual({ color: '#22c55e' })
+		expect(clipSetFadeAction.fn({ edge: 'in', delta: 0.5 }, clipAttrs)).toEqual({ fadeIn: 0.5 })
+		expect(clipSetAudioAction.fn({ pan: -0.25 }, clipAttrs.audio)).toEqual({ audio: { gain: 1, pan: -0.25 } })
+		expect(clipSetTransformAction.fn({ scale: 1.5 }, clipAttrs.transform)).toEqual({
 			transform: {
 				x: { value: 0 },
 				y: { value: 0 },
@@ -84,27 +94,10 @@ describe('clean DKT clip actions', () => {
 		})
 	})
 
-	it('reduces full clip attrs for authority replica sync', () => {
-		const clipAttrs = createRegistryWithClip().registry.entitiesById['clip:dkt-opacity'].attrs as Parameters<typeof reduceDktClipAction>[2]
-
-		expect(reduceDktClipAction('syncAttrs', {
-			name: 'Replica clip',
-			start: 2,
-			in: 1,
-			duration: 5,
-			opacity: { value: 0.6 },
-		}, clipAttrs)).toEqual(expect.objectContaining({
-			name: 'Replica clip',
-			start: 2,
-			in: 1,
-			duration: 5,
-			opacity: { value: 0.6 },
-		}))
-	})
-
 	it('does not depend on command dispatch bridge code', () => {
 		const source = readFileSync(path.resolve(process.cwd(), 'src/video-editor/dkt/clipActions.ts'), 'utf8')
 		expect(source).not.toContain('CMD')
 		expect(source).not.toContain('$fx_dispatchCommand')
+		expect(source).not.toContain('switch (actionName)')
 	})
 })

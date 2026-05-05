@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { reduceDktSessionAction } from './sessionActions'
+import {
+	reduceSessionSelectEntityAction,
+	reduceSessionSetCursorAction,
+	reduceSessionTogglePlaybackAction,
+	reduceSessionZoomTimelineAction,
+} from './sessionActions'
 
 const sessionState = {
 	isPlaying: true,
@@ -8,28 +13,28 @@ const sessionState = {
 
 describe('DKT session actions', () => {
 	it('normalizes entity selection as a direct DKT attr patch', () => {
-		expect(reduceDktSessionAction('selectEntity', 'clip:1', sessionState)).toEqual({
+		expect(reduceSessionSelectEntityAction('clip:1')).toEqual({
 			selectedEntityId: 'clip:1',
 		})
-		expect(reduceDktSessionAction('selectEntity', null, sessionState)).toEqual({
+		expect(reduceSessionSelectEntityAction(null)).toEqual({
 			selectedEntityId: null,
 		})
 	})
 
 	it('clamps cursor values and ignores non-finite payloads', () => {
-		expect(reduceDktSessionAction('setCursor', -4.129, sessionState)).toEqual({ cursor: 0 })
-		expect(reduceDktSessionAction('setCursor', 4.129, sessionState)).toEqual({ cursor: 4.13 })
-		expect(reduceDktSessionAction('setCursor', Number.NaN, sessionState)).toBeNull()
+		expect(reduceSessionSetCursorAction(-4.129)).toEqual({ cursor: 0 })
+		expect(reduceSessionSetCursorAction(4.129)).toEqual({ cursor: 4.13 })
+		expect(reduceSessionSetCursorAction(Number.NaN)).toBeNull()
 	})
 
 	it('uses declared deps for playback and zoom actions', () => {
-		expect(reduceDktSessionAction('togglePlayback', undefined, sessionState)).toEqual({
+		expect(reduceSessionTogglePlaybackAction(sessionState)).toEqual({
 			isPlaying: false,
 		})
-		expect(reduceDktSessionAction('zoomTimeline', 90, sessionState)).toEqual({
+		expect(reduceSessionZoomTimelineAction(90, sessionState)).toEqual({
 			timelineZoom: 96,
 		})
-		expect(reduceDktSessionAction('zoomTimeline', -20, sessionState)).toEqual({
+		expect(reduceSessionZoomTimelineAction(-20, sessionState)).toEqual({
 			timelineZoom: 8,
 		})
 	})

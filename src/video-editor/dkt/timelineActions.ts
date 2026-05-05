@@ -31,33 +31,37 @@ export const getDktResizedClipAttrs = (
 	}
 }
 
-export const reduceDktTimelineClipAction = (
-	actionName: DktTimelineClipActionName,
+export const reduceTimelineMoveByAction = (
+	payload: unknown,
+	attrs: Pick<ClipAttrs, 'start'>,
+): DktTimelineClipActionPatch | null => {
+	const delta = (payload as { delta?: unknown } | null)?.delta
+	return typeof delta === 'number' && Number.isFinite(delta) && delta !== 0
+		? { start: Math.max(0, roundToTenths(attrs.start + delta)) }
+		: null
+}
+
+export const reduceTimelineTrimAction = (
 	payload: unknown,
 	attrs: Pick<ClipAttrs, 'start' | 'in' | 'duration'>,
 ): DktTimelineClipActionPatch | null => {
-	switch (actionName) {
-		case 'moveBy': {
-			const delta = (payload as { delta?: unknown } | null)?.delta
-			return typeof delta === 'number' && Number.isFinite(delta) && delta !== 0
-				? { start: Math.max(0, roundToTenths(attrs.start + delta)) }
-				: null
-		}
-		case 'trim':
-		case 'resize': {
-			const edge = (payload as { edge?: unknown } | null)?.edge
-			const delta = (payload as { delta?: unknown } | null)?.delta
-			return (edge === 'start' || edge === 'end') && typeof delta === 'number'
-				? getDktResizedClipAttrs(attrs, edge, delta)
-				: null
-		}
-		case 'splitAt': {
-			const time = (payload as { time?: unknown } | null)?.time
-			if (typeof time !== 'number' || time <= attrs.start || time >= attrs.start + attrs.duration) {
-				return null
-			}
+	const edge = (payload as { edge?: unknown } | null)?.edge
+	const delta = (payload as { delta?: unknown } | null)?.delta
+	return (edge === 'start' || edge === 'end') && typeof delta === 'number'
+		? getDktResizedClipAttrs(attrs, edge, delta)
+		: null
+}
 
-			return { duration: roundToTenths(time - attrs.start) }
-		}
+export const reduceTimelineResizeAction = reduceTimelineTrimAction
+
+export const reduceTimelineSplitAtAction = (
+	payload: unknown,
+	attrs: Pick<ClipAttrs, 'start' | 'duration'>,
+): DktTimelineClipActionPatch | null => {
+	const time = (payload as { time?: unknown } | null)?.time
+	if (typeof time !== 'number' || time <= attrs.start || time >= attrs.start + attrs.duration) {
+		return null
 	}
+
+	return { duration: roundToTenths(time - attrs.start) }
 }

@@ -6,7 +6,14 @@ import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import { executeActionBuildResult } from './actionTransactionExecutor'
 import { commandStep, createdIdRef } from '../domain/actionTransactions'
-import { type DktSessionActionName, reduceDktSessionAction } from '../dkt/sessionActions'
+import {
+	type DktSessionActionName,
+	reduceSessionSelectEntityAction,
+	reduceSessionSetActiveProjectAction,
+	reduceSessionSetCursorAction,
+	reduceSessionTogglePlaybackAction,
+	reduceSessionZoomTimelineAction,
+} from '../dkt/sessionActions'
 
 export type ScopedCommandDispatcher = <Name extends EditorActionName>(
 	scope: EditorActionScope,
@@ -45,12 +52,12 @@ const dispatchDktSessionAction = (
 	void Promise.resolve(dispatch(actionName, payload)).catch(() => undefined)
 }
 
-const applyDktSessionAction = (
+const dispatchAndApplySessionPatch = (
 	env: EditorActionEnvironment,
 	actionName: DktSessionActionName,
+	patch: Record<string, unknown> | null,
 	payload?: unknown,
 ): void => {
-	const patch = reduceDktSessionAction(actionName, payload, env.session.get())
 	if (!patch) {
 		return
 	}
@@ -105,7 +112,7 @@ export const createSessionRootActions = (
 		}
 
 		env.stores.projects$.activeProjectId.set(projectId)
-		applyDktSessionAction(env, 'setActiveProject', projectId)
+		dispatchAndApplySessionPatch(env, 'setActiveProject', reduceSessionSetActiveProjectAction(projectId), projectId)
 	},
 
 	undo(): void {
@@ -121,7 +128,7 @@ export const createSessionRootActions = (
 	},
 
 	selectEntity(entityId: string | null): void {
-		applyDktSessionAction(env, 'selectEntity', entityId)
+		dispatchAndApplySessionPatch(env, 'selectEntity', reduceSessionSelectEntityAction(entityId), entityId)
 	},
 
 	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void {
@@ -129,11 +136,11 @@ export const createSessionRootActions = (
 	},
 
 	togglePlayback(): void {
-		applyDktSessionAction(env, 'togglePlayback')
+		dispatchAndApplySessionPatch(env, 'togglePlayback', reduceSessionTogglePlaybackAction(env.session.get()))
 	},
 
 	setCursor(value: number): void {
-		applyDktSessionAction(env, 'setCursor', value)
+		dispatchAndApplySessionPatch(env, 'setCursor', reduceSessionSetCursorAction(value), value)
 	},
 
 	tickPlayback(deltaSeconds: number): void {
@@ -151,6 +158,6 @@ export const createSessionRootActions = (
 	},
 
 	zoomTimeline(delta: number): void {
-		applyDktSessionAction(env, 'zoomTimeline', delta)
+		dispatchAndApplySessionPatch(env, 'zoomTimeline', reduceSessionZoomTimelineAction(delta, env.session.get()), delta)
 	},
 })

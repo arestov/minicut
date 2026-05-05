@@ -4,7 +4,7 @@ import { PATCH, type AnimatedScalar, type ClipAttrs, type PatchEnvelope, type Pr
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
-export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTransform' | 'syncAttrs'
+export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTransform'
 
 export type DktClipActionPatch = Partial<Pick<ClipAttrs,
 	| 'name'
@@ -30,6 +30,14 @@ export const clipUpdateOpacityAction = {
 	},
 }
 
+export const reduceClipUpdateOpacityAction = (payload: unknown): Pick<ClipAttrs, 'opacity'> | null => {
+	const opacityPercent = typeof payload === 'number'
+		? payload
+		: (payload as { opacityPercent?: unknown } | null)?.opacityPercent
+	const opacity = typeof opacityPercent === 'number' ? clipUpdateOpacityAction.fn(opacityPercent) : null
+	return opacity ? { opacity } : null
+}
+
 export const clipRenameAction = {
 	to: ['name'] as const,
 	fn(payload: unknown): string | null {
@@ -38,12 +46,22 @@ export const clipRenameAction = {
 	},
 }
 
+export const reduceClipRenameAction = (payload: unknown): Pick<ClipAttrs, 'name'> | null => {
+	const name = clipRenameAction.fn(payload)
+	return name === null ? null : { name }
+}
+
 export const clipColorAction = {
 	to: ['color'] as const,
 	fn(payload: unknown): string | null {
 		const value = (payload as { color?: unknown } | null)?.color ?? payload
 		return typeof value === 'string' ? value : null
 	},
+}
+
+export const reduceClipColorAction = (payload: unknown): Pick<ClipAttrs, 'color'> | null => {
+	const color = clipColorAction.fn(payload)
+	return color === null ? null : { color }
 }
 
 export const clipSetFadeAction = {
@@ -91,51 +109,6 @@ export const defaultClipTransform: TransformAttrs = {
 	y: { value: 0 },
 	scale: { value: 1 },
 	rotation: { value: 0 },
-}
-
-export const reduceDktClipAction = (
-	actionName: DktClipActionName,
-	payload: unknown,
-	clipAttrs: Pick<ClipAttrs, 'name' | 'color' | 'start' | 'in' | 'opacity' | 'fadeIn' | 'fadeOut' | 'duration' | 'audio' | 'transform'>,
-): DktClipActionPatch | null => {
-	switch (actionName) {
-		case 'syncAttrs': {
-			const attrs = payload as Partial<ClipAttrs>
-			return {
-				name: typeof attrs.name === 'string' ? attrs.name : clipAttrs.name,
-				color: typeof attrs.color === 'string' ? attrs.color : clipAttrs.color,
-				start: typeof attrs.start === 'number' ? attrs.start : clipAttrs.start,
-				in: typeof attrs.in === 'number' ? attrs.in : clipAttrs.in,
-				duration: typeof attrs.duration === 'number' ? attrs.duration : clipAttrs.duration,
-				fadeIn: typeof attrs.fadeIn === 'number' ? attrs.fadeIn : clipAttrs.fadeIn,
-				fadeOut: typeof attrs.fadeOut === 'number' ? attrs.fadeOut : clipAttrs.fadeOut,
-				audio: attrs.audio ?? clipAttrs.audio,
-				opacity: toAnimatedScalar(attrs.opacity, clipAttrs.opacity),
-				transform: attrs.transform ?? clipAttrs.transform,
-			}
-		}
-		case 'updateOpacity': {
-			const opacityPercent = typeof payload === 'number'
-				? payload
-				: (payload as { opacityPercent?: unknown } | null)?.opacityPercent
-			const opacity = typeof opacityPercent === 'number' ? clipUpdateOpacityAction.fn(opacityPercent) : null
-			return opacity ? { opacity } : null
-		}
-		case 'rename': {
-			const name = clipRenameAction.fn(payload)
-			return name === null ? null : { name }
-		}
-		case 'color': {
-			const color = clipColorAction.fn(payload)
-			return color === null ? null : { color }
-		}
-		case 'setFade':
-			return clipSetFadeAction.fn(payload, clipAttrs)
-		case 'setAudio':
-			return clipSetAudioAction.fn(payload, clipAttrs.audio)
-		case 'setTransform':
-			return clipSetTransformAction.fn(payload, clipAttrs.transform ?? defaultClipTransform)
-	}
 }
 
 export const toAnimatedScalar = (value: unknown, fallback: AnimatedScalar): AnimatedScalar => {

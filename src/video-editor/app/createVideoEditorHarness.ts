@@ -11,7 +11,6 @@ import type {
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
-import { hasDktReplicaSyncTargets, syncAuthorityEnvelopeToDktReplica } from '../dkt/replica/syncAuthorityEnvelope'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportRenderer } from '../render/exportRenderer'
 import { createDktEditorRenderRuntime } from '../render-sync/createDktEditorRenderRuntime'
@@ -271,9 +270,6 @@ export const createVideoEditorHarness = (
 	const unsubscribe = authorityClient.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
 		const registry = projects$.get()
-		if (hasDktReplicaSyncTargets(envelope, registry)) {
-			void getDktRuntime().then((runtime) => syncAuthorityEnvelopeToDktReplica(runtime, registry, envelope))
-		}
 		resourceTransferManager.syncRegistry(registry)
 		syncActiveProjectSelection()
 		syncHistoryState()

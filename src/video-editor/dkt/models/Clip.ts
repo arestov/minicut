@@ -1,19 +1,19 @@
 import { model } from 'dkt/model.js'
-import { defaultClipTransform, reduceDktClipAction } from '../clipActions'
-import { reduceDktTimelineClipAction } from '../timelineActions'
-
-const defaultModelClipAttrs = {
-	name: 'Clip',
-	color: '#2563eb',
-	start: 0,
-	in: 0,
-	opacity: { value: 1 },
-	fadeIn: 0,
-	fadeOut: 0,
-	duration: 0,
-	audio: { gain: 1, pan: 0 },
-	transform: defaultClipTransform,
-}
+import {
+	clipSetAudioAction,
+	clipSetFadeAction,
+	clipSetTransformAction,
+	defaultClipTransform,
+	reduceClipColorAction,
+	reduceClipRenameAction,
+	reduceClipUpdateOpacityAction,
+} from '../clipActions'
+import {
+	reduceTimelineMoveByAction,
+	reduceTimelineResizeAction,
+	reduceTimelineSplitAtAction,
+	reduceTimelineTrimAction,
+} from '../timelineActions'
 
 export const Clip = model({
 	model_name: 'minicut_clip',
@@ -31,76 +31,23 @@ export const Clip = model({
 		transform: ['input', defaultClipTransform],
 	},
 	actions: {
-		syncAttrs: {
-			to: {
-				name: ['name'],
-				color: ['color'],
-				start: ['start'],
-				in: ['in'],
-				duration: ['duration'],
-				fadeIn: ['fadeIn'],
-				fadeOut: ['fadeOut'],
-				audio: ['audio'],
-				opacity: ['opacity'],
-				transform: ['transform'],
-			},
-			fn: [
-				['name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
-				(
-					payload: unknown,
-					name: unknown,
-					color: unknown,
-					start: unknown,
-					inPoint: unknown,
-					duration: unknown,
-					fadeIn: unknown,
-					fadeOut: unknown,
-					audio: unknown,
-					opacity: unknown,
-					transform: unknown,
-				) => {
-					const patch = reduceDktClipAction('syncAttrs', payload, {
-						name: typeof name === 'string' ? name : defaultModelClipAttrs.name,
-						color: typeof color === 'string' ? color : defaultModelClipAttrs.color,
-						start: typeof start === 'number' ? start : defaultModelClipAttrs.start,
-						in: typeof inPoint === 'number' ? inPoint : defaultModelClipAttrs.in,
-						duration: typeof duration === 'number' ? duration : defaultModelClipAttrs.duration,
-						fadeIn: typeof fadeIn === 'number' ? fadeIn : defaultModelClipAttrs.fadeIn,
-						fadeOut: typeof fadeOut === 'number' ? fadeOut : defaultModelClipAttrs.fadeOut,
-						audio: audio as typeof defaultModelClipAttrs.audio,
-						opacity: opacity as typeof defaultModelClipAttrs.opacity,
-						transform: transform as typeof defaultClipTransform,
-					})
-					return patch ?? '$noop'
-				},
-			],
-		},
 		updateOpacity: {
 			to: {
 				opacity: ['opacity'],
 			},
-			fn: (payload: unknown) => {
-				const patch = reduceDktClipAction('updateOpacity', payload, defaultModelClipAttrs)
-				return patch ? { opacity: patch.opacity } : '$noop'
-			},
+			fn: (payload: unknown) => reduceClipUpdateOpacityAction(payload) ?? '$noop',
 		},
 		rename: {
 			to: {
 				name: ['name'],
 			},
-			fn: (payload: unknown) => {
-				const patch = reduceDktClipAction('rename', payload, defaultModelClipAttrs)
-				return patch ? { name: patch.name } : '$noop'
-			},
+			fn: (payload: unknown) => reduceClipRenameAction(payload) ?? '$noop',
 		},
 		color: {
 			to: {
 				color: ['color'],
 			},
-			fn: (payload: unknown) => {
-				const patch = reduceDktClipAction('color', payload, defaultModelClipAttrs)
-				return patch ? { color: patch.color } : '$noop'
-			},
+			fn: (payload: unknown) => reduceClipColorAction(payload) ?? '$noop',
 		},
 		setFade: {
 			to: {
@@ -110,8 +57,7 @@ export const Clip = model({
 			fn: [
 				['fadeIn', 'fadeOut', 'duration'] as const,
 				(payload: unknown, fadeIn: unknown, fadeOut: unknown, duration: unknown) => {
-					const patch = reduceDktClipAction('setFade', payload, {
-						...defaultModelClipAttrs,
+					const patch = clipSetFadeAction.fn(payload, {
 						fadeIn: typeof fadeIn === 'number' ? fadeIn : 0,
 						fadeOut: typeof fadeOut === 'number' ? fadeOut : 0,
 						duration: typeof duration === 'number' ? duration : 0,
@@ -127,10 +73,7 @@ export const Clip = model({
 			fn: [
 				['audio'] as const,
 				(payload: unknown, audio: unknown) => {
-					const patch = reduceDktClipAction('setAudio', payload, {
-						...defaultModelClipAttrs,
-						audio: audio as { gain: number; pan: number },
-					})
+					const patch = clipSetAudioAction.fn(payload, audio as { gain: number; pan: number })
 					return patch ?? '$noop'
 				},
 			],
@@ -142,10 +85,7 @@ export const Clip = model({
 			fn: [
 				['transform'] as const,
 				(payload: unknown, transform: unknown) => {
-					const patch = reduceDktClipAction('setTransform', payload, {
-						...defaultModelClipAttrs,
-						transform: transform as typeof defaultClipTransform,
-					})
+					const patch = clipSetTransformAction.fn(payload, transform as typeof defaultClipTransform)
 					return patch ?? '$noop'
 				},
 			],
@@ -157,10 +97,8 @@ export const Clip = model({
 			fn: [
 				['start', 'in', 'duration'] as const,
 				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceDktTimelineClipAction('moveBy', payload, {
+					const patch = reduceTimelineMoveByAction(payload, {
 						start: typeof start === 'number' ? start : 0,
-						in: typeof inPoint === 'number' ? inPoint : 0,
-						duration: typeof duration === 'number' ? duration : 0,
 					})
 					return patch ?? '$noop'
 				},
@@ -175,7 +113,7 @@ export const Clip = model({
 			fn: [
 				['start', 'in', 'duration'] as const,
 				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceDktTimelineClipAction('trim', payload, {
+					const patch = reduceTimelineTrimAction(payload, {
 						start: typeof start === 'number' ? start : 0,
 						in: typeof inPoint === 'number' ? inPoint : 0,
 						duration: typeof duration === 'number' ? duration : 0,
@@ -193,7 +131,7 @@ export const Clip = model({
 			fn: [
 				['start', 'in', 'duration'] as const,
 				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceDktTimelineClipAction('resize', payload, {
+					const patch = reduceTimelineResizeAction(payload, {
 						start: typeof start === 'number' ? start : 0,
 						in: typeof inPoint === 'number' ? inPoint : 0,
 						duration: typeof duration === 'number' ? duration : 0,
@@ -209,9 +147,8 @@ export const Clip = model({
 			fn: [
 				['start', 'in', 'duration'] as const,
 				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceDktTimelineClipAction('splitAt', payload, {
+					const patch = reduceTimelineSplitAtAction(payload, {
 						start: typeof start === 'number' ? start : 0,
-						in: typeof inPoint === 'number' ? inPoint : 0,
 						duration: typeof duration === 'number' ? duration : 0,
 					})
 					return patch ?? '$noop'

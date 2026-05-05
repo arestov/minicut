@@ -29,45 +29,33 @@ const appProps = mergeDcl({
 	},
 	actions: {
 		createTextProxy: {
-			to: {
-				_textProxy: [
-					'<< text << #',
-					{
-						method: 'at_end',
-						can_create: true,
-						creation_shape: TEXT_PROXY_CREATION_SHAPE,
-					},
-				],
-			},
+			to: ['<< text << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: TEXT_PROXY_CREATION_SHAPE,
+			}],
 			fn: (payload: unknown) => {
 				const value = payload as { sourceTextId?: unknown; content?: unknown; style?: unknown; box?: unknown } | null
 				if (typeof value?.sourceTextId !== 'string' || !value.sourceTextId) {
-					return {}
+					return '$noop'
 				}
 
 				return {
-					_textProxy: {
-						attrs: {
-							sourceTextId: value.sourceTextId,
-							content: typeof value.content === 'string' ? value.content : 'Text',
-							style: value.style && typeof value.style === 'object' ? value.style : defaultTextStyle,
-							box: value.box && typeof value.box === 'object' ? value.box : defaultTextBox,
-						},
+					attrs: {
+						sourceTextId: value.sourceTextId,
+						content: typeof value.content === 'string' ? value.content : 'Text',
+						style: value.style && typeof value.style === 'object' ? value.style : defaultTextStyle,
+						box: value.box && typeof value.box === 'object' ? value.box : defaultTextBox,
 					},
 				}
 			},
 		},
 		createEffectProxy: {
-			to: {
-				_effectProxy: [
-					'<< effect << #',
-					{
-						method: 'at_end',
-						can_create: true,
-						creation_shape: EFFECT_PROXY_CREATION_SHAPE,
-					},
-				],
-			},
+			to: ['<< effect << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: EFFECT_PROXY_CREATION_SHAPE,
+			}],
 			fn: (payload: unknown) => {
 				const value = payload as {
 					sourceEffectId?: unknown
@@ -79,35 +67,28 @@ const appProps = mergeDcl({
 					color?: unknown
 				} | null
 				if (typeof value?.sourceEffectId !== 'string' || !value.sourceEffectId) {
-					return {}
+					return '$noop'
 				}
 
 				return {
-					_effectProxy: {
-						attrs: {
-							sourceEffectId: value.sourceEffectId,
-							name: typeof value.name === 'string' ? value.name : 'Effect',
-							kind: typeof value.kind === 'string' ? value.kind : 'blur',
-							enabled: typeof value.enabled === 'boolean' ? value.enabled : true,
-							amount: typeof value.amount === 'number' ? value.amount : null,
-							params: value.params && typeof value.params === 'object' ? value.params : null,
-							color: value.color && typeof value.color === 'object' ? value.color : null,
-						},
+					attrs: {
+						sourceEffectId: value.sourceEffectId,
+						name: typeof value.name === 'string' ? value.name : 'Effect',
+						kind: typeof value.kind === 'string' ? value.kind : 'blur',
+						enabled: typeof value.enabled === 'boolean' ? value.enabled : true,
+						amount: typeof value.amount === 'number' ? value.amount : null,
+						params: value.params && typeof value.params === 'object' ? value.params : null,
+						color: value.color && typeof value.color === 'object' ? value.color : null,
 					},
 				}
 			},
 		},
 		createClipProxy: {
-			to: {
-				_clipProxy: [
-					'<< clip << #',
-					{
-						method: 'at_end',
-						can_create: true,
-						creation_shape: CLIP_PROXY_CREATION_SHAPE,
-					},
-				],
-			},
+			to: ['<< clip << #', {
+				method: 'at_end',
+				can_create: true,
+				creation_shape: CLIP_PROXY_CREATION_SHAPE,
+			}],
 			fn: (payload: unknown) => {
 				const value = payload as {
 					sourceClipId?: unknown
@@ -123,31 +104,29 @@ const appProps = mergeDcl({
 					transform?: unknown
 				} | null
 				if (typeof value?.sourceClipId !== 'string' || !value.sourceClipId) {
-					return {}
+					return '$noop'
 				}
 
 				return {
-					_clipProxy: {
-						attrs: {
-							sourceClipId: value.sourceClipId,
-							name: typeof value.name === 'string' ? value.name : 'Clip',
-							color: typeof value.color === 'string' ? value.color : '#2563eb',
-							start: typeof value.start === 'number' ? value.start : 0,
-							in: typeof value.in === 'number' ? value.in : 0,
-							duration: typeof value.duration === 'number' ? value.duration : 0,
-							fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
-							fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,
-							audio: value.audio && typeof value.audio === 'object' ? value.audio : { gain: 1, pan: 0 },
-							opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
-							transform: value.transform && typeof value.transform === 'object'
-								? value.transform
-								: {
-									x: { value: 0 },
-									y: { value: 0 },
-									scale: { value: 1 },
-									rotation: { value: 0 },
-								},
-						},
+					attrs: {
+						sourceClipId: value.sourceClipId,
+						name: typeof value.name === 'string' ? value.name : 'Clip',
+						color: typeof value.color === 'string' ? value.color : '#2563eb',
+						start: typeof value.start === 'number' ? value.start : 0,
+						in: typeof value.in === 'number' ? value.in : 0,
+						duration: typeof value.duration === 'number' ? value.duration : 0,
+						fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
+						fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,
+						audio: value.audio && typeof value.audio === 'object' ? value.audio : { gain: 1, pan: 0 },
+						opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
+						transform: value.transform && typeof value.transform === 'object'
+							? value.transform
+							: {
+								x: { value: 0 },
+								y: { value: 0 },
+								scale: { value: 1 },
+								rotation: { value: 0 },
+							},
 					},
 				}
 			},
