@@ -3,10 +3,11 @@ import { buildEditorActionCommand } from '../domain/actionCommandBuilders'
 import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
 import type { EditorActionScope } from '../domain/actionScope'
 import { getActiveProject, getAudioTrack, getClipIdsForTrack, getProjectMetaList, getSelectedClip, getTracks, getVideoTrack } from '../domain/selectors'
-import type { ClipAttrs, EditorSessionState, ProjectRegistry, ResourceAttrs, TextAttrs } from '../domain/types'
+import type { ClipAttrs, ProjectRegistry, ResourceAttrs, TextAttrs } from '../domain/types'
 import { CMD } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateLegendActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import { createSessionRootActions } from './sessionRootActions'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 const minimumSplitOffset = 0.01
@@ -118,31 +119,10 @@ export const createLegendActionRuntime = (
 			env.authority.dispatch(result.command)
 		}
 	}
+	const sessionRootActions = createSessionRootActions(env, options, dispatchBuiltCommand)
 
 	const actions: VideoEditorHarnessActions = {
-		createProject(title?: string): void {
-			env.authority.dispatch({ c: CMD.PROJECT_CREATE, p: { title } }).then((result) => {
-				const projectId = String(result.createdIds?.projectId)
-				env.session.setActiveProject(projectId)
-				env.session.selectEntity(null)
-				env.session.setCursor(0)
-			})
-		},
-
-		setActiveProject(projectId: string): void {
-			env.stores.projects$.activeProjectId.set(projectId)
-			env.session.setActiveProject(projectId)
-			env.session.selectEntity(null)
-			env.session.setCursor(0)
-		},
-
-		undo(): void {
-			Promise.resolve(env.authority.undo()).finally(env.authority.syncHistoryState)
-		},
-
-		redo(): void {
-			Promise.resolve(env.authority.redo()).finally(env.authority.syncHistoryState)
-		},
+		...sessionRootActions,
 
 		importSampleResource(): void {
 			const projectId = getActiveProjectId(env)
@@ -280,18 +260,6 @@ export const createLegendActionRuntime = (
 			}
 
 			actions.updateTextById(textId, attrs)
-		},
-
-		addTrack(kind: 'video' | 'audio'): void {
-			dispatchBuiltCommand(createScope('$root', 'root'), 'addTrack', { kind })
-		},
-
-		selectEntity(entityId: string | null): void {
-			env.session.selectEntity(entityId)
-		},
-
-		setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void {
-			env.session.setActiveInspectorTab(tab)
 		},
 
 		renameClipById(clipId: string, name: string): void {
@@ -576,28 +544,6 @@ export const createLegendActionRuntime = (
 			}
 
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'moveBy', { delta })
-		},
-
-		togglePlayback(): void {
-			env.session.setPlaying(!env.session.get().isPlaying)
-		},
-
-		setCursor(value: number): void {
-			env.session.setCursor(roundToHundredths(value))
-		},
-
-		tickPlayback(deltaSeconds: number): void {
-			const session = env.session.get()
-			if (!session.isPlaying) {
-				return
-			}
-
-			env.session.setCursor((session.cursor + deltaSeconds) % options.playbackDuration$.get())
-		},
-
-		zoomTimeline(delta: number): void {
-			const current = env.session.get().timelineZoom
-			env.session.setTimelineZoom(clamp(current + delta, 8, 96))
 		},
 	}
 
