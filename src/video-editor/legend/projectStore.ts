@@ -1,6 +1,6 @@
 import { batch, mergeIntoObservable, observable, type Observable } from '@legendapp/state'
 import { createEmptyRegistry } from '../domain/createProject'
-import { PATCH, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
+import { PATCH, type Patch, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
 
 export const createProjectsStore = (): Observable<ProjectRegistry> =>
 	observable<ProjectRegistry>(createEmptyRegistry())
@@ -12,79 +12,98 @@ export const applySnapshot = (
 	projects$.set(snapshot)
 }
 
+type PatchByCode<Code extends Patch['c']> = Extract<Patch, { c: Code }>
+
+interface LegendPatchApplyContext {
+	projects$: Observable<ProjectRegistry>
+	envelope: PatchEnvelope
+	didSetRegistry: boolean
+}
+
+type LegendPatchApplier<PatchType extends Patch = Patch> = (
+	context: LegendPatchApplyContext,
+	patch: PatchType,
+) => void
+
+const legendPatchAppliers: Partial<Record<Patch['c'], LegendPatchApplier>> = {
+	[PATCH.REGISTRY_SET]: (context, patch: PatchByCode<typeof PATCH.REGISTRY_SET>) => {
+		context.projects$.set(patch.p.registry)
+		context.didSetRegistry = true
+	},
+	[PATCH.PROJECT_SET]: (context, patch: PatchByCode<typeof PATCH.PROJECT_SET>) => {
+		mergeIntoObservable(context.projects$.projects[patch.p.project.id], {
+			...patch.p.project,
+			version: context.envelope.version,
+		})
+	},
+	[PATCH.ENTITY_SET]: (context, patch: PatchByCode<typeof PATCH.ENTITY_SET>) => {
+		context.projects$.entitiesById[patch.p.entity.id].set(patch.p.entity)
+	},
+	[PATCH.ENTITY_DELETE]: (context, patch: PatchByCode<typeof PATCH.ENTITY_DELETE>) => {
+		context.projects$.entitiesById[patch.p.id].delete()
+	},
+	[PATCH.ATTRS_MERGE]: (context, patch: PatchByCode<typeof PATCH.ATTRS_MERGE>) => {
+		context.projects$.entitiesById[patch.p.id].attrs.assign(patch.p.attrs)
+	},
+	[PATCH.SCALAR_SET]: (context, patch: PatchByCode<typeof PATCH.SCALAR_SET>) => {
+		const path = patch.p.path.split('.')
+		let node = context.projects$.entitiesById[patch.p.id].attrs as unknown as Record<string, Observable<unknown>>
+		let leaf: Observable<unknown> | undefined
+		for (const key of path) {
+			const next = node[key]
+			if (!next) {
+				leaf = undefined
+				break
+			}
+
+			leaf = next
+			node = next as unknown as Record<string, Observable<unknown>>
+		}
+
+		leaf?.set(patch.p.value)
+	},
+	[PATCH.REL_SPLICE]: (context, patch: PatchByCode<typeof PATCH.REL_SPLICE>) => {
+		const rel$ = context.projects$.entitiesById[patch.p.id].rels[patch.p.rel] as unknown as Observable<string[]>
+		if (!Array.isArray(rel$.get())) {
+			rel$.set([])
+		}
+
+		rel$.set((previous) => {
+			const next = Array.isArray(previous) ? [...previous] : []
+			next.splice(patch.p.index, patch.p.deleteCount, ...patch.p.insert)
+			return next
+		})
+	},
+	[PATCH.WORKSPACE_ACTIVE_PROJECT_SET]: (context, patch: PatchByCode<typeof PATCH.WORKSPACE_ACTIVE_PROJECT_SET>) => {
+		context.projects$.activeProjectId.set(patch.p.projectId)
+	},
+}
+
 export const applyPatchEnvelope = (
 	projects$: Observable<ProjectRegistry>,
 	envelope: PatchEnvelope,
 ): void => {
 	batch(() => {
+		const context: LegendPatchApplyContext = {
+			projects$,
+			envelope,
+			didSetRegistry: false,
+		}
+
 		for (const patch of envelope.patches) {
-			switch (patch.c) {
-				case PATCH.REGISTRY_SET:
-					projects$.set(patch.p.registry)
-					return
+			const applier = legendPatchAppliers[patch.c]
+			if (!applier) {
+				throw new Error(`Unsupported patch code ${(patch as { c: number }).c}`)
+			}
 
-				case PATCH.PROJECT_SET:
-					mergeIntoObservable(projects$.projects[patch.p.project.id], {
-						...patch.p.project,
-						version: envelope.version,
-					})
-					break
+			applier(context, patch)
 
-				case PATCH.ENTITY_SET:
-					projects$.entitiesById[patch.p.entity.id].set(patch.p.entity)
-					break
-
-				case PATCH.ENTITY_DELETE:
-					projects$.entitiesById[patch.p.id].delete()
-					break
-
-				case PATCH.ATTRS_MERGE:
-					projects$.entitiesById[patch.p.id].attrs.assign(patch.p.attrs)
-					break
-
-				case PATCH.SCALAR_SET: {
-					const path = patch.p.path.split('.')
-					let node = projects$.entitiesById[patch.p.id].attrs as unknown as Record<string, Observable<unknown>>
-					let leaf: Observable<unknown> | undefined
-					for (const key of path) {
-						const next = node[key]
-						if (!next) {
-							leaf = undefined
-							break
-						}
-
-						leaf = next
-						node = next as unknown as Record<string, Observable<unknown>>
-					}
-
-					leaf?.set(patch.p.value)
-					break
-				}
-
-				case PATCH.REL_SPLICE: {
-					const rel$ = projects$.entitiesById[patch.p.id].rels[patch.p.rel] as unknown as Observable<string[]>
-					if (!Array.isArray(rel$.get())) {
-						rel$.set([])
-					}
-
-					rel$.set((previous) => {
-						const next = Array.isArray(previous) ? [...previous] : []
-						next.splice(patch.p.index, patch.p.deleteCount, ...patch.p.insert)
-						return next
-					})
-					break
-				}
-
-				case PATCH.WORKSPACE_ACTIVE_PROJECT_SET:
-					projects$.activeProjectId.set(patch.p.projectId)
-					break
-
-				default:
-					throw new Error(`Unsupported patch code ${(patch as { c: number }).c}`)
+			if (context.didSetRegistry) {
+				break
 			}
 		}
 
-		if (projects$.projects[envelope.projectId].get()) {
+		if (!context.didSetRegistry && projects$.projects[envelope.projectId].get()) {
 			projects$.projects[envelope.projectId].version.set(envelope.version)
 		}
 	})
