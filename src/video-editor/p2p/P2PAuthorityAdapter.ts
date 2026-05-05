@@ -4,7 +4,7 @@ import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageT
 import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
 import { createEmptyRegistry } from '../domain/createProject'
 import { createFallbackAuthorityClient } from '../worker/fallbackAuthorityClient'
-import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
+import type { DktSyncListener, EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
 import type { AuthorityResourceBindings } from '../worker/createAuthorityClient'
 import type { BridgeSignalingFactory } from './BridgeSignaling'
 import {
@@ -55,6 +55,7 @@ const createTransportAuthorityClient = (
 	requestTimeoutMs: number,
 ): EditorAuthorityClient => {
 	const listeners = new Set<PatchListener>()
+	const syncListeners = new Set<DktSyncListener>()
 	const pending = new Map<string, TransportPendingRequest>()
 	let destroyed = false
 
@@ -76,6 +77,11 @@ const createTransportAuthorityClient = (
 		}
 
 		switch (message.type) {
+			case DKT_MSG.SYNC_HANDLE:
+				for (const listener of syncListeners) {
+					listener(message)
+				}
+				return
 			case DKT_MSG.PATCHES:
 				for (const listener of listeners) {
 					listener(message.envelope as PatchEnvelope)
@@ -159,6 +165,13 @@ const createTransportAuthorityClient = (
 			return request<ProjectRegistry>({ type: DKT_MSG.REPLACE_SNAPSHOT, snapshot: structuredClone(snapshot) }).then(() => undefined)
 		},
 
+		subscribeDktSync(listener) {
+			syncListeners.add(listener)
+			return () => {
+				syncListeners.delete(listener)
+			}
+		},
+
 		destroy() {
 			if (destroyed) {
 				return
@@ -167,6 +180,7 @@ const createTransportAuthorityClient = (
 			destroyed = true
 			unlisten()
 			listeners.clear()
+			syncListeners.clear()
 			cleanupPending(new Error('P2P authority request cancelled'))
 			transport.destroy()
 		},
@@ -215,12 +229,14 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 	let role: 'server' | 'client' | 'undecided' = 'undecided'
 	let activeClient: EditorAuthorityClient | null = null
 	let activeClientUnsubscribe: (() => void) | null = null
+	let activeClientSyncUnsubscribe: (() => void) | null = null
 	let hasCachedSnapshot = false
 	let cachedSnapshot = createEmptyRegistry()
 	let activationHydrationPending = false
 	let activationToken = 0
 
 	const listeners = new Set<PatchListener>()
+	const dktSyncListeners = new Set<DktSyncListener>()
 	const pending: PendingCall<unknown>[] = []
 
 	const setCachedSnapshot = (snapshot: ProjectRegistry): void => {
@@ -239,6 +255,8 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 	const cleanupActiveClient = (): void => {
 		activeClientUnsubscribe?.()
 		activeClientUnsubscribe = null
+		activeClientSyncUnsubscribe?.()
+		activeClientSyncUnsubscribe = null
 		activeClient?.destroy?.()
 		activeClient = null
 	}
@@ -270,6 +288,11 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 				listener(envelope)
 			}
 		})
+		activeClientSyncUnsubscribe = nextClient.subscribeDktSync?.((message) => {
+			for (const listener of dktSyncListeners) {
+				listener(message)
+			}
+		}) ?? null
 
 		const flushQueuedCalls = (): void => {
 			if (destroyed || currentActivationToken !== activationToken || activationHydrationPending) {
@@ -442,6 +465,13 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			}
 		},
 
+		subscribeDktSync(listener) {
+			dktSyncListeners.add(listener)
+			return () => {
+				dktSyncListeners.delete(listener)
+			}
+		},
+
 		dispatch(command: Command) {
 			return invoke((client) => client.dispatch(command))
 		},
@@ -454,6 +484,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			destroyed = true
 			failPending(new Error('P2P authority adapter destroyed'))
 			listeners.clear()
+			dktSyncListeners.clear()
 			cleanupActiveClient()
 			manager.destroy()
 		},
