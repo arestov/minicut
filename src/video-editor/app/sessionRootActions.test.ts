@@ -30,9 +30,6 @@ const createEnv = (overrides?: { playbackDuration?: number; registryProjectId?: 
 		},
 		authority: {
 			dispatch: vi.fn(async () => ({ envelope: { projectId: 'project:1', version: 1, patches: [] } })),
-			undo: vi.fn(),
-			redo: vi.fn(),
-			syncHistoryState: vi.fn(),
 		},
 		session: {
 			get: sessionGet,

@@ -565,51 +565,6 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
-	it('keeps timeline unchanged when history actions are disabled', async () => {
-		const authority = new MemoryWorkerAuthority()
-		const harness = createVideoEditorHarness(authority)
-
-		try {
-			await settleHarness()
-			harness.actions.createProject()
-			await settleHarness()
-			harness.actions.importSampleResource()
-			await settleHarness()
-
-			let registry = harness.projects$.get()
-			let project = getActiveProject(registry, harness.session$.get())
-			expect(project).not.toBeNull()
-			let videoTrack = getVideoTrack(registry, project!)
-			expect(videoTrack).not.toBeNull()
-			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
-			expect(harness.history$.get()).toMatchObject({ canUndo: false, canRedo: false })
-
-			harness.actions.undo()
-			await settleHarness()
-
-			registry = harness.projects$.get()
-			project = getActiveProject(registry, harness.session$.get())
-			expect(project).not.toBeNull()
-			videoTrack = getVideoTrack(registry, project!)
-			expect(videoTrack).not.toBeNull()
-			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
-			expect(harness.history$.get()).toMatchObject({ canUndo: false, canRedo: false })
-
-			harness.actions.redo()
-			await settleHarness()
-
-			registry = harness.projects$.get()
-			project = getActiveProject(registry, harness.session$.get())
-			expect(project).not.toBeNull()
-			videoTrack = getVideoTrack(registry, project!)
-			expect(videoTrack).not.toBeNull()
-			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
-			expect(harness.history$.get()).toMatchObject({ canUndo: false, canRedo: false })
-		} finally {
-			harness.destroy()
-		}
-	})
-
 	it('tracks in-point and clamps trim start to keep positive duration', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)
@@ -756,11 +711,8 @@ describe('createVideoEditorHarness actions', () => {
 		})
 		const authority: EditorAuthorityClient = {
 			getSnapshot: () => createEmptyRegistry(),
-			getHistoryState: () => ({ canUndo: false, canRedo: false }),
 			subscribe: () => () => {},
 			dispatch,
-			undo: () => null,
-			redo: () => null,
 		}
 		const harness = createVideoEditorHarness(authority, { autoCreateInitialProject: false })
 

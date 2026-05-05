@@ -75,9 +75,6 @@ export const createFallbackAuthorityClient = (options: {
 		getSnapshot() {
 			return invoke((client) => client.getSnapshot())
 		},
-		getHistoryState() {
-			return invoke((client) => client.getHistoryState())
-		},
 		subscribe(listener) {
 			listeners.add(listener)
 			return () => {
@@ -86,12 +83,6 @@ export const createFallbackAuthorityClient = (options: {
 		},
 		dispatch(command) {
 			return invoke((client) => client.dispatch(command))
-		},
-		undo() {
-			return invoke((client) => client.undo())
-		},
-		redo() {
-			return invoke((client) => client.redo())
 		},
 		replaceSnapshot(snapshot) {
 			return invoke((client) => {

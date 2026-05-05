@@ -1,7 +1,7 @@
 import { observable } from '@legendapp/state'
 import { describe, expect, it, vi } from 'vitest'
 import { createProjectGraph } from '../domain/createProject'
-import type { EditorSessionState, Entity, HistoryState } from '../domain/types'
+import type { EditorSessionState, Entity } from '../domain/types'
 import { createLegendActionRuntime } from './createLegendActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 
@@ -89,19 +89,14 @@ const createEnv = () => {
 	const env = {
 		stores: {
 			projects$: observable(registry),
-			history$: observable<HistoryState>({ canUndo: false, canRedo: false }),
 			getRegistry: () => registry,
 			applySnapshot: vi.fn(),
 			applyPatchEnvelope: vi.fn(),
 		},
 		authority: {
 			dispatch,
-			undo: vi.fn(),
-			redo: vi.fn(),
 			getSnapshot: vi.fn(() => registry),
-			getHistoryState: vi.fn(() => ({ canUndo: false, canRedo: false })),
 			subscribe: vi.fn(() => () => undefined),
-			syncHistoryState: vi.fn(),
 		},
 		session: {
 			session$: observable(sessionState),

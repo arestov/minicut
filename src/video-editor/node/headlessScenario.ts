@@ -48,7 +48,6 @@ export interface HeadlessScenarioResult {
 projectCount: number
 activeProjectId: string | null
 resourceCount: number
-history: { canUndo: boolean; canRedo: boolean }
 exported?: {
 fileName: string
 mimeType: string
@@ -181,12 +180,10 @@ const activeProjectId = registry.activeProjectId ?? Object.keys(registry.project
 const activeProject = activeProjectId
 ? getActiveProject(registry, { activeProjectId })
 : null
-const history = await asPromise(harness.worker.getHistoryState())
 const result: HeadlessScenarioResult = {
 projectCount: Object.keys(registry.projects).length,
 activeProjectId,
 resourceCount: activeProject ? getResourceEntities(registry, activeProject).length : 0,
-history,
 }
 
 if (!scenario.export || !activeProjectId) {

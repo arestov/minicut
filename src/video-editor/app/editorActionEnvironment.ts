@@ -1,5 +1,5 @@
 import type { Observable } from '@legendapp/state'
-import type { DispatchResult, EditorSessionState, HistoryState, PatchEnvelope, ProjectRegistry, ResourceKind, Command } from '../domain/types'
+import type { DispatchResult, EditorSessionState, PatchEnvelope, ProjectRegistry, ResourceKind, Command } from '../domain/types'
 import type { ResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportProgressEvent, ExportRenderer, ExportRenderRequest, ExportRenderResult } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
@@ -14,7 +14,6 @@ import type { MiniCutDktClipProxyInput, MiniCutDktEffectProxyInput, MiniCutDktTe
 
 export interface EditorStorePort {
 	projects$: Observable<ProjectRegistry>
-	history$: Observable<HistoryState>
 	getRegistry(): ProjectRegistry
 	applySnapshot(snapshot: ProjectRegistry): void
 	applyPatchEnvelope(envelope: PatchEnvelope): void
@@ -23,12 +22,8 @@ export interface EditorStorePort {
 export interface EditorAuthorityPort {
 	client: EditorAuthorityClient
 	dispatch(command: Command): Promise<DispatchResult>
-	undo(): Promise<unknown> | unknown
-	redo(): Promise<unknown> | unknown
 	getSnapshot(): Promise<ProjectRegistry> | ProjectRegistry
-	getHistoryState(): Promise<HistoryState> | HistoryState
 	subscribe(listener: (envelope: PatchEnvelope) => void): () => void
-	syncHistoryState(): void
 }
 
 export interface EditorSessionPort {

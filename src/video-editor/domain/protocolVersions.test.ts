@@ -19,12 +19,12 @@ describe('protocol versions', () => {
 			meta: {
 				protocolVersion: AUTHORITY_PROTOCOL_VERSION,
 				schemaVersion: 1,
-				capabilities: ['history-state'],
+				capabilities: ['snapshot-restore'],
 			},
 		}
 
 		expect(message.meta?.protocolVersion).toBe(1)
-		expect(message.meta?.capabilities).toContain('history-state')
+		expect(message.meta?.capabilities).toContain('snapshot-restore')
 	})
 
 	it('accepts optional signaling protocol metadata', () => {

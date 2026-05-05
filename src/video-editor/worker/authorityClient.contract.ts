@@ -14,16 +14,12 @@ export const runAuthorityClientContract = ({
 	createClient,
 }: AuthorityClientContractCase): void => {
 	describe(`${label} authority contract`, () => {
-		it('starts with empty snapshot and no history', async () => {
+		it('starts with empty snapshot', async () => {
 			const client = createClient()
 			try {
 				const snapshot = await asPromise(client.getSnapshot())
 				expect(Object.keys(snapshot.projects)).toHaveLength(0)
 				expect(snapshot.activeProjectId).toBeNull()
-				expect(await asPromise(client.getHistoryState())).toEqual({
-					canUndo: false,
-					canRedo: false,
-				})
 			} finally {
 				client.destroy?.()
 			}
@@ -50,10 +46,6 @@ export const runAuthorityClientContract = ({
 				const project = snapshot.projects[projectId]
 				expect(project).toBeDefined()
 				expect(getResourceEntities(snapshot, project)).toHaveLength(1)
-				expect(await asPromise(client.getHistoryState())).toEqual({
-					canUndo: true,
-					canRedo: false,
-				})
 			} finally {
 				client.destroy?.()
 			}
@@ -75,34 +67,6 @@ export const runAuthorityClientContract = ({
 			}
 		})
 
-		it('supports undo/redo round-trip with history state updates', async () => {
-			const client = createClient()
-			try {
-				const createResult = await asPromise(client.dispatch({ c: CMD.PROJECT_CREATE, p: {} }))
-				const projectId = String(createResult.createdIds?.projectId)
-				await asPromise(client.dispatch({
-					c: CMD.RESOURCE_IMPORT,
-					p: { projectId, name: 'Undo clip', kind: 'video', duration: 2 },
-				}))
-
-				const undoEnvelope = await asPromise(client.undo())
-				expect(undoEnvelope).not.toBeNull()
-				expect(await asPromise(client.getHistoryState())).toEqual({
-					canUndo: true,
-					canRedo: true,
-				})
-
-				const redoEnvelope = await asPromise(client.redo())
-				expect(redoEnvelope).not.toBeNull()
-				expect(await asPromise(client.getHistoryState())).toEqual({
-					canUndo: true,
-					canRedo: false,
-				})
-			} finally {
-				client.destroy?.()
-			}
-		})
-
 		it('replaces snapshots and notifies subscribers', async () => {
 			const sourceClient = createClient()
 			const targetClient = createClient()
@@ -119,10 +83,6 @@ export const runAuthorityClientContract = ({
 				expect(Object.keys(restoredSnapshot.projects)).toEqual(Object.keys(sourceSnapshot.projects))
 				expect(restoredSnapshot.projects[String(createResult.createdIds?.projectId)]).toBeDefined()
 				expect(listener).toHaveBeenCalledWith(expect.objectContaining({ patches: expect.any(Array) }))
-				expect(await asPromise(targetClient.getHistoryState())).toEqual({
-					canUndo: false,
-					canRedo: false,
-				})
 			} finally {
 				sourceClient.destroy?.()
 				targetClient.destroy?.()

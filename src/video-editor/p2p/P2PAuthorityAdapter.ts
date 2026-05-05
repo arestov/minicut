@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { MSG, PATCH, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { MSG, PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
 import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
 import { createEmptyRegistry } from '../domain/createProject'
 import { createFallbackAuthorityClient } from '../worker/fallbackAuthorityClient'
@@ -121,10 +121,6 @@ const createTransportAuthorityClient = (
 			return request<ProjectRegistry>({ m: MSG.SNAPSHOT_REQUEST })
 		},
 
-		getHistoryState() {
-			return request<HistoryState>({ m: MSG.HISTORY_STATE_REQUEST })
-		},
-
 		subscribe(listener) {
 			listeners.add(listener)
 			return () => {
@@ -134,14 +130,6 @@ const createTransportAuthorityClient = (
 
 		dispatch(command) {
 			return request<DispatchResult>({ m: MSG.COMMAND, p: command })
-		},
-
-		undo() {
-			return request<PatchEnvelope | null>({ m: MSG.UNDO })
-		},
-
-		redo() {
-			return request<PatchEnvelope | null>({ m: MSG.REDO })
 		},
 
 		destroy() {
@@ -419,10 +407,6 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			})
 		},
 
-		getHistoryState() {
-			return invoke((client) => client.getHistoryState())
-		},
-
 		subscribe(listener) {
 			listeners.add(listener)
 			return () => {
@@ -432,14 +416,6 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 
 		dispatch(command: Command) {
 			return invoke((client) => client.dispatch(command))
-		},
-
-		undo() {
-			return invoke((client) => client.undo())
-		},
-
-		redo() {
-			return invoke((client) => client.redo())
 		},
 
 		destroy() {

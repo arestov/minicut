@@ -38,7 +38,7 @@ interface RemoteResourceState extends ResourceSnapshot {
 	chunks: Map<number, ArrayBuffer>
 	loadedRanges: ResourceByteRange[]
 	requestedRanges: ResourceByteRange[]
-	requestedHistory: ResourceByteRange[]
+	requestedRangesLog: ResourceByteRange[]
 	requestEvents: Array<{ reason: TransferReason, ranges: ResourceByteRange[] }>
 	loadedBytes: number
 	lastTouchedAt: number
@@ -66,7 +66,7 @@ export interface ResourceTransferView {
 	totalBytes: number
 	loadedRanges: ResourceByteRange[]
 	requestedRanges: ResourceByteRange[]
-	requestedHistory: ResourceByteRange[]
+	requestedRangesLog: ResourceByteRange[]
 	requestEvents: Array<{ reason: TransferReason, ranges: ResourceByteRange[] }>
 	previewUrl: string
 	playbackUrl: string
@@ -218,7 +218,7 @@ const createRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => (
 	chunks: new Map<number, ArrayBuffer>(),
 	loadedRanges: [],
 	requestedRanges: [],
-	requestedHistory: [],
+	requestedRangesLog: [],
 	requestEvents: [],
 	loadedBytes: 0,
 	lastTouchedAt: Date.now(),
@@ -476,7 +476,7 @@ export const createResourceTransferManager = (
 				totalBytes,
 				loadedRanges: totalBytes > 0 ? [[0, totalBytes]] : [],
 				requestedRanges: [],
-				requestedHistory: [],
+				requestedRangesLog: [],
 				requestEvents: [],
 				previewUrl: local.objectUrl,
 				playbackUrl: local.objectUrl,
@@ -512,7 +512,7 @@ export const createResourceTransferManager = (
 			totalBytes,
 			loadedRanges: state.loadedRanges,
 			requestedRanges: state.requestedRanges,
-			requestedHistory: state.requestedHistory,
+			requestedRangesLog: state.requestedRangesLog,
 			requestEvents: state.requestEvents,
 			previewUrl,
 			playbackUrl: previewUrl,
@@ -605,7 +605,7 @@ export const createResourceTransferManager = (
 		}
 
 		state.requestedRanges = mergeByteRanges([...state.requestedRanges, ...missingRanges])
-		state.requestedHistory = mergeByteRanges([...state.requestedHistory, ...missingRanges])
+		state.requestedRangesLog = mergeByteRanges([...state.requestedRangesLog, ...missingRanges])
 		state.requestEvents = [...state.requestEvents.slice(-19), { reason, ranges: missingRanges }]
 		updateTransferView(resourceId)
 		sendControl(peerKey, {

@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { MSG, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { MSG, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
 import type { EditorAuthorityClient, PatchListener } from './authorityClient'
 
 type PendingRequest = {
@@ -70,10 +70,6 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 		return this.#request<ProjectRegistry>({ m: MSG.SNAPSHOT_REQUEST })
 	}
 
-	getHistoryState(): Promise<HistoryState> {
-		return this.#request<HistoryState>({ m: MSG.HISTORY_STATE_REQUEST })
-	}
-
 	subscribe(listener: PatchListener): () => void {
 		this.#listeners.add(listener)
 		return () => {
@@ -83,14 +79,6 @@ export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
 
 	dispatch(command: Command): Promise<DispatchResult> {
 		return this.#request<DispatchResult>({ m: MSG.COMMAND, p: command })
-	}
-
-	undo(): Promise<PatchEnvelope | null> {
-		return this.#request<PatchEnvelope | null>({ m: MSG.UNDO })
-	}
-
-	redo(): Promise<PatchEnvelope | null> {
-		return this.#request<PatchEnvelope | null>({ m: MSG.REDO })
 	}
 
 	replaceSnapshot(snapshot: ProjectRegistry): Promise<void> {

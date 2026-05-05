@@ -29,13 +29,11 @@ const activeProject = getActiveProject(snapshot, { activeProjectId: snapshot.act
 const resourceCount = activeProject ? getResourceEntities(snapshot, activeProject).length : 0
 const videoTrack = activeProject ? getVideoTrack(snapshot, activeProject) : null
 const clipCount = videoTrack ? getClipIdsForTrack(snapshot, videoTrack.id).length : 0
-const history = await Promise.resolve(client.getHistoryState())
 
 return {
 projectCount: Object.keys(snapshot.projects).length,
 resourceCount,
 clipCount,
-history,
 }
 } finally {
 client.destroy?.()

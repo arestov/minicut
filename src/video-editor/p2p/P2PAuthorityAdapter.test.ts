@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { buildDispatchResult } from '../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
 import { createEmptyRegistry } from '../domain/createProject'
-import { CMD, MSG, PATCH, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
+import { CMD, MSG, PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
 import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
 import { createP2PAuthorityAdapter } from './P2PAuthorityAdapter'
 import type { P2PTransportLike, PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from './PageP2PManager'
@@ -32,7 +32,6 @@ const resolveLastTransportSnapshotRequest = (transport: ReturnType<typeof create
 
 class FakeAuthorityClient implements EditorAuthorityClient {
 	snapshot: ProjectRegistry
-	readonly history: HistoryState = { canUndo: false, canRedo: false }
 	readonly listeners = new Set<PatchListener>()
 
 	constructor(snapshot: ProjectRegistry = createEmptyRegistry()) {
@@ -40,13 +39,10 @@ class FakeAuthorityClient implements EditorAuthorityClient {
 	}
 
 	getSnapshot = vi.fn(() => this.snapshot)
-	getHistoryState = vi.fn(() => this.history)
 	dispatch = vi.fn((command: Command): DispatchResult => ({
 		envelope: createRegistryEnvelope(this.snapshot),
 		createdIds: command.c === CMD.PROJECT_CREATE ? { projectId: 'project:1' } : undefined,
 	}))
-	undo = vi.fn(() => null)
-	redo = vi.fn(() => null)
 	destroy = vi.fn(() => {
 		this.listeners.clear()
 	})

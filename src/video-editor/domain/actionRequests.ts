@@ -10,8 +10,6 @@ export type BasicEffectKind = 'blur' | 'sharpen' | 'tint'
 export interface EditorActionPayloads {
 	createProject: string | { title?: string } | undefined
 	setActiveProject: string | { projectId: string }
-	undo: undefined
-	redo: undefined
 	importSampleResource: undefined
 	importFiles: { files: FileList | File[] }
 	addTextClip: { content?: string } | undefined

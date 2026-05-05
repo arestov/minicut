@@ -73,8 +73,6 @@ export const createSessionRootActions = (
 ): Pick<VideoEditorHarnessActions,
 	| 'createProject'
 	| 'setActiveProject'
-	| 'undo'
-	| 'redo'
 	| 'addTrack'
 	| 'selectEntity'
 	| 'setActiveInspectorTab'
@@ -113,14 +111,6 @@ export const createSessionRootActions = (
 
 		env.stores.projects$.activeProjectId.set(projectId)
 		dispatchAndApplySessionPatch(env, 'setActiveProject', reduceSessionSetActiveProjectAction(projectId), projectId)
-	},
-
-	undo(): void {
-		return
-	},
-
-	redo(): void {
-		return
 	},
 
 	addTrack(kind: 'video' | 'audio'): void {

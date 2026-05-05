@@ -18,7 +18,7 @@ type DebugTransfer = {
 	totalBytes: number
 	loadedBytes: number
 	previewUrl: string
-	requestedHistory: Array<[number, number]>
+	requestedRangesLog: Array<[number, number]>
 	requestEvents: Array<{ reason: 'head' | 'tail' | 'window' | 'sequential' | 'replication'; ranges: Array<[number, number]> }>
 	lastError: string | null
 }

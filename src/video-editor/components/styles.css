@@ -246,14 +246,6 @@ button:disabled {
 	min-width: 0;
 }
 
-.ve-toolbar__history {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	padding-right: 8px;
-	border-right: 1px solid var(--ve-border);
-}
-
 .ve-toolbar__actions button {
 	height: 32px;
 	border-radius: 6px;
@@ -2124,11 +2116,6 @@ button:disabled {
 		justify-content: flex-start;
 		flex-wrap: wrap;
 		width: 100%;
-	}
-
-	.ve-toolbar__history {
-		padding-right: 0;
-		border-right: 0;
 	}
 
 	.ve-main__top {

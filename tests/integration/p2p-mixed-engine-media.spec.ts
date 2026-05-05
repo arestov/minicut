@@ -19,7 +19,7 @@ type DebugTransfer = {
 	previewUrl: string
 	loadedRanges: Array<[number, number]>
 	requestedRanges: Array<[number, number]>
-	requestedHistory: Array<[number, number]>
+	requestedRangesLog: Array<[number, number]>
 	requestEvents: Array<{ reason: 'head' | 'tail' | 'window' | 'sequential' | 'replication'; ranges: Array<[number, number]> }>
 	mode: 'local' | 'mirrored' | 'streaming'
 	availability: 'local' | 'remote'

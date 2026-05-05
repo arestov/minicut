@@ -1,4 +1,4 @@
-import { observable, type Observable } from '@legendapp/state'
+import type { Observable } from '@legendapp/state'
 import { createPlaybackDuration$ } from '../read-model/previewReadModel'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../dkt/state/projectStore'
 import { createSessionStore } from '../dkt/state/sessionStore'
@@ -7,7 +7,6 @@ import type {
 	Command,
 	DispatchResult,
 	EditorSessionState,
-	HistoryState,
 	ProjectRegistry,
 } from '../domain/types'
 import { CMD } from '../domain/types'
@@ -122,7 +121,6 @@ export const createVideoEditorHarness = (
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const playbackDuration$ = createPlaybackDuration$(projects$, session$)
-	const history$ = observable<HistoryState>({ canUndo: false, canRedo: false })
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
 	let initialBootstrapChecked = false
@@ -186,12 +184,6 @@ export const createVideoEditorHarness = (
 		}
 	}
 
-	const syncHistoryState = (): void => {
-		if (!isDestroyed) {
-			history$.set({ canUndo: false, canRedo: false })
-		}
-	}
-
 	const ensureInitialProject = (): void => {
 		if (!autoCreateInitialProject) {
 			return
@@ -233,7 +225,6 @@ export const createVideoEditorHarness = (
 			session$.cursor.set(0)
 		}).finally(() => {
 			projectBootstrapInFlight = false
-			syncHistoryState()
 		})
 	}
 
@@ -251,7 +242,6 @@ export const createVideoEditorHarness = (
 			applySnapshot(projects$, snapshot)
 			resourceTransferManager.syncRegistry(snapshot)
 			syncActiveProjectSelection()
-			syncHistoryState()
 			ensureInitialProject()
 		}).catch(() => {
 			if (isDestroyed) {
@@ -272,16 +262,14 @@ export const createVideoEditorHarness = (
 		const registry = projects$.get()
 		resourceTransferManager.syncRegistry(registry)
 		syncActiveProjectSelection()
-		syncHistoryState()
 	})
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
-		Promise.resolve(authorityClient.dispatch(command)).finally(syncHistoryState)
+		Promise.resolve(authorityClient.dispatch(command))
 
 	const actionEnvironment: EditorActionEnvironment = {
 		stores: {
 			projects$,
-			history$,
 			getRegistry: () => projects$.get(),
 			applySnapshot: (snapshot) => applySnapshot(projects$, snapshot),
 			applyPatchEnvelope: (envelope) => applyPatchEnvelope(projects$, envelope),
@@ -289,12 +277,8 @@ export const createVideoEditorHarness = (
 		authority: {
 			client: authorityClient,
 			dispatch,
-			undo: () => authorityClient.undo(),
-			redo: () => authorityClient.redo(),
 			getSnapshot: () => authorityClient.getSnapshot(),
-			getHistoryState: () => authorityClient.getHistoryState(),
 			subscribe: (listener) => authorityClient.subscribe(listener),
-			syncHistoryState,
 		},
 		session: {
 			session$,
@@ -380,7 +364,6 @@ export const createVideoEditorHarness = (
 		worker: authorityClient,
 		projects$,
 		session$,
-		history$,
 		renderRuntime,
 		resourceTransfers$: resourceTransferManager.transfers$,
 		actionEnvironment,

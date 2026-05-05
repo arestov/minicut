@@ -232,10 +232,6 @@ export const MSG = {
 	ERROR: -5,
 	DISPATCH_RESULT: -6,
 	DISCONNECT: -7,
-	UNDO: -8,
-	REDO: -9,
-	HISTORY_STATE_REQUEST: -10,
-	HISTORY_STATE: -11,
 	REGISTRY_RESTORE_REQUEST: -12,
 	REGISTRY_RESTORE_ACK: -13,
 } as const
@@ -430,11 +426,6 @@ export interface DispatchResult {
 	envelope: PatchEnvelope
 	createdIds?: Partial<Record<'projectId' | 'resourceId' | 'clipId' | 'audioClipId' | 'effectId' | 'textId', EntityId>>
 	deletedIds?: EntityId[]
-}
-
-export interface HistoryState {
-	canUndo: boolean
-	canRedo: boolean
 }
 
 export interface WireMessage<Payload = unknown> {

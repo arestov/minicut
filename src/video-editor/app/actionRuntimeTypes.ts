@@ -5,8 +5,6 @@ import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRe
 export interface VideoEditorHarnessActions {
 	createProject(title?: string): void
 	setActiveProject(projectId: string): void
-	undo(): void
-	redo(): void
 	importSampleResource(): void
 	importFiles(files: FileList | File[]): void
 	addResourceToTimeline(resourceId: string): void

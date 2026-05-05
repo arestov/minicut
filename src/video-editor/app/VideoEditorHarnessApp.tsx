@@ -181,7 +181,7 @@ export const VideoEditorHarnessApp = ({
 				previewUrl: transfer.previewUrl,
 				loadedRanges: transfer.loadedRanges,
 				requestedRanges: transfer.requestedRanges,
-				requestedHistory: transfer.requestedHistory,
+				requestedRangesLog: transfer.requestedRangesLog,
 				requestEvents: transfer.requestEvents,
 				mode: transfer.mode,
 				availability: transfer.availability,

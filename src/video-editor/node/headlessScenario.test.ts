@@ -12,7 +12,6 @@ operations: [
 expect(result.projectCount).toBe(1)
 expect(result.activeProjectId).toBeTruthy()
 expect(result.resourceCount).toBe(1)
-expect(result.history.canUndo).toBe(true)
 })
 
 it('supports manifest project export in node runtime', async () => {
