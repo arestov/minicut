@@ -59,7 +59,22 @@ export const createMediaImportActions = (
 
 		importFiles(files: FileList | File[]): void {
 			const projectId = getActionActiveProjectId(env)
-			for (const file of Array.from(files)) {
+			const task = env.tasks.dispatchTask('$fx_handleInputFiles', {
+				runtimeRef: Array.from(files),
+				data: { projectId },
+			})
+			if (task.dropped) {
+				return
+			}
+
+			const runtimeRefId = task.payload.runtimeRefId
+			const runtimeRef = runtimeRefId ? env.tasks.consumeRuntimeRef(runtimeRefId) : null
+			const inputFiles = Array.isArray(runtimeRef) ? runtimeRef : []
+			for (const file of inputFiles) {
+				if (!(file instanceof File)) {
+					continue
+				}
+
 				const kind = env.media.getFileKind(file)
 				if (!kind) {
 					continue
@@ -117,6 +132,8 @@ export const createMediaImportActions = (
 					})
 				})
 			}
+
+			env.tasks.completeTask(task)
 		},
 
 		addResourceToTimeline(resourceId: string): void {

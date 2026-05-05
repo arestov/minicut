@@ -55,7 +55,20 @@ export const createExportActions = (
 		}
 
 		const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'clip', clipId }, format: 'video-webm' }, onProgress)
-		const downloadUrl = env.media.createObjectUrl(result.blob)
+		const blobTask = env.tasks.dispatchTask('$fx_exportBlobUrl', {
+			runtimeRef: result.blob,
+			data: { projectId: project.id, clipId },
+		}, {
+			queuePolicy: 'queue-all',
+			intentKey: '$fx_exportBlobUrl:clip',
+		})
+		const runtimeBlob = blobTask.payload.runtimeRefId
+			? env.tasks.consumeRuntimeRef(blobTask.payload.runtimeRefId)
+			: null
+		env.tasks.completeTask(blobTask)
+		const downloadUrl = runtimeBlob instanceof Blob
+			? env.media.createObjectUrl(runtimeBlob)
+			: env.media.createObjectUrl(result.blob)
 		if (downloadUrl) {
 			env.lifecycle.registerObjectUrl(downloadUrl, 'export')
 			return { ...result, downloadUrl }
@@ -77,7 +90,20 @@ export const createExportActions = (
 		}
 
 		const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'project' }, format: 'video-webm' }, onProgress)
-		const downloadUrl = env.media.createObjectUrl(result.blob)
+		const blobTask = env.tasks.dispatchTask('$fx_exportBlobUrl', {
+			runtimeRef: result.blob,
+			data: { projectId: project.id },
+		}, {
+			queuePolicy: 'queue-all',
+			intentKey: '$fx_exportBlobUrl:project',
+		})
+		const runtimeBlob = blobTask.payload.runtimeRefId
+			? env.tasks.consumeRuntimeRef(blobTask.payload.runtimeRefId)
+			: null
+		env.tasks.completeTask(blobTask)
+		const downloadUrl = runtimeBlob instanceof Blob
+			? env.media.createObjectUrl(runtimeBlob)
+			: env.media.createObjectUrl(result.blob)
 		if (downloadUrl) {
 			env.lifecycle.registerObjectUrl(downloadUrl, 'export')
 			return { ...result, downloadUrl }

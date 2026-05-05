@@ -17,6 +17,7 @@ import { createLegendEditorRenderRuntime } from '../render-sync/createLegendEdit
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createLegendActionRuntime } from './createLegendActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
+import { createRuntimeTaskFacade } from './runtimeTaskFacade'
 import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
@@ -129,6 +130,7 @@ export const createVideoEditorHarness = (
 	let isDestroyed = false
 	let snapshotBootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
 	let initialProjectRetryTimer: ReturnType<typeof setTimeout> | null = null
+	const runtimeTasks = createRuntimeTaskFacade()
 
 	const getAuthorityRole = (): 'server' | 'client' | 'undecided' | null => {
 		const role = (authorityClient as Partial<{ role: unknown }>).role
@@ -327,6 +329,12 @@ export const createVideoEditorHarness = (
 				exportObjectUrls.add(url)
 			},
 		},
+		tasks: {
+			dispatchTask: (fxName, payload, taskOptions) => runtimeTasks.dispatchTask(fxName, payload, taskOptions),
+			consumeRuntimeRef: (runtimeRefId) => runtimeTasks.consumeRuntimeRef(runtimeRefId),
+			deleteRuntimeRef: (runtimeRefId) => runtimeTasks.deleteRuntimeRef(runtimeRefId),
+			completeTask: (task) => runtimeTasks.completeTask(task),
+		},
 		platform,
 	}
 
@@ -362,6 +370,7 @@ export const createVideoEditorHarness = (
 		actions,
 		destroy(): void {
 			isDestroyed = true
+			runtimeTasks.clear()
 			clearInitialProjectRetry()
 			if (snapshotBootstrapRetryTimer) {
 				platform.clearTimeout(snapshotBootstrapRetryTimer)

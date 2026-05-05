@@ -4,6 +4,7 @@ import type { ResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportProgressEvent, ExportRenderer, ExportRenderRequest, ExportRenderResult } from '../render/exportRenderer'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import type { VideoEditorHarnessPlatform } from './platform'
+import type { DispatchRuntimeTaskOptions, DispatchRuntimeTaskPayload, RuntimeTaskDescriptor } from './runtimeTaskFacade'
 
 export interface EditorStorePort {
 	projects$: Observable<ProjectRegistry>
@@ -62,6 +63,17 @@ export interface EditorLifecyclePort {
 	registerObjectUrl(url: string, bucket: 'import' | 'export'): void
 }
 
+export interface EditorRuntimeTaskPort {
+	dispatchTask(
+		fxName: `$fx_${string}`,
+		payload?: DispatchRuntimeTaskPayload,
+		options?: DispatchRuntimeTaskOptions,
+	): RuntimeTaskDescriptor
+	consumeRuntimeRef(runtimeRefId: string): unknown
+	deleteRuntimeRef(runtimeRefId: string): void
+	completeTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
+}
+
 export interface EditorActionEnvironment {
 	stores: EditorStorePort
 	authority: EditorAuthorityPort
@@ -70,5 +82,6 @@ export interface EditorActionEnvironment {
 	export: EditorExportPort
 	transfers: EditorResourceTransferPort
 	lifecycle: EditorLifecyclePort
+	tasks: EditorRuntimeTaskPort
 	platform: VideoEditorHarnessPlatform
 }
