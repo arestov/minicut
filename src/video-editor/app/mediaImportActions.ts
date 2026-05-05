@@ -1,5 +1,5 @@
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
-import { createDktImportFilesTaskPayload, DKT_IMPORT_FILES_FX } from '../dkt/importTasks'
+import { createProjectImportFilesEffectPayload, PROJECT_IMPORT_FILES_FX } from '../models/Project/effects'
 import { getActiveProject, getAudioTrack, getProjectMetaList, getVideoTrack } from '../domain/selectors'
 import { CMD } from '../domain/types'
 import { getActionActiveProjectId, isProjectTimelineEmpty } from './actionRuntimeSelectors'
@@ -60,7 +60,7 @@ export const createMediaImportActions = (
 
 		importFiles(files: FileList | File[]): void {
 			const projectId = getActionActiveProjectId(env)
-			const task = env.tasks.dispatchTask(DKT_IMPORT_FILES_FX, createDktImportFilesTaskPayload(files, { projectId }))
+			const task = env.tasks.dispatchTask(PROJECT_IMPORT_FILES_FX, createProjectImportFilesEffectPayload(files, { projectId }))
 			if (task.dropped) {
 				return
 			}

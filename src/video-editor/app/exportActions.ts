@@ -2,6 +2,7 @@ import { getActiveProject, getSelectedClip } from '../domain/selectors'
 import type { ProjectRegistry, ResourceAttrs } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { VideoEditorHarnessActions } from './actionRuntimeTypes'
+import { createExportBlobUrlEffectPayload, EXPORT_BLOB_URL_FX } from '../models/Project/effects'
 
 const asResourceAttrs = (attrs: Record<string, unknown>): ResourceAttrs => attrs as unknown as ResourceAttrs
 
@@ -55,12 +56,9 @@ export const createExportActions = (
 		}
 
 		const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'clip', clipId }, format: 'video-webm' }, onProgress)
-		const blobTask = env.tasks.dispatchTask('$fx_exportBlobUrl', {
-			runtimeRef: result.blob,
-			data: { projectId: project.id, clipId },
-		}, {
+		const blobTask = env.tasks.dispatchTask(EXPORT_BLOB_URL_FX, createExportBlobUrlEffectPayload(result.blob, { projectId: project.id, clipId }), {
 			queuePolicy: 'queue-all',
-			intentKey: '$fx_exportBlobUrl:clip',
+			intentKey: `${EXPORT_BLOB_URL_FX}:clip`,
 		})
 		const runtimeBlob = blobTask.payload.runtimeRefId
 			? env.tasks.consumeRuntimeRef(blobTask.payload.runtimeRefId)
@@ -90,12 +88,9 @@ export const createExportActions = (
 		}
 
 		const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'project' }, format: 'video-webm' }, onProgress)
-		const blobTask = env.tasks.dispatchTask('$fx_exportBlobUrl', {
-			runtimeRef: result.blob,
-			data: { projectId: project.id },
-		}, {
+		const blobTask = env.tasks.dispatchTask(EXPORT_BLOB_URL_FX, createExportBlobUrlEffectPayload(result.blob, { projectId: project.id }), {
 			queuePolicy: 'queue-all',
-			intentKey: '$fx_exportBlobUrl:project',
+			intentKey: `${EXPORT_BLOB_URL_FX}:project`,
 		})
 		const runtimeBlob = blobTask.payload.runtimeRefId
 			? env.tasks.consumeRuntimeRef(blobTask.payload.runtimeRefId)
