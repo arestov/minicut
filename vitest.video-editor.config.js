@@ -19,7 +19,12 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'jsdom',
-		include: ['src/video-editor/**/*.test.ts', 'src/video-editor/**/*.test.tsx'],
+		include: [
+			'src/video-editor/**/*.test.ts',
+			'src/video-editor/**/*.test.tsx',
+			'src/dkt-react-sync/**/*.test.ts',
+			'src/dkt-react-sync/**/*.test.tsx',
+		],
 		exclude: ['node_modules/**', 'dist*/**'],
 		setupFiles: ['./src/video-editor/tests/setup.ts'],
 	},
