@@ -3,6 +3,7 @@ import { EFFECT_PROXY_CREATION_SHAPE } from './Effect'
 import {
 	clipSetAudioAction,
 	clipSetFadeAction,
+	clipSetTimelineAttrsAction,
 	clipSetTransformAction,
 	defaultClipTransform,
 	normalizeEffectCreationAttrs,
@@ -88,6 +89,16 @@ export const Clip = model({
 					return patch ?? '$noop'
 				},
 			],
+		},
+		setTimelineAttrs: {
+			to: {
+				start: ['start'],
+				in: ['in'],
+				duration: ['duration'],
+				fadeIn: ['fadeIn'],
+				fadeOut: ['fadeOut'],
+			},
+			fn: (payload: unknown) => clipSetTimelineAttrsAction.fn(payload) ?? '$noop',
 		},
 		setTransform: {
 			to: {

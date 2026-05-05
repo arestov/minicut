@@ -1,18 +1,14 @@
 import { Eye, Lock, Volume2 } from 'lucide-react'
-import {
-	EditorScopeProvider,
-	useEditorAttrs,
-	useEditorComp,
-	useEditorMany,
-} from '../render-sync'
-import type { EditorScope } from '../render-sync/EditorScope'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
 import { IconButton } from './ControlPrimitives'
 import { ClipItem } from './ClipItem'
 
 interface TrackRowProps {
-	trackScope: EditorScope
 	timelineZoom: number
 	activeTool: 'select' | 'trim' | 'split' | 'hand'
+	selectedEntityId: string | null
 }
 
 interface TrackRenderAttrs {
@@ -22,8 +18,8 @@ interface TrackRenderAttrs {
 	locked?: unknown
 }
 
-export const TrackLabel = ({ trackScope }: { trackScope: EditorScope }) => {
-	const trackAttrs = useEditorAttrs<TrackRenderAttrs>(['name', 'kind', 'muted', 'locked'], trackScope)
+export const TrackLabel = () => {
+	const trackAttrs = useAttrs(['name', 'kind', 'muted', 'locked']) as TrackRenderAttrs
 	const trackName = String(trackAttrs.name)
 	const trackKind = String(trackAttrs.kind)
 	const isMuted = Boolean(trackAttrs.muted)
@@ -35,58 +31,34 @@ export const TrackLabel = ({ trackScope }: { trackScope: EditorScope }) => {
 				<strong>{trackName}</strong>
 				<small>{trackKind}</small>
 			</div>
-			<div
-				className="ve-track-row__controls"
-				aria-label={`${trackName} controls`}
-			>
-				<IconButton
-					type="button"
-					icon={Volume2}
-					label={isMuted ? 'Track muted' : 'Track audible'}
-					variant={isMuted ? 'secondary' : 'ghost'}
-					disabled
-				/>
-				<IconButton
-					type="button"
-					icon={Lock}
-					label={isLocked ? 'Track locked' : 'Track unlocked'}
-					variant={isLocked ? 'secondary' : 'ghost'}
-					disabled
-				/>
-				<IconButton
-					type="button"
-					icon={Eye}
-					label="Track visible"
-					variant="ghost"
-					disabled
-				/>
+			<div className="ve-track-row__controls" aria-label={`${trackName} controls`}>
+				<IconButton type="button" icon={Volume2} label={isMuted ? 'Track muted' : 'Track audible'} variant={isMuted ? 'secondary' : 'ghost'} disabled />
+				<IconButton type="button" icon={Lock} label={isLocked ? 'Track locked' : 'Track unlocked'} variant={isLocked ? 'secondary' : 'ghost'} disabled />
+				<IconButton type="button" icon={Eye} label="Track visible" variant="ghost" disabled />
 			</div>
 		</div>
 	)
 }
 
-export const TrackLane = ({ trackScope, timelineZoom, activeTool }: TrackRowProps) => {
-	const clipScopes = useEditorMany('clips', trackScope)
-	const trackEnd = useEditorComp<number>('trackEnd', trackScope)
+export const TrackLane = ({ timelineZoom, activeTool, selectedEntityId }: TrackRowProps) => {
+	const clipItems = useManyWithAttrs('clips', ['start', 'duration'])
+	const trackEnd = clipItems.reduce((maxEnd, { attrs }) => {
+		const start = Number(attrs.start ?? 0)
+		const duration = Number(attrs.duration ?? 0)
+		return Math.max(maxEnd, start + duration)
+	}, 0)
 	const trackWidth = Math.max(960, Math.ceil((trackEnd + 2) * timelineZoom))
 
 	return (
 		<div className="ve-track-row__rail">
-			{clipScopes.length === 0 ? (
+			{clipItems.length === 0 ? (
 				<p className="ve-empty">Drop clips here.</p>
 			) : (
-				<div
-					className="ve-track-row__timeline"
-					style={{ width: `${trackWidth}px` }}
-				>
-					{clipScopes.map((clipScope) => (
-						<EditorScopeProvider key={clipScope.nodeId} scope={clipScope}>
-							<ClipItem
-								clipScope={clipScope}
-								timelineZoom={timelineZoom}
-								activeTool={activeTool}
-							/>
-						</EditorScopeProvider>
+				<div className="ve-track-row__timeline" style={{ width: `${trackWidth}px` }}>
+					{clipItems.map(({ scope: clipScope }) => (
+						<ScopeContext.Provider key={clipScope._nodeId} value={clipScope}>
+							<ClipItem timelineZoom={timelineZoom} activeTool={activeTool} selectedEntityId={selectedEntityId} />
+						</ScopeContext.Provider>
 					))}
 				</div>
 			)}

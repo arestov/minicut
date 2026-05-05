@@ -1,5 +1,6 @@
-import { EditorScopeProvider, ROOT_SCOPE, SESSION_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
-import { useSelectedEntityScope } from '../ui/dkt/hooks'
+import { One } from '../../dkt-react-sync/components/One'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useVideoEditor } from '../app/VideoEditorContext'
 import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 import { InspectorAudioTabPanel } from './inspector/InspectorAudioTabPanel'
 import { InspectorClipHeader } from './inspector/InspectorClipHeader'
@@ -9,37 +10,48 @@ import { InspectorExportTabPanel } from './inspector/InspectorExportTabPanel'
 import { InspectorTabs } from './inspector/InspectorTabs'
 import type { InspectorTab } from './inspector/types'
 
-export const Inspector = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
-	const sessionDispatch = useEditorActions(SESSION_SCOPE)
-	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
-	const sessionAttrs = useEditorAttrs<{ activeInspectorTab?: InspectorTab }>(['activeInspectorTab'], SESSION_SCOPE)
-	const selectedEntityScope = useSelectedEntityScope()
-	const activeTab = sessionAttrs.activeInspectorTab ?? 'edit'
-	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
-	const isClip = activeProjectId && selectedEntityScope?.type === 'clip'
-	const setActiveTab = (tab: InspectorTab): void => sessionDispatch('setActiveInspectorTab', { tab })
+interface SelectedClipTrackPosition {
+	trackName: string
+	ordinal: number
+}
 
-	if (!selectedEntityScope || !isClip) {
-		return (
-			<aside className="ve-panel" aria-label="Inspector">
-				<div className="ve-panel__header"><h2>Inspector</h2></div>
-				<InspectorTabs activeTab={activeTab} onChange={setActiveTab} disabled />
-				<p className="ve-empty">Select a clip to edit opacity or split it.</p>
-			</aside>
-		)
+const EmptyInspector = ({ activeTab, onChange, disabled = true }: { activeTab: InspectorTab; onChange: (tab: InspectorTab) => void; disabled?: boolean }) => (
+	<aside className="ve-panel" aria-label="Inspector">
+		<div className="ve-panel__header"><h2>Inspector</h2></div>
+		<InspectorTabs activeTab={activeTab} onChange={onChange} disabled={disabled} />
+		<p className="ve-empty">Select a clip to edit opacity or split it.</p>
+	</aside>
+)
+
+const SelectedClipPanels = ({ activeTab, mediaElementRegistry, onChangeTab, trackPosition }: { activeTab: InspectorTab; mediaElementRegistry?: PreviewMediaElementRegistry; onChangeTab: (tab: InspectorTab) => void; trackPosition: SelectedClipTrackPosition | null }) => (
+	<aside className="ve-panel" aria-label="Inspector">
+		<div className="ve-panel__header"><h2>Inspector</h2><span className="ve-inspector-status">clip selected</span></div>
+		<InspectorTabs activeTab={activeTab} onChange={onChangeTab} />
+		<InspectorClipHeader trackPosition={trackPosition} />
+		{activeTab === 'edit' ? <InspectorEditTabPanel mediaElementRegistry={mediaElementRegistry} /> : null}
+		{activeTab === 'color' ? <InspectorColorTabPanel mediaElementRegistry={mediaElementRegistry} /> : null}
+		{activeTab === 'audio' ? <InspectorAudioTabPanel /> : null}
+		{activeTab === 'export' ? <InspectorExportTabPanel /> : null}
+	</aside>
+)
+
+export const Inspector = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
+	const { actions } = useVideoEditor()
+	const rootAttrs = useAttrs(['activeProjectId', 'activeInspectorTab', 'selectedEntityId', 'selectedClipTrackPosition']) as { activeProjectId?: unknown; activeInspectorTab?: InspectorTab; selectedEntityId?: unknown; selectedClipTrackPosition?: SelectedClipTrackPosition | null }
+		const trackPosition = rootAttrs.selectedClipTrackPosition ?? null
+
+	const activeTab = rootAttrs.activeInspectorTab ?? 'edit'
+	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
+	const selectedEntityId = typeof rootAttrs.selectedEntityId === 'string' ? rootAttrs.selectedEntityId : null
+	const setActiveTab = (tab: InspectorTab): void => actions.setActiveInspectorTab(tab)
+
+	if (!activeProjectId || !selectedEntityId) {
+		return <EmptyInspector activeTab={activeTab} onChange={setActiveTab} />
 	}
 
 	return (
-		<EditorScopeProvider scope={selectedEntityScope}>
-			<aside className="ve-panel" aria-label="Inspector">
-				<div className="ve-panel__header"><h2>Inspector</h2><span className="ve-inspector-status">clip selected</span></div>
-				<InspectorTabs activeTab={activeTab} onChange={setActiveTab} />
-				<InspectorClipHeader clipScope={selectedEntityScope} />
-				{activeTab === 'edit' ? <InspectorEditTabPanel clipScope={selectedEntityScope} mediaElementRegistry={mediaElementRegistry} /> : null}
-				{activeTab === 'color' ? <InspectorColorTabPanel clipScope={selectedEntityScope} mediaElementRegistry={mediaElementRegistry} /> : null}
-				{activeTab === 'audio' ? <InspectorAudioTabPanel clipScope={selectedEntityScope} /> : null}
-				{activeTab === 'export' ? <InspectorExportTabPanel clipScope={selectedEntityScope} /> : null}
-			</aside>
-		</EditorScopeProvider>
+		<One rel="selectedClip" fallback={<EmptyInspector activeTab={activeTab} onChange={setActiveTab} />}>
+			<SelectedClipPanels activeTab={activeTab} mediaElementRegistry={mediaElementRegistry} onChangeTab={setActiveTab} trackPosition={trackPosition} />
+		</One>
 	)
 }

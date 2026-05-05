@@ -3,8 +3,7 @@ import { useState } from 'react'
 import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useMany } from '../../dkt-react-sync/hooks/useMany'
-import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRuntime'
+import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
 import { useScope } from '../../dkt-react-sync/hooks/useScope'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { useVideoEditor } from '../app/VideoEditorContext'
@@ -124,10 +123,8 @@ const ProjectMediaList = ({
 	normalizedQuery: string
 	viewMode: 'list' | 'grid'
 }) => {
-	const runtime = useReactScopeRuntime()
-	const resourceScopes = useMany('resources')
-	const filteredResourceScopes = resourceScopes.filter((resourceScope) => {
-		const attrs = runtime.readAttrs(resourceScope, ['kind', 'name', 'mime'])
+	const resourceItems = useManyWithAttrs('resources', ['kind', 'name', 'mime'])
+	const filteredResourceItems = resourceItems.filter(({ attrs }) => {
 		const kind = attrs.kind
 		const name = String(attrs.name ?? '')
 		const mime = String(attrs.mime ?? '')
@@ -141,18 +138,18 @@ const ProjectMediaList = ({
 
 	return (
 		<>
-			<div className="ve-media-count">{filteredResourceScopes.length} of {resourceScopes.length} assets</div>
+			<div className="ve-media-count">{filteredResourceItems.length} of {resourceItems.length} assets</div>
 			<div className="ve-media-bin__body">
 				<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
 					<TextTimelineActionRow />
-					{filteredResourceScopes.map((resourceScope) => (
+					{filteredResourceItems.map(({ scope: resourceScope }) => (
 						<ScopeContext.Provider key={resourceScope._nodeId} value={resourceScope}>
 							<ResourceRow resourceScope={resourceScope} />
 						</ScopeContext.Provider>
 					))}
 				</ul>
-				{resourceScopes.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
-				{resourceScopes.length > 0 && filteredResourceScopes.length === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
+				{resourceItems.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
+				{resourceItems.length > 0 && filteredResourceItems.length === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
 			</div>
 		</>
 	)
@@ -169,11 +166,10 @@ const ActiveProjectMediaList = ({
 	normalizedQuery: string
 	viewMode: 'list' | 'grid'
 }) => {
-	const runtime = useReactScopeRuntime()
-	const projectScopes = useMany('project')
+	const projectItems = useManyWithAttrs('project', ['sourceProjectId'])
 	const activeProjectScope = activeProjectId
-		? projectScopes.find((projectScope) => runtime.readAttrs(projectScope, ['sourceProjectId']).sourceProjectId === activeProjectId) ?? projectScopes[0] ?? null
-		: projectScopes[0] ?? null
+		? projectItems.find(({ attrs }) => attrs.sourceProjectId === activeProjectId)?.scope ?? projectItems[0]?.scope ?? null
+		: projectItems[0]?.scope ?? null
 
 	if (!activeProjectScope) {
 		return <MediaBinEmptyState />

@@ -1,12 +1,13 @@
 import { Gauge, Pause, Play, Timer } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useActions } from '../../dkt-react-sync/hooks/useActions'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type {
 	RenderedClip,
 	PreviewFrame,
 	PreviewStructure,
 } from '../read-model/previewReadModel'
-import { SESSION_SCOPE, useEditorActions, useEditorAttrs, usePreviewReadModels } from '../render-sync'
 import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'
 import { ColorScopesPanel, type ScopeMode } from './ColorScopesPanel'
@@ -136,12 +137,18 @@ const PreviewTransport = ({
 
 export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: PreviewMediaElementRegistry }) => {
 	const { resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
-	const sessionDispatch = useEditorActions(SESSION_SCOPE)
-	const { activeInspectorTab, isPlaying } = useEditorAttrs<{ activeInspectorTab?: unknown, isPlaying?: unknown }>(['activeInspectorTab', 'isPlaying'], SESSION_SCOPE)
-	const { frame, structure } = usePreviewReadModels()
+	const sessionDispatch = useActions()
+	const attrs = useAttrs(['activeInspectorTab', 'isPlaying', 'previewFrame', 'previewStructure']) as {
+		activeInspectorTab?: unknown
+		isPlaying?: unknown
+		previewFrame?: PreviewFrame
+		previewStructure?: PreviewStructure
+	}
+	const frame = attrs.previewFrame ?? { cursor: 0, renderedClips: [], visualRenderedClips: [], audioRenderedClips: [], activeClipNames: [] }
+	const structure = attrs.previewStructure ?? { clipSources: [] }
 	const [compareMode, setCompareMode] = useState<'off' | 'split'>('off')
 	const [scopeMode, setScopeMode] = useState<ScopeMode>('waveform')
-	const showColorScopes = activeInspectorTab === 'color'
+	const showColorScopes = attrs.activeInspectorTab === 'color'
 
 	return (
 		<section className="ve-panel ve-preview-panel" aria-label="Preview panel">
@@ -160,7 +167,7 @@ export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: P
 			<PreviewStage
 				frame={frame}
 				structure={structure}
-				isPlaying={isPlaying === true}
+				isPlaying={attrs.isPlaying === true}
 				resolveResourceUrl={resolveResourceUrl}
 				requestResourcePlayheadWindow={requestResourcePlayheadWindow}
 				noteResourcePreviewError={noteResourcePreviewError}
@@ -170,7 +177,7 @@ export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: P
 			{showColorScopes ? <ColorScopesPanel frame={frame} mode={scopeMode} onModeChange={setScopeMode} resolveResourceUrl={resolveResourceUrl} mediaElementRegistry={mediaElementRegistry} /> : null}
 			<PreviewTransport
 				frame={frame}
-				isPlaying={isPlaying === true}
+				isPlaying={attrs.isPlaying === true}
 				onTogglePlayback={() => sessionDispatch('togglePlayback')}
 			/>
 		</section>

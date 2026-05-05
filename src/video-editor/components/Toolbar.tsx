@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Download, FolderPlus } from 'lucide-react'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { ROOT_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
 import type { ExportProgressEvent } from '../render/exportRenderer'
 import { IconButton } from './ControlPrimitives'
 import { ProjectDropdown } from './ProjectDropdown'
@@ -20,8 +20,7 @@ const formatExportProgress = (event: ExportProgressEvent): string => {
 
 export const Toolbar = () => {
 	const { actions } = useVideoEditor()
-	const rootDispatch = useEditorActions(ROOT_SCOPE)
-	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
+	const rootAttrs = useAttrs(['activeProjectId']) as { activeProjectId?: unknown }
 	const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'ready' | 'error'>('idle')
 	const [exportProgress, setExportProgress] = useState<ExportProgressEvent>({ stage: 'queued', progress: 0 })
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
@@ -67,7 +66,7 @@ export const Toolbar = () => {
 					icon={FolderPlus}
 					label="New project"
 					variant="ghost"
-					onClick={() => rootDispatch('createProject')}
+					onClick={() => actions.createProject()}
 				>
 					New
 				</IconButton>

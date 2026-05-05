@@ -3,10 +3,15 @@ import type { EditorSessionState } from '../../domain/types'
 export type DktSessionActionName =
 	| 'selectEntity'
 	| 'setActiveProject'
+	| 'syncActiveProjectRel'
+	| 'syncPreviewModel'
+	| 'syncSelectedClipTrackPosition'
+	| 'syncSelectedClipSummary'
 	| 'setActiveInspectorTab'
 	| 'setCursor'
 	| 'setPlaying'
 	| 'setTimelineZoom'
+	| 'syncSelectedClipRel'
 	| 'togglePlayback'
 	| 'zoomTimeline'
 
@@ -20,9 +25,10 @@ export type DktSessionActionPatch = Partial<Pick<EditorSessionState,
 >>
 
 type DktActionDescriptor = {
-	to: Record<string, readonly [string]>
+	to: unknown
 	fn: ((payload: unknown) => DktSessionActionPatch | '$noop')
 		| readonly [readonly string[], (payload: unknown, ...deps: unknown[]) => DktSessionActionPatch | '$noop']
+		| ((payload: unknown) => Record<string, unknown> | '$noop')
 }
 
 export const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
@@ -93,6 +99,53 @@ export const sessionSetActiveProjectAction = {
 	fn: reduceSessionSetActiveProjectAction,
 } as const satisfies DktActionDescriptor
 
+export const sessionSyncActiveProjectRelAction = {
+	to: {
+		activeProject: ['<< activeProject', { method: 'set_one' }],
+	},
+	fn: (payload: unknown) => ({
+		activeProject: (payload as { project?: unknown } | null)?.project ?? null,
+	}),
+} as const satisfies DktActionDescriptor
+
+export const sessionSyncSelectedClipRelAction = {
+	to: {
+		selectedClip: ['<< selectedClip', { method: 'set_one' }],
+	},
+	fn: (payload: unknown) => ({
+		selectedClip: (payload as { clip?: unknown } | null)?.clip ?? null,
+	}),
+} as const satisfies DktActionDescriptor
+
+export const sessionSyncPreviewModelAction = {
+	to: {
+		previewStructure: ['previewStructure'],
+		previewFrame: ['previewFrame'],
+	},
+	fn: (payload: unknown) => ({
+		previewStructure: (payload as { structure?: unknown } | null)?.structure ?? { clipSources: [] },
+		previewFrame: (payload as { frame?: unknown } | null)?.frame ?? { cursor: 0, renderedClips: [], visualRenderedClips: [], audioRenderedClips: [], activeClipNames: [] },
+	}),
+} as const satisfies DktActionDescriptor
+
+export const sessionSyncSelectedClipTrackPositionAction = {
+	to: {
+		selectedClipTrackPosition: ['selectedClipTrackPosition'],
+	},
+	fn: (payload: unknown) => ({
+		selectedClipTrackPosition: (payload as { position?: unknown } | null)?.position ?? null,
+	}),
+} as const satisfies DktActionDescriptor
+
+export const sessionSyncSelectedClipSummaryAction = {
+	to: {
+		selectedClipSummary: ['selectedClipSummary'],
+	},
+	fn: (payload: unknown) => ({
+		selectedClipSummary: (payload as { summary?: unknown } | null)?.summary ?? null,
+	}),
+} as const satisfies DktActionDescriptor
+
 export const sessionSetCursorAction = {
 	to: {
 		cursor: ['cursor'],
@@ -147,10 +200,15 @@ export const sessionZoomTimelineAction = {
 export const dktSessionActions = {
 	selectEntity: sessionSelectEntityAction,
 	setActiveProject: sessionSetActiveProjectAction,
+	syncActiveProjectRel: sessionSyncActiveProjectRelAction,
+	syncPreviewModel: sessionSyncPreviewModelAction,
+	syncSelectedClipTrackPosition: sessionSyncSelectedClipTrackPositionAction,
+	syncSelectedClipSummary: sessionSyncSelectedClipSummaryAction,
 	setActiveInspectorTab: sessionSetActiveInspectorTabAction,
 	setCursor: sessionSetCursorAction,
 	setPlaying: sessionSetPlayingAction,
 	setTimelineZoom: sessionSetTimelineZoomAction,
+	syncSelectedClipRel: sessionSyncSelectedClipRelAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
 } as const satisfies Record<DktSessionActionName, DktActionDescriptor>

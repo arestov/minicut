@@ -1,34 +1,32 @@
 import { useState } from 'react'
 import { Check, ChevronDown, Plus } from 'lucide-react'
-import {
-	EditorScopeProvider,
-	ROOT_SCOPE,
-	useEditorActions,
-	useEditorAttrs,
-	useEditorComp,
-	useEditorMany,
-	useEditorOne,
-} from '../render-sync'
-import type { EditorScope } from '../render-sync/EditorScope'
+import { One } from '../../dkt-react-sync/components/One'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+import { useVideoEditor } from '../app/VideoEditorContext'
 import { Button, IconButton } from './ControlPrimitives'
 
 interface ProjectItemProps {
 	activeProjectId: string | null
 	onSelect: () => void
-	projectScope: EditorScope
+	projectScope: ReactSyncScopeHandle
 }
 
 interface ProjectAttrs {
+	sourceProjectId?: unknown
 	title?: unknown
+	updatedAt?: unknown
 }
 
-const ProjectItem = ({ projectScope, activeProjectId, onSelect }: ProjectItemProps) => {
-	const dispatch = useEditorActions(ROOT_SCOPE)
-	const projectAttrs = useEditorAttrs<ProjectAttrs>(['title'], projectScope)
-	const projectId = useEditorComp<string | null>('projectId', projectScope)
-	const projectVersion = useEditorComp<number>('projectVersion', projectScope)
-	const resourceCount = useEditorComp<number>('resourceCount', projectScope)
+const ProjectItem = ({ activeProjectId, onSelect }: ProjectItemProps) => {
+	const { actions } = useVideoEditor()
+	const projectAttrs = useAttrs(['sourceProjectId', 'title', 'updatedAt']) as ProjectAttrs
+	const resources = useManyWithAttrs('resources', ['sourceResourceId'])
+	const projectId = typeof projectAttrs.sourceProjectId === 'string' ? projectAttrs.sourceProjectId : null
 	const projectTitle = String(projectAttrs.title ?? 'Project')
+	const projectVersion = Number(projectAttrs.updatedAt ?? 1) || 1
 	const isActive = projectId === activeProjectId
 
 	return (
@@ -38,7 +36,7 @@ const ProjectItem = ({ projectScope, activeProjectId, onSelect }: ProjectItemPro
 				className={isActive ? 'is-active' : ''}
 				onClick={() => {
 					if (projectId) {
-						dispatch('setActiveProject', { projectId })
+						actions.setActiveProject(projectId)
 					}
 					onSelect()
 				}}
@@ -48,17 +46,14 @@ const ProjectItem = ({ projectScope, activeProjectId, onSelect }: ProjectItemPro
 					{projectTitle}
 					{isActive ? <Check size={14} aria-hidden="true" /> : null}
 				</span>
-				<small>v{projectVersion} - {resourceCount} resources</small>
+				<small>v{projectVersion} - {resources.length} resources</small>
 			</button>
 		</li>
 	)
 }
 
-const ProjectDropdownMenu = ({ onClose }: { onClose: () => void }) => {
-	const dispatch = useEditorActions(ROOT_SCOPE)
-	const projectScopes = useEditorMany('projects', ROOT_SCOPE)
-	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
-	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
+const ProjectDropdownEmptyMenu = ({ onClose }: { onClose: () => void }) => {
+	const { actions } = useVideoEditor()
 
 	return (
 		<div className="ve-project-dropdown__menu is-open">
@@ -71,25 +66,52 @@ const ProjectDropdownMenu = ({ onClose }: { onClose: () => void }) => {
 					icon={Plus}
 					label="New project"
 					onClick={() => {
-						dispatch('createProject')
+						actions.createProject()
 						onClose()
 					}}
 				>
 					New project
 				</IconButton>
 			</div>
-			{projectScopes.length === 0 ? (
+			<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
+		</div>
+	)
+}
+
+const ProjectDropdownMenu = ({ activeProjectId, onClose }: { activeProjectId: string | null; onClose: () => void }) => {
+	const { actions } = useVideoEditor()
+	const projectItems = useManyWithAttrs('project', ['sourceProjectId', 'title', 'updatedAt'])
+
+	return (
+		<div className="ve-project-dropdown__menu is-open">
+			<div className="ve-project-dropdown__header">
+				<span>Projects</span>
+				<IconButton
+					type="button"
+					className="ve-project-dropdown__new"
+					variant="default"
+					icon={Plus}
+					label="New project"
+					onClick={() => {
+						actions.createProject()
+						onClose()
+					}}
+				>
+					New project
+				</IconButton>
+			</div>
+			{projectItems.length === 0 ? (
 				<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
 			) : (
 				<ul className="ve-project-list ve-project-dropdown__list">
-					{projectScopes.map((projectScope) => (
-						<EditorScopeProvider key={projectScope.nodeId} scope={projectScope}>
+					{projectItems.map(({ scope: projectScope }) => (
+						<ScopeContext.Provider key={projectScope._nodeId} value={projectScope}>
 							<ProjectItem
 								projectScope={projectScope}
 								activeProjectId={activeProjectId}
 								onSelect={onClose}
 							/>
-						</EditorScopeProvider>
+						</ScopeContext.Provider>
 					))}
 				</ul>
 			)}
@@ -97,15 +119,33 @@ const ProjectDropdownMenu = ({ onClose }: { onClose: () => void }) => {
 	)
 }
 
-const ActiveProjectTitle = ({ projectScope }: { projectScope: EditorScope }) => {
-	const projectAttrs = useEditorAttrs<ProjectAttrs>(['title'], projectScope)
+const ActiveProjectTitle = () => {
+	const attrs = useAttrs(['title']) as { title?: unknown }
 
-	return <span>{String(projectAttrs.title ?? 'No project')}</span>
+	return <span>{String(attrs.title ?? 'No project')}</span>
+}
+
+const ActiveProjectTitleFromPioneer = ({ activeProjectId }: { activeProjectId: string | null }) => {
+	const projectItems = useManyWithAttrs('project', ['sourceProjectId', 'title'])
+	const activeProjectScope = activeProjectId
+		? projectItems.find(({ attrs }) => attrs.sourceProjectId === activeProjectId)?.scope ?? projectItems[0]?.scope ?? null
+		: projectItems[0]?.scope ?? null
+
+	if (!activeProjectScope) {
+		return <span>No project</span>
+	}
+
+	return (
+		<ScopeContext.Provider value={activeProjectScope}>
+			<ActiveProjectTitle />
+		</ScopeContext.Provider>
+	)
 }
 
 export const ProjectDropdown = () => {
 	const [isOpen, setIsOpen] = useState(false)
-	const activeProjectScope = useEditorOne('activeProject', ROOT_SCOPE)
+	const rootAttrs = useAttrs(['activeProjectId']) as { activeProjectId?: unknown }
+	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 	const close = () => setIsOpen(false)
 
 	return (
@@ -119,16 +159,16 @@ export const ProjectDropdown = () => {
 				aria-haspopup="menu"
 				onClick={() => setIsOpen((v) => !v)}
 			>
-				{activeProjectScope ? (
-					<EditorScopeProvider scope={activeProjectScope}>
-						<ActiveProjectTitle projectScope={activeProjectScope} />
-					</EditorScopeProvider>
-				) : (
-					<span>No project</span>
-				)}
+				<One rel="pioneer" fallback={<span>No project</span>}>
+					<ActiveProjectTitleFromPioneer activeProjectId={activeProjectId} />
+				</One>
 				<ChevronDown className="ve-project-dropdown__chevron" size={14} aria-hidden="true" />
 			</Button>
-			{isOpen ? <ProjectDropdownMenu onClose={close} /> : null}
+			{isOpen ? (
+				<One rel="pioneer" fallback={<ProjectDropdownEmptyMenu onClose={close} />}>
+					<ProjectDropdownMenu activeProjectId={activeProjectId} onClose={close} />
+				</One>
+			) : null}
 		</div>
 	)
 }

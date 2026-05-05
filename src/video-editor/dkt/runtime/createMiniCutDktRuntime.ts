@@ -26,6 +26,7 @@ import type {
 } from '../../domain/types'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { MiniCutAppRoot } from '../../models/AppRoot'
+import { createPreviewFrameFromRegistry, createSelectedClipSummaryFromRegistry, createSelectedClipTrackPositionFromRegistry } from './previewModelFromRegistry'
 
 type RuntimeModelLike = {
 	_node_id?: string | null
@@ -190,6 +191,8 @@ const serializeModel = (model: RuntimeModelLike): MiniCutDktSerializedModel => {
 
 const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
 	Object.freeze(['pioneer']),
+	Object.freeze(['activeProject']),
+	Object.freeze(['selectedClip']),
 	Object.freeze(['pioneer', 'project']),
 	Object.freeze(['pioneer', 'project', 'tracks']),
 	Object.freeze(['pioneer', 'project', 'resources']),
@@ -197,6 +200,12 @@ const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
 	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'resource']),
 	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'text']),
 	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'effects']),
+	Object.freeze(['activeProject', 'tracks']),
+	Object.freeze(['activeProject', 'resources']),
+	Object.freeze(['activeProject', 'tracks', 'clips']),
+	Object.freeze(['activeProject', 'tracks', 'clips', 'resource']),
+	Object.freeze(['activeProject', 'tracks', 'clips', 'text']),
+	Object.freeze(['activeProject', 'tracks', 'clips', 'effects']),
 	Object.freeze(['pioneer', 'effect']),
 ])
 
@@ -459,6 +468,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await target.dispatch(actionName, payload)
+		if (target === sessionRoot) {
+			await syncSessionDerivedState(sessionRoot)
+		}
 	}
 
 	const dispatchSessionAction = async (actionName: string, payload?: unknown): Promise<void> => {
@@ -468,6 +480,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await sessionRoot.dispatch(actionName, payload)
+		await syncSessionDerivedState(sessionRoot)
 	}
 
 	const getRegistrySnapshot = async (): Promise<ProjectRegistry> => {
@@ -482,6 +495,10 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	const replaceRegistrySnapshot = async (snapshot: ProjectRegistry): Promise<void> => {
 		await dispatchAction('replaceRegistrySnapshot', snapshot)
 		await materializeRegistryHierarchy(snapshot)
+		const sessionRoot = await bootstrapSessionRoot()
+		if (sessionRoot) {
+			await syncSessionDerivedState(sessionRoot)
+		}
 	}
 
 	const dispatchCommand = async (command: Command): Promise<DispatchResult> => {
@@ -495,6 +512,10 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		const nextSnapshot = applyPatchEnvelopeToRegistry(registry, result.envelope)
 		await app.appModel.dispatch('replaceRegistrySnapshot', nextSnapshot)
 		await materializeRegistryHierarchy(nextSnapshot)
+		const sessionRoot = await bootstrapSessionRoot()
+		if (sessionRoot) {
+			await syncSessionDerivedState(sessionRoot)
+		}
 		return structuredClone(result)
 	}
 
@@ -562,6 +583,71 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			throw new Error(`MiniCut DKT proxy model is not available for ${nodeId}`)
 		}
 		return model
+	}
+
+	const findProxyModelBySourceId = async (modelName: string, sourceAttrName: string, sourceId: string | null): Promise<unknown | null> => {
+		if (!sourceId) {
+			return null
+		}
+
+		const nodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
+		return nodeId ? getProxyModelByNodeId(nodeId) : null
+	}
+
+	const syncSessionSelectionRels = async (sessionRoot: RuntimeModelLike): Promise<void> => {
+		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
+			? sessionRoot.states.activeProjectId
+			: null
+		const selectedEntityId = typeof sessionRoot.states?.selectedEntityId === 'string'
+			? sessionRoot.states.selectedEntityId
+			: null
+
+		const activeProject = await findProxyModelBySourceId('minicut_project', 'sourceProjectId', activeProjectId)
+		const selectedClip = await findProxyModelBySourceId('minicut_clip', 'sourceClipId', selectedEntityId)
+		await sessionRoot.dispatch('syncActiveProjectRel', { project: activeProject })
+		await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClip })
+	}
+
+	const syncSessionPreviewAttrs = async (sessionRoot: RuntimeModelLike): Promise<void> => {
+		const app = await bootstrapApp()
+		const snapshot = app?.appModel.states?.registrySnapshot as ProjectRegistry | undefined
+		if (!snapshot) {
+			await sessionRoot.dispatch('syncPreviewModel', null)
+			return
+		}
+
+		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
+			? sessionRoot.states.activeProjectId
+			: null
+		const cursor = Number(sessionRoot.states?.cursor ?? 0)
+		const { structure, frame } = createPreviewFrameFromRegistry(snapshot, activeProjectId, Number.isFinite(cursor) ? cursor : 0)
+		await sessionRoot.dispatch('syncPreviewModel', { structure, frame })
+	}
+
+	const syncSessionSelectedClipTrackPosition = async (sessionRoot: RuntimeModelLike): Promise<void> => {
+		const app = await bootstrapApp()
+		const snapshot = app?.appModel.states?.registrySnapshot as ProjectRegistry | undefined
+		if (!snapshot) {
+			await sessionRoot.dispatch('syncSelectedClipTrackPosition', null)
+			return
+		}
+
+		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
+			? sessionRoot.states.activeProjectId
+			: null
+		const selectedEntityId = typeof sessionRoot.states?.selectedEntityId === 'string'
+			? sessionRoot.states.selectedEntityId
+			: null
+		const position = createSelectedClipTrackPositionFromRegistry(snapshot, activeProjectId, selectedEntityId)
+		await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position })
+		const summary = createSelectedClipSummaryFromRegistry(snapshot, activeProjectId, selectedEntityId)
+		await sessionRoot.dispatch('syncSelectedClipSummary', { summary })
+	}
+
+	const syncSessionDerivedState = async (sessionRoot: RuntimeModelLike): Promise<void> => {
+		await syncSessionSelectionRels(sessionRoot)
+		await syncSessionPreviewAttrs(sessionRoot)
+		await syncSessionSelectedClipTrackPosition(sessionRoot)
 	}
 
 	const dispatchProjectAction = async (project: MiniCutDktProjectProxyInput, actionName: string, payload?: unknown): Promise<void> => {
@@ -704,6 +790,13 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					clipModels.push(await getProxyModelByNodeId(clipNodeId))
 
 					await dispatchClipAction(clipProxy, 'rename', { name: clipProxy.name })
+					await dispatchClipAction(clipProxy, 'setTimelineAttrs', {
+						start: clipProxy.start,
+						in: clipProxy.in,
+						duration: clipProxy.duration,
+						fadeIn: clipProxy.fadeIn,
+						fadeOut: clipProxy.fadeOut,
+					})
 					if (clipProxy.color) {
 						await dispatchClipAction(clipProxy, 'color', { color: clipProxy.color })
 					}
@@ -788,6 +881,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		if (sessionRoot && sessionRoot.states?.activeProjectId !== activeProjectId) {
 			await sessionRoot.dispatch('setActiveProject', activeProjectId)
 		}
+		if (sessionRoot) {
+			await syncSessionDerivedState(sessionRoot)
+		}
 	}
 
 	const connect = (transport: DomSyncTransportLike<MiniCutDktTransportMessage>) => {
@@ -841,12 +937,22 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					return
 				case DKT_MSG.DISPATCH_ACTION:
 					await dispatchScopedAction(message.actionName, message.payload, message.scopeNodeId, activeSessionKey)
+					if (!message.scopeNodeId) {
+						const sessionRoot = await bootstrapSessionRoot(activeSessionKey)
+						if (sessionRoot) {
+							await syncSessionDerivedState(sessionRoot)
+						}
+					}
 					if (message.requestId) {
 						transport.send({ type: DKT_MSG.RUNTIME_READY, requestId: message.requestId, rootNodeId: null })
 					}
 					return
 				case DKT_MSG.DISPATCH_COMMAND: {
 					const result = await dispatchCommand(message.command as Command)
+					const sessionRoot = await bootstrapSessionRoot(activeSessionKey)
+					if (sessionRoot) {
+						await syncSessionDerivedState(sessionRoot)
+					}
 					transport.send({ type: DKT_MSG.DISPATCH_RESULT, requestId: message.requestId, result })
 					transport.send({ type: DKT_MSG.PATCHES, envelope: result.envelope })
 					return

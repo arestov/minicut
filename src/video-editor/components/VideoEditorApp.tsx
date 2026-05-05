@@ -4,7 +4,8 @@ import { TimelineView } from './TimelineView'
 import { Inspector } from './Inspector'
 import { PreviewPanel } from './PreviewPanel'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { SESSION_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
+import { useActions } from '../../dkt-react-sync/hooks/useActions'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { createPreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const playbackUiFrameMs = 1000 / 30
@@ -15,8 +16,8 @@ const previewWidthMin = 360
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
 const PlaybackLoop = () => {
-	const sessionDispatch = useEditorActions(SESSION_SCOPE)
-	const { isPlaying } = useEditorAttrs<{ isPlaying?: unknown }>(['isPlaying'], SESSION_SCOPE)
+	const sessionDispatch = useActions()
+	const { isPlaying } = useAttrs(['isPlaying']) as { isPlaying?: unknown }
 
 	useEffect(() => {
 		if (!isPlaying) {
@@ -46,7 +47,7 @@ const PlaybackLoop = () => {
 }
 
 export const VideoEditorApp = () => {
-	const { activeInspectorTab } = useEditorAttrs<{ activeInspectorTab?: unknown }>(['activeInspectorTab'], SESSION_SCOPE)
+	const { activeInspectorTab } = useAttrs(['activeInspectorTab']) as { activeInspectorTab?: unknown }
 	const mediaElementRegistryRef = useRef(createPreviewMediaElementRegistry())
 	const mainTopRef = useRef<HTMLDivElement | null>(null)
 	const isResizingInspectorRef = useRef(false)

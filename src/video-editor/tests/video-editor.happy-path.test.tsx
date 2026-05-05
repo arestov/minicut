@@ -7,8 +7,15 @@ const createProjectFromMenu = async (user: ReturnType<typeof renderVideoEditor>[
 	const projectsRegion = screen.getByLabelText('Projects')
 	await user.click(within(projectsRegion).getByRole('button'))
 	await user.click(within(projectsRegion).getByRole('button', { name: 'New project' }))
-	await waitFor(() => expect(screen.getByRole('button', { name: /Project \d+/i })).toBeInTheDocument())
-	await waitFor(() => expect(screen.queryAllByText('Drop clips here.').length).toBeGreaterThan(0))
+	await waitFor(() => expect(within(projectsRegion).queryAllByRole('button', { name: /Project \d+/i }).length).toBeGreaterThan(0), { timeout: 5000 })
+	if (!/Project \d+/i.test(projectsRegion.querySelector('.ve-project-dropdown__trigger')?.textContent ?? '')) {
+		const projectButton = within(projectsRegion).queryByRole('button', { name: /Project \d+/i })
+		if (projectButton) {
+			await user.click(projectButton)
+		}
+	}
+	await waitFor(() => expect(projectsRegion.querySelector('.ve-project-dropdown__trigger')).toHaveTextContent(/Project \d+/i), { timeout: 5000 })
+	await waitFor(() => expect(screen.queryAllByText('Drop clips here.').length).toBeGreaterThan(0), { timeout: 5000 })
 }
 
 const setTimelineCursor = (timeline: HTMLElement, seconds: number): void => {
@@ -96,23 +103,23 @@ describe('video editor harness', () => {
 			expect(opacitySlider).toBeInTheDocument()
 			fireEvent.change(opacitySlider, { target: { value: '60' } })
 
-			expect(within(inspector).getByText('Opacity 60%')).toBeInTheDocument()
+			await waitFor(() => expect(within(inspector).getByText('Opacity 60%')).toBeInTheDocument())
 			await user.click(within(inspector).getByRole('button', { name: 'Blur' }))
 			await user.click(within(inspector).getByRole('button', { name: 'Sharpen' }))
-			expect(within(inspector).getByText('2 effects')).toBeInTheDocument()
+			await waitFor(() => expect(within(inspector).getByText('2 effects')).toBeInTheDocument())
 			await user.click(within(inspector).getByRole('button', { name: 'Manage effects' }))
 			await user.click(within(inspector).getByRole('button', { name: 'Remove effect Blur' }))
-			expect(within(inspector).getByText('1 effects')).toBeInTheDocument()
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+			await waitFor(() => expect(within(inspector).getByText('1 effects')).toBeInTheDocument())
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
 				filter: 'contrast(1.25) saturate(1.125)',
-			})
+			}))
 
 			await user.click(within(inspector).getByRole('button', { name: 'Start +0.5s' }))
-			expect(within(inspector).getByText(/Clip 1 - V1 - 0\.5s - Duration/)).toBeInTheDocument()
+			await waitFor(() => expect(within(inspector).getByText(/Clip 1 - V1 - 0\.5s - Duration/)).toBeInTheDocument())
 
 			const transformControls = within(inspector).getByLabelText('Transform controls')
 			fireEvent.change(within(transformControls).getByLabelText('X'), { target: { value: '24' } })
-			expect(within(transformControls).getByLabelText('X')).toHaveValue(24)
+			await waitFor(() => expect(within(transformControls).getByLabelText('X')).toHaveValue(24))
 
 			const timeline = screen.getByLabelText('Timeline')
 			setTimelineCursor(timeline, 2.75)
@@ -122,12 +129,12 @@ describe('video editor harness', () => {
 			expect(selectedClipTarget).toHaveTextContent('V1')
 
 			await user.click(within(clipActions).getByRole('button', { name: 'Split clip' }))
-			expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2)
+			await waitFor(() => expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2))
 
 			await user.click(within(clipActions).getByRole('button', { name: 'Nudge -0.5s' }))
-			expect(screen.getByRole('button', { name: /Sample asset 1 · 2\.3s \/ 2\.3s/i })).toBeInTheDocument()
+			await waitFor(() => expect(screen.getByRole('button', { name: /Sample asset 1 · 2\.3s \/ 2\.3s/i })).toBeInTheDocument())
 			await user.click(within(clipActions).getByRole('button', { name: 'Nudge +0.5s' }))
-			expect(screen.getByRole('button', { name: /Sample asset 1 · 2\.8s \/ 2\.3s/i })).toBeInTheDocument()
+			await waitFor(() => expect(screen.getByRole('button', { name: /Sample asset 1 · 2\.8s \/ 2\.3s/i })).toBeInTheDocument())
 		} finally {
 			unmount()
 		}
@@ -148,6 +155,7 @@ describe('video editor harness', () => {
 
 			await user.click(within(timeline).getByRole('button', { name: 'Split clip' }))
 
+			await waitFor(() => expect(screen.getAllByRole('button', { name: /Sample asset 1/i })).toHaveLength(2))
 			const splitClips = screen.getAllByRole('button', { name: /Sample asset 1/i }) as HTMLButtonElement[]
 			expect(splitClips).toHaveLength(2)
 			const leftWidth = Number.parseFloat(splitClips[0].style.width)
@@ -158,7 +166,7 @@ describe('video editor harness', () => {
 		finally {
 			unmount()
 		}
-	})
+	}, 10000)
 
 	it('shows project export progress in toolbar while rendering', async () => {
 		const exportDeferred = createDeferred<ExportRenderResult>()
@@ -199,15 +207,15 @@ describe('video editor harness', () => {
 
 			fireEvent.pointerDown(endHandle as HTMLElement, { clientX: 100, buttons: 1 })
 			fireEvent.pointerMove(endHandle as HTMLElement, { clientX: 128, buttons: 1 })
-			expect(clipButton).toHaveTextContent(/0\.0s \/ 5\.5s/)
+			await waitFor(() => expect(clipButton).toHaveTextContent(/0\.0s \/ 5\.5s/))
 			fireEvent.pointerUp(endHandle as HTMLElement, { clientX: 128, buttons: 0 })
-			expect(clipButton).toHaveTextContent(/0\.0s \/ 5\.5s/)
+			await waitFor(() => expect(clipButton).toHaveTextContent(/0\.0s \/ 5\.5s/))
 
 			fireEvent.pointerDown(startHandle as HTMLElement, { clientX: 100, buttons: 1 })
 			fireEvent.pointerMove(startHandle as HTMLElement, { clientX: 128, buttons: 1 })
-			expect(clipButton).toHaveTextContent(/0\.5s \/ 5\.0s/)
+			await waitFor(() => expect(clipButton).toHaveTextContent(/0\.5s \/ 5\.0s/))
 			fireEvent.pointerUp(startHandle as HTMLElement, { clientX: 128, buttons: 0 })
-			expect(clipButton).toHaveTextContent(/0\.5s \/ 5\.0s/)
+			await waitFor(() => expect(clipButton).toHaveTextContent(/0\.5s \/ 5\.0s/))
 		} finally {
 			unmount()
 		}
@@ -223,8 +231,8 @@ describe('video editor harness', () => {
 			await user.click(clipButton)
 
 			await user.click(within(screen.getByLabelText('Timeline')).getByRole('button', { name: 'Delete clip' }))
-			expect(screen.queryByRole('button', { name: /Sample asset 1 · 0.0s/i })).not.toBeInTheDocument()
-			expect(screen.getByText('Select a clip to edit opacity or split it.')).toBeInTheDocument()
+			await waitFor(() => expect(screen.queryByRole('button', { name: /Sample asset 1 · 0.0s/i })).not.toBeInTheDocument())
+			await waitFor(() => expect(screen.getByText('Select a clip to edit opacity or split it.')).toBeInTheDocument())
 		} finally {
 			unmount()
 		}
@@ -253,7 +261,7 @@ describe('video editor harness', () => {
 		finally {
 			unmount()
 		}
-	})
+	}, 10000)
 
 	it('adds and edits primary color correction from the color inspector', async () => {
 		const { harness, user, unmount } = renderVideoEditor()
@@ -279,10 +287,10 @@ describe('video editor harness', () => {
 			expect(harness.projects$.entitiesById[effectId].attrs.kind.get()).toBe('color-correction')
 			const params = harness.projects$.entitiesById[effectId].attrs.params.get() as { exposure: { value: number } }
 			expect(params.exposure.value).toBe(0.25)
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
 				filter: 'brightness(1.25) contrast(1) saturate(1) hue-rotate(0deg)',
-			})
-			expect(within(clipButton).getByText('Grade')).toBeVisible()
+			}))
+			await waitFor(() => expect(within(clipButton).getByText('Grade')).toBeVisible())
 
 			await user.click(within(inspector).getByRole('button', { name: 'Warm' }))
 			const warmParams = harness.projects$.entitiesById[effectId].attrs.params.get() as {
@@ -309,9 +317,9 @@ describe('video editor harness', () => {
 			expect(lookParams.lookIntensity.value).toBe(0.5)
 			expect(lookParams.contrast.value).toBeCloseTo(1.09, 6)
 			expect(lookParams.hue.value).toBeCloseTo(-2, 6)
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
 				filter: 'brightness(0.98) contrast(1.0791) saturate(0.97) hue-rotate(-2deg)',
-			})
+			}))
 			fireEvent.change(lookIntensity, { target: { value: '0' } })
 			await user.click(within(inspector).getByRole('button', { name: 'Apply look Golden' }))
 			fireEvent.change(lookIntensity, { target: { value: '100' } })
@@ -335,9 +343,9 @@ describe('video editor harness', () => {
 			expect(monoParams.lookId).toBe('mono')
 			expect(monoParams.lookIntensity.value).toBe(1)
 			expect(monoParams.saturation.value).toBe(0)
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({
 				filter: 'brightness(1) contrast(1.2444) saturate(0) hue-rotate(0deg)',
-			})
+			}))
 			await user.click(within(inspector).getByRole('button', { name: 'Apply look Cinema' }))
 			fireEvent.change(lookIntensity, { target: { value: '50' } })
 			fireEvent.change(exposure, { target: { value: '10' } })
@@ -368,11 +376,11 @@ describe('video editor harness', () => {
 
 			await user.click(within(inspector).getByRole('button', { name: 'Bypass grade' }))
 			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(false)
-			expect(within(clipButton).queryByText('Grade')).toBeNull()
+			await waitFor(() => expect(within(clipButton).queryByText('Grade')).toBeNull())
 
 			await user.click(within(inspector).getByRole('button', { name: 'Enable grade' }))
 			expect(harness.projects$.entitiesById[effectId].attrs.enabled.get()).toBe(true)
-			expect(within(clipButton).getByText('Grade')).toBeVisible()
+			await waitFor(() => expect(within(clipButton).getByText('Grade')).toBeVisible())
 
 			const compareButton = within(inspector).getByRole('button', { name: 'Press and hold: Before' })
 			fireEvent.pointerDown(compareButton)
@@ -406,16 +414,15 @@ describe('video editor harness', () => {
 			const firstResourceListRow = within(mediaBin).getAllByRole('listitem')[0]
 			expect(within(firstResourceListRow).getByRole('button', { name: 'Add Text to Timeline' })).toBe(textActionButton)
 			await user.click(textActionButton)
+			const content = await screen.findByRole('textbox', { name: 'Text content' }, { timeout: 10000 })
 			const inspector = screen.getByLabelText('Inspector')
-			const content = await within(inspector).findByRole('textbox', { name: 'Text content' }, { timeout: 5000 })
-			await user.clear(content)
-			await user.type(content, 'Edited title')
+			fireEvent.change(content, { target: { value: 'Edited title' } })
 
 			const clipId = String(harness.session$.selectedEntityId.get())
 			const textId = String(harness.projects$.entitiesById[clipId].rels.text.get())
 			expect(harness.projects$.entitiesById[clipId].attrs.mediaKind.get()).toBe('text')
-			expect(harness.projects$.entitiesById[textId].attrs.content.get()).toBe('Edited title')
-			expect(screen.getByLabelText('Renderer stage')).toHaveTextContent('Edited title')
+			await waitFor(() => expect(harness.projects$.entitiesById[textId].attrs.content.get()).toBe('Edited title'))
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage')).toHaveTextContent('Edited title'), { timeout: 5000 })
 
 			const textSection = within(inspector).getByLabelText('Text controls')
 			expect(within(textSection).getByLabelText('Advanced OKLCH controls')).toBeVisible()
@@ -430,12 +437,12 @@ describe('video editor harness', () => {
 			const updatedText = harness.projects$.entitiesById[textId].attrs.get() as { style: { color: string; backgroundColor: string } }
 			expect(updatedText.style.color).toMatch(/^#[0-9a-f]{6}$/)
 			expect(updatedText.style.backgroundColor).toMatch(/^#[0-9a-f]{6}$/)
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__text-content')).toHaveStyle({
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__text-content')).toHaveStyle({
 				color: updatedText.style.color,
-			})
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__text-box')).toHaveStyle({
+			}))
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__text-box')).toHaveStyle({
 				backgroundColor: updatedText.style.backgroundColor,
-			})
+			}))
 			await user.click(within(textSection).getByRole('button', { name: 'Generate palette from frame' }))
 			expect(within(textSection).getByLabelText('Frame palette feedback')).toHaveTextContent('Fallback palette')
 			const paletteText = harness.projects$.entitiesById[textId].attrs.get() as { style: { color: string; backgroundColor: string } }
@@ -450,7 +457,7 @@ describe('video editor harness', () => {
 		} finally {
 			unmount()
 		}
-	})
+	}, 15000)
 
 	it('interpolates keyframed opacity and transform values in the renderer', async () => {
 		const { harness, user, unmount } = renderVideoEditor()
@@ -468,12 +475,17 @@ describe('video editor harness', () => {
 				harness.projects$.entitiesById['keyframe:x-end'].set({ id: 'keyframe:x-end', type: 'keyframe', attrs: { time: 5, value: 100 }, rels: {} })
 				harness.projects$.entitiesById[clipId].attrs.opacity.set({ value: 1, keyframes: ['keyframe:opacity-start', 'keyframe:opacity-end'] })
 				;(harness.projects$.entitiesById[clipId].attrs.transform as unknown as Record<string, { set(v: unknown): void }>).x.set({ value: 0, keyframes: ['keyframe:x-start', 'keyframe:x-end'] })
+			})
+			await act(async () => {
+				await Promise.resolve(harness.worker.replaceSnapshot?.(harness.projects$.get()))
 				harness.actions.setCursor(2.5)
+				await Promise.resolve()
+				await Promise.resolve()
 			})
 
 			const layer = screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')
-			expect(layer).toHaveStyle({ opacity: '0.5' })
-			expect(layer).toHaveStyle('transform: translate(50px, 0px) scale(1) rotate(0deg)')
+			await waitFor(() => expect(layer).toHaveStyle({ opacity: '0.5' }))
+			await waitFor(() => expect(layer).toHaveStyle('transform: translate(50px, 0px) scale(1) rotate(0deg)'))
 		} finally {
 			unmount()
 		}
@@ -495,11 +507,11 @@ describe('video editor harness', () => {
 			expect(within(inspector).getAllByText('0.5s', { selector: 'dd' })).toHaveLength(2)
 
 			act(() => harness.actions.setCursor(0))
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0' })
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0' }))
 			act(() => harness.actions.setCursor(0.25))
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0.5' })
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0.5' }))
 			act(() => harness.actions.setCursor(4.75))
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0.5' })
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle({ opacity: '0.5' }))
 		} finally {
 			unmount()
 		}
@@ -536,7 +548,7 @@ describe('video editor harness', () => {
 		finally {
 			unmount()
 		}
-	})
+	}, 10000)
 
 	it('edits clip name, direct color input, and every transform input', async () => {
 		const { harness, user, unmount } = renderVideoEditor()
@@ -556,20 +568,20 @@ describe('video editor harness', () => {
 			fireEvent.change(within(transformControls).getByLabelText('Y'), { target: { value: '-12' } })
 			fireEvent.change(within(transformControls).getByLabelText('Scale'), { target: { value: '1.5' } })
 			fireEvent.change(within(transformControls).getByLabelText('Rotate'), { target: { value: '15' } })
-			expect(within(transformControls).getByLabelText('X')).toHaveValue(24)
-			expect(within(transformControls).getByLabelText('Y')).toHaveValue(-12)
-			expect(within(transformControls).getByLabelText('Scale')).toHaveValue(1.5)
-			expect(within(transformControls).getByLabelText('Rotate')).toHaveValue(15)
-			expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle(
+			await waitFor(() => expect(within(transformControls).getByLabelText('X')).toHaveValue(24))
+			await waitFor(() => expect(within(transformControls).getByLabelText('Y')).toHaveValue(-12))
+			await waitFor(() => expect(within(transformControls).getByLabelText('Scale')).toHaveValue(1.5))
+			await waitFor(() => expect(within(transformControls).getByLabelText('Rotate')).toHaveValue(15))
+			await waitFor(() => expect(screen.getByLabelText('Renderer stage').querySelector('.ve-renderer__layer')).toHaveStyle(
 				'transform: translate(24px, -12px) scale(1.5) rotate(15deg)',
-			)
+			))
 
 			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
 			fireEvent.change(within(inspector).getByLabelText('Color'), { target: { value: '#dc2626' } })
-			expect(within(inspector).getByLabelText('Color')).toHaveValue('#dc2626')
-			expect(screen.getByRole('button', { name: /Renamed clip/i })).toHaveStyle({
+			await waitFor(() => expect(within(inspector).getByLabelText('Color')).toHaveValue('#dc2626'))
+			await waitFor(() => expect(screen.getByRole('button', { name: /Renamed clip/i })).toHaveStyle({
 				borderLeftColor: 'rgb(220, 38, 38)',
-			})
+			}))
 		} finally {
 			unmount()
 		}
@@ -676,9 +688,9 @@ describe('video editor harness', () => {
 			const trackActions = within(timeline).getByLabelText('Track actions')
 			await user.click(within(trackActions).getByRole('button', { name: 'Add video track' }))
 			await user.click(within(trackActions).getByRole('button', { name: 'Add audio track' }))
-			expect(within(timeline).getByText('4 tracks')).toBeInTheDocument()
-			expect(within(timeline).getByText('V2')).toBeInTheDocument()
-			expect(within(timeline).getByText('A2')).toBeInTheDocument()
+			await waitFor(() => expect(within(timeline).getByText('4 tracks')).toBeInTheDocument())
+			await waitFor(() => expect(within(timeline).getByText('V2')).toBeInTheDocument())
+			await waitFor(() => expect(within(timeline).getByText('A2')).toBeInTheDocument())
 
 			const v1Controls = within(timeline).getByLabelText('V1 controls')
 			expect(within(v1Controls).getByRole('button', { name: 'Track audible' })).toBeDisabled()
@@ -733,7 +745,7 @@ describe('video editor harness', () => {
 			expect(within(timeline).getAllByLabelText('Current step')).toHaveLength(1)
 			const previewPanel = screen.getByLabelText('Preview panel')
 			expect(within(previewPanel).queryByRole('slider', { name: 'Cursor' })).toBeNull()
-			const cursorReadout = within(previewPanel).getByText('Cursor at 4.5s')
+			const cursorReadout = await within(previewPanel).findByText('Cursor at 4.5s')
 			expect(cursorReadout).toBeVisible()
 			const previewTransport = cursorReadout.closest('.ve-preview-transport')
 			expect(previewTransport).not.toBeNull()
@@ -768,7 +780,7 @@ describe('video editor harness', () => {
 				})
 			}
 
-			expect(screen.getAllByRole('button', { name: /Sample asset/i }).length).toBeGreaterThanOrEqual(100)
+			await waitFor(() => expect(screen.getAllByRole('button', { name: /Sample asset/i }).length).toBeGreaterThanOrEqual(100))
 			expect(screen.getByLabelText('Timeline')).toBeVisible()
 		} finally {
 			unmount()

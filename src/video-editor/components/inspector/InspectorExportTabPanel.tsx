@@ -1,16 +1,16 @@
 import { Download } from 'lucide-react'
 import { useState } from 'react'
+import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useVideoEditor } from '../../app/VideoEditorContext'
-import { useEditorAttrs } from '../../render-sync'
-import type { EditorScope } from '../../render-sync/EditorScope'
 import { IconButton } from '../ControlPrimitives'
 import { InspectorSection } from './InspectorSection'
 import { formatExportProgress, type ExportStatus } from './types'
 
-export const InspectorExportTabPanel = ({ clipScope }: { clipScope: EditorScope }) => {
+export const InspectorExportTabPanel = () => {
 	const [exportStatus, setExportStatus] = useState<ExportStatus>({ state: 'idle' })
 	const { actions } = useVideoEditor()
-	const { name } = useEditorAttrs<{ name?: unknown }>(['name'], clipScope)
+	const { sourceClipId, name } = useAttrs(['sourceClipId', 'name']) as { sourceClipId?: unknown; name?: unknown }
+	const clipId = typeof sourceClipId === 'string' ? sourceClipId : null
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Export inspector">
@@ -21,10 +21,14 @@ export const InspectorExportTabPanel = ({ clipScope }: { clipScope: EditorScope 
 					icon={Download}
 					label="Queue clip export"
 					variant="default"
-					disabled={exportStatus.state === 'rendering'}
+					disabled={exportStatus.state === 'rendering' || !clipId}
 					onClick={() => {
+						if (!clipId) {
+							setExportStatus({ state: 'error', message: 'Select a clip before exporting.' })
+							return
+						}
 						setExportStatus({ state: 'rendering', progress: { stage: 'queued', progress: 0 } })
-						actions.queueClipExportById(clipScope.nodeId, (progress) => {
+						actions.queueClipExportById(clipId, (progress) => {
 							setExportStatus((current) => current.state === 'rendering' ? { state: 'rendering', progress } : current)
 						}).then((result) => {
 							setExportStatus(result ? { state: 'ready', result } : { state: 'error', message: 'Select a clip before exporting.' })

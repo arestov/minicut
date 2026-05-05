@@ -1,5 +1,7 @@
-import { ROOT_SCOPE, useEditorActions, useEditorAttrs, useEditorComp, useEditorOne, type ClipTrackPositionSummary } from '../../render-sync'
-import type { EditorScope } from '../../render-sync/EditorScope'
+import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
+import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
+import { useOne } from '../../../dkt-react-sync/hooks/useOne'
+import { useVideoEditor } from '../../app/VideoEditorContext'
 import { formatSeconds } from '../format'
 import type { ClipRenderAttrs, ResourceRenderAttrs } from './types'
 
@@ -28,31 +30,46 @@ const ClipHeaderPreview = ({ resource, color, name }: {
 	)
 }
 
-export const InspectorClipHeader = ({ clipScope }: { clipScope: EditorScope }) => {
-	const dispatch = useEditorActions(clipScope)
-	const attrs = useEditorAttrs<ClipRenderAttrs>(['name', 'color', 'start', 'duration'], clipScope)
-	const resourceScope = useEditorOne('resource', clipScope)
-	const resourceAttrs = useEditorAttrs<ResourceRenderAttrs>(['kind', 'url', 'name'], resourceScope ?? ROOT_SCOPE)
-	const trackPosition = useEditorComp<ClipTrackPositionSummary | null>('trackPosition', clipScope)
+const ResourcePreview = ({ color, name }: { color: string; name: string }) => {
+	const resourceAttrs = useAttrs(['kind', 'url', 'name']) as ResourceRenderAttrs
+
+	return <ClipHeaderPreview resource={resourceAttrs} color={color} name={name} />
+}
+
+export const InspectorClipHeader = ({ trackPosition }: { trackPosition: { trackName: string; ordinal: number } | null }) => {
+	const { actions } = useVideoEditor()
+	const attrs = useAttrs(['sourceClipId', 'name', 'color', 'start', 'duration']) as ClipRenderAttrs & { sourceClipId?: unknown }
+	const resourceScope = useOne('resource')
+	const sourceClipId = typeof attrs.sourceClipId === 'string' ? attrs.sourceClipId : null
 	const name = String(attrs.name)
 	const color = String(attrs.color ?? '#2563eb')
 	const start = Number(attrs.start)
 	const duration = Number(attrs.duration)
-	const selectedTrackName = trackPosition?.trackName ?? 'Track'
-	const selectedClipOrdinal = trackPosition?.ordinal ?? 1
+	const trackName = trackPosition?.trackName ?? 'Track'
+	const ordinal = trackPosition?.ordinal ?? 1
 
 	return (
 		<div className="ve-inspector-selected">
-			<ClipHeaderPreview resource={resourceAttrs} color={color} name={name} />
+			{resourceScope ? (
+				<ScopeContext.Provider value={resourceScope}>
+					<ResourcePreview color={color} name={name} />
+				</ScopeContext.Provider>
+			) : (
+				<ClipHeaderPreview resource={null} color={color} name={name} />
+			)}
 			<div>
 				<input
 					className="ve-inspector-name ve-inspector-title-input"
 					type="text"
 					aria-label="Clip name"
 					value={name}
-					onChange={(event) => dispatch('rename', { name: event.currentTarget.value })}
+					onChange={(event) => {
+						if (sourceClipId) {
+							actions.renameClipById(sourceClipId, event.currentTarget.value)
+						}
+					}}
 				/>
-				<small>Clip {selectedClipOrdinal} - {selectedTrackName} - {formatSeconds(start)} - Duration {formatSeconds(duration)}</small>
+				<small>Clip {ordinal} - {trackName} - {formatSeconds(start)} - Duration {formatSeconds(duration)}</small>
 			</div>
 		</div>
 	)

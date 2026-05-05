@@ -22,25 +22,16 @@ import {
 	type ReactElement,
 	type SetStateAction,
 } from 'react'
+import { One } from '../../dkt-react-sync/components/One'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useManyWithAttrs } from '../../dkt-react-sync/hooks/useManyWithAttrs'
 import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,
 	TIMELINE_ZOOM_STEP,
 } from '../dkt/state/sessionStore'
-import {
-	EditorScopeProvider,
-	ROOT_SCOPE,
-	SESSION_SCOPE,
-	useEditorActions,
-	useEditorAttrs,
-	useEditorComp,
-	useEditorMany,
-	useEditorOne,
-	type EditorScopedDispatch,
-	type SelectedClipSummary,
-} from '../render-sync'
-import type { EditorScope } from '../render-sync/EditorScope'
-import { useActiveProjectScope } from '../ui/dkt/hooks'
+import { useVideoEditor } from '../app/VideoEditorContext'
 import { IconButton } from './ControlPrimitives'
 import { TrackLabel, TrackLane } from './TrackRow'
 
@@ -59,15 +50,25 @@ const timelineTools: Array<{
 	{ id: 'hand', label: 'Hand tool', icon: Hand },
 ]
 
+interface SelectedClipSummary {
+	color: string
+	resourceName: string
+	trackName: string
+}
+
 interface TimelineHeaderProps {
 	activeTool: TimelineTool
 	canZoomIn: boolean
 	canZoomOut: boolean
+	onDeleteSelected: () => void
+	onNudgeSelected: (delta: number) => void
+	onSplitSelected: () => void
+	onZoom: (delta: number) => void
 	selectedClipSummary: SelectedClipSummary | null
-	sessionDispatch: EditorScopedDispatch
 	snappingEnabled: boolean
 	setActiveTool: Dispatch<SetStateAction<TimelineTool>>
 	setSnappingEnabled: Dispatch<SetStateAction<boolean>>
+	cursorSeconds: number
 	timelineZoom: number
 	trackCount: number
 }
@@ -77,19 +78,17 @@ interface TimelineBodyProps {
 	activeTool: TimelineTool
 	handleHandPan: (event: ReactPointerEvent<HTMLDivElement>) => void
 	handlePlayheadPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
-	rootDispatch: EditorScopedDispatch
+	onAddTrack: (kind: 'video' | 'audio') => void
 	snappingEnabled: boolean
 	stopPlayheadDrag: (event: ReactPointerEvent<HTMLDivElement>) => void
-	timelineScope: EditorScope
+	cursorSeconds: number
+	selectedEntityId: string | null
 	timelineZoom: number
-	trackScopes: EditorScope[]
+	trackItems: readonly ReturnType<typeof useManyWithAttrs>[number][]
 	updateCursorFromPointer: (event: ReactPointerEvent<HTMLDivElement>) => void
 }
 
-const CurrentTimeLabel = () => {
-	const { cursor } = useEditorAttrs<{ cursor?: unknown }>(['cursor'], SESSION_SCOPE)
-	const cursorSeconds = Number(cursor)
-
+const CurrentTimeLabel = ({ cursorSeconds }: { cursorSeconds: number }) => {
 	return (
 		<span className="ve-timeline__time" aria-label="Current time">
 			{cursorSeconds.toFixed(2)}s
@@ -97,28 +96,23 @@ const CurrentTimeLabel = () => {
 	)
 }
 
-const TimelinePlayhead = ({ timelineZoom }: { timelineZoom: number }) => {
-	const { cursor } = useEditorAttrs<{ cursor?: unknown }>(['cursor'], SESSION_SCOPE)
-	const cursorSeconds = Number(cursor)
-
-	return (
-		<div
-			className="ve-timeline-playhead"
-			aria-label="Current step"
-			style={{ left: `${cursorSeconds * timelineZoom}px` }}
-		/>
-	)
+const TimelinePlayhead = ({ cursorSeconds, timelineZoom }: { cursorSeconds: number; timelineZoom: number }) => {
+	return <div className="ve-timeline-playhead" aria-label="Current step" style={{ left: `${cursorSeconds * timelineZoom}px` }} />
 }
 
 const TimelineHeader = ({
 	activeTool,
 	canZoomIn,
 	canZoomOut,
+	onDeleteSelected,
+	onNudgeSelected,
+	onSplitSelected,
+	onZoom,
 	selectedClipSummary,
-	sessionDispatch,
 	snappingEnabled,
 	setActiveTool,
 	setSnappingEnabled,
+	cursorSeconds,
 	timelineZoom,
 	trackCount,
 }: TimelineHeaderProps) => {
@@ -131,53 +125,18 @@ const TimelineHeader = ({
 			</div>
 			<div className="ve-timeline-clip-actions" aria-label="Clip edit actions">
 				{selectedClipSummary ? (
-					<div
-						className="ve-clip-action-target"
-						aria-label="Selected clip action target"
-						style={{ borderColor: selectedClipSummary.color }}
-					>
+					<div className="ve-clip-action-target" aria-label="Selected clip action target" style={{ borderColor: selectedClipSummary.color }}>
 						<span>{selectedClipSummary.resourceName}</span>
 						<strong>{selectedClipSummary.trackName}</strong>
 					</div>
 				) : null}
-				<IconButton
-					type="button"
-					icon={Scissors}
-					label="Split clip"
-					variant="ghost"
-					onClick={() => sessionDispatch('splitSelectedClip')}
-					disabled={!hasSelectedClip}
-				/>
-				<IconButton
-					type="button"
-					icon={MoveLeft}
-					label="Nudge -0.5s"
-					variant="ghost"
-					onClick={() => sessionDispatch('nudgeSelectedClip', { delta: -0.5 })}
-					disabled={!hasSelectedClip}
-				/>
-				<IconButton
-					type="button"
-					icon={MoveRight}
-					label="Nudge +0.5s"
-					variant="ghost"
-					onClick={() => sessionDispatch('nudgeSelectedClip', { delta: 0.5 })}
-					disabled={!hasSelectedClip}
-				/>
-				<IconButton
-					type="button"
-					icon={Trash2}
-					label="Delete clip"
-					variant="ghost"
-					onClick={() => sessionDispatch('deleteSelectedClip')}
-					disabled={!hasSelectedClip}
-				/>
+				<IconButton type="button" icon={Scissors} label="Split clip" variant="ghost" onClick={onSplitSelected} disabled={!hasSelectedClip} />
+				<IconButton type="button" icon={MoveLeft} label="Nudge -0.5s" variant="ghost" onClick={() => onNudgeSelected(-0.5)} disabled={!hasSelectedClip} />
+				<IconButton type="button" icon={MoveRight} label="Nudge +0.5s" variant="ghost" onClick={() => onNudgeSelected(0.5)} disabled={!hasSelectedClip} />
+				<IconButton type="button" icon={Trash2} label="Delete clip" variant="ghost" onClick={onDeleteSelected} disabled={!hasSelectedClip} />
 			</div>
 			<div className="ve-timeline__tools" aria-label="Timeline tools">
-				<div
-					className="ve-segmented-control ve-timeline-tool-mode"
-					aria-label="Timeline tool mode"
-				>
+				<div className="ve-segmented-control ve-timeline-tool-mode" aria-label="Timeline tool mode">
 					{timelineTools.map((tool) => (
 						<IconButton
 							key={tool.id}
@@ -185,46 +144,19 @@ const TimelineHeader = ({
 							icon={tool.icon}
 							label={tool.label}
 							data-tool-id={tool.id}
-							data-icon-name={
-								tool.id === 'trim'
-									? 'stretch-horizontal'
-									: tool.id === 'split'
-										? 'scissors'
-										: tool.id
-							}
+							data-icon-name={tool.id === 'trim' ? 'stretch-horizontal' : tool.id === 'split' ? 'scissors' : tool.id}
 							variant={activeTool === tool.id ? 'secondary' : 'ghost'}
 							aria-pressed={activeTool === tool.id}
 							onClick={() => setActiveTool(tool.id)}
 						/>
 					))}
 				</div>
-				<CurrentTimeLabel />
+				<CurrentTimeLabel cursorSeconds={cursorSeconds} />
 				<span>{trackCount} tracks</span>
-				<IconButton
-					type="button"
-					icon={Magnet}
-					label="Toggle snapping"
-					variant={snappingEnabled ? 'secondary' : 'ghost'}
-					aria-pressed={snappingEnabled}
-					onClick={() => setSnappingEnabled((value) => !value)}
-				/>
-				<IconButton
-					type="button"
-					icon={ZoomOut}
-					label="Zoom out"
-					variant="ghost"
-					onClick={() => sessionDispatch('zoomTimeline', { delta: -TIMELINE_ZOOM_STEP })}
-					disabled={!canZoomOut}
-				/>
+				<IconButton type="button" icon={Magnet} label="Toggle snapping" variant={snappingEnabled ? 'secondary' : 'ghost'} aria-pressed={snappingEnabled} onClick={() => setSnappingEnabled((value) => !value)} />
+				<IconButton type="button" icon={ZoomOut} label="Zoom out" variant="ghost" onClick={() => onZoom(-TIMELINE_ZOOM_STEP)} disabled={!canZoomOut} />
 				<span>{Math.round(timelineZoom)} px/s</span>
-				<IconButton
-					type="button"
-					icon={ZoomIn}
-					label="Zoom in"
-					variant="ghost"
-					onClick={() => sessionDispatch('zoomTimeline', { delta: TIMELINE_ZOOM_STEP })}
-					disabled={!canZoomIn}
-				/>
+				<IconButton type="button" icon={ZoomIn} label="Zoom in" variant="ghost" onClick={() => onZoom(TIMELINE_ZOOM_STEP)} disabled={!canZoomIn} />
 			</div>
 		</div>
 	)
@@ -235,99 +167,55 @@ const TimelineBody = ({
 	activeTool,
 	handleHandPan,
 	handlePlayheadPointerDown,
-	rootDispatch,
+	onAddTrack,
 	snappingEnabled,
 	stopPlayheadDrag,
+	cursorSeconds,
+	selectedEntityId,
 	timelineZoom,
-	trackScopes,
+	trackItems,
 	updateCursorFromPointer,
 }: TimelineBodyProps) => (
 	<div className="ve-timeline__body">
-		<div
-			className="ve-timeline-scroll-area"
-			data-tool={activeTool}
-			data-snapping={snappingEnabled ? 'on' : 'off'}
-			style={{ '--ve-track-count': trackScopes.length } as CSSProperties}
-		>
+		<div className="ve-timeline-scroll-area" data-tool={activeTool} data-snapping={snappingEnabled ? 'on' : 'off'} style={{ '--ve-track-count': trackItems.length } as CSSProperties}>
 			<div className="ve-timeline-sticky-row">
 				<div className="ve-timeline-label-spacer" aria-hidden="true" />
 				<div className="ve-timeline-ruler-row">
 					<div className="ve-timeline-ruler" aria-label="Time ruler">
-						{timelineTicks.map((tick) => (
-							<span
-								key={tick}
-								style={{ left: `${tick * timelineZoom}px` }}
-							>
-								{tick}s
-							</span>
-						))}
+						{timelineTicks.map((tick) => <span key={tick} style={{ left: `${tick * timelineZoom}px` }}>{tick}s</span>)}
 					</div>
 				</div>
 			</div>
 			<div className="ve-timeline-grid">
 				<div className="ve-track-label-column">
 					<div className="ve-track-label-list">
-						{trackScopes.map((trackScope) => (
-							<EditorScopeProvider key={trackScope.nodeId} scope={trackScope}>
-								<TrackLabel trackScope={trackScope} />
-							</EditorScopeProvider>
+						{trackItems.map(({ scope: trackScope }) => (
+							<ScopeContext.Provider key={trackScope._nodeId} value={trackScope}>
+								<TrackLabel />
+							</ScopeContext.Provider>
 						))}
 					</div>
 					<div className="ve-track-label-actions" aria-label="Track actions">
-						<IconButton
-							type="button"
-							icon={Video}
-							label="Add video track"
-							variant="outline"
-							onClick={() => rootDispatch('addTrack', { kind: 'video' })}
-							disabled={!activeProjectId}
-						>
-							Video track
-						</IconButton>
-						<IconButton
-							type="button"
-							icon={Music}
-							label="Add audio track"
-							variant="outline"
-							onClick={() => rootDispatch('addTrack', { kind: 'audio' })}
-							disabled={!activeProjectId}
-						>
-							Audio track
-						</IconButton>
+						<IconButton type="button" icon={Video} label="Add video track" variant="outline" onClick={() => onAddTrack('video')} disabled={!activeProjectId}>Video track</IconButton>
+						<IconButton type="button" icon={Music} label="Add audio track" variant="outline" onClick={() => onAddTrack('audio')} disabled={!activeProjectId}>Audio track</IconButton>
 					</div>
 				</div>
 				<div
 					className="ve-track-lane-scroll"
 					data-tool={activeTool}
 					data-snapping={snappingEnabled ? 'on' : 'off'}
-					onPointerDown={(event) => {
-						handleHandPan(event)
-						handlePlayheadPointerDown(event)
-					}}
-					onPointerMove={(event) => {
-						handleHandPan(event)
-						updateCursorFromPointer(event)
-					}}
-					onPointerUp={(event) => {
-						handleHandPan(event)
-						stopPlayheadDrag(event)
-					}}
-					onPointerCancel={(event) => {
-						handleHandPan(event)
-						stopPlayheadDrag(event)
-					}}
+					onPointerDown={(event) => { handleHandPan(event); handlePlayheadPointerDown(event) }}
+					onPointerMove={(event) => { handleHandPan(event); updateCursorFromPointer(event) }}
+					onPointerUp={(event) => { handleHandPan(event); stopPlayheadDrag(event) }}
+					onPointerCancel={(event) => { handleHandPan(event); stopPlayheadDrag(event) }}
 				>
 					<div className="ve-track-lane-column">
-						<TimelinePlayhead timelineZoom={timelineZoom} />
+						<TimelinePlayhead cursorSeconds={cursorSeconds} timelineZoom={timelineZoom} />
 						<div className="ve-track-lane-list">
-							{trackScopes.map((trackScope) => (
-								<EditorScopeProvider key={trackScope.nodeId} scope={trackScope}>
-									<TrackLane
-										trackScope={trackScope}
-										timelineZoom={timelineZoom}
-										activeTool={activeTool}
-									/>
-								</EditorScopeProvider>
+							{trackItems.map(({ scope: trackScope }) => (
+								<ScopeContext.Provider key={trackScope._nodeId} value={trackScope}>
+									<TrackLane timelineZoom={timelineZoom} activeTool={activeTool} selectedEntityId={selectedEntityId} />
+								</ScopeContext.Provider>
 							))}
 						</div>
 					</div>
@@ -337,112 +225,98 @@ const TimelineBody = ({
 	</div>
 )
 
-const ActiveTimeline = ({
-	activeTool,
+const ResolvedProjectTimeline = ({
 	activeProjectId,
+	activeTool,
 	handleHandPan,
 	handlePlayheadPointerDown,
-	projectScope,
+	onAddTrack,
 	renderHeader,
-	rootDispatch,
 	snappingEnabled,
 	stopPlayheadDrag,
+	cursorSeconds,
+	selectedEntityId,
 	timelineZoom,
 	updateCursorFromPointer,
-}: {
-	activeTool: TimelineTool
-	activeProjectId: string | null
-	handleHandPan: (event: ReactPointerEvent<HTMLDivElement>) => void
-	handlePlayheadPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
-	projectScope: EditorScope
-	renderHeader: (trackCount: number) => ReactElement
-	rootDispatch: EditorScopedDispatch
-	snappingEnabled: boolean
-	stopPlayheadDrag: (event: ReactPointerEvent<HTMLDivElement>) => void
-	timelineZoom: number
-	updateCursorFromPointer: (event: ReactPointerEvent<HTMLDivElement>) => void
-}) => {
-	const timelineScope = useEditorOne('activeTimeline', projectScope)
-
-	if (!timelineScope) {
-		return (
-			<>
-				{renderHeader(0)}
-				<p className="ve-empty">Create a project to allocate timeline tracks.</p>
-			</>
-		)
-	}
-
-	return (
-		<EditorScopeProvider scope={timelineScope}>
-			<ResolvedTimeline
-				activeTool={activeTool}
-				activeProjectId={activeProjectId}
-				handleHandPan={handleHandPan}
-				handlePlayheadPointerDown={handlePlayheadPointerDown}
-				renderHeader={renderHeader}
-				rootDispatch={rootDispatch}
-				snappingEnabled={snappingEnabled}
-				stopPlayheadDrag={stopPlayheadDrag}
-				timelineScope={timelineScope}
-				timelineZoom={timelineZoom}
-				updateCursorFromPointer={updateCursorFromPointer}
-			/>
-		</EditorScopeProvider>
-	)
-}
-
-const ResolvedTimeline = ({
-	activeTool,
-	activeProjectId,
-	handleHandPan,
-	handlePlayheadPointerDown,
-	renderHeader,
-	rootDispatch,
-	snappingEnabled,
-	stopPlayheadDrag,
-	timelineScope,
-	timelineZoom,
-	updateCursorFromPointer,
-}: Omit<TimelineBodyProps, 'trackScopes'> & { renderHeader: (trackCount: number) => ReactElement }) => {
-	const trackScopes = useEditorMany('tracks', timelineScope)
+}: Omit<TimelineBodyProps, 'trackItems'> & { renderHeader: (trackCount: number) => ReactElement }) => {
+	const trackItems = useManyWithAttrs('tracks', ['sourceTrackId', 'name'])
 
 	return (
 		<>
-			{renderHeader(trackScopes.length)}
+			{renderHeader(trackItems.length)}
 			<TimelineBody
 				activeProjectId={activeProjectId}
 				activeTool={activeTool}
 				handleHandPan={handleHandPan}
 				handlePlayheadPointerDown={handlePlayheadPointerDown}
-				rootDispatch={rootDispatch}
+				onAddTrack={onAddTrack}
 				snappingEnabled={snappingEnabled}
 				stopPlayheadDrag={stopPlayheadDrag}
-				timelineScope={timelineScope}
+				cursorSeconds={cursorSeconds}
+				selectedEntityId={selectedEntityId}
 				timelineZoom={timelineZoom}
-				trackScopes={trackScopes}
+				trackItems={trackItems}
 				updateCursorFromPointer={updateCursorFromPointer}
 			/>
 		</>
 	)
 }
 
+const ActiveProjectTimeline = ({
+	activeProjectId,
+	activeTool,
+	handleHandPan,
+	handlePlayheadPointerDown,
+	onAddTrack,
+	renderHeader,
+	snappingEnabled,
+	stopPlayheadDrag,
+	cursorSeconds,
+	selectedEntityId,
+	timelineZoom,
+	updateCursorFromPointer,
+}: Omit<TimelineBodyProps, 'trackItems'> & { renderHeader: (trackCount: number) => ReactElement }) => {
+	const projectItems = useManyWithAttrs('project', ['sourceProjectId'])
+	const activeProjectScope = activeProjectId
+		? projectItems.find(({ attrs }) => attrs.sourceProjectId === activeProjectId)?.scope ?? projectItems[0]?.scope ?? null
+		: projectItems[0]?.scope ?? null
+
+	if (!activeProjectScope) {
+		return <>{renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>
+	}
+
+	return (
+		<ScopeContext.Provider value={activeProjectScope}>
+			<ResolvedProjectTimeline
+				activeProjectId={activeProjectId}
+				activeTool={activeTool}
+				handleHandPan={handleHandPan}
+				handlePlayheadPointerDown={handlePlayheadPointerDown}
+				onAddTrack={onAddTrack}
+				renderHeader={renderHeader}
+				snappingEnabled={snappingEnabled}
+				stopPlayheadDrag={stopPlayheadDrag}
+				cursorSeconds={cursorSeconds}
+				selectedEntityId={selectedEntityId}
+				timelineZoom={timelineZoom}
+				updateCursorFromPointer={updateCursorFromPointer}
+			/>
+		</ScopeContext.Provider>
+	)
+}
+
 export const TimelineView = () => {
 	const [activeTool, setActiveTool] = useState<TimelineTool>('select')
 	const [snappingEnabled, setSnappingEnabled] = useState(true)
-	const panState = useRef<{
-		x: number
-		scrollLeft: number
-	} | null>(null)
+	const panState = useRef<{ x: number; scrollLeft: number } | null>(null)
 	const playheadDragPointerId = useRef<number | null>(null)
-	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
-	const sessionAttrs = useEditorAttrs<{ timelineZoom?: unknown }>(['timelineZoom'], SESSION_SCOPE)
-	const selectedClipSummary = useEditorComp<SelectedClipSummary | null>('selectedClipSummary', SESSION_SCOPE)
-	const projectScope = useActiveProjectScope()
-	const sessionDispatch = useEditorActions(SESSION_SCOPE)
-	const rootDispatch = useEditorActions(ROOT_SCOPE)
+	const { actions } = useVideoEditor()
+	const rootAttrs = useAttrs(['activeProjectId', 'timelineZoom', 'selectedEntityId', 'cursor', 'selectedClipSummary']) as { activeProjectId?: unknown; timelineZoom?: unknown; selectedEntityId?: unknown; cursor?: unknown; selectedClipSummary?: SelectedClipSummary | null }
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
-	const timelineZoom = Number(sessionAttrs.timelineZoom)
+	const selectedEntityId = typeof rootAttrs.selectedEntityId === 'string' ? rootAttrs.selectedEntityId : null
+	const timelineZoom = Number(rootAttrs.timelineZoom)
+	const cursorSeconds = Number(rootAttrs.cursor ?? 0)
+	const selectedClipSummary = rootAttrs.selectedClipSummary ?? null
 	const canZoomOut = timelineZoom > TIMELINE_ZOOM_MIN
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 
@@ -452,15 +326,10 @@ export const TimelineView = () => {
 		}
 
 		const target = event.target as HTMLElement | null
-		return !(
-			target?.closest('.ve-clip') ||
-			target?.closest('button, input, label')
-		)
+		return !(target?.closest('.ve-clip') || target?.closest('button, input, label'))
 	}
 
-	const updateCursorFromPointer = (
-		event: ReactPointerEvent<HTMLDivElement>,
-	): void => {
+	const updateCursorFromPointer = (event: ReactPointerEvent<HTMLDivElement>): void => {
 		if (playheadDragPointerId.current !== event.pointerId) {
 			return
 		}
@@ -472,7 +341,7 @@ export const TimelineView = () => {
 
 		const rect = event.currentTarget.getBoundingClientRect()
 		const timelineX = event.clientX - rect.left + event.currentTarget.scrollLeft
-		sessionDispatch('setCursor', { value: Math.max(0, timelineX / timelineZoom) })
+		actions.setCursor(Math.max(0, timelineX / timelineZoom))
 		event.preventDefault()
 	}
 
@@ -501,10 +370,7 @@ export const TimelineView = () => {
 		}
 
 		if (event.type === 'pointerdown') {
-			panState.current = {
-				x: event.clientX,
-				scrollLeft: event.currentTarget.scrollLeft,
-			}
+			panState.current = { x: event.clientX, scrollLeft: event.currentTarget.scrollLeft }
 			event.currentTarget.setPointerCapture?.(event.pointerId)
 			event.preventDefault()
 			return
@@ -528,11 +394,15 @@ export const TimelineView = () => {
 			activeTool={activeTool}
 			canZoomIn={canZoomIn}
 			canZoomOut={canZoomOut}
+			onDeleteSelected={() => actions.deleteSelectedClip()}
+			onNudgeSelected={(delta) => actions.nudgeSelectedClip(delta)}
+			onSplitSelected={() => actions.splitSelectedClip()}
+			onZoom={(delta) => actions.zoomTimeline(delta)}
 			selectedClipSummary={selectedClipSummary}
-			sessionDispatch={sessionDispatch}
 			snappingEnabled={snappingEnabled}
 			setActiveTool={setActiveTool}
 			setSnappingEnabled={setSnappingEnabled}
+			cursorSeconds={cursorSeconds}
 			timelineZoom={timelineZoom}
 			trackCount={trackCount}
 		/>
@@ -540,29 +410,28 @@ export const TimelineView = () => {
 
 	return (
 		<section className="ve-panel ve-timeline" aria-label="Timeline">
-			{!activeProjectId || !projectScope ? (
+			{!activeProjectId ? (
 				<>
 					{renderHeader(0)}
-					<p className="ve-empty">
-						Create a project to allocate timeline tracks.
-					</p>
+					<p className="ve-empty">Create a project to allocate timeline tracks.</p>
 				</>
 			) : (
-				<EditorScopeProvider scope={projectScope}>
-					<ActiveTimeline
-						activeTool={activeTool}
+				<One rel="pioneer" fallback={<>{renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>}>
+					<ActiveProjectTimeline
 						activeProjectId={activeProjectId}
+						activeTool={activeTool}
 						handleHandPan={handleHandPan}
 						handlePlayheadPointerDown={handlePlayheadPointerDown}
-						projectScope={projectScope}
+						onAddTrack={(kind) => actions.addTrack(kind)}
 						renderHeader={renderHeader}
-						rootDispatch={rootDispatch}
 						snappingEnabled={snappingEnabled}
 						stopPlayheadDrag={stopPlayheadDrag}
+						cursorSeconds={cursorSeconds}
+						selectedEntityId={selectedEntityId}
 						timelineZoom={timelineZoom}
 						updateCursorFromPointer={updateCursorFromPointer}
 					/>
-				</EditorScopeProvider>
+				</One>
 			)}
 		</section>
 	)

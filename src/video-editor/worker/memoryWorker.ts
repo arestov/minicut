@@ -42,11 +42,13 @@ export class MemoryWorkerAuthority implements EditorAuthorityClient {
 		return result
 	}
 
-	replaceSnapshot(snapshot: ProjectRegistry): void {
+	replaceSnapshot(snapshot: ProjectRegistry): Promise<void> {
 		this.#registry = structuredClone(snapshot)
 		this.#indexes = buildWorkerDerivedIndexes(this.#registry)
-		this.#queueDktSnapshotSync()
+		const dktSync = this.#queueDktSnapshotSync()
 		this.#notify(createRegistrySetEnvelope(this.#registry))
+
+		return dktSync
 	}
 
 	openDktTransport(): DomSyncTransportLike<MiniCutDktTransportMessage> {
@@ -105,11 +107,13 @@ export class MemoryWorkerAuthority implements EditorAuthorityClient {
 		return structuredClone(this.#indexes)
 	}
 
-	#queueDktSnapshotSync(): void {
+	#queueDktSnapshotSync(): Promise<void> {
 		const snapshot = structuredClone(this.#registry)
 		this.#dktSyncQueue = this.#dktSyncQueue
 			.then(() => this.#dktRuntime.replaceRegistrySnapshot(snapshot))
 			.then(() => undefined)
+
+		return this.#dktSyncQueue
 	}
 }
 

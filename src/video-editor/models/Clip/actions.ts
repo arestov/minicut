@@ -6,7 +6,7 @@ import type { MiniCutDktEffectProxyInput } from '../../dkt/runtime/createMiniCut
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
-export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTransform'
+export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTimelineAttrs' | 'setTransform'
 export type DktTimelineClipActionName = 'moveBy' | 'trim' | 'resize' | 'splitAt'
 
 export type DktClipActionPatch = Partial<Pick<ClipAttrs,
@@ -90,6 +90,26 @@ export const clipSetAudioAction = {
 				gain: partial.gain ?? audio?.gain ?? 1,
 				pan: partial.pan ?? audio?.pan ?? 0,
 			},
+		}
+	},
+}
+
+export const clipSetTimelineAttrsAction = {
+	fn(payload: unknown): Pick<ClipAttrs, 'start' | 'in' | 'duration' | 'fadeIn' | 'fadeOut'> | null {
+		const value = payload as Partial<Pick<ClipAttrs, 'start' | 'in' | 'duration' | 'fadeIn' | 'fadeOut'>> | null
+		const start = Number(value?.start)
+		const inPoint = Number(value?.in)
+		const duration = Number(value?.duration)
+		if (!Number.isFinite(start) || !Number.isFinite(inPoint) || !Number.isFinite(duration)) {
+			return null
+		}
+
+		return {
+			start,
+			in: inPoint,
+			duration,
+			fadeIn: Number(value?.fadeIn ?? 0),
+			fadeOut: Number(value?.fadeOut ?? 0),
 		}
 	},
 }

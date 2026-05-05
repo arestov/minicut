@@ -1,32 +1,27 @@
 import { Palette, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
+import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
+import { useManyWithAttrs } from '../../../dkt-react-sync/hooks/useManyWithAttrs'
 import { useVideoEditor } from '../../app/VideoEditorContext'
+import { readVideoFrameImageData } from '../../color/framePalette'
 import { buildLookColorCorrectionParams, getLookPreset, lookPresets } from '../../color/looks'
 import type { AnimatedScalar, ColorCorrectionAttrs, EffectAttrs } from '../../domain/types'
-import { useEditorActions, useEditorAttrs, useEditorComp, useEditorMany } from '../../render-sync'
-import type { EditorScope } from '../../render-sync/EditorScope'
 import { Button } from '../ControlPrimitives'
 import { LookBrowser } from '../LookBrowser'
 import type { PreviewMediaElementRegistry } from '../mediaElementRegistry'
 import LookThumbnailWorker from '../lookThumbnailWorker?worker'
-import { readVideoFrameImageData } from '../../color/framePalette'
 import { InspectorSection } from './InspectorSection'
-import type {
-	ClipRenderAttrs,
-	ColorParamKey,
-	PrimaryColorParam,
-} from './types'
-import {
-	colorGradePresets,
-	defaultColorCorrectionParams,
-} from './types'
+import type { ClipRenderAttrs, ColorParamKey, PrimaryColorParam } from './types'
+import { colorGradePresets, defaultColorCorrectionParams } from './types'
 
-const ColorCorrectionControls = ({ effectScope, mediaElementRegistry }: { effectScope: EditorScope; mediaElementRegistry?: PreviewMediaElementRegistry }) => {
+const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const [isComparePressed, setIsComparePressed] = useState(false)
 	const [lookThumbnails, setLookThumbnails] = useState<Record<string, string>>({})
 	const compareRestoreEnabledRef = useRef<boolean | null>(null)
-	const effectDispatch = useEditorActions(effectScope)
-	const colorCorrectionAttrs = useEditorAttrs<EffectAttrs>(['enabled', 'params'], effectScope)
+	const { actions } = useVideoEditor()
+	const colorCorrectionAttrs = useAttrs(['sourceEffectId', 'enabled', 'params']) as EffectAttrs & { sourceEffectId?: unknown }
+	const effectId = typeof colorCorrectionAttrs.sourceEffectId === 'string' ? colorCorrectionAttrs.sourceEffectId : null
 	const colorParams = (colorCorrectionAttrs.params ?? {}) as Partial<ColorCorrectionAttrs>
 	const isColorCorrectionEnabled = colorCorrectionAttrs.enabled !== false
 	const activeLookId = typeof (colorParams as Record<string, unknown>).lookId === 'string' ? String((colorParams as Record<string, unknown>).lookId) : 'clean'
@@ -38,11 +33,14 @@ const ColorCorrectionControls = ({ effectScope, mediaElementRegistry }: { effect
 
 	const getParamValue = (key: ColorParamKey, fallback: number): number => Number((colorParams[key] as AnimatedScalar | undefined)?.value ?? fallback)
 	const updateColorParams = (params: Partial<Record<ColorParamKey, number>> & Record<string, unknown> = {}): void => {
+		if (!effectId) {
+			return
+		}
 		const nextParams: Record<string, unknown> = { ...colorParams }
 		for (const [key, value] of Object.entries(params)) {
 			nextParams[key] = typeof value === 'number' ? { value } : value
 		}
-		effectDispatch('updateEffect', { params: { ...nextParams } })
+		actions.updateEffectAttrs(effectId, { params: { ...nextParams } })
 	}
 
 	const updateParam = (key: PrimaryColorParam, value: number): void => {
@@ -65,7 +63,11 @@ const ColorCorrectionControls = ({ effectScope, mediaElementRegistry }: { effect
 		updateColorParams(buildLookColorCorrectionParams(intensityLook.id, value))
 	}
 
-	const toggleBypass = (): void => effectDispatch('updateEffect', { enabled: !isColorCorrectionEnabled })
+	const toggleBypass = (): void => {
+		if (effectId) {
+			actions.updateEffectAttrs(effectId, { enabled: !isColorCorrectionEnabled })
+		}
+	}
 	const resetGrade = (): void => {
 		activeLookIdRef.current = 'clean'
 		updateColorParams({
@@ -81,22 +83,22 @@ const ColorCorrectionControls = ({ effectScope, mediaElementRegistry }: { effect
 	}
 
 	const handleCompareStart = (): void => {
-		if (!isColorCorrectionEnabled || isComparePressed) {
+		if (!effectId || !isColorCorrectionEnabled || isComparePressed) {
 			return
 		}
 		compareRestoreEnabledRef.current = isColorCorrectionEnabled
 		setIsComparePressed(true)
-		effectDispatch('updateEffect', { enabled: false })
+		actions.updateEffectAttrs(effectId, { enabled: false })
 	}
 
 	const handleCompareEnd = (): void => {
-		if (!isComparePressed) {
+		if (!effectId || !isComparePressed) {
 			return
 		}
 		const shouldRestoreEnabled = compareRestoreEnabledRef.current
 		compareRestoreEnabledRef.current = null
 		setIsComparePressed(false)
-		effectDispatch('updateEffect', { enabled: shouldRestoreEnabled !== false })
+		actions.updateEffectAttrs(effectId, { enabled: shouldRestoreEnabled !== false })
 	}
 
 	useEffect(() => {
@@ -132,7 +134,7 @@ const ColorCorrectionControls = ({ effectScope, mediaElementRegistry }: { effect
 			isCancelled = true
 			worker.terminate()
 		}
-	}, [effectScope.nodeId, lookIntensity, mediaElementRegistry])
+	}, [effectId, lookIntensity, mediaElementRegistry])
 
 	return (
 		<>
@@ -156,29 +158,30 @@ const ColorCorrectionControls = ({ effectScope, mediaElementRegistry }: { effect
 	)
 }
 
-export const InspectorColorTabPanel = ({ clipScope, mediaElementRegistry }: { clipScope: EditorScope, mediaElementRegistry?: PreviewMediaElementRegistry }) => {
-	const { renderRuntime } = useVideoEditor()
-	const clipDispatch = useEditorActions(clipScope)
-	const runtime = useEditorComp<boolean>('hasActiveColorGrade', clipScope)
-	const clipAttrs = useEditorAttrs<ClipRenderAttrs>(['color'], clipScope)
-	const effectScopes = useEditorMany('effects', clipScope)
+export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
+	const { actions } = useVideoEditor()
+	const clipAttrs = useAttrs(['sourceClipId', 'color']) as ClipRenderAttrs & { sourceClipId?: unknown }
+	const effectItems = useManyWithAttrs('effects', ['sourceEffectId', 'kind'])
+	const sourceClipId = typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null
 	const color = String(clipAttrs.color ?? '#2563eb')
-	const colorCorrectionEffectScope = effectScopes.find((effectScope) => {
-		const attrs = renderRuntime.readAttrs(effectScope, ['kind'])
-		return attrs.kind === 'color-correction'
-	}) ?? null
-	void runtime
+	const colorCorrectionEffectScope = effectItems.find(({ attrs }) => attrs.kind === 'color-correction')?.scope ?? null
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Color inspector">
 			<InspectorSection title="Label color" icon={Palette}>
-				<label className="ve-color-field"><span>Clip label</span><input type="color" aria-label="Color" value={color} onChange={(event) => clipDispatch('color', { color: event.currentTarget.value })} /></label>
+				<label className="ve-color-field"><span>Clip label</span><input type="color" aria-label="Color" value={color} onChange={(event) => sourceClipId ? actions.colorClipById(sourceClipId, event.currentTarget.value) : undefined} /></label>
 				<div className="ve-swatch-grid" aria-label="Color presets">
-					{['#2563eb', '#16a34a', '#dc2626', '#ca8a04', '#7c3aed', '#0891b2'].map((swatch) => (<button key={swatch} type="button" aria-label={`Set color ${swatch}`} style={{ background: swatch }} onClick={() => clipDispatch('color', { color: swatch })} />))}
+					{['#2563eb', '#16a34a', '#dc2626', '#ca8a04', '#7c3aed', '#0891b2'].map((swatch) => (<button key={swatch} type="button" aria-label={`Set color ${swatch}`} style={{ background: swatch }} onClick={() => sourceClipId ? actions.colorClipById(sourceClipId, swatch) : undefined} />))}
 				</div>
 			</InspectorSection>
 			<InspectorSection title="Primary correction" icon={SlidersHorizontal} ariaLabel="Primary color correction">
-				{colorCorrectionEffectScope ? <ColorCorrectionControls effectScope={colorCorrectionEffectScope} mediaElementRegistry={mediaElementRegistry} /> : <Button type="button" variant="secondary" onClick={() => clipDispatch('addColorCorrection')}>Add primary correction</Button>}
+				{colorCorrectionEffectScope ? (
+					<ScopeContext.Provider value={colorCorrectionEffectScope}>
+						<ColorCorrectionControls mediaElementRegistry={mediaElementRegistry} />
+					</ScopeContext.Provider>
+				) : (
+					<Button type="button" variant="secondary" onClick={() => sourceClipId ? actions.addColorCorrectionToClip(sourceClipId) : undefined}>Add primary correction</Button>
+				)}
 			</InspectorSection>
 		</div>
 	)

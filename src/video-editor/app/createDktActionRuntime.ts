@@ -11,7 +11,6 @@ import { createMediaImportActions } from './mediaImportActions'
 import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import { executeActionBuildResult, type ExecuteActionTransactionOptions } from './actionTransactionExecutor'
 import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
-import type { DktTextActionName } from '../models/Text/actions'
 import type { DktEffectActionName } from '../models/Effect/actions'
 
 const minimumSplitOffset = 0.01
@@ -22,7 +21,6 @@ const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value))
 
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
-const asTextAttrs = (attrs: Record<string, unknown>): TextAttrs => attrs as unknown as TextAttrs
 const asEffectAttrs = (attrs: Record<string, unknown>): EffectAttrs => attrs as unknown as EffectAttrs
 
 const createScope = (nodeId: string, type: EditorActionScope['type']): EditorActionScope => ({ nodeId, type })
@@ -66,31 +64,6 @@ export const createDktActionRuntime = (
 			opacity: clipAttrs.opacity,
 			transform: clipAttrs.transform,
 		}, actionName, payload)).catch(() => undefined)
-	}
-	const dispatchDktTextAction = (textId: string, textAttrs: TextAttrs, attrs: Partial<TextAttrs>): void => {
-		const dispatch = env.dkt?.dispatchTextAction
-		if (!dispatch) {
-			return
-		}
-
-		const textProxy = {
-			sourceTextId: textId,
-			content: textAttrs.content,
-			style: textAttrs.style,
-			box: textAttrs.box,
-		}
-		const dktActions: Array<[DktTextActionName, unknown]> = []
-		if ('content' in attrs) {
-			dktActions.push(['setTextContent', { content: attrs.content }])
-		}
-		if ('style' in attrs) {
-			dktActions.push(['setTextStyle', { style: attrs.style }])
-		}
-		if ('box' in attrs) {
-			dktActions.push(['setTextBox', { box: attrs.box }])
-		}
-
-		void Promise.all(dktActions.map(([actionName, payload]) => dispatch(textProxy, actionName, payload))).catch(() => undefined)
 	}
 	const dispatchDktEffectAction = (effectId: string, effectAttrs: EffectAttrs, attrs: Partial<EffectAttrs>): void => {
 		const dispatch = env.dkt?.dispatchEffectAction
@@ -319,11 +292,6 @@ export const createDktActionRuntime = (
 		},
 
 		updateTextById(textId: string, attrs: Partial<TextAttrs>): void {
-			const text = env.stores.getRegistry().entitiesById[textId]
-			if (text?.type === 'text') {
-				dispatchDktTextAction(text.id, asTextAttrs(text.attrs), attrs)
-			}
-
 			dispatchModelAction(createScope(textId, 'text'), 'updateText', attrs)
 		},
 
