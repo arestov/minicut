@@ -1,58 +1,97 @@
-import { observer } from '@legendapp/state/react'
 import { useRef, useState } from 'react'
-import { useVideoEditor } from '../app/VideoEditorContext'
-import { clipAttrs$, clipRels$, effectAttrs$ } from '../legend/observableSelectors'
+import type { AnimatedScalar } from '../domain/types'
+import {
+	useEditorActions,
+	useEditorAttrs,
+	useEditorComp,
+	type ClipTimelineEditBounds,
+} from '../render-sync'
+import type { EditorScope } from '../render-sync/EditorScope'
 import { formatPercent, formatSeconds } from './format'
+
+const MIN_CLIP_DURATION = 0.5
+
+const clamp = (value: number, min: number, max: number): number => {
+	const safeMax = Math.max(min, max)
+	return Math.min(safeMax, Math.max(min, value))
+}
 
 type ClipPointerDragState =
 	| { kind: 'move'; startX: number }
 	| { kind: 'resize-start' | 'resize-end'; startX: number; lastClientX: number }
 
 interface ClipItemProps {
-	projectId: string
-	clipId: string
-	selected: boolean
+	clipScope: EditorScope
 	timelineZoom: number
 	activeTool: 'select' | 'trim' | 'split' | 'hand'
 }
 
-export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, activeTool }: ClipItemProps) => {
-	const { projects$, actions } = useVideoEditor()
+interface ClipRenderAttrs {
+	name?: unknown
+	start?: unknown
+	duration?: unknown
+	in?: unknown
+	opacity?: AnimatedScalar
+	color?: unknown
+}
+
+export const ClipItem = ({ clipScope, timelineZoom, activeTool }: ClipItemProps) => {
 	const dragState = useRef<ClipPointerDragState | null>(null)
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0)
-	const clip$ = clipAttrs$(projects$, clipId)
-	const clipRels = clipRels$(projects$, clipId)
-	const name = String(clip$.name.get())
-	const start = Number(clip$.start.get())
-	const duration = Number(clip$.duration.get())
-	const opacity = Number(clip$.opacity.value.get())
-	const color = String(clip$.color.get() ?? '#2563eb')
-	const effectIds = clipRels.effects.get()
-	const hasActiveColorGrade = (Array.isArray(effectIds) ? effectIds : []).some((effectId) => {
-		const effect = projects$.entitiesById[effectId]
-		if (!effect || effect.type.get() !== 'effect') {
-			return false
-		}
-
-		const effectAttrs = effectAttrs$(projects$, effectId)
-		return String(effectAttrs.kind.get()) === 'color-correction' && effectAttrs.enabled.get() !== false
-	})
+	const clipAttrs = useEditorAttrs<ClipRenderAttrs>(['name', 'start', 'duration', 'in', 'opacity', 'color'], clipScope)
+	const selectedAttrs = useEditorAttrs<{ selectedEntityId?: unknown }>(['selectedEntityId'])
+	const dispatch = useEditorActions(clipScope)
+	const editBounds = useEditorComp<ClipTimelineEditBounds | null>('timelineEditBounds', clipScope)
+	const hasActiveColorGrade = useEditorComp<boolean>('hasActiveColorGrade', clipScope)
+	const clipId = clipScope.nodeId
+	const selected = selectedAttrs.selectedEntityId === clipId
+	const name = String(clipAttrs.name)
+	const start = Number(clipAttrs.start)
+	const duration = Number(clipAttrs.duration)
+	const inPoint = Number(clipAttrs.in)
+	const opacity = Number(clipAttrs.opacity?.value ?? 1)
+	const color = String(clipAttrs.color ?? '#2563eb')
 	const width = Math.max(36, duration * timelineZoom)
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx)
 	const splitAtPointer = (clientX: number, element: HTMLElement): void => {
 		const rect = element.getBoundingClientRect()
 		const localTime = Math.max(0, (clientX - rect.left) / timelineZoom)
-		actions.splitClipByIdAt(clipId, start + localTime)
+		dispatch('splitAt', { time: start + localTime })
+	}
+	const getMovePreviewDeltaPx = (deltaPx: number): number => {
+		const requestedStart = start + deltaPx / timelineZoom
+		const minStart = editBounds?.previousEnd ?? 0
+		const maxStart = editBounds?.nextStart === null || editBounds?.nextStart === undefined
+			? Number.POSITIVE_INFINITY
+			: editBounds.nextStart - duration
+		const clampedStart = clamp(requestedStart, minStart, maxStart)
+
+		return (clampedStart - start) * timelineZoom
+	}
+	const getResizeDeltaSeconds = (edge: 'start' | 'end', deltaSeconds: number): number => {
+		const clipEnd = start + duration
+
+		if (edge === 'end') {
+			const maxEnd = editBounds?.nextStart ?? Number.POSITIVE_INFINITY
+			const nextEnd = clamp(clipEnd + deltaSeconds, start + MIN_CLIP_DURATION, maxEnd)
+			return nextEnd - clipEnd
+		}
+
+		const minStart = Math.max(editBounds?.previousEnd ?? 0, start - inPoint)
+		const nextStart = clamp(start + deltaSeconds, minStart, clipEnd - MIN_CLIP_DURATION)
+		return nextStart - start
 	}
 	const applyResizeDelta = (state: Extract<ClipPointerDragState, { kind: 'resize-start' | 'resize-end' }>, clientX: number): void => {
-		const deltaSeconds = Math.round(((clientX - state.lastClientX) / timelineZoom) * 100) / 100
+		const edge = state.kind === 'resize-start' ? 'start' : 'end'
+		const requestedDeltaSeconds = Math.round(((clientX - state.lastClientX) / timelineZoom) * 100) / 100
+		const deltaSeconds = getResizeDeltaSeconds(edge, requestedDeltaSeconds)
 		if (deltaSeconds === 0) {
 			return
 		}
 
-		actions.selectEntity(clipId)
-		actions.resizeClipById(clipId, state.kind === 'resize-start' ? 'start' : 'end', deltaSeconds)
-		dragState.current = { ...state, lastClientX: clientX }
+		dispatch('select')
+		dispatch('resize', { edge, delta: deltaSeconds })
+		dragState.current = { ...state, lastClientX: state.lastClientX + deltaSeconds * timelineZoom }
 	}
 	const finishPointerDrag = (clientX: number): void => {
 		const state = dragState.current
@@ -72,16 +111,16 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 			return
 		}
 
-		actions.selectEntity(clipId)
+		dispatch('select')
 		if (state.kind === 'move' && activeTool === 'select') {
-			actions.moveClipById(clipId, deltaSeconds)
+			dispatch('moveBy', { delta: deltaSeconds })
 			return
 		}
 		if (state.kind === 'move') {
 			return
 		}
 
-		actions.resizeClipById(clipId, state.kind === 'resize-start' ? 'start' : 'end', deltaSeconds)
+		dispatch('resize', { edge: state.kind === 'resize-start' ? 'start' : 'end', delta: deltaSeconds })
 	}
 
 	return (
@@ -97,7 +136,7 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 				}
 
 				if (activeTool !== 'hand') {
-					actions.selectEntity(clipId)
+					dispatch('select')
 				}
 			}}
 			onPointerDown={(event) => {
@@ -125,7 +164,7 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 					return
 				}
 
-				setDragPreviewDeltaPx(Math.max(-start * timelineZoom, event.clientX - state.startX))
+				setDragPreviewDeltaPx(getMovePreviewDeltaPx(event.clientX - state.startX))
 			}}
 			onPointerUp={(event) => {
 				finishPointerDrag(event.clientX)
@@ -142,7 +181,7 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 				onPointerDown={(event) => {
 					event.stopPropagation()
 					event.currentTarget.setPointerCapture?.(event.pointerId)
-					actions.selectEntity(clipId)
+					dispatch('select')
 					dragState.current = { kind: 'resize-start', startX: event.clientX, lastClientX: event.clientX }
 				}}
 				onPointerUp={(event) => {
@@ -164,7 +203,7 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 				onPointerDown={(event) => {
 					event.stopPropagation()
 					event.currentTarget.setPointerCapture?.(event.pointerId)
-					actions.selectEntity(clipId)
+					dispatch('select')
 					dragState.current = { kind: 'resize-end', startX: event.clientX, lastClientX: event.clientX }
 				}}
 				onPointerUp={(event) => {
@@ -174,4 +213,4 @@ export const ClipItem = observer(({ projectId, clipId, selected, timelineZoom, a
 			/>
 		</button>
 	)
-})
+}

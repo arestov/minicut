@@ -1,59 +1,33 @@
-import { computed, type Observable } from '@legendapp/state'
-import { For, observer } from '@legendapp/state/react'
 import { Eye, Lock, Volume2 } from 'lucide-react'
-import { useMemo } from 'react'
-import { useVideoEditor } from '../app/VideoEditorContext'
-import { createTrackEnd$ } from '../legend/derivedTimeline'
 import {
-	getTrackClipIdsNode$,
-	trackAttrs$,
-} from '../legend/observableSelectors'
+	EditorScopeProvider,
+	useEditorAttrs,
+	useEditorComp,
+	useEditorMany,
+} from '../render-sync'
+import type { EditorScope } from '../render-sync/EditorScope'
 import { IconButton } from './ControlPrimitives'
 import { ClipItem } from './ClipItem'
 
 interface TrackRowProps {
-	projectId: string
-	trackId: string
+	trackScope: EditorScope
 	timelineZoom: number
 	activeTool: 'select' | 'trim' | 'split' | 'hand'
 }
 
-interface ClipListItemProps {
-	item$: Observable<string>
-	projectId: string
-	timelineZoom: number
-	activeTool: 'select' | 'trim' | 'split' | 'hand'
+interface TrackRenderAttrs {
+	name?: unknown
+	kind?: unknown
+	muted?: unknown
+	locked?: unknown
 }
 
-const ClipListItem = observer(
-	({ item$, projectId, timelineZoom, activeTool }: ClipListItemProps) => {
-		const { session$ } = useVideoEditor()
-		const clipId = item$.get()
-		const isSelected$ = useMemo(
-			() => computed(() => session$.selectedEntityId.get() === clipId),
-			[session$, clipId],
-		)
-		const isSelected = isSelected$.get()
-
-		return (
-			<ClipItem
-				projectId={projectId}
-				clipId={clipId}
-				selected={isSelected}
-				timelineZoom={timelineZoom}
-				activeTool={activeTool}
-			/>
-		)
-	},
-)
-
-export const TrackLabel = observer(({ trackId }: { trackId: string }) => {
-	const { projects$ } = useVideoEditor()
-	const track$ = trackAttrs$(projects$, trackId)
-	const trackName = String(track$.name.get())
-	const trackKind = String(track$.kind.get())
-	const isMuted = Boolean(track$.muted.get())
-	const isLocked = Boolean(track$.locked.get())
+export const TrackLabel = ({ trackScope }: { trackScope: EditorScope }) => {
+	const trackAttrs = useEditorAttrs<TrackRenderAttrs>(['name', 'kind', 'muted', 'locked'], trackScope)
+	const trackName = String(trackAttrs.name)
+	const trackKind = String(trackAttrs.kind)
+	const isMuted = Boolean(trackAttrs.muted)
+	const isLocked = Boolean(trackAttrs.locked)
 
 	return (
 		<div className="ve-track-row__label">
@@ -89,38 +63,33 @@ export const TrackLabel = observer(({ trackId }: { trackId: string }) => {
 			</div>
 		</div>
 	)
-})
+}
 
-export const TrackLane = observer(
-	({ projectId, trackId, timelineZoom, activeTool }: TrackRowProps) => {
-		const { projects$ } = useVideoEditor()
-		const clipIds$ = getTrackClipIdsNode$(projects$, trackId)
-		const trackEnd$ = useMemo(
-			() => createTrackEnd$(projects$, trackId),
-			[projects$, trackId],
-		)
-		const clips = clipIds$.get()
-		const trackEnd = trackEnd$.get()
-		const trackWidth = Math.max(960, Math.ceil((trackEnd + 2) * timelineZoom))
+export const TrackLane = ({ trackScope, timelineZoom, activeTool }: TrackRowProps) => {
+	const clipScopes = useEditorMany('clips', trackScope)
+	const trackEnd = useEditorComp<number>('trackEnd', trackScope)
+	const trackWidth = Math.max(960, Math.ceil((trackEnd + 2) * timelineZoom))
 
-		return (
-			<div className="ve-track-row__rail">
-				{clips.length === 0 ? (
-					<p className="ve-empty">Drop clips here.</p>
-				) : (
-					<div
-						className="ve-track-row__timeline"
-						style={{ width: `${trackWidth}px` }}
-					>
-						<For
-							each={clipIds$}
-							optimized
-							item={ClipListItem}
-							itemProps={{ projectId, timelineZoom, activeTool }}
-						/>
-					</div>
-				)}
-			</div>
-		)
-	},
-)
+	return (
+		<div className="ve-track-row__rail">
+			{clipScopes.length === 0 ? (
+				<p className="ve-empty">Drop clips here.</p>
+			) : (
+				<div
+					className="ve-track-row__timeline"
+					style={{ width: `${trackWidth}px` }}
+				>
+					{clipScopes.map((clipScope) => (
+						<EditorScopeProvider key={clipScope.nodeId} scope={clipScope}>
+							<ClipItem
+								clipScope={clipScope}
+								timelineZoom={timelineZoom}
+								activeTool={activeTool}
+							/>
+						</EditorScopeProvider>
+					))}
+				</div>
+			)}
+		</div>
+	)
+}
