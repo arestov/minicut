@@ -1,7 +1,13 @@
 import { prepare as prepareAppRuntime } from 'dkt/runtime/app/prepare.js'
+import type { DomSyncTransportLike, DomSyncTransportViewLike } from 'dkt/dom-sync/transport.js'
 import { _getCurrentRel, _listRels } from 'dkt-all/libs/provoda/_internal/_listRels.js'
 import { hookSessionRoot } from 'dkt-all/libs/provoda/provoda/BrowseMap.js'
+import { SYNCR_TYPES } from 'dkt-all/libs/provoda/SyncR_TYPES.js'
 import { getModelById } from 'dkt-all/libs/provoda/utils/getModelById.js'
+import { buildDispatchResult } from '../../domain/applyCommand'
+import { applyPatchEnvelopeToRegistry } from '../../domain/applyPatch'
+import type { Command, DispatchResult, ProjectRegistry } from '../../domain/types'
+import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { MiniCutAppRoot } from '../../models/AppRoot'
 
 type RuntimeModelLike = {
@@ -20,8 +26,31 @@ type RuntimeLike = {
 		App: typeof MiniCutAppRoot
 		interfaces: Record<string, unknown>
 	}): Promise<{ app_model: RuntimeModelLike }>
+	sync_sender: {
+		addSyncStream(
+			root: RuntimeModelLike,
+			stream: ReturnType<typeof createWorkerStream>,
+			importantRelPaths: readonly (readonly string[])[],
+		): Promise<void> | void
+		removeSyncStream(stream: ReturnType<typeof createWorkerStream>): void
+		updateStructureUsage(streamId: string, data: unknown): void
+		requireShapeForModel(streamId: string, data: unknown): void
+	}
 	models?: Record<string, RuntimeModelLike>
 }
+
+const createWorkerStream = (transport: DomSyncTransportViewLike<MiniCutDktTransportMessage>) => ({
+	id: `minicut-stream-${Math.random().toString(36).slice(2)}`,
+	send(list: unknown[]) {
+		transport.send({ type: DKT_MSG.SYNC_HANDLE, syncType: SYNCR_TYPES.UPDATE, payload: list.slice() })
+	},
+	sendDict(dict: unknown[]) {
+		transport.send({ type: DKT_MSG.SYNC_HANDLE, syncType: SYNCR_TYPES.SET_DICT, payload: dict.slice() })
+	},
+	sendWithType(syncType: number, payload: unknown) {
+		transport.send({ type: DKT_MSG.SYNC_HANDLE, syncType, payload })
+	},
+})
 
 export type MiniCutDktProjectProxyInput = {
 	sourceProjectId: string
@@ -209,11 +238,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return sessionRootPromise
 	}
 
-	const dispatchAction = async (
-		actionName: string,
-		payload?: unknown,
-		scopeNodeId?: string | null,
-	): Promise<void> => {
+	const dispatchAction = async (actionName: string, payload?: unknown, scopeNodeId?: string | null): Promise<void> => {
 		const app = await bootstrapApp()
 		if (!app) {
 			throw new Error('MiniCut DKT runtime is disabled')
@@ -236,8 +261,29 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await sessionRoot.dispatch(actionName, payload)
 	}
 
-	const findClipProxyNodeId = async (sourceClipId: string): Promise<string | null> => {
-		return findProxyNodeId('minicut_clip', 'sourceClipId', sourceClipId)
+	const getRegistrySnapshot = async (): Promise<ProjectRegistry> => {
+		const app = await bootstrapApp()
+		if (!app) {
+			throw new Error('MiniCut DKT runtime is disabled')
+		}
+
+		return structuredClone(app.appModel.states?.registrySnapshot as ProjectRegistry)
+	}
+
+	const replaceRegistrySnapshot = async (snapshot: ProjectRegistry): Promise<void> => {
+		await dispatchAction('replaceRegistrySnapshot', snapshot)
+	}
+
+	const dispatchCommand = async (command: Command): Promise<DispatchResult> => {
+		const app = await bootstrapApp()
+		if (!app) {
+			throw new Error('MiniCut DKT runtime is disabled')
+		}
+
+		const registry = structuredClone(app.appModel.states?.registrySnapshot as ProjectRegistry)
+		const result = buildDispatchResult(registry, command)
+		await app.appModel.dispatch('replaceRegistrySnapshot', applyPatchEnvelopeToRegistry(registry, result.envelope))
+		return structuredClone(result)
 	}
 
 	const findProxyNodeId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
@@ -301,149 +347,41 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return createdNodeId
 	}
 
-	const dispatchProjectAction = async (
-		project: MiniCutDktProjectProxyInput,
-		actionName: string,
-		payload?: unknown,
-	): Promise<void> => {
+	const dispatchProjectAction = async (project: MiniCutDktProjectProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureProxy(projectProxyNodeIds, project, 'minicut_project', 'sourceProjectId', 'createProjectProxy', project.sourceProjectId)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const dispatchTrackAction = async (
-		track: MiniCutDktTrackProxyInput,
-		actionName: string,
-		payload?: unknown,
-	): Promise<void> => {
+	const dispatchTrackAction = async (track: MiniCutDktTrackProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureProxy(trackProxyNodeIds, track, 'minicut_track', 'sourceTrackId', 'createTrackProxy', track.sourceTrackId)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const dispatchResourceAction = async (
-		resource: MiniCutDktResourceProxyInput,
-		actionName: string,
-		payload?: unknown,
-	): Promise<void> => {
+	const dispatchResourceAction = async (resource: MiniCutDktResourceProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureProxy(resourceProxyNodeIds, resource, 'minicut_resource', 'sourceResourceId', 'createResourceProxy', resource.sourceResourceId)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const waitForClipProxyNodeId = async (sourceClipId: string): Promise<string | null> => {
-		for (let attempt = 0; attempt < 20; attempt++) {
-			const nodeId = await findClipProxyNodeId(sourceClipId)
-			if (nodeId) {
-				return nodeId
-			}
-			await new Promise((resolve) => setTimeout(resolve, 0))
-		}
+	const ensureClipProxy = async (clip: MiniCutDktClipProxyInput): Promise<string> =>
+		ensureProxy(clipProxyNodeIds, clip, 'minicut_clip', 'sourceClipId', 'createClipProxy', clip.sourceClipId)
 
-		return findClipProxyNodeId(sourceClipId)
-	}
-
-	const ensureClipProxy = async (clip: MiniCutDktClipProxyInput): Promise<string> => {
-		const app = await bootstrapApp()
-		if (!app) {
-			throw new Error('MiniCut DKT runtime is disabled')
-		}
-
-		const cachedNodeId = clipProxyNodeIds.get(clip.sourceClipId)
-		if (cachedNodeId && getModelById(app.appModel, cachedNodeId)) {
-			return cachedNodeId
-		}
-
-		const existingNodeId = await findClipProxyNodeId(clip.sourceClipId)
-		if (existingNodeId) {
-			clipProxyNodeIds.set(clip.sourceClipId, existingNodeId)
-			return existingNodeId
-		}
-
-		await app.appModel.dispatch('createClipProxy', clip)
-		const createdNodeId = await waitForClipProxyNodeId(clip.sourceClipId)
-		if (!createdNodeId) {
-			throw new Error(`MiniCut DKT clip proxy was not created for ${clip.sourceClipId}`)
-		}
-
-		clipProxyNodeIds.set(clip.sourceClipId, createdNodeId)
-		return createdNodeId
-	}
-
-	const dispatchClipAction = async (
-		clip: MiniCutDktClipProxyInput,
-		actionName: string,
-		payload?: unknown,
-	): Promise<void> => {
+	const dispatchClipAction = async (clip: MiniCutDktClipProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureClipProxy(clip)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const ensureTextProxy = async (text: MiniCutDktTextProxyInput): Promise<string> => {
-		const app = await bootstrapApp()
-		if (!app) {
-			throw new Error('MiniCut DKT runtime is disabled')
-		}
+	const ensureTextProxy = async (text: MiniCutDktTextProxyInput): Promise<string> =>
+		ensureProxy(textProxyNodeIds, text, 'minicut_text', 'sourceTextId', 'createTextProxy', text.sourceTextId)
 
-		const cachedNodeId = textProxyNodeIds.get(text.sourceTextId)
-		if (cachedNodeId && getModelById(app.appModel, cachedNodeId)) {
-			return cachedNodeId
-		}
-
-		const existingNodeId = await findProxyNodeId('minicut_text', 'sourceTextId', text.sourceTextId)
-		if (existingNodeId) {
-			textProxyNodeIds.set(text.sourceTextId, existingNodeId)
-			return existingNodeId
-		}
-
-		await app.appModel.dispatch('createTextProxy', text)
-		const createdNodeId = await waitForProxyNodeId('minicut_text', 'sourceTextId', text.sourceTextId)
-		if (!createdNodeId) {
-			throw new Error(`MiniCut DKT text proxy was not created for ${text.sourceTextId}`)
-		}
-
-		textProxyNodeIds.set(text.sourceTextId, createdNodeId)
-		return createdNodeId
-	}
-
-	const dispatchTextAction = async (
-		text: MiniCutDktTextProxyInput,
-		actionName: string,
-		payload?: unknown,
-	): Promise<void> => {
+	const dispatchTextAction = async (text: MiniCutDktTextProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureTextProxy(text)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const ensureEffectProxy = async (effect: MiniCutDktEffectProxyInput): Promise<string> => {
-		const app = await bootstrapApp()
-		if (!app) {
-			throw new Error('MiniCut DKT runtime is disabled')
-		}
+	const ensureEffectProxy = async (effect: MiniCutDktEffectProxyInput): Promise<string> =>
+		ensureProxy(effectProxyNodeIds, effect, 'minicut_effect', 'sourceEffectId', 'createEffectProxy', effect.sourceEffectId)
 
-		const cachedNodeId = effectProxyNodeIds.get(effect.sourceEffectId)
-		if (cachedNodeId && getModelById(app.appModel, cachedNodeId)) {
-			return cachedNodeId
-		}
-
-		const existingNodeId = await findProxyNodeId('minicut_effect', 'sourceEffectId', effect.sourceEffectId)
-		if (existingNodeId) {
-			effectProxyNodeIds.set(effect.sourceEffectId, existingNodeId)
-			return existingNodeId
-		}
-
-		await app.appModel.dispatch('createEffectProxy', effect)
-		const createdNodeId = await waitForProxyNodeId('minicut_effect', 'sourceEffectId', effect.sourceEffectId)
-		if (!createdNodeId) {
-			throw new Error(`MiniCut DKT effect proxy was not created for ${effect.sourceEffectId}`)
-		}
-
-		effectProxyNodeIds.set(effect.sourceEffectId, createdNodeId)
-		return createdNodeId
-	}
-
-	const dispatchEffectAction = async (
-		effect: MiniCutDktEffectProxyInput,
-		actionName: string,
-		payload?: unknown,
-	): Promise<void> => {
+	const dispatchEffectAction = async (effect: MiniCutDktEffectProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureEffectProxy(effect)
 		await dispatchAction(actionName, payload, nodeId)
 	}
@@ -463,11 +401,122 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 	}
 
+	const connect = (transport: DomSyncTransportLike<MiniCutDktTransportMessage>) => {
+		let destroyed = false
+		let stream: ReturnType<typeof createWorkerStream> | null = null
+
+		const sendError = (error: unknown, requestId?: string): void => {
+			transport.send({
+				type: DKT_MSG.RUNTIME_ERROR,
+				requestId,
+				message: error instanceof Error ? error.stack || error.message : String(error),
+			})
+		}
+
+		const bootstrap = async (requestId?: string, sessionKey?: string): Promise<void> => {
+			const app = await bootstrapApp()
+			if (!app) {
+				throw new Error('MiniCut DKT runtime is disabled')
+			}
+
+			if (!stream) {
+				stream = createWorkerStream(transport)
+				await app.runtime.sync_sender.addSyncStream(app.appModel, stream, [])
+			}
+
+			if (sessionKey) {
+				await bootstrapSessionRoot(sessionKey)
+			}
+
+			transport.send({
+				type: DKT_MSG.RUNTIME_READY,
+				requestId,
+				sessionKey,
+				rootNodeId: app.appModel._node_id ?? null,
+			})
+		}
+
+		const handleMessage = async (message: MiniCutDktTransportMessage): Promise<void> => {
+			if (destroyed) {
+				return
+			}
+
+			switch (message.type) {
+				case DKT_MSG.BOOTSTRAP:
+					await bootstrap(undefined, message.sessionKey)
+					return
+				case DKT_MSG.CLOSE_SESSION:
+					destroy()
+					return
+				case DKT_MSG.DISPATCH_ACTION:
+					await dispatchAction(message.actionName, message.payload, message.scopeNodeId)
+					if (message.requestId) {
+						transport.send({ type: DKT_MSG.RUNTIME_READY, requestId: message.requestId, rootNodeId: null })
+					}
+					return
+				case DKT_MSG.DISPATCH_COMMAND: {
+					const result = await dispatchCommand(message.command as Command)
+					transport.send({ type: DKT_MSG.DISPATCH_RESULT, requestId: message.requestId, result })
+					transport.send({ type: DKT_MSG.PATCHES, envelope: result.envelope })
+					return
+				}
+				case DKT_MSG.GET_SNAPSHOT:
+					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistrySnapshot() })
+					return
+				case DKT_MSG.REPLACE_SNAPSHOT:
+					await replaceRegistrySnapshot(message.snapshot as ProjectRegistry)
+					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistrySnapshot() })
+					return
+				case DKT_MSG.SYNC_UPDATE_STRUCTURE_USAGE: {
+					const app = await bootstrapApp()
+					if (!app || !stream) {
+						throw new Error('MiniCut DKT sync stream is not bootstrapped')
+					}
+					app.runtime.sync_sender.updateStructureUsage(stream.id, message.data)
+					return
+				}
+				case DKT_MSG.SYNC_REQUIRE_SHAPE: {
+					const app = await bootstrapApp()
+					if (!app || !stream) {
+						throw new Error('MiniCut DKT sync stream is not bootstrapped')
+					}
+					app.runtime.sync_sender.requireShapeForModel(stream.id, message.data)
+					return
+				}
+			}
+		}
+
+		const unlisten = transport.listen((message) => {
+			Promise.resolve(handleMessage(message)).catch((error) => sendError(error, 'requestId' in message ? message.requestId : undefined))
+		})
+
+		const destroy = (): void => {
+			if (destroyed) {
+				return
+			}
+			destroyed = true
+			unlisten()
+			void bootstrapApp().then((app) => {
+				if (app && stream) {
+					app.runtime.sync_sender.removeSyncStream(stream)
+				}
+			}).finally(() => {
+				stream = null
+				transport.destroy()
+			})
+		}
+
+		return { destroy }
+	}
+
 	return {
 		bootstrapApp,
 		bootstrapSessionRoot,
 		dispatchAction,
 		dispatchSessionAction,
+		getRegistrySnapshot,
+		replaceRegistrySnapshot,
+		dispatchCommand,
 		ensureClipProxy,
 		dispatchProjectAction,
 		dispatchTrackAction,
@@ -477,6 +526,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		dispatchTextAction,
 		ensureEffectProxy,
 		dispatchEffectAction,
+		connect,
 		debugDumpAppState,
 	}
 }

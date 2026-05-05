@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CMD } from '../../domain/types'
 import { createMiniCutDktRuntime } from './createMiniCutDktRuntime'
 
 const findModel = (state: Awaited<ReturnType<ReturnType<typeof createMiniCutDktRuntime>['debugDumpAppState']>>, modelName: string) => {
@@ -28,6 +29,21 @@ const waitForModelAttr = async (
 	}
 	const state = await runtime.debugDumpAppState()
 	return findModel(state, modelName)
+}
+
+const waitForRegistryProject = async (
+	runtime: ReturnType<typeof createMiniCutDktRuntime>,
+	projectId: string,
+) => {
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const snapshot = await runtime.getRegistrySnapshot()
+		if (snapshot.projects[projectId]) {
+			return snapshot
+		}
+		await new Promise((resolve) => setTimeout(resolve, 0))
+	}
+
+	return runtime.getRegistrySnapshot()
 }
 
 describe('createMiniCutDktRuntime', () => {
@@ -156,5 +172,16 @@ describe('createMiniCutDktRuntime', () => {
 		expect(project?.attrs.sourceProjectId).toBe('project:main')
 		expect(track?.attrs.sourceTrackId).toBe('track:video')
 		expect(resource?.attrs.sourceResourceId).toBe('resource:asset')
+	})
+
+	it('owns command dispatch state as a DKT root registry snapshot', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const result = await runtime.dispatchCommand({ c: CMD.PROJECT_CREATE, p: { title: 'DKT Project' } })
+		const projectId = result.createdIds?.projectId
+		const snapshot = await waitForRegistryProject(runtime, String(projectId))
+
+		expect(projectId).toBeTypeOf('string')
+		expect(snapshot.projects[String(projectId)]).toBeTruthy()
+		expect(Object.keys(snapshot.entitiesById).length).toBeGreaterThan(0)
 	})
 })

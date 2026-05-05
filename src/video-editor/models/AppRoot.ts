@@ -1,5 +1,7 @@
 import { appRoot } from 'dkt/appRoot.js'
 import { merge as mergeDcl } from 'dkt/dcl/merge.js'
+import { createEmptyRegistry } from '../domain/createProject'
+import type { ProjectRegistry } from '../domain/types'
 import { Clip, CLIP_PROXY_CREATION_SHAPE } from './Clip'
 import { Effect, EFFECT_PROXY_CREATION_SHAPE } from './Effect'
 import { EditorSessionRoot } from './SessionRoot'
@@ -29,9 +31,21 @@ const appProps = mergeDcl({
 	attrs: {
 		activeProjectHint: ['input', null],
 		projectMetaList: ['input', []],
+		registrySnapshot: ['input', createEmptyRegistry()],
 		hasProjects: ['comp', ['projectMetaList'], (projectMetaList: unknown) => Array.isArray(projectMetaList) && projectMetaList.length > 0],
 	},
 	actions: {
+		replaceRegistrySnapshot: {
+			to: {
+				registrySnapshot: ['registrySnapshot'],
+			},
+			fn: (payload: unknown) => {
+				const registry = payload as ProjectRegistry | null
+				return registry && typeof registry === 'object' && 'projects' in registry && 'entitiesById' in registry
+					? { registrySnapshot: structuredClone(registry) }
+					: '$noop'
+			},
+		},
 		createProjectProxy: {
 			to: ['<< project << #', {
 				method: 'at_end',

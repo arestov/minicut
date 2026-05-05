@@ -1,7 +1,7 @@
 import type { EditorAuthorityClient } from './authorityClient'
 import type { ProjectRegistry } from '../domain/types'
 import { MemoryWorkerAuthority } from './memoryWorker'
-import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from './sharedWorkerClient'
+import { canUseDktSharedWorkerAuthority, DktSharedWorkerAuthorityClient } from './dktSharedWorkerClient'
 
 type RestorableAuthorityClient = EditorAuthorityClient & {
 	replaceSnapshot(snapshot: ProjectRegistry): void | Promise<void>
@@ -44,15 +44,15 @@ export const createFallbackAuthorityClient = (options: {
 		attach(new MemoryWorkerAuthority())
 	}
 
-	if (canUseSharedWorkerAuthority()) {
+	if (canUseDktSharedWorkerAuthority()) {
 		try {
-			attach(new SharedWorkerAuthorityClient({
+			attach(new DktSharedWorkerAuthorityClient({
 				workerUrl: options.workerUrl,
 				name: options.name,
 				onError: switchToMemory,
 			}))
 		} catch (error) {
-			console.warn('[minicut:worker] SharedWorker construction failed', error)
+			console.warn('[minicut:worker] DKT SharedWorker construction failed', error)
 			attach(new MemoryWorkerAuthority())
 			usingFallback = true
 		}
