@@ -197,6 +197,7 @@ const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
 	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'resource']),
 	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'text']),
 	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'effects']),
+	Object.freeze(['pioneer', 'effect']),
 ])
 
 const MODEL_ROOT_REL_BY_MODEL_NAME: Partial<Record<string, string>> = {
@@ -554,6 +555,15 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return createdNodeId
 	}
 
+	const getProxyModelByNodeId = async (nodeId: string): Promise<unknown> => {
+		const app = await bootstrapApp()
+		const model = app ? getModelById(app.appModel, nodeId) : null
+		if (!model) {
+			throw new Error(`MiniCut DKT proxy model is not available for ${nodeId}`)
+		}
+		return model
+	}
+
 	const dispatchProjectAction = async (project: MiniCutDktProjectProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureProxy(projectProxyNodeIds, project, 'minicut_project', 'sourceProjectId', 'createProjectProxy', project.sourceProjectId)
 		await dispatchAction(actionName, payload, nodeId)
@@ -587,6 +597,17 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 	const ensureEffectProxy = async (effect: MiniCutDktEffectProxyInput): Promise<string> =>
 		ensureProxy(effectProxyNodeIds, effect, 'minicut_effect', 'sourceEffectId', 'createEffectProxy', effect.sourceEffectId)
+
+	const syncEffectProxyAttrs = async (effect: MiniCutDktEffectProxyInput): Promise<string> => {
+		const nodeId = await ensureEffectProxy(effect)
+		await dispatchAction('setEffectName', { name: effect.name }, nodeId)
+		await dispatchAction('setEffectKind', { kind: effect.kind }, nodeId)
+		await dispatchAction('setEffectEnabled', { enabled: effect.enabled }, nodeId)
+		await dispatchAction('setEffectAmount', { amount: effect.amount }, nodeId)
+		await dispatchAction('setEffectParams', { params: effect.params }, nodeId)
+		await dispatchAction('setEffectColor', { color: effect.color }, nodeId)
+		return nodeId
+	}
 
 	const rememberProxyNodeId = async (
 		cache: Map<string, string>,
@@ -638,47 +659,49 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			})
 			await dispatchProjectAction(projectProxy, 'setProjectDuration', { duration: projectProxy.duration })
 
+			const resourceModels: unknown[] = []
 			for (const resource of getResourceEntities(snapshot, project)) {
 				const resourceProxy = toResourceProxy(resource)
-				if (!(await findProxyNodeId('minicut_resource', 'sourceResourceId', resource.id))) {
-					await dispatchProjectAction(projectProxy, 'importResource', resourceProxy)
-					await rememberProxyNodeId(resourceProxyNodeIds, 'minicut_resource', 'sourceResourceId', resource.id)
-				}
+				const resourceNodeId = await ensureProxy(
+					resourceProxyNodeIds,
+					resourceProxy,
+					'minicut_resource',
+					'sourceResourceId',
+					'createResourceProxy',
+					resource.id,
+				)
+				resourceModels.push(await getProxyModelByNodeId(resourceNodeId))
 
 				await dispatchResourceAction(resourceProxy, 'renameResource', { name: resourceProxy.name })
 				await dispatchResourceAction(resourceProxy, 'setResourceStatus', { status: resourceProxy.status })
 			}
+			await dispatchProjectAction(projectProxy, 'setResources', { resources: resourceModels })
 
+			const trackModels: unknown[] = []
 			for (const track of getTracks(snapshot, project)) {
 				const trackProxy = toTrackProxy(track)
-				if (!(await findProxyNodeId('minicut_track', 'sourceTrackId', track.id))) {
-					await dispatchProjectAction(projectProxy, 'addTrack', trackProxy)
-					await rememberProxyNodeId(trackProxyNodeIds, 'minicut_track', 'sourceTrackId', track.id)
-				}
+				const trackNodeId = await ensureProxy(
+					trackProxyNodeIds,
+					trackProxy,
+					'minicut_track',
+					'sourceTrackId',
+					'createTrackProxy',
+					track.id,
+				)
+				trackModels.push(await getProxyModelByNodeId(trackNodeId))
 
 				await dispatchTrackAction(trackProxy, 'renameTrack', { name: trackProxy.name })
 				await dispatchTrackAction(trackProxy, 'setTrackMuted', { muted: trackProxy.muted })
 				await dispatchTrackAction(trackProxy, 'setTrackLocked', { locked: trackProxy.locked })
 
+				const clipModels: unknown[] = []
 				for (const clip of getClipEntitiesForTrack(snapshot, track.id)) {
 					const clipProxy = toClipProxy(clip)
 					const textEntity = typeof clip.rels.text === 'string'
 						? snapshot.entitiesById[clip.rels.text]
 						: null
-
-					if (!(await findProxyNodeId('minicut_clip', 'sourceClipId', clip.id))) {
-						if (textEntity) {
-							await dispatchTrackAction(trackProxy, 'addTextClip', {
-								...clipProxy,
-								text: toTextProxy(textEntity),
-							})
-							await rememberProxyNodeId(clipProxyNodeIds, 'minicut_clip', 'sourceClipId', clip.id)
-							await rememberProxyNodeId(textProxyNodeIds, 'minicut_text', 'sourceTextId', textEntity.id)
-						} else {
-							await dispatchTrackAction(trackProxy, 'addClip', clipProxy)
-							await rememberProxyNodeId(clipProxyNodeIds, 'minicut_clip', 'sourceClipId', clip.id)
-						}
-					}
+					const clipNodeId = await ensureClipProxy(clipProxy)
+					clipModels.push(await getProxyModelByNodeId(clipNodeId))
 
 					await dispatchClipAction(clipProxy, 'rename', { name: clipProxy.name })
 					if (clipProxy.color) {
@@ -699,14 +722,37 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 						})
 					}
 
+					const resourceEntity = typeof clip.rels.resource === 'string'
+						? snapshot.entitiesById[clip.rels.resource]
+						: null
+					if (resourceEntity?.type === 'resource') {
+						const resourceProxy = toResourceProxy(resourceEntity)
+						const resourceNodeId = await ensureProxy(
+							resourceProxyNodeIds,
+							resourceProxy,
+							'minicut_resource',
+							'sourceResourceId',
+							'createResourceProxy',
+							resourceEntity.id,
+						)
+						await dispatchClipAction(clipProxy, 'setResource', { resource: await getProxyModelByNodeId(resourceNodeId) })
+					} else {
+						await dispatchClipAction(clipProxy, 'setResource', { resource: null })
+					}
+
 					if (textEntity) {
 						const textProxy = toTextProxy(textEntity)
+						const textNodeId = await ensureTextProxy(textProxy)
+						await dispatchClipAction(clipProxy, 'setText', { text: await getProxyModelByNodeId(textNodeId) })
 						await dispatchTextAction(textProxy, 'setTextContent', { content: textProxy.content })
 						await dispatchTextAction(textProxy, 'setTextStyle', { style: textProxy.style })
 						await dispatchTextAction(textProxy, 'setTextBox', { box: textProxy.box })
+					} else {
+						await dispatchClipAction(clipProxy, 'setText', { text: null })
 					}
 
 					const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+					const effectModels: unknown[] = []
 					for (const effectId of effectIds) {
 						const effect = snapshot.entitiesById[effectId]
 						if (!effect) {
@@ -714,10 +760,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 						}
 
 						const effectProxy = toEffectProxy(effect)
-						if (!(await findProxyNodeId('minicut_effect', 'sourceEffectId', effect.id))) {
-							await dispatchClipAction(clipProxy, 'addEffect', effectProxy)
-							await rememberProxyNodeId(effectProxyNodeIds, 'minicut_effect', 'sourceEffectId', effect.id)
-						}
+						const effectNodeId = await syncEffectProxyAttrs(effectProxy)
+						effectModels.push(await getProxyModelByNodeId(effectNodeId))
 
 						await dispatchEffectAction(effectProxy, 'setEffectName', { name: effectProxy.name })
 						await dispatchEffectAction(effectProxy, 'setEffectKind', { kind: effectProxy.kind })
@@ -732,8 +776,17 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 							await dispatchEffectAction(effectProxy, 'setEffectColor', { color: effectProxy.color })
 						}
 					}
+					await dispatchClipAction(clipProxy, 'setEffects', { effects: effectModels })
 				}
+				await dispatchTrackAction(trackProxy, 'setClips', { clips: clipModels })
 			}
+			await dispatchProjectAction(projectProxy, 'setTracks', { tracks: trackModels })
+		}
+
+		const activeProjectId = snapshot.activeProjectId ?? Object.keys(snapshot.projects)[0] ?? null
+		const sessionRoot = await bootstrapSessionRoot()
+		if (sessionRoot && sessionRoot.states?.activeProjectId !== activeProjectId) {
+			await sessionRoot.dispatch('setActiveProject', activeProjectId)
 		}
 	}
 

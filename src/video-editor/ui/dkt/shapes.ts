@@ -13,7 +13,7 @@ const resourceShape = defineShape({
 })
 
 const clipShape = defineShape({
-	attrs: ['sourceClipId', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
+	attrs: ['sourceClipId', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform', 'mediaKind'],
 	one: {
 		resource: resourceShape,
 		text: textShape,
@@ -45,6 +45,7 @@ export const miniCutEditorRootShape = defineShape({
 		pioneer: defineShape({
 			many: {
 				project: projectShape,
+				effect: effectShape,
 			},
 		}),
 	},

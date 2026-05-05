@@ -1,18 +1,14 @@
 import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useState } from 'react'
+import { One } from '../../dkt-react-sync/components/One'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useMany } from '../../dkt-react-sync/hooks/useMany'
+import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRuntime'
+import { useScope } from '../../dkt-react-sync/hooks/useScope'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
-import type { ResourceTransferView } from '../media/resourceTransferManager'
-import {
-	EditorScopeProvider,
-	ROOT_SCOPE,
-	useEditorActions,
-	useEditorAttrs,
-	useEditorComp,
-	useEditorMany,
-	useEditorRenderRuntime,
-} from '../render-sync'
-import type { EditorScope } from '../render-sync/EditorScope'
-import { useActiveProjectScope } from '../ui/dkt/hooks'
 import { Button, IconButton } from './ControlPrimitives'
 
 const isPreviewableUrl = (url: string): boolean =>
@@ -22,14 +18,12 @@ const ResourceThumbnail = ({
 	kind,
 	name,
 	url,
-	transfer,
 }: {
 	kind: ResourceAttrs['kind']
 	name: string
 	url: string
-	transfer?: ResourceTransferView | null
 }) => {
-	const resolvedUrl = transfer?.previewUrl || url
+	const resolvedUrl = url
 	const canPreview = isPreviewableUrl(resolvedUrl)
 
 	if (canPreview && kind === 'image') {
@@ -48,7 +42,7 @@ const ResourceThumbnail = ({
 }
 
 interface ResourceRowProps {
-	resourceScope: EditorScope
+	resourceScope: ReactSyncScopeHandle
 }
 
 interface ResourceRenderAttrs {
@@ -61,23 +55,20 @@ interface ResourceRenderAttrs {
 }
 
 const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
-	const dispatch = useEditorActions(resourceScope)
-	const resourceAttrs = useEditorAttrs<ResourceRenderAttrs>(['name', 'kind', 'mime', 'duration', 'url', 'size'], resourceScope)
-	const transfer = useEditorComp<ResourceTransferView | null>('resourceTransfer', resourceScope)
+	const { actions } = useVideoEditor()
+	const resourceAttrs = useAttrs(['sourceResourceId', 'name', 'kind', 'mime', 'duration', 'url', 'size']) as ResourceRenderAttrs & { sourceResourceId?: unknown }
+	const sourceResourceId = typeof resourceAttrs.sourceResourceId === 'string' ? resourceAttrs.sourceResourceId : resourceScope._nodeId
 	const name = String(resourceAttrs.name)
 	const kind = resourceAttrs.kind ?? 'video'
 	const mime = String(resourceAttrs.mime)
 	const duration = Number(resourceAttrs.duration)
 	const url = String(resourceAttrs.url)
-	const totalBytes = transfer?.totalBytes ?? Number(resourceAttrs.size ?? 0)
-	const progressPercent = Math.round((transfer?.progress ?? 0) * 100)
-	const statusLabel = transfer
-		? `${transfer.mode} · ${transfer.status}${totalBytes > 0 ? ` · ${progressPercent}%` : ''}`
-		: null
+	const totalBytes = Number(resourceAttrs.size ?? 0)
+	const statusLabel = totalBytes > 0 ? `${Math.round(totalBytes / 1024)} KB` : null
 
 	return (
 		<li className="ve-resource-row">
-			<ResourceThumbnail kind={kind} name={name} url={url} transfer={transfer} />
+			<ResourceThumbnail kind={kind} name={name} url={url} />
 			<div className="ve-resource-row__content">
 				<strong>{name}</strong>
 				<div className="ve-resource-row__meta">
@@ -89,7 +80,7 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 							icon={Plus}
 							label="Add to timeline"
 							variant="secondary"
-							onClick={() => dispatch('addResourceToTimeline')}
+							onClick={() => actions.addResourceToTimeline(sourceResourceId)}
 						>
 							Add
 						</IconButton>
@@ -101,7 +92,7 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 }
 
 const TextTimelineActionRow = () => {
-	const dispatch = useEditorActions(ROOT_SCOPE)
+	const { actions } = useVideoEditor()
 
 	return (
 		<li className="ve-resource-row ve-resource-row--text-action">
@@ -113,7 +104,7 @@ const TextTimelineActionRow = () => {
 					<Button
 						type="button"
 						variant="secondary"
-						onClick={() => dispatch('addTextClip')}
+						onClick={() => actions.addTextClip()}
 						aria-label="Add Text to Timeline"
 					>
 						Add Text to Timeline
@@ -127,16 +118,14 @@ const TextTimelineActionRow = () => {
 const ProjectMediaList = ({
 	kindFilter,
 	normalizedQuery,
-	projectScope,
 	viewMode,
 }: {
 	kindFilter: ResourceAttrs['kind'] | 'all'
 	normalizedQuery: string
-	projectScope: EditorScope
 	viewMode: 'list' | 'grid'
 }) => {
-	const runtime = useEditorRenderRuntime()
-	const resourceScopes = useEditorMany('resources', projectScope)
+	const runtime = useReactScopeRuntime()
+	const resourceScopes = useMany('resources')
 	const filteredResourceScopes = resourceScopes.filter((resourceScope) => {
 		const attrs = runtime.readAttrs(resourceScope, ['kind', 'name', 'mime'])
 		const kind = attrs.kind
@@ -157,9 +146,9 @@ const ProjectMediaList = ({
 				<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
 					<TextTimelineActionRow />
 					{filteredResourceScopes.map((resourceScope) => (
-						<EditorScopeProvider key={resourceScope.nodeId} scope={resourceScope}>
+						<ScopeContext.Provider key={resourceScope._nodeId} value={resourceScope}>
 							<ResourceRow resourceScope={resourceScope} />
-						</EditorScopeProvider>
+						</ScopeContext.Provider>
 					))}
 				</ul>
 				{resourceScopes.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
@@ -169,15 +158,58 @@ const ProjectMediaList = ({
 	)
 }
 
-export const MediaBin = () => {
-	const [query, setQuery] = useState('')
-	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
-	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
-	const rootDispatch = useEditorActions(ROOT_SCOPE)
-	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
-	const activeProjectScope = useActiveProjectScope()
-	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
-	const normalizedQuery = query.trim().toLowerCase()
+const ActiveProjectMediaList = ({
+	activeProjectId,
+	kindFilter,
+	normalizedQuery,
+	viewMode,
+}: {
+	activeProjectId: string | null
+	kindFilter: ResourceAttrs['kind'] | 'all'
+	normalizedQuery: string
+	viewMode: 'list' | 'grid'
+}) => {
+	const runtime = useReactScopeRuntime()
+	const projectScopes = useMany('project')
+	const activeProjectScope = activeProjectId
+		? projectScopes.find((projectScope) => runtime.readAttrs(projectScope, ['sourceProjectId']).sourceProjectId === activeProjectId) ?? projectScopes[0] ?? null
+		: projectScopes[0] ?? null
+
+	if (!activeProjectScope) {
+		return <MediaBinEmptyState />
+	}
+
+	return (
+		<ScopeContext.Provider value={activeProjectScope}>
+			<ProjectMediaList
+				kindFilter={kindFilter}
+				normalizedQuery={normalizedQuery}
+				viewMode={viewMode}
+			/>
+		</ScopeContext.Provider>
+	)
+}
+
+const MediaBinPanel = ({
+	activeProjectId,
+	children,
+	kindFilter,
+	query,
+	setKindFilter,
+	setQuery,
+	setViewMode,
+	viewMode,
+}: {
+	activeProjectId: string | null
+	children: React.ReactNode
+	kindFilter: ResourceAttrs['kind'] | 'all'
+	query: string
+	setKindFilter: (value: ResourceAttrs['kind'] | 'all') => void
+	setQuery: (value: string) => void
+	setViewMode: (value: 'list' | 'grid') => void
+	viewMode: 'list' | 'grid'
+}) => {
+	const { actions } = useVideoEditor()
 
 	return (
 		<section className="ve-panel ve-media-bin" aria-label="Media bin">
@@ -194,7 +226,7 @@ export const MediaBin = () => {
 						disabled={!activeProjectId}
 						onChange={(event) => {
 							if (event.currentTarget.files) {
-								rootDispatch('importFiles', { files: event.currentTarget.files })
+								actions.importFiles(event.currentTarget.files)
 								event.currentTarget.value = ''
 							}
 						}}
@@ -243,26 +275,101 @@ export const MediaBin = () => {
 					/>
 				</div>
 			</div>
-			{!activeProjectId || !activeProjectScope ? (
-				<>
-					<div className="ve-media-count">0 of 0 assets</div>
-					<div className="ve-media-bin__body">
-						<div className="ve-empty-state">
-							<p className="ve-empty">No active project.</p>
-							<button type="button" onClick={() => rootDispatch('createProject')}>New project</button>
-						</div>
-					</div>
-				</>
-			) : (
-				<EditorScopeProvider scope={activeProjectScope}>
-					<ProjectMediaList
-						kindFilter={kindFilter}
-						normalizedQuery={normalizedQuery}
-						projectScope={activeProjectScope}
-						viewMode={viewMode}
-					/>
-				</EditorScopeProvider>
-			)}
+			{children}
 		</section>
+	)
+}
+
+const MediaBinWithRootScope = ({
+	kindFilter,
+	normalizedQuery,
+	query,
+	setKindFilter,
+	setQuery,
+	setViewMode,
+	viewMode,
+}: {
+	kindFilter: ResourceAttrs['kind'] | 'all'
+	normalizedQuery: string
+	query: string
+	setKindFilter: (value: ResourceAttrs['kind'] | 'all') => void
+	setQuery: (value: string) => void
+	setViewMode: (value: 'list' | 'grid') => void
+	viewMode: 'list' | 'grid'
+}) => {
+	const rootAttrs = useAttrs(['activeProjectId']) as { activeProjectId?: unknown }
+	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
+
+	return (
+		<MediaBinPanel
+			activeProjectId={activeProjectId}
+			kindFilter={kindFilter}
+			query={query}
+			setKindFilter={setKindFilter}
+			setQuery={setQuery}
+			setViewMode={setViewMode}
+			viewMode={viewMode}
+		>
+			<One rel="pioneer" fallback={<MediaBinEmptyState />}>
+				<ActiveProjectMediaList
+					activeProjectId={activeProjectId}
+					kindFilter={kindFilter}
+					normalizedQuery={normalizedQuery}
+					viewMode={viewMode}
+				/>
+			</One>
+		</MediaBinPanel>
+	)
+}
+
+const MediaBinEmptyState = () => {
+	const { actions } = useVideoEditor()
+
+	return (
+		<>
+			<div className="ve-media-count">0 of 0 assets</div>
+			<div className="ve-media-bin__body">
+				<div className="ve-empty-state">
+					<p className="ve-empty">No active project.</p>
+					<button type="button" onClick={() => actions.createProject()}>New project</button>
+				</div>
+			</div>
+		</>
+	)
+}
+
+export const MediaBin = () => {
+	const [query, setQuery] = useState('')
+	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
+	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+	const rootScope = useScope()
+	const normalizedQuery = query.trim().toLowerCase()
+
+	if (!rootScope) {
+		return (
+			<MediaBinPanel
+				activeProjectId={null}
+				kindFilter={kindFilter}
+				query={query}
+				setKindFilter={setKindFilter}
+				setQuery={setQuery}
+				setViewMode={setViewMode}
+				viewMode={viewMode}
+			>
+				<MediaBinEmptyState />
+			</MediaBinPanel>
+		)
+	}
+
+	return (
+		<MediaBinWithRootScope
+			kindFilter={kindFilter}
+			normalizedQuery={normalizedQuery}
+			query={query}
+			setKindFilter={setKindFilter}
+			setQuery={setQuery}
+			setViewMode={setViewMode}
+			viewMode={viewMode}
+		/>
 	)
 }

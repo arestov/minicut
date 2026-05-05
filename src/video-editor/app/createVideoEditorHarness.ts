@@ -326,12 +326,30 @@ export const createVideoEditorHarness = (
 		session: {
 			session$,
 			get: () => session$.get(),
-			setActiveProject: (projectId) => session$.activeProjectId.set(projectId),
-			selectEntity: (entityId) => session$.selectedEntityId.set(entityId),
-			setCursor: (value) => session$.cursor.set(value),
-			setPlaying: (value) => session$.isPlaying.set(value),
-			setTimelineZoom: (value) => session$.timelineZoom.set(value),
-			setActiveInspectorTab: (tab) => session$.activeInspectorTab.set(tab),
+			setActiveProject: (projectId) => {
+				session$.activeProjectId.set(projectId)
+				pageRuntime?.dispatchAction('setActiveProject', projectId, null)
+			},
+			selectEntity: (entityId) => {
+				session$.selectedEntityId.set(entityId)
+				pageRuntime?.dispatchAction('selectEntity', entityId, null)
+			},
+			setCursor: (value) => {
+				session$.cursor.set(value)
+				pageRuntime?.dispatchAction('setCursor', value, null)
+			},
+			setPlaying: (value) => {
+				session$.isPlaying.set(value)
+				pageRuntime?.dispatchAction('setPlaying', value, null)
+			},
+			setTimelineZoom: (value) => {
+				session$.timelineZoom.set(value)
+				pageRuntime?.dispatchAction('setTimelineZoom', value, null)
+			},
+			setActiveInspectorTab: (tab) => {
+				session$.activeInspectorTab.set(tab)
+				pageRuntime?.dispatchAction('setActiveInspectorTab', tab, null)
+			},
 		},
 		media: {
 			getFileKind,
@@ -373,6 +391,11 @@ export const createVideoEditorHarness = (
 		},
 		dkt: {
 			dispatchSessionAction: async (actionName, payload) => {
+				if (pageRuntime) {
+					pageRuntime.dispatchAction(actionName, payload, null)
+					return
+				}
+
 				const runtime = await getDktRuntime()
 				await runtime.dispatchSessionAction(actionName, payload)
 			},

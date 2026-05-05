@@ -86,14 +86,26 @@ const TYPE_BY_REL: Partial<Record<string, EntityType>> = {
 	effect: 'effect',
 }
 
+const DKT_REL_BY_UI_REL: Record<string, string> = {
+	tracks: 'tracks',
+	resources: 'resources',
+	clips: 'clips',
+	effects: 'effects',
+}
+
+const toDktRelName = (relName: string): string => DKT_REL_BY_UI_REL[relName] ?? relName
+
 const EMPTY_LIST = Object.freeze([]) as readonly ReactSyncScopeHandle[]
 const EMPTY_CLEANUP = () => {}
 
-const toDktScope = (scope: EditorScope | null): ReactSyncScopeHandle | null => {
+const toDktScope = (runtime: PageSyncRuntime, scope: EditorScope | null): ReactSyncScopeHandle | null => {
 	if (!scope || scope === ROOT_SCOPE || scope === SESSION_SCOPE || scope.nodeId.startsWith('$')) {
 		return null
 	}
 	if (!(scope.type in SOURCE_ATTR_BY_TYPE)) {
+		return null
+	}
+	if (!runtime.debugDescribeNode(scope.nodeId)) {
 		return null
 	}
 
@@ -168,23 +180,32 @@ const readProjectScopes = (runtime: PageSyncRuntime): readonly ReactSyncScopeHan
 	return pioneer ? runtime.readMany(pioneer, 'project') : EMPTY_LIST
 }
 
-const readActiveProjectScope = (runtime: PageSyncRuntime, legacyRuntime: EditorRenderRuntime): EditorScope | null => {
+const readActiveProjectScope = (runtime: PageSyncRuntime): EditorScope | null => {
 	const activeProjectId = runtime.getRootAttrs(['activeProjectId']).activeProjectId
-		?? legacyRuntime.readAttrs(ROOT_SCOPE, ['activeProjectId']).activeProjectId
 	const projects = readProjectScopes(runtime)
 	const matched = typeof activeProjectId === 'string'
 		? projects.find((projectScope) => runtime.readAttrs(projectScope, ['sourceProjectId']).sourceProjectId === activeProjectId)
 		: null
+	const pendingActiveProject = typeof activeProjectId === 'string' && projects.length > 0
+		? projects[projects.length - 1]
+		: null
 
-	return toEditorScope(runtime, matched ?? projects[0] ?? null, 'project')
+	return toEditorScope(runtime, matched ?? pendingActiveProject ?? projects[0] ?? null, 'project')
 }
 
 const subscribeActiveProject = (runtime: PageSyncRuntime, listener: () => void): (() => void) => {
 	let stopProjectList: (() => void) | null = null
+	let stopProjectAttrs: Array<() => void> = []
 	const bindProjectList = () => {
 		stopProjectList?.()
+		for (const stop of stopProjectAttrs) {
+			stop()
+		}
+		stopProjectAttrs = []
 		const pioneer = getPioneerScope(runtime)
-		stopProjectList = pioneer ? runtime.subscribeMany(pioneer, 'project', listener) : null
+		const projects = pioneer ? runtime.readMany(pioneer, 'project') : EMPTY_LIST
+		stopProjectAttrs = projects.map((projectScope) => runtime.subscribeAttrs(projectScope, ['sourceProjectId'], listener))
+		stopProjectList = pioneer ? runtime.subscribeMany(pioneer, 'project', rebindAndNotify) : null
 	}
 	const rebindAndNotify = () => {
 		bindProjectList()
@@ -200,7 +221,12 @@ const subscribeActiveProject = (runtime: PageSyncRuntime, listener: () => void):
 			return root ? runtime.subscribeOne(root, 'pioneer', rebindAndNotify) : EMPTY_CLEANUP
 		})(),
 		runtime.subscribeRootAttrs(['activeProjectId'], listener),
-		() => stopProjectList?.(),
+		() => {
+			stopProjectList?.()
+			for (const stop of stopProjectAttrs) {
+				stop()
+			}
+		},
 	])
 }
 
@@ -210,16 +236,15 @@ const normalizeRootAttrs = (
 	fields: readonly string[],
 ): Record<string, unknown> => {
 	const rootAttrs = runtime.getRootAttrs(fields)
-	const legacyAttrs = legacyRuntime.readAttrs(ROOT_SCOPE, fields)
 	const result: Record<string, unknown> = {}
 
 	for (const field of fields) {
 		if (field === 'projectCount') {
-			result[field] = readProjectScopes(runtime).length || legacyAttrs[field]
+			result[field] = readProjectScopes(runtime).length
 			continue
 		}
 
-		result[field] = rootAttrs[field] ?? legacyAttrs[field]
+		result[field] = rootAttrs[field]
 	}
 
 	return result
@@ -231,18 +256,17 @@ const normalizeSessionAttrs = (
 	fields: readonly string[],
 ): Record<string, unknown> => {
 	const rootAttrs = runtime.getRootAttrs(fields)
-	const legacyAttrs = legacyRuntime.readAttrs(SESSION_SCOPE, fields)
 	const result: Record<string, unknown> = {}
 
 	for (const field of fields) {
 		if (field === 'selectedEntityId') {
-			const selectedSourceId = rootAttrs.selectedEntityId ?? legacyAttrs.selectedEntityId
+			const selectedSourceId = rootAttrs.selectedEntityId
 			const selectedScope = typeof selectedSourceId === 'string' ? findDktScopeBySourceId(runtime, selectedSourceId) : null
-			result[field] = selectedScope?.nodeId ?? selectedSourceId ?? null
+			result[field] = selectedScope?.nodeId ?? null
 			continue
 		}
 
-		result[field] = rootAttrs[field] ?? legacyAttrs[field]
+		result[field] = rootAttrs[field]
 	}
 
 	return result
@@ -335,7 +359,7 @@ const createScopedDispatch = (
 	}
 
 	const sourceId = runtime ? findSourceIdForDktScope(runtime, scope) : null
-	const dktScope = toDktScope(scope)
+	const dktScope = runtime ? toDktScope(runtime, scope) : null
 
 	if (scope.type === 'clip' && sourceId) {
 		if (actionName === 'select') {
@@ -468,7 +492,7 @@ export const createDktPageEditorRenderRuntime = ({
 	getRootScope: () => ROOT_SCOPE,
 	getSessionScope: () => SESSION_SCOPE,
 	readAttrs(scope, fields) {
-		if (!pageRuntime?.getRootScope()) {
+		if (!pageRuntime) {
 			return legacyRuntime.readAttrs(scope, fields)
 		}
 		if (scope === ROOT_SCOPE || scope.type === 'root') {
@@ -478,11 +502,11 @@ export const createDktPageEditorRenderRuntime = ({
 			return normalizeSessionAttrs(pageRuntime, legacyRuntime, fields)
 		}
 
-		const dktScope = toDktScope(scope)
-		return dktScope ? pageRuntime.readAttrs(dktScope, fields) : legacyRuntime.readAttrs(scope, fields)
+		const dktScope = toDktScope(pageRuntime, scope)
+		return dktScope ? pageRuntime.readAttrs(dktScope, fields) : Object.fromEntries(fields.map((field) => [field, undefined]))
 	},
 	subscribeAttrs(scope, fields, listener) {
-		if (!pageRuntime?.getRootScope()) {
+		if (!pageRuntime) {
 			return legacyRuntime.subscribeAttrs(scope, fields, listener)
 		}
 		if (scope === ROOT_SCOPE || scope.type === 'root') {
@@ -499,66 +523,82 @@ export const createDktPageEditorRenderRuntime = ({
 			])
 		}
 
-		const dktScope = toDktScope(scope)
-		return dktScope ? pageRuntime.subscribeAttrs(dktScope, fields, listener) : legacyRuntime.subscribeAttrs(scope, fields, listener)
+		const dktScope = toDktScope(pageRuntime, scope)
+		return dktScope ? pageRuntime.subscribeAttrs(dktScope, fields, listener) : EMPTY_CLEANUP
 	},
 	readOne(scope, relName) {
-		if (!pageRuntime?.getRootScope()) {
+		if (!pageRuntime) {
 			return legacyRuntime.readOne(scope, relName)
 		}
-		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(scope)) {
+		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(pageRuntime, scope)) {
 			return scope
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && relName === 'activeProject') {
-			return readActiveProjectScope(pageRuntime, legacyRuntime)
+			return readActiveProjectScope(pageRuntime)
 		}
 		if ((scope === SESSION_SCOPE || scope.type === 'session') && relName === 'selectedEntity') {
 			const selectedSourceId = pageRuntime.getRootAttrs(['selectedEntityId']).selectedEntityId
-				?? legacyRuntime.readAttrs(SESSION_SCOPE, ['selectedEntityId']).selectedEntityId
-			return typeof selectedSourceId === 'string' ? findDktScopeBySourceId(pageRuntime, selectedSourceId) : null
+			if (typeof selectedSourceId !== 'string') {
+				return null
+			}
+			return findDktScopeBySourceId(pageRuntime, selectedSourceId)
 		}
 
-		const dktScope = toDktScope(scope)
-		return dktScope ? toEditorScope(pageRuntime, pageRuntime.readOne(dktScope, relName), TYPE_BY_REL[relName] ?? 'root') : legacyRuntime.readOne(scope, relName)
+		const dktScope = toDktScope(pageRuntime, scope)
+		if (!dktScope) {
+			return null
+		}
+		const dktRelName = toDktRelName(relName)
+		return toEditorScope(pageRuntime, pageRuntime.readOne(dktScope, dktRelName), TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root')
 	},
 	subscribeOne(scope, relName, listener) {
-		if (!pageRuntime?.getRootScope()) {
+		if (!pageRuntime) {
 			return legacyRuntime.subscribeOne(scope, relName, listener)
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && relName === 'activeProject') {
-			return combineCleanups([subscribeActiveProject(pageRuntime, listener), legacyRuntime.subscribeOne(ROOT_SCOPE, relName, listener)])
+			return subscribeActiveProject(pageRuntime, listener)
 		}
 		if ((scope === SESSION_SCOPE || scope.type === 'session') && relName === 'selectedEntity') {
-			return combineCleanups([pageRuntime.subscribeRootAttrs(['selectedEntityId'], listener), legacyRuntime.subscribeOne(SESSION_SCOPE, relName, listener)])
+			return pageRuntime.subscribeRootAttrs(['selectedEntityId'], listener)
 		}
-		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(scope)) {
+		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(pageRuntime, scope)) {
 			return EMPTY_CLEANUP
 		}
 
-		const dktScope = toDktScope(scope)
-		return dktScope ? pageRuntime.subscribeOne(dktScope, relName, listener) : legacyRuntime.subscribeOne(scope, relName, listener)
+		const dktScope = toDktScope(pageRuntime, scope)
+		if (!dktScope) {
+			return EMPTY_CLEANUP
+		}
+		return pageRuntime.subscribeOne(dktScope, toDktRelName(relName), listener)
 	},
 	readMany(scope, relName) {
-		if (!pageRuntime?.getRootScope()) {
+		if (!pageRuntime) {
 			return legacyRuntime.readMany(scope, relName)
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && (relName === 'projects' || relName === 'project')) {
 			return readProjectScopes(pageRuntime).map((projectScope) => toEditorScope(pageRuntime, projectScope, 'project')).filter((item): item is EditorScope => item != null)
 		}
 
-		const dktScope = toDktScope(scope)
-		return dktScope ? pageRuntime.readMany(dktScope, relName).map((item) => toEditorScope(pageRuntime, item, TYPE_BY_REL[relName] ?? 'root')).filter((item): item is EditorScope => item != null) : legacyRuntime.readMany(scope, relName)
+		const dktScope = toDktScope(pageRuntime, scope)
+		if (!dktScope) {
+			return []
+		}
+		const dktRelName = toDktRelName(relName)
+		return pageRuntime.readMany(dktScope, dktRelName).map((item) => toEditorScope(pageRuntime, item, TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root')).filter((item): item is EditorScope => item != null)
 	},
 	subscribeMany(scope, relName, listener) {
-		if (!pageRuntime?.getRootScope()) {
+		if (!pageRuntime) {
 			return legacyRuntime.subscribeMany(scope, relName, listener)
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && (relName === 'projects' || relName === 'project')) {
-			return combineCleanups([subscribeActiveProject(pageRuntime, listener), legacyRuntime.subscribeMany(ROOT_SCOPE, relName, listener)])
+			return subscribeActiveProject(pageRuntime, listener)
 		}
 
-		const dktScope = toDktScope(scope)
-		return dktScope ? pageRuntime.subscribeMany(dktScope, relName, listener) : legacyRuntime.subscribeMany(scope, relName, listener)
+		const dktScope = toDktScope(pageRuntime, scope)
+		if (!dktScope) {
+			return EMPTY_CLEANUP
+		}
+		return pageRuntime.subscribeMany(dktScope, toDktRelName(relName), listener)
 	},
 	readComp(scope, compName) {
 		if (!pageRuntime) {

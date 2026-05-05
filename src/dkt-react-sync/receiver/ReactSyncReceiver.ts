@@ -641,19 +641,23 @@ export class ReactSyncReceiver {
   private setDict(dictFlat: readonly (string | undefined)[] | null) {
     this.dictFlat = dictFlat
     this.dictNumsByName.clear()
+    this.attrsReadCache.clear()
+    this.manyReadCache.clear()
 
-    if (!dictFlat) {
-      return
-    }
+    if (dictFlat) {
+      for (let i = 0; i < dictFlat.length; i += 1) {
+        const keyword = dictFlat[i]
+        if (!keyword) {
+          continue
+        }
 
-    for (let i = 0; i < dictFlat.length; i += 1) {
-      const keyword = dictFlat[i]
-      if (!keyword) {
-        continue
+        this.dictNumsByName.set(keyword, i)
       }
-
-      this.dictNumsByName.set(keyword, i)
     }
+
+    this.flushAllNamed(this.attrSubsByNodeId)
+    this.flushAllNamed(this.relSubsByNodeId)
+    this.flushAllNamed(this.listSubsByNodeId)
   }
 
   private ensureNode(
@@ -779,6 +783,20 @@ export class ReactSyncReceiver {
           continue
         }
 
+        for (const listener of listeners) {
+          listenersToNotify.add(listener)
+        }
+      }
+    }
+
+    notifyAll(listenersToNotify)
+  }
+
+  private flushAllNamed(store: Map<string, Map<string, Set<Listener>>>) {
+    const listenersToNotify = new Set<Listener>()
+
+    for (const nodeStore of store.values()) {
+      for (const listeners of nodeStore.values()) {
         for (const listener of listeners) {
           listenersToNotify.add(listener)
         }

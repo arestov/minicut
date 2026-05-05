@@ -88,5 +88,23 @@ export const Project = model({
 				return attrs ? { attrs } : '$noop'
 			},
 		},
+		setTracks: {
+			to: {
+				tracks: ['<< tracks', { method: 'set_many' }],
+			},
+			fn: (payload: unknown) => {
+				const tracks = (payload as { tracks?: unknown } | null)?.tracks
+				return { tracks: Array.isArray(tracks) ? tracks : [] }
+			},
+		},
+		setResources: {
+			to: {
+				resources: ['<< resources', { method: 'set_many' }],
+			},
+			fn: (payload: unknown) => {
+				const resources = (payload as { resources?: unknown } | null)?.resources
+				return { resources: Array.isArray(resources) ? resources : [] }
+			},
+		},
 	},
 })

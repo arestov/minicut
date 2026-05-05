@@ -23,24 +23,6 @@ export type ScopedCommandDispatcher = <Name extends EditorActionName>(
 	executionOptions?: ExecuteActionTransactionOptions,
 ) => void
 
-const applySessionRootPatch = (env: EditorActionEnvironment, patch: Record<string, unknown>): void => {
-	if ('activeProjectId' in patch) {
-		env.session.setActiveProject(typeof patch.activeProjectId === 'string' ? patch.activeProjectId : null)
-	}
-	if ('selectedEntityId' in patch) {
-		env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
-	}
-	if ('cursor' in patch && typeof patch.cursor === 'number' && Number.isFinite(patch.cursor)) {
-		env.session.setCursor(Math.max(0, patch.cursor))
-	}
-	if ('isPlaying' in patch && typeof patch.isPlaying === 'boolean') {
-		env.session.setPlaying(patch.isPlaying)
-	}
-	if ('timelineZoom' in patch && typeof patch.timelineZoom === 'number' && Number.isFinite(patch.timelineZoom)) {
-		env.session.setTimelineZoom(patch.timelineZoom)
-	}
-}
-
 const dispatchDktSessionAction = (
 	env: EditorActionEnvironment,
 	actionName: DktSessionActionName,
@@ -52,6 +34,36 @@ const dispatchDktSessionAction = (
 	}
 
 	void Promise.resolve(dispatch(actionName, payload)).catch(() => undefined)
+}
+
+const applySessionRootPatch = (env: EditorActionEnvironment, patch: Record<string, unknown>, options: { syncDkt?: boolean } = {}): void => {
+	if ('activeProjectId' in patch) {
+		const activeProjectId = typeof patch.activeProjectId === 'string' ? patch.activeProjectId : null
+		env.session.setActiveProject(activeProjectId)
+		if (options.syncDkt) {
+			dispatchDktSessionAction(env, 'setActiveProject', activeProjectId)
+		}
+	}
+	if ('selectedEntityId' in patch) {
+		const selectedEntityId = (patch.selectedEntityId as string | null | undefined) ?? null
+		env.session.selectEntity(selectedEntityId)
+		if (options.syncDkt && !('activeProjectId' in patch)) {
+			dispatchDktSessionAction(env, 'selectEntity', selectedEntityId)
+		}
+	}
+	if ('cursor' in patch && typeof patch.cursor === 'number' && Number.isFinite(patch.cursor)) {
+		const cursor = Math.max(0, patch.cursor)
+		env.session.setCursor(cursor)
+		if (options.syncDkt && !('activeProjectId' in patch)) {
+			dispatchDktSessionAction(env, 'setCursor', cursor)
+		}
+	}
+	if ('isPlaying' in patch && typeof patch.isPlaying === 'boolean') {
+		env.session.setPlaying(patch.isPlaying)
+	}
+	if ('timelineZoom' in patch && typeof patch.timelineZoom === 'number' && Number.isFinite(patch.timelineZoom)) {
+		env.session.setTimelineZoom(patch.timelineZoom)
+	}
 }
 
 const dispatchAndApplySessionPatch = (
@@ -85,7 +97,7 @@ export const createSessionRootActions = (
 > => ({
 	createProject(title?: string): void {
 		dispatchBuiltCommand(ROOT_ACTION_SCOPE, 'createProject', title, {}, {
-			applySessionPatch: (patch) => applySessionRootPatch(env, patch),
+			applySessionPatch: (patch) => applySessionRootPatch(env, patch, { syncDkt: true }),
 		})
 	},
 

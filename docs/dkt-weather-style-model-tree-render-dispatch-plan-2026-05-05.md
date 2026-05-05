@@ -17,6 +17,82 @@ DKT model tree
 
 Главное архитектурное правило: `src/dkt-react-sync` должен быть абстрактным DKT + React слоем. В нем не должно быть ни weather, ни MiniCut логики. MiniCut-специфичные transport messages, worker/session bootstrap, model action names, resource/export/P2P эффекты и video-editor UI adapters должны жить вне `src/dkt-react-sync`.
 
+## 0. Сводная таблица по всем фазам (с ревью последних коммитов)
+
+Последние проверенные коммиты для ревью факта выполнения: `cb9aa8b`, `dbfead2`, `5e34484`, `91bc336`, `9647973`.
+
+Архитектурная поправка от 2026-05-05: последняя попытка чинить DKT streaming через render adapter helpers (`debugDumpGraph()` lookup, graph-wide wakeups, legacy `readComp()`) признана неправильным направлением. Эти fixes могли быть полезны как диагностика реальных streaming gaps, но не должны становиться целевой архитектурой. Traversal/rels, агрегаты и cross-model writes должны жить в DKT моделях через rels, comp attrs/rels и action forwarding. React render должен идти top-down от текущей scope-модели.
+
+Новые опорные документы:
+
+- `src/dkt-react-sync/docs/minicut-rendering-postmortem-2026-05-05.md`
+- `src/dkt-react-sync/docs/model-rendering-appguide-ru.md`
+
+`ReactSyncReceiver.allSubs` признан антипаттерном и удален из generic receiver. Если UI требует такого wakeup, значит dependency не выражена в модели или shape/rel path. Новые DKT UI paths должны читать данные через `RootScope`/`One`/`Many`/`useAttrs`, чтобы attrs/rels запрашивались через `useShape`.
+
+| № | Фаза | Название шага | Что реально сделано (ревью последних коммитов) | Коммиты | Измененные файлы | Проблемы при реализации |
+|---|---|---|---|---|---|---|
+| 1 | 1 | Создать `src/dkt-react-sync` и перенести generic files из weather | Полностью сделано: добавлен generic слой и базовая структура. | `9647973` | `src/dkt-react-sync/**` | Нет новых проблем в последних коммитах. |
+| 2 | 1 | Убрать weather naming из generic shape metadata и imports | Частично проверено: критичных weather-specific импортов в слое не найдено. | `9647973` | `src/dkt-react-sync/shape/**`, `src/dkt-react-sync/runtime/**` | Требуется периодическая проверка при новых изменениях. |
+| 3 | 1 | Добавить receiver tests для attrs/rels/root sync chunks | Сделано: добавлены receiver-тесты. | `9647973` | `src/dkt-react-sync/receiver/ReactSyncReceiver.test.ts` | Нет. |
+| 4 | 1 | Добавить React tests для `One`, `Many`, `Path`, `useAttrs`, `useActions` | Частично сделано: есть тесты `Path` и `useAttrs`, отдельные кейсы для остальных не расширялись в последних коммитах. | `9647973` | `src/dkt-react-sync/components/Path.test.tsx`, `src/dkt-react-sync/hooks/useAttrs.test.tsx` | Нужно расширить покрытие `Many/One/useActions` при следующем проходе. |
+| 5 | 2 | Создать MiniCut page runtime adapter поверх generic receiver/store/shape registry | Сделано: адаптер создан и используется как transport runtime. | `91bc336` | `src/video-editor/dkt/runtime/createMiniCutPageSyncRuntime.ts`, `src/video-editor/dkt/runtime/pageRuntimeStore.ts` | Дальше нужен перенос production UI на этот runtime. |
+| 6 | 2 | Добавить scoped `DISPATCH_ACTION` transport message with `scope_node_id` | Сделано: scoped transport-message внедрен. | `91bc336` | `src/video-editor/dkt/runtime/scopedActionTransport.ts`, `src/video-editor/dkt/shared/messageTypes.ts` | Нет. |
+| 7 | 2 | Пробросить `SYNC_UPDATE_STRUCTURE_USAGE` и `SYNC_REQUIRE_SHAPE` из shape registry | Сделано: bridge callbacks пробрасываются. | `91bc336`, `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutPageSyncRuntime.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Убран polling на стороне worker, но полный UI shape rollout еще впереди. |
+| 8 | 2 | Разделить production protocol и legacy registry messages в `messageTypes.ts` | Частично сделано: legacy типы отмечены и продолжают жить для совместимости. | `91bc336` | `src/video-editor/dkt/shared/messageTypes.ts` | Полный вынос legacy сообщений запланирован на фазу 9. |
+| 9 | 2 | Покрыть bootstrap, sync handle, root readiness, scoped dispatch tests | Сделано: тесты обновлены на event-driven DKT subscriptions. | `dbfead2` | `src/video-editor/worker/memoryWorker.test.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Нет. |
+| 10 | 3 | Реализовать worker scoped dispatch through `getModelById` | Сделано: dispatch теперь идет через scope lookup в session tree. | `5e34484`, `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Для legacy веток остается fallback-код. |
+| 11 | 3 | Перевести sync stream target на session root model tree | Сделано: stream root перенесен на session root и важный path `[['pioneer']]`. | `5e34484`, `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Нет. |
+| 12 | 3 | Поддержать null scope только для root/session actions | Частично сделано: null scope ведет в session root для page actions. | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Нужно зачистить оставшиеся legacy маршруты. |
+| 13 | 3 | Убрать production dependency on `dispatchCommand` from worker switch | Частично сделано: production path использует scoped action, `DISPATCH_COMMAND` еще в switch для совместимости. | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Полный removal не сделан. |
+| 14 | 3 | Добавить worker tests на scoped Clip/Track/Project dispatch | Частично сделано: расширены runtime tests и transport tests. | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts`, `src/video-editor/worker/memoryWorker.test.ts` | Нужны отдельные более granular tests по Track/Project сценариям. |
+| 15 | 4 | Описать SessionRoot attrs/rels for render in DKT models | Частично сделано: SessionRoot attrs есть, stream реально идет от session root. | `5e34484`, `dbfead2` | `src/video-editor/models/SessionRoot.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | UI пока не читает это end-to-end через новый root. |
+| 16 | 4 | Добавить shapes for SessionRoot and Project | Частично сделано в тестовом сценарии (`root -> pioneer -> project`). | `dbfead2` | `src/video-editor/worker/memoryWorker.test.ts` | Нужен production shape module для UI. |
+| 17 | 4 | Ввести `DktEditorRoot` with generic `RootScope` and `Path` | Частично сделано в незакоммиченном проходе: `DktEditorRoot` bootstraps page runtime and mounts `miniCutEditorRootShape`, но основной UI все еще использует compatibility `EditorRenderRuntime`. | pending | `src/video-editor/ui/dkt/DktEditorRoot.tsx`, `src/video-editor/ui/dkt/shapes.ts` | Нужно не расширять adapter, а переводить UI на прямые DKT components/hooks. |
+| 18 | 4 | Перевести active project navigation на `Path` instead of nested adapter selectors | Не сделано: текущий `useActiveProjectScope` все еще идет через compatibility adapter. | — | `src/video-editor/ui/dkt/hooks/useActiveProjectScope.ts`, `src/video-editor/render-sync/createDktPageEditorRenderRuntime.ts` | Adapter lookup был усилен из-за streaming races, но это признано временным решением; нужен model rel/comp path. |
+| 19 | 4 | Сохранить Legend session store only as compatibility read adapter | Частично сделано: удален local-session bridge в hybrid DKT adapter path. | `dbfead2` | `src/video-editor/app/createVideoEditorHarness.ts` | Требуется финальное отделение от legacy session write-path. |
+| 20 | 5 | Добавить Track/Clip/Text/Effect shape definitions | Частично сделано: расширены clip attrs для связей source IDs, shape-проверка в transport test. | `dbfead2` | `src/video-editor/models/Clip.ts`, `src/video-editor/models/Track/actions.ts`, `src/video-editor/worker/memoryWorker.test.ts` | Нет полного production shape map для timeline UI. |
+| 21 | 5 | Перевести Timeline root на active Project DKT scope | Не сделано в последних коммитах. | — | — | Legacy runtime остается источником timeline. |
+| 22 | 5 | Перевести TrackLane на `useAttrs` + `Many rel="clips"` | Не сделано в последних коммитах. | — | — | Ожидает UI migration на DKT scope tree. |
+| 23 | 5 | Перевести ClipItem/TextClipItem на scoped attrs and actions | Не сделано в последних коммитах. | — | — | Ожидает UI migration. |
+| 24 | 5 | Убрать registry reads из timeline render path | Не сделано в последних коммитах. | — | — | Registry still used in compatibility render path. |
+| 25 | 6 | Перевести selected entity на SessionRoot DKT scope/rel | Частично и неправильно по архитектуре: UI hook появился, но selected entity пока вычисляется adapter-ом по `selectedEntityId` и source-id lookup. | pending | `src/video-editor/ui/dkt/hooks/useSelectedEntityScope.ts`, `src/video-editor/render-sync/createDktPageEditorRenderRuntime.ts` | Нужно заменить source-id graph scan на model-level selected rel/comp/action forwarding. |
+| 26 | 6 | Добавить `useSelectedEntityScope` outside generic layer | Частично сделано: hook есть outside generic layer. | pending | `src/video-editor/ui/dkt/hooks/useSelectedEntityScope.ts` | Hook пока опирается на compatibility runtime, а не на прямой DKT rel path. |
+| 27 | 6 | Перевести ClipInspector на scoped attrs/actions | Не сделано в последних коммитах. | — | — | Inspector пока на compatibility route. |
+| 28 | 6 | Перевести TextInspector на scoped attrs/actions | Не сделано в последних коммитах. | — | — | Inspector migration не начата. |
+| 29 | 6 | Перевести EffectInspector на scoped attrs/actions | Не сделано в последних коммитах. | — | — | Inspector migration не начата. |
+| 30 | 6 | Удалить inspector dependency on registry/harness action ids | Не сделано в последних коммитах. | — | — | Требуется после scoped inspector migration. |
+| 31 | 7 | Завершить Project model actions for structural edits | Частично сделано: materialization использует model actions. | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Не весь production write-path переведен. |
+| 32 | 7 | Завершить Track model actions for timeline structure | Частично сделано: нормализация clip source attrs и runtime dispatch по track actions. | `dbfead2` | `src/video-editor/models/Track/actions.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Полный UI dispatch routing еще не сделан. |
+| 33 | 7 | Завершить Clip model actions for media clip editing | Частично сделано: покрытие runtime tests есть. | `dbfead2` | `src/video-editor/models/Clip.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Нет полного UI scoped wiring. |
+| 34 | 7 | Завершить Text model actions for text editing | Частично сделано: runtime materialization и dispatch присутствуют. | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | UI inspector pending. |
+| 35 | 7 | Завершить Effect model actions for effect editing | Частично сделано: runtime materialization и dispatch присутствуют. | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | UI inspector pending. |
+| 36 | 7 | Перевести UI writes с app action runtime на scoped DKT dispatch | Частично сделано через adapter dispatch mirror, но это не целевой вид: adapter знает слишком много action names. | pending | `src/video-editor/render-sync/createDktPageEditorRenderRuntime.ts`, `src/video-editor/app/createVideoEditorHarness.ts`, `src/video-editor/app/sessionRootActions.ts` | Следующий pass должен переносить cross-model writes в DKT model actions with forwarding, а не расширять switch в adapter. |
+| 37 | 7 | Пометить `createDktActionRuntime` and command builders as legacy compatibility | Частично по смыслу: они остаются bridge/materialization path. | pending | `src/video-editor/app/createDktActionRuntime.ts`, `src/video-editor/domain/actionCommandBuilders.ts` | Нужно явно отделить compatibility bridge от production DKT model-tree path. |
+| 38 | 8 | Перевести import flow на Project/Resource DKT effects | Не сделано в последних коммитах. | — | — | Пока используется bridge через snapshot/materialization. |
+| 39 | 8 | Перевести resource local blob/object URL state на Resource attrs/effects | Не сделано в последних коммитах. | — | — | Ownership у media runtime, не у model effects. |
+| 40 | 8 | Перевести export flow на model tree/export projection | Не сделано в последних коммитах. | — | — | Export path не мигрирован. |
+| 41 | 8 | Проверить P2P resource availability through Resource model state | Частично сделано: DKT transport проброшен через authority adapters. | `9767170`, `dbfead2` | `src/video-editor/p2p/P2PAuthorityAdapter.ts`, `src/video-editor/worker/authorityClient.ts`, `src/video-editor/worker/dktSharedWorkerClient.ts`, `src/video-editor/worker/fallbackAuthorityClient.ts` | Resource-model state/effects еще не перенесены. |
+| 42 | 8 | Убрать production dependency on app import/export command wrappers | Не сделано в последних коммитах. | — | — | Требует завершения migration effects. |
+| 43 | 9 | Удалить `DktRegistryRenderStore` из production render path | Не сделано в последних коммитах. | — | — | В compatibility path store по-прежнему используется. |
+| 44 | 9 | Удалить `registrySnapshot` как UI state source | Не сделано в последних коммитах. | — | — | `registrySnapshot` все еще используется для bridge materialization. |
+| 45 | 9 | Убрать legacy snapshot/patch/command messages из production runtime switch | Частично сделано: scoped action path стабилизирован, legacy messages оставлены. | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/shared/messageTypes.ts` | Полное удаление legacy protocol не сделано. |
+| 46 | 9 | Перенести или удалить command/patch domain modules | Не сделано в последних коммитах. | — | — | Нужно отдельной фазой после UI migration. |
+| 47 | 9 | Обновить tests from patch assertions to DKT tree assertions | Частично сделано: добавлены DKT transport assertions без polling. | `dbfead2` | `src/video-editor/worker/memoryWorker.test.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Старые compatibility тесты сохраняются. |
+| 48 | 10 | Запустить full video-editor unit suite | Частично в незакоммиченном проходе: focused color correction DKT happy path проходит; full happy-path file еще нестабилен. | pending | `src/video-editor/tests/video-editor.happy-path.test.tsx` | Оставшиеся failures показывают неготовность selected/text/export/transform model-tree flow; нельзя закрывать их через graph-wide subscribe. |
+| 49 | 10 | Запустить build and verify DKT chunks | Не сделано в последних коммитах. | — | — | Build не запускался в рамках последних коммитов. |
+| 50 | 10 | Запустить critical Playwright integration tests | Не сделано в последних коммитах. | — | — | Интеграционные прогоны отложены. |
+| 51 | 10 | Обновить docs with final architecture and removed legacy list | Обновлено текущей архитектурной поправкой: добавлены postmortem/appguide и запрет на graph-wide render helpers. | pending | `docs/dkt-weather-style-model-tree-render-dispatch-plan-2026-05-05.md`, `src/dkt-react-sync/docs/**` | Документ теперь явно фиксирует, что adapter fixes не являются целевой архитектурой. |
+| 52 | 10 | Заполнить отчетные таблицы фактическими commits/files/problems | Таблица обновлена по текущему незакоммиченному состоянию, но финальный commit/tests pending. | pending | `docs/dkt-weather-style-model-tree-render-dispatch-plan-2026-05-05.md` | Нужно дописать commit id и итог validation после стабилизации. |
+
+### Краткое ревью последних коммитов (что реально сделано)
+
+- `9647973`: добавлен generic слой `src/dkt-react-sync` плюс базовые тесты receiver/shape/hooks.
+- `91bc336`: добавлен MiniCut page sync runtime adapter (`createMiniCutPageSyncRuntime`, `scopedActionTransport`, `pageRuntimeStore`).
+- `5e34484`: начат перенос bootstrap на session-root поток в runtime.
+- `dbfead2`: доведен session-root/pioneer flow, убраны interim polling/debug-hacks, обновлены transport/runtime tests, расширены proxy attrs (`sourceResourceId/sourceTextId`).
+- `cb9aa8b`: задокументирован фактический статус migration и ограничения, без новых runtime-фич.
+
 ---
 
 ## 1. Эталонная идея из weather
@@ -488,12 +564,7 @@ src/dkt-react-sync/shape/defineShape.ts
 - `npm run test:video-editor -- src/dkt-react-sync/hooks/useAttrs.test.tsx`
 - `npm run test:video-editor -- src/dkt-react-sync/components/Path.test.tsx`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Создать `src/dkt-react-sync` и перенести generic files из weather | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/dkt-react-sync/**` | Слой уже был добавлен до ревью; проверка показала, что проблема не в generic layer, а в MiniCut bootstrap/session wiring. |
-| Убрать weather naming из generic shape metadata и imports | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/dkt-react-sync/shape/**`, `src/dkt-react-sync/runtime/**` | В текущем проходе изменений не потребовалось; generic layer не импортирует MiniCut runtime. |
-| Добавить receiver tests для attrs/rels/root sync chunks | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/dkt-react-sync/receiver/**` | Текущий фокус был session-root MiniCut adapter; receiver-level тесты не расширялись. |
-| Добавить React tests для `One`, `Many`, `Path`, `useAttrs`, `useActions` | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/dkt-react-sync/components/**`, `src/dkt-react-sync/hooks/**` | Текущий regression был в worker/page transport, поэтому React component tests не менялись. |
+См. единую сводную таблицу в начале документа (строки 1-4).
 
 ### Фаза 2: MiniCut page runtime adapter поверх generic layer
 
@@ -531,13 +602,7 @@ src/video-editor/dkt/shared/messageTypes.ts
 - `npm run test:video-editor -- src/video-editor/dkt/shared/messageTypes.test.ts`
 - `npm run test:video-editor -- src/video-editor/dkt/runtime/pageSyncReceiver.test.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Создать MiniCut page runtime adapter поверх generic receiver/store/shape registry | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/video-editor/dkt/runtime/createMiniCutPageSyncRuntime.ts`, `src/video-editor/dkt/runtime/pageRuntimeStore.ts` | Adapter уже существовал; ревью подтвердило, что он должен оставаться вне harness hybrid render adapter. |
-| Добавить scoped `DISPATCH_ACTION` transport message with `scope_node_id` | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/video-editor/dkt/runtime/scopedActionTransport.ts`, `src/video-editor/dkt/shared/messageTypes.ts` | Message contract был готов; неправильным был worker resolver target. |
-| Пробросить `SYNC_UPDATE_STRUCTURE_USAGE` и `SYNC_REQUIRE_SHAPE` из shape registry | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/video-editor/dkt/runtime/createMiniCutPageSyncRuntime.ts` | После исправления worker больше не требует socket polling перед shape forwarding. |
-| Разделить production protocol и legacy registry messages в `messageTypes.ts` | До текущего ревью, commit не создавался в этом шаге текущего прохода | `src/video-editor/dkt/shared/messageTypes.ts` | Legacy messages еще остаются для compatibility; полное удаление перенесено в фазу 9. |
-| Покрыть bootstrap, sync handle, root readiness, scoped dispatch tests | `dbfead2` | `src/video-editor/worker/memoryWorker.test.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Тест переписан на DKT subscriptions (`root`, `pioneer`, `project`, attrs), без `setTimeout` и debug graph assertions. |
+См. единую сводную таблицу в начале документа (строки 5-9).
 
 ### Фаза 3: Worker runtime dispatch by DKT scope
 
@@ -568,13 +633,7 @@ src/video-editor/worker/dktSharedWorker.ts
 - `npm run test:video-editor -- src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts`
 - `npm run test:video-editor -- src/video-editor/worker/dktSharedWorker.test.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Реализовать worker scoped dispatch through `getModelById` | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Dispatch теперь ищет scope через `getModelById(sessionRoot, scope_node_id)` и явно падает, если scope не найден. |
-| Перевести sync stream target на session root model tree | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Root исправлен с `appModel` на session root; important rel path задан как `[['pioneer']]`, как в weather. |
-| Поддержать null scope только для root/session actions | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Null scope в page action теперь dispatch-ится в session root; app-root internal actions оставлены только во внутреннем materialization path. |
-| Убрать production dependency on `dispatchCommand` from worker switch | `dbfead2` частично | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Legacy `DISPATCH_COMMAND` еще остается в switch для compatibility tests; production DKT action path больше не проходит через command dispatch. |
-| Добавить worker tests на scoped Clip/Track/Project dispatch | `dbfead2` | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Existing focused tests подтверждают session-root bootstrap и scoped session action; Clip/Track/Project model action tests остаются через runtime proxy helpers. |
+См. единую сводную таблицу в начале документа (строки 10-14).
 
 ### Фаза 4: SessionRoot и Project navigation через DKT rels
 
@@ -611,13 +670,7 @@ src/video-editor/ui/dkt/hooks/useActiveProjectScope.ts
 - `npm run test:video-editor -- src/video-editor/ui/dkt/DktEditorRoot.test.tsx`
 - `npm run test:video-editor -- src/video-editor/app/createVideoEditorHarness.test.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Описать SessionRoot attrs/rels for render in DKT models | До текущего ревью, уточнено в `dbfead2` | `src/video-editor/models/SessionRoot.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | SessionRoot уже содержит editor attrs; ключевое исправление было использовать его как stream root, а не обходить через app root. |
-| Добавить shapes for SessionRoot and Project | `dbfead2` в тестовом покрытии | `src/video-editor/worker/memoryWorker.test.ts` | Проверочный shape теперь идет `root -> pioneer -> project`; production UI shapes еще должны быть вынесены в `src/video-editor/ui/dkt/shapes.ts`. |
-| Ввести `DktEditorRoot` with generic `RootScope` and `Path` | Не реализовано в текущем commit | Нет production UI файлов | Гибридный `createDktReplicaRenderRuntime` удален; следующий шаг должен быть прямой React DKT root, без adapter over legacy `EditorRenderRuntime`. |
-| Перевести active project navigation на `Path` instead of nested adapter selectors | Не реализовано в текущем commit | Нет production UI файлов | Нужна модельная rel навигация `pioneer/project/activeProject`; сейчас legacy render runtime остается compatibility path. |
-| Сохранить Legend session store only as compatibility read adapter | `dbfead2` | `src/video-editor/app/createVideoEditorHarness.ts` | Удален local-session sync в DKT replica adapter; Legend session больше не синхронизируется в DKT через harness fallback. |
+См. единую сводную таблицу в начале документа (строки 15-19).
 
 ### Фаза 5: Timeline render from model tree
 
@@ -653,13 +706,7 @@ src/video-editor/ui/dkt/shapes.ts
 - `npm run test:video-editor -- src/video-editor/models/Track/actions.test.ts src/video-editor/models/Clip/actions.test.ts`
 - `npm run test:video-editor -- tests/integration/video-editor.spec.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Добавить Track/Clip/Text/Effect shape definitions | `dbfead2` частично | `src/video-editor/models/Clip.ts`, `src/video-editor/models/Track/actions.ts`, `src/video-editor/worker/memoryWorker.test.ts` | Clip creation shape расширен `sourceResourceId/sourceTextId`; production UI shape file еще не создан. |
-| Перевести Timeline root на active Project DKT scope | Не реализовано в текущем commit | Нет production UI файлов | Старый `EditorRenderRuntime` оставлен, потому что hybrid debug adapter удален; следующий шаг должен быть прямой DKT UI root. |
-| Перевести TrackLane на `useAttrs` + `Many rel="clips"` | Не реализовано в текущем commit | Нет production UI файлов | Требуется перенос timeline components на generic `Many`/`useAttrs`; текущий проход исправлял transport/session root. |
-| Перевести ClipItem/TextClipItem на scoped attrs and actions | Не реализовано в текущем commit | Нет production UI файлов | Нужны прямые Clip/Text scopes; `sourceResourceId/sourceTextId` добавлены как bridge data для корректной materialization. |
-| Убрать registry reads из timeline render path | Не реализовано в текущем commit | `src/video-editor/app/createVideoEditorHarness.ts` проверен, hybrid adapter удален | Registry render path остается compatibility path; важно, что новый debug-based DKT facade не закреплен. |
+См. единую сводную таблицу в начале документа (строки 20-24).
 
 ### Фаза 6: Inspector and property editing через scoped dispatch
 
@@ -691,14 +738,7 @@ src/video-editor/models/Effect/actions.ts
 - `npm run test:video-editor -- src/video-editor/models/Clip/actions.test.ts src/video-editor/models/Text/actions.test.ts src/video-editor/models/Effect/actions.test.ts`
 - `npm run test:video-editor -- tests/integration/video-editor.spec.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Перевести selected entity на SessionRoot DKT scope/rel | `dbfead2` частично | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | SessionRoot теперь является DKT stream root; rel/selector для selected entity еще не реализован как model relation. |
-| Добавить `useSelectedEntityScope` outside generic layer | Не реализовано в текущем commit | Нет production UI файлов | Должен появиться в `src/video-editor/ui/dkt/hooks`, не в generic `src/dkt-react-sync`. |
-| Перевести ClipInspector на scoped attrs/actions | Не реализовано в текущем commit | Нет production UI файлов | Inspector пока использует compatibility render/action route. |
-| Перевести TextInspector на scoped attrs/actions | Не реализовано в текущем commit | Нет production UI файлов | Нужно после появления selected entity DKT scope. |
-| Перевести EffectInspector на scoped attrs/actions | Не реализовано в текущем commit | Нет production UI файлов | Нужно после появления Effect scopes в UI. |
-| Удалить inspector dependency on registry/harness action ids | Не реализовано в текущем commit | Нет production UI файлов | Удаление отложено до полного scoped dispatch UI rewrite. |
+См. единую сводную таблицу в начале документа (строки 25-30).
 
 ### Фаза 7: Editing actions as DKT model actions
 
@@ -736,15 +776,7 @@ src/video-editor/domain/actionTransactions.ts
 - `npm run test:video-editor -- src/video-editor/models/Text/actions.test.ts`
 - `npm run test:video-editor -- src/video-editor/models/Effect/actions.test.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Завершить Project model actions for structural edits | `dbfead2` частично | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Existing `Project.addTrack/importResource` используются для hierarchy materialization; полный production write path еще не переведен. |
-| Завершить Track model actions for timeline structure | `dbfead2` частично | `src/video-editor/models/Track/actions.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | Track actions принимают source ids для Clip materialization; reorder/remove остаются compatibility scope. |
-| Завершить Clip model actions for media clip editing | `dbfead2` частично | `src/video-editor/models/Clip.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Clip attrs/actions покрыты focused runtime tests; direct UI scoped dispatch еще не подключен. |
-| Завершить Text model actions for text editing | `dbfead2` частично | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Text proxy materialization and attr actions проверены runtime tests; UI inspector pending. |
-| Завершить Effect model actions for effect editing | `dbfead2` частично | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Effect proxy creation and attr actions проверены runtime tests; UI inspector pending. |
-| Перевести UI writes с app action runtime на scoped DKT dispatch | Не реализовано в текущем commit | Нет production UI файлов | Worker/page side готовится; UI writes все еще идут через harness actions until DKT UI root lands. |
-| Пометить `createDktActionRuntime` and command builders as legacy compatibility | Не реализовано в текущем commit | Нет изменений | Нужно отдельным cleanup commit после UI scoped dispatch. |
+См. единую сводную таблицу в начале документа (строки 31-37).
 
 ### Фаза 8: Import/export/resource/P2P через DKT effects
 
@@ -778,13 +810,7 @@ src/video-editor/app/exportActions.ts
 - `npm run test:video-editor -- tests/integration/p2p-media-transfer.spec.ts`
 - `npm run test:video-editor -- tests/integration/p2p-media-large-chunk-transfer.spec.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Перевести import flow на Project/Resource DKT effects | Не реализовано в текущем commit | Нет model effect files | Current commit только материализует Resource proxies из registry snapshots. |
-| Перевести resource local blob/object URL state на Resource attrs/effects | Не реализовано в текущем commit | Нет model effect files | Resource proxy attrs sync `status/name/...`; blob/object URL ownership еще в existing media runtime. |
-| Перевести export flow на model tree/export projection | Не реализовано в текущем commit | Нет export changes | Export остается registry/projection based до Phase 8 implementation. |
-| Проверить P2P resource availability through Resource model state | `dbfead2` частично | `src/video-editor/p2p/P2PAuthorityAdapter.ts`, `src/video-editor/worker/authorityClient.ts` | P2P authority теперь может expose DKT transport; actual Resource state/effects not migrated. |
-| Убрать production dependency on app import/export command wrappers | Не реализовано в текущем commit | Нет import/export wrapper changes | Нужно после Project/Resource effects. |
+См. единую сводную таблицу в начале документа (строки 38-42).
 
 ### Фаза 9: Удаление snapshot/patch/registry render path
 
@@ -822,13 +848,7 @@ src/video-editor/domain/*CommandHandlers.ts
 - `npm run test:video-editor -- tests/integration/video-editor.spec.ts`
 - `npm run test:video-editor -- tests/integration/shared-worker-sync.spec.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Удалить `DktRegistryRenderStore` из production render path | Не реализовано в текущем commit | `src/video-editor/app/createVideoEditorHarness.ts` проверен | Гибридный DKT replica adapter удален; registry render path остается как честный compatibility path до прямого DKT UI root. |
-| Удалить `registrySnapshot` как UI state source | Не реализовано в текущем commit | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts` | `registrySnapshot` еще используется для bridge materialization; target removal требует переноса UI/write path. |
-| Убрать legacy snapshot/patch/command messages из production runtime switch | `dbfead2` частично | `src/video-editor/dkt/runtime/createMiniCutDktRuntime.ts`, `src/video-editor/dkt/shared/messageTypes.ts` | Legacy switch оставлен for compatibility; page scoped actions now use session resolver. |
-| Перенести или удалить command/patch domain modules | Не реализовано в текущем commit | Нет domain legacy movement | Должно быть отдельной фазой после UI migration. |
-| Обновить tests from patch assertions to DKT tree assertions | `dbfead2` частично | `src/video-editor/worker/memoryWorker.test.ts`, `src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts` | Добавлен DKT transport test через subscriptions; old registry render tests сохранены для compatibility. |
+См. единую сводную таблицу в начале документа (строки 43-47).
 
 ### Фаза 10: Полная валидация и документация результата
 
@@ -850,13 +870,7 @@ src/video-editor/domain/*CommandHandlers.ts
 - `npm run test:video-editor -- tests/integration/p2p-media-transfer.spec.ts`
 - `npm run test:video-editor -- tests/integration/export-audio-artifacts.spec.ts`
 
-| Название шага | Коммиты | Измененные файлы | Проблемы при реализации |
-|---|---|---|---|
-| Запустить full video-editor unit suite | Не запускался в текущем проходе | Нет изменений | Запущен focused suite: `npm run test:video-editor -- src/video-editor/dkt/runtime/createMiniCutDktRuntime.test.ts src/video-editor/worker/memoryWorker.test.ts src/video-editor/render-sync/createDktEditorRenderRuntime.test.ts src/video-editor/app/createVideoEditorHarness.test.ts` = 42/42 passed. |
-| Запустить build and verify DKT chunks | Не запускался в текущем проходе | Нет изменений | Build оставлен pending; текущий scope был architecture correction and focused regression. |
-| Запустить critical Playwright integration tests | Не запускался в текущем проходе | Нет изменений | Integration suite оставлен pending после next UI-DKT phase. |
-| Обновить docs with final architecture and removed legacy list | Документальный commit после `dbfead2` | `docs/dkt-weather-style-model-tree-render-dispatch-plan-2026-05-05.md` | Добавлено ревью weather/Linkkraft и уточнен список удаленных промежуточных решений. |
-| Заполнить отчетные таблицы фактическими commits/files/problems | Документальный commit после `dbfead2` | `docs/dkt-weather-style-model-tree-render-dispatch-plan-2026-05-05.md` | Все 10 таблиц заполнены; строки с неготовыми фазами явно помечены как pending, чтобы не маскировать прогресс. |
+См. единую сводную таблицу в начале документа (строки 48-52).
 
 ---
 

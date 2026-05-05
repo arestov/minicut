@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { getActiveProject, getResourceEntities } from '../domain/selectors'
 import type { ExportProgressEvent, ExportRenderRequest, ExportRenderResult } from '../render/exportRenderer'
 import { renderVideoEditor } from './renderVideoEditor'
@@ -7,6 +7,8 @@ const createProjectFromMenu = async (user: ReturnType<typeof renderVideoEditor>[
 	const projectsRegion = screen.getByLabelText('Projects')
 	await user.click(within(projectsRegion).getByRole('button'))
 	await user.click(within(projectsRegion).getByRole('button', { name: 'New project' }))
+	await waitFor(() => expect(screen.getByRole('button', { name: /Project \d+/i })).toBeInTheDocument())
+	await waitFor(() => expect(screen.queryAllByText('Drop clips here.').length).toBeGreaterThan(0))
 }
 
 const setTimelineCursor = (timeline: HTMLElement, seconds: number): void => {
@@ -27,6 +29,12 @@ const importSampleResource = async (harness: ReturnType<typeof renderVideoEditor
 		await Promise.resolve()
 		await Promise.resolve()
 	})
+	const project = getActiveProject(harness.projects$.get(), harness.session$.get())
+	const resourceCount = project ? getResourceEntities(harness.projects$.get(), project).length : 0
+	await waitFor(() => expect(within(screen.getByLabelText('Media bin')).getByText(`${resourceCount} of ${resourceCount} assets`)).toBeInTheDocument())
+	if (resourceCount > 0) {
+		await waitFor(() => expect(within(screen.getByLabelText('Media bin')).getByText('Sample asset 1', { selector: 'strong' })).toBeInTheDocument())
+	}
 }
 
 const createDeferred = <T,>() => {
@@ -76,7 +84,7 @@ describe('video editor harness', () => {
 			const mediaBin = screen.getByLabelText('Media bin')
 			expect(within(mediaBin).getByText('Sample asset 1', { selector: 'strong' })).toBeInTheDocument()
 
-			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			const clipButton = await screen.findByRole('button', { name: /Sample asset 1/i })
 			expect(clipButton).toBeInTheDocument()
 
 			await user.click(clipButton)
@@ -132,7 +140,7 @@ describe('video editor harness', () => {
 			await createProjectFromMenu(user)
 			await importSampleResource(harness)
 
-			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			const clipButton = await screen.findByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
 			const timeline = screen.getByLabelText('Timeline')
@@ -211,7 +219,7 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await importSampleResource(harness)
-			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			const clipButton = await screen.findByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
 			await user.click(within(screen.getByLabelText('Timeline')).getByRole('button', { name: 'Delete clip' }))
@@ -335,7 +343,7 @@ describe('video editor harness', () => {
 			fireEvent.change(exposure, { target: { value: '10' } })
 			const customLookParams = harness.projects$.entitiesById[effectId].attrs.params.get() as { lookId: string }
 			expect(customLookParams.lookId).toBe('custom')
-			expect(within(inspector).getByText('Custom grade')).toBeVisible()
+			expect(await within(inspector).findByText('Custom grade')).toBeVisible()
 			expect(within(inspector).getByRole('button', { name: 'Apply look Cinema' })).toHaveAttribute('aria-pressed', 'false')
 			expect(lookIntensity).toBeDisabled()
 			fireEvent.change(lookIntensity, { target: { value: '20' } })
@@ -399,7 +407,7 @@ describe('video editor harness', () => {
 			expect(within(firstResourceListRow).getByRole('button', { name: 'Add Text to Timeline' })).toBe(textActionButton)
 			await user.click(textActionButton)
 			const inspector = screen.getByLabelText('Inspector')
-			const content = await within(inspector).findByRole('textbox', { name: 'Text content' })
+			const content = await within(inspector).findByRole('textbox', { name: 'Text content' }, { timeout: 5000 })
 			await user.clear(content)
 			await user.type(content, 'Edited title')
 
@@ -477,13 +485,13 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await importSampleResource(harness)
-			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
+			await user.click(await screen.findByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
-			expect(within(inspector).getByRole('button', { name: 'Fade in -0.5s' })).toBeDisabled()
-			expect(within(inspector).getByRole('button', { name: 'Fade out -0.5s' })).toBeDisabled()
-			await user.click(within(inspector).getByRole('button', { name: 'Fade in +0.5s' }))
-			await user.click(within(inspector).getByRole('button', { name: 'Fade out +0.5s' }))
+			expect(await within(inspector).findByRole('button', { name: 'Fade in -0.5s' }, { timeout: 5000 })).toBeDisabled()
+			expect(await within(inspector).findByRole('button', { name: 'Fade out -0.5s' }, { timeout: 5000 })).toBeDisabled()
+			await user.click(await within(inspector).findByRole('button', { name: 'Fade in +0.5s' }, { timeout: 5000 }))
+			await user.click(await within(inspector).findByRole('button', { name: 'Fade out +0.5s' }, { timeout: 5000 }))
 			expect(within(inspector).getAllByText('0.5s', { selector: 'dd' })).toHaveLength(2)
 
 			act(() => harness.actions.setCursor(0))
@@ -503,7 +511,7 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await importSampleResource(harness)
-			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
+			await user.click(await screen.findByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
 			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
@@ -518,7 +526,7 @@ describe('video editor harness', () => {
 			]
 
 			for (const preset of presets) {
-				await user.click(within(inspector).getByRole('button', { name: `Set color ${preset.hex}` }))
+				await user.click(await within(inspector).findByRole('button', { name: `Set color ${preset.hex}` }, { timeout: 5000 }))
 				expect(within(inspector).getByLabelText('Color')).toHaveValue(preset.hex)
 				expect(screen.getByRole('button', { name: /Sample asset 1/i })).toHaveStyle({
 					borderLeftColor: preset.rgb,
@@ -536,12 +544,12 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await importSampleResource(harness)
-			const clipButton = screen.getByRole('button', { name: /Sample asset 1/i })
+			const clipButton = await screen.findByRole('button', { name: /Sample asset 1/i })
 			await user.click(clipButton)
 
 			const inspector = screen.getByLabelText('Inspector')
-			fireEvent.change(within(inspector).getByLabelText('Clip name'), { target: { value: 'Renamed clip' } })
-			expect(screen.getByRole('button', { name: /Renamed clip/i })).toBeInTheDocument()
+			fireEvent.change(await within(inspector).findByLabelText('Clip name', undefined, { timeout: 5000 }), { target: { value: 'Renamed clip' } })
+			expect(await screen.findByRole('button', { name: /Renamed clip/i })).toBeInTheDocument()
 
 			const transformControls = within(inspector).getByLabelText('Transform controls')
 			fireEvent.change(within(transformControls).getByLabelText('X'), { target: { value: '24' } })
@@ -687,11 +695,12 @@ describe('video editor harness', () => {
 		try {
 			await createProjectFromMenu(user)
 			await importSampleResource(harness)
-			await user.click(screen.getByRole('button', { name: /Sample asset 1/i }))
+			await user.click(await screen.findByRole('button', { name: /Sample asset 1/i }))
 
 			const inspector = screen.getByLabelText('Inspector')
+			expect(await within(inspector).findByText('clip selected')).toBeVisible()
 			await user.click(within(inspector).getByRole('tab', { name: 'Color' }))
-			expect(within(inspector).getByLabelText('Color inspector')).toBeVisible()
+			expect(await within(inspector).findByLabelText('Color inspector', undefined, { timeout: 5000 })).toBeVisible()
 			expect(within(inspector).getByLabelText('Color presets')).toBeVisible()
 
 			await user.click(within(inspector).getByRole('tab', { name: 'Audio' }))
@@ -699,6 +708,7 @@ describe('video editor harness', () => {
 
 			await user.click(within(inspector).getByRole('tab', { name: 'Export' }))
 			expect(within(inspector).getByLabelText('Export inspector')).toHaveTextContent('Queue clip export')
+			expect(await within(inspector).findByText('clip selected')).toBeVisible()
 			await user.click(within(inspector).getByRole('button', { name: 'Queue clip export' }))
 			expect(await within(inspector).findByRole('status')).toHaveTextContent(/Export ready: \d+ frames/)
 
@@ -719,7 +729,7 @@ describe('video editor harness', () => {
 			const timeline = screen.getByLabelText('Timeline')
 			setTimelineCursor(timeline, 4.5)
 
-			expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.50s')
+			await waitFor(() => expect(within(timeline).getByLabelText('Current time')).toHaveTextContent('4.50s'))
 			expect(within(timeline).getAllByLabelText('Current step')).toHaveLength(1)
 			const previewPanel = screen.getByLabelText('Preview panel')
 			expect(within(previewPanel).queryByRole('slider', { name: 'Cursor' })).toBeNull()
@@ -763,5 +773,5 @@ describe('video editor harness', () => {
 		} finally {
 			unmount()
 		}
-	}, 10000)
+	}, 30000)
 })

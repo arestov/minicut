@@ -33,6 +33,25 @@ const waitForModelAttr = async (
 	return findModel(state, modelName)
 }
 
+const waitForModelRel = async (
+	runtime: ReturnType<typeof createMiniCutDktRuntime>,
+	modelName: string,
+	attrName: string,
+	expectedValue: unknown,
+	relName: string,
+) => {
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const state = await runtime.debugDumpAppState()
+		const model = findModel(state, modelName)
+		if (attrEquals(model?.attrs[attrName], expectedValue) && Array.isArray(model?.rels[relName])) {
+			return model
+		}
+		await new Promise((resolve) => setTimeout(resolve, 0))
+	}
+	const state = await runtime.debugDumpAppState()
+	return findModel(state, modelName)
+}
+
 const waitForRegistryProject = async (
 	runtime: ReturnType<typeof createMiniCutDktRuntime>,
 	projectId: string,
@@ -286,6 +305,25 @@ describe('createMiniCutDktRuntime', () => {
 		expect(projectModel?.attrs.sourceProjectId).toBe(String(projectId))
 		expect(Array.isArray(appRoot?.rels.project)).toBe(true)
 		expect((appRoot?.rels.project as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0)
+
+		const importResult = await runtime.dispatchCommand({
+			c: CMD.RESOURCE_IMPORT,
+			p: {
+				projectId: String(projectId),
+				name: 'Imported Asset',
+				kind: 'video',
+				duration: 5,
+				url: 'sample://imported',
+				mime: 'video/sample',
+			},
+		})
+		const resourceId = String(importResult.createdIds?.resourceId)
+		const resourceModel = await waitForModelAttr(runtime, 'minicut_resource', 'sourceResourceId', resourceId)
+		const projectWithResources = await waitForModelRel(runtime, 'minicut_project', 'sourceProjectId', String(projectId), 'resources')
+
+		expect(resourceModel?.attrs.name).toBe('Imported Asset')
+		expect(Array.isArray(projectWithResources?.rels.resources)).toBe(true)
+		expect((projectWithResources?.rels.resources as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0)
 	})
 
 	it('materializes project hierarchy when replacing the registry snapshot directly', async () => {
@@ -300,9 +338,14 @@ describe('createMiniCutDktRuntime', () => {
 
 		await runtime.replaceRegistrySnapshot(registry)
 
-		const projectModel = await waitForModelAttr(runtime, 'minicut_project', 'sourceProjectId', created.project.id)
+		const projectModel = await waitForModelRel(runtime, 'minicut_project', 'sourceProjectId', created.project.id, 'tracks')
+		const firstTrack = created.entities.find((entity) => entity.type === 'track')
+		const trackModel = firstTrack ? await waitForModelAttr(runtime, 'minicut_track', 'sourceTrackId', firstTrack.id) : null
 		const appRoot = await waitForModelAttr(runtime, 'minicut_app_root', 'hasProjects', true)
 		expect(projectModel?.attrs.sourceProjectId).toBe(created.project.id)
+		expect(trackModel?.attrs.sourceTrackId).toBe(firstTrack?.id)
+		expect(Array.isArray(projectModel?.rels.tracks)).toBe(true)
+		expect((projectModel?.rels.tracks as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0)
 		expect(Array.isArray(appRoot?.rels.project)).toBe(true)
 		expect((appRoot?.rels.project as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0)
 	})

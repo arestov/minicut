@@ -11,6 +11,7 @@ import '../components/styles.css'
 
 interface VideoEditorHarnessAppProps {
 	harness?: VideoEditorHarness
+	dktBootstrapOptions?: Parameters<NonNullable<VideoEditorHarness['pageRuntime']>['bootstrap']>[0] | null
 }
 
 const LAST_ROOM_STORAGE_KEY = 'minicut:last-room-id'
@@ -121,6 +122,7 @@ const resolveMediaTransferOptions = (): {
 }
 
 export const VideoEditorHarnessApp = ({
+	dktBootstrapOptions,
 	harness: providedHarness,
 }: VideoEditorHarnessAppProps) => {
 	const resolvedRoom = useMemo(() => resolveBrowserRoom(), [])
@@ -239,7 +241,7 @@ export const VideoEditorHarnessApp = ({
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>
-			<DktEditorRoot runtime={ownedHarness.pageRuntime}>
+			<DktEditorRoot runtime={ownedHarness.pageRuntime} bootstrapOptions={dktBootstrapOptions}>
 				<VideoEditorApp />
 			</DktEditorRoot>
 		</VideoEditorProvider>

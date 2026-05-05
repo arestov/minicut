@@ -177,6 +177,31 @@ export const Clip = model({
 				return attrs ? { attrs } : '$noop'
 			},
 		},
+		setResource: {
+			to: {
+				resource: ['<< resource', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				resource: (payload as { resource?: unknown } | null)?.resource ?? null,
+			}),
+		},
+		setText: {
+			to: {
+				text: ['<< text', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				text: (payload as { text?: unknown } | null)?.text ?? null,
+			}),
+		},
+		setEffects: {
+			to: {
+				effects: ['<< effects', { method: 'set_many' }],
+			},
+			fn: (payload: unknown) => {
+				const effects = (payload as { effects?: unknown } | null)?.effects
+				return { effects: Array.isArray(effects) ? effects : [] }
+			},
+		},
 		removeEffect: {
 			to: {
 				effects: ['<< effects', { method: 'set_many' }],

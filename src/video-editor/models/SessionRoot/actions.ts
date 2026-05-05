@@ -3,7 +3,10 @@ import type { EditorSessionState } from '../../domain/types'
 export type DktSessionActionName =
 	| 'selectEntity'
 	| 'setActiveProject'
+	| 'setActiveInspectorTab'
 	| 'setCursor'
+	| 'setPlaying'
+	| 'setTimelineZoom'
 	| 'togglePlayback'
 	| 'zoomTimeline'
 
@@ -13,6 +16,7 @@ export type DktSessionActionPatch = Partial<Pick<EditorSessionState,
 	| 'cursor'
 	| 'isPlaying'
 	| 'timelineZoom'
+	| 'activeInspectorTab'
 >>
 
 type DktActionDescriptor = {
@@ -42,6 +46,21 @@ export const reduceSessionSetActiveProjectAction = (payload: unknown): Pick<Edit
 export const reduceSessionSetCursorAction = (payload: unknown): Pick<EditorSessionState, 'cursor'> | null => {
 	const value = finiteNumber(payload)
 	return value === null ? null : { cursor: Math.max(0, roundToHundredths(value)) }
+}
+
+export const reduceSessionSetActiveInspectorTabAction = (payload: unknown): Pick<EditorSessionState, 'activeInspectorTab'> | null => {
+	return payload === 'edit' || payload === 'color' || payload === 'audio' || payload === 'export'
+		? { activeInspectorTab: payload }
+		: null
+}
+
+export const reduceSessionSetPlayingAction = (payload: unknown): Pick<EditorSessionState, 'isPlaying'> | null => {
+	return typeof payload === 'boolean' ? { isPlaying: payload } : null
+}
+
+export const reduceSessionSetTimelineZoomAction = (payload: unknown): Pick<EditorSessionState, 'timelineZoom'> | null => {
+	const value = finiteNumber(payload)
+	return value === null ? null : { timelineZoom: clamp(value, 8, 96) }
 }
 
 export const reduceSessionTogglePlaybackAction = (
@@ -81,6 +100,27 @@ export const sessionSetCursorAction = {
 	fn: (payload: unknown) => reduceSessionSetCursorAction(payload) ?? '$noop',
 } as const satisfies DktActionDescriptor
 
+export const sessionSetActiveInspectorTabAction = {
+	to: {
+		activeInspectorTab: ['activeInspectorTab'],
+	},
+	fn: (payload: unknown) => reduceSessionSetActiveInspectorTabAction(payload) ?? '$noop',
+} as const satisfies DktActionDescriptor
+
+export const sessionSetPlayingAction = {
+	to: {
+		isPlaying: ['isPlaying'],
+	},
+	fn: (payload: unknown) => reduceSessionSetPlayingAction(payload) ?? '$noop',
+} as const satisfies DktActionDescriptor
+
+export const sessionSetTimelineZoomAction = {
+	to: {
+		timelineZoom: ['timelineZoom'],
+	},
+	fn: (payload: unknown) => reduceSessionSetTimelineZoomAction(payload) ?? '$noop',
+} as const satisfies DktActionDescriptor
+
 export const sessionTogglePlaybackAction = {
 	to: {
 		isPlaying: ['isPlaying'],
@@ -107,7 +147,10 @@ export const sessionZoomTimelineAction = {
 export const dktSessionActions = {
 	selectEntity: sessionSelectEntityAction,
 	setActiveProject: sessionSetActiveProjectAction,
+	setActiveInspectorTab: sessionSetActiveInspectorTabAction,
 	setCursor: sessionSetCursorAction,
+	setPlaying: sessionSetPlayingAction,
+	setTimelineZoom: sessionSetTimelineZoomAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
 } as const satisfies Record<DktSessionActionName, DktActionDescriptor>

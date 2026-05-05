@@ -99,6 +99,15 @@ export const Track = model({
 				return attrs ? { attrs } : '$noop'
 			},
 		},
+		setClips: {
+			to: {
+				clips: ['<< clips', { method: 'set_many' }],
+			},
+			fn: (payload: unknown) => {
+				const clips = (payload as { clips?: unknown } | null)?.clips
+				return { clips: Array.isArray(clips) ? clips : [] }
+			},
+		},
 		removeClip: {
 			to: {
 				clips: ['<< clips', { method: 'set_many' }],

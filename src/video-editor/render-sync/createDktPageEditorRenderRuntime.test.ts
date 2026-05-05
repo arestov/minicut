@@ -15,7 +15,7 @@ type FakePageRuntime = PageSyncRuntime & {
 	dispatched: Array<{ actionName: string; payload: unknown; scopeNodeId: string | null }>
 }
 
-const createFakePageRuntime = (): FakePageRuntime => {
+const createFakePageRuntime = ({ materializedProjects = true }: { materializedProjects?: boolean } = {}): FakePageRuntime => {
 	const nodes: Record<string, FakeNode> = {
 		root: {
 			modelName: 'minicut_session_root',
@@ -49,6 +49,9 @@ const createFakePageRuntime = (): FakePageRuntime => {
 		},
 	}
 	const dispatched: FakePageRuntime['dispatched'] = []
+	if (!materializedProjects) {
+		nodes.app.rels.project = []
+	}
 	const snapshot: PageRootSnapshot = {
 		booted: true,
 		ready: true,
@@ -229,5 +232,16 @@ describe('createDktPageEditorRenderRuntime', () => {
 		expect(actions.selectEntity).toHaveBeenCalledWith('clip-source')
 		expect(actions.moveClipById).toHaveBeenCalledWith('clip-source', 0.5)
 		expect(actions.updateClipOpacityById).toHaveBeenCalledWith('clip-source', 40)
+	})
+
+	it('exposes partial streaming state without falling back to legacy project reads', () => {
+		const runtime = createDktPageEditorRenderRuntime({
+			pageRuntime: createFakePageRuntime({ materializedProjects: false }),
+			legacyRuntime: createLegacyRuntime(),
+			actions: createActions(),
+		})
+
+		expect(runtime.readOne(runtime.getRootScope(), 'activeProject')).toBeNull()
+		expect(runtime.readMany(runtime.getRootScope(), 'projects')).toEqual([])
 	})
 })
