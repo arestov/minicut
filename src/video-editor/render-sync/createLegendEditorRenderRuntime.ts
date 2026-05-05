@@ -59,6 +59,11 @@ export interface SelectedClipSummary {
 	trackName: string
 }
 
+export interface ClipTrackPositionSummary {
+	trackName: string
+	ordinal: number
+}
+
 export interface CreateLegendEditorRenderRuntimeOptions {
 	projects$: Observable<ProjectRegistry>
 	session$: Observable<EditorSessionState>
@@ -213,9 +218,30 @@ const getSelectedClipSummary = (registry: ProjectRegistry, session: EditorSessio
 	}
 }
 
+const getClipTrackPositionSummary = (registry: ProjectRegistry, clipId: EntityId): ClipTrackPositionSummary | null => {
+	const track = getTrackForClip(registry, clipId)
+	if (!track) {
+		return null
+	}
+
+	const clipIds = Array.isArray(track.rels.clips) ? track.rels.clips : []
+	return {
+		trackName: String(track.attrs.name ?? 'Track'),
+		ordinal: Math.max(1, clipIds.indexOf(clipId) + 1),
+	}
+}
+
 const asNumberPayload = (payload: unknown, key: string): number | null => {
 	const value = (payload as Record<string, unknown> | null)?.[key]
 	return typeof value === 'number' ? value : null
+}
+
+const cloneSnapshotValue = (value: unknown): unknown => {
+	if (!value || typeof value !== 'object') {
+		return value
+	}
+
+	return structuredClone(value)
 }
 
 export const createLegendEditorRenderRuntime = ({
@@ -253,7 +279,7 @@ export const createLegendEditorRenderRuntime = ({
 						}
 						: getEntityAttrs(projects$.get(), scope) ?? {}
 
-			return Object.fromEntries(fields.map((field) => [field, source[field]]))
+			return Object.fromEntries(fields.map((field) => [field, cloneSnapshotValue(source[field])]))
 		},
 
 		subscribeAttrs(scope, fields, listener) {
@@ -274,7 +300,14 @@ export const createLegendEditorRenderRuntime = ({
 			}
 
 			const attrsNode = getAttrsNode(projects$, scope)
-			return attrsNode ? combineCleanups(fields.map((field) => subscribeNode(attrsNode[field], listener))) : EMPTY_CLEANUP
+			if (!attrsNode) {
+				return EMPTY_CLEANUP
+			}
+
+			return combineCleanups([
+				subscribeNode(attrsNode, listener),
+				...fields.map((field) => subscribeNode(attrsNode[field], listener)),
+			])
 		},
 
 		readOne,
@@ -340,6 +373,9 @@ export const createLegendEditorRenderRuntime = ({
 			}
 			if (scope.type === 'clip' && compName === 'hasActiveColorGrade') {
 				return hasActiveColorGrade(registry, scope.nodeId)
+			}
+			if (scope.type === 'clip' && compName === 'trackPosition') {
+				return getClipTrackPositionSummary(registry, scope.nodeId)
 			}
 			if (scope.type === 'session' && compName === 'selectedClipSummary') {
 				return getSelectedClipSummary(registry, session$.get())

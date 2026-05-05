@@ -23,6 +23,17 @@ const EditorScopeContext = createContext<EditorScope | null>(null)
 const normalizeFields = (fields: readonly string[]): readonly string[] =>
 	Object.freeze(Array.from(new Set(fields)).sort())
 
+const areValuesEqual = (left: unknown, right: unknown): boolean => {
+	if (Object.is(left, right)) {
+		return true
+	}
+	if (!left || !right || typeof left !== 'object' || typeof right !== 'object') {
+		return false
+	}
+
+	return JSON.stringify(left) === JSON.stringify(right)
+}
+
 const areRecordsShallowEqual = (left: Record<string, unknown> | null, right: Record<string, unknown>): boolean => {
 	if (!left) {
 		return false
@@ -31,7 +42,7 @@ const areRecordsShallowEqual = (left: Record<string, unknown> | null, right: Rec
 	const leftKeys = Object.keys(left)
 	const rightKeys = Object.keys(right)
 	return leftKeys.length === rightKeys.length
-		&& rightKeys.every((key) => Object.is(left[key], right[key]))
+		&& rightKeys.every((key) => areValuesEqual(left[key], right[key]))
 }
 
 const areScopesEqual = (left: EditorScope | null, right: EditorScope | null): boolean =>
