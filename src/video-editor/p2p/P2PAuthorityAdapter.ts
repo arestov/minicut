@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import type { DomSyncTransportLike } from 'dkt/dom-sync/transport.js'
 import { PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
 import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
@@ -169,6 +170,33 @@ const createTransportAuthorityClient = (
 			syncListeners.add(listener)
 			return () => {
 				syncListeners.delete(listener)
+			}
+		},
+
+		openDktTransport(): DomSyncTransportLike<MiniCutDktTransportMessage> {
+			const transportListeners = new Set<(message: MiniCutDktTransportMessage) => void>()
+			const unlistenTransport = transport.listen((message) => {
+				if (message && typeof message === 'object' && 'type' in message) {
+					for (const listener of transportListeners) {
+						listener(message as MiniCutDktTransportMessage)
+					}
+				}
+			})
+
+			return {
+				send(message) {
+					transport.send(message)
+				},
+				listen(listener) {
+					transportListeners.add(listener)
+					return () => {
+						transportListeners.delete(listener)
+					}
+				},
+				destroy() {
+					transportListeners.clear()
+					unlistenTransport()
+				},
 			}
 		},
 
@@ -474,6 +502,14 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 
 		dispatch(command: Command) {
 			return invoke((client) => client.dispatch(command))
+		},
+
+		openDktTransport() {
+			if (!activeClient || typeof activeClient.openDktTransport !== 'function') {
+				throw new Error('Active P2P authority cannot open DKT transport')
+			}
+
+			return activeClient.openDktTransport()
 		},
 
 		destroy() {

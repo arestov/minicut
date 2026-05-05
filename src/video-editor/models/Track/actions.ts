@@ -18,6 +18,8 @@ export const normalizeClipCreationAttrs = (payload: unknown) => {
 
 	return {
 		sourceClipId: value.sourceClipId,
+		sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : null,
+		sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
 		name: typeof value.name === 'string' ? value.name : 'Clip',
 		color: typeof value.color === 'string' ? value.color : '#2563eb',
 		start: typeof value.start === 'number' ? value.start : 0,

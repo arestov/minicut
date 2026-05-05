@@ -10,6 +10,9 @@ type RestorableAuthorityClient = EditorAuthorityClient & {
 const canReplaceSnapshot = (client: EditorAuthorityClient): client is RestorableAuthorityClient =>
 	typeof client.replaceSnapshot === 'function'
 
+const canOpenDktTransport = (client: EditorAuthorityClient): client is EditorAuthorityClient & Required<Pick<EditorAuthorityClient, 'openDktTransport'>> =>
+	typeof client.openDktTransport === 'function'
+
 export const createFallbackAuthorityClient = (options: {
 	workerUrl?: string | URL
 	name?: string
@@ -92,6 +95,13 @@ export const createFallbackAuthorityClient = (options: {
 
 				return client.replaceSnapshot(snapshot)
 			})
+		},
+		openDktTransport() {
+			if (!canOpenDktTransport(active)) {
+				throw new Error('Active authority cannot open DKT transport')
+			}
+
+			return active.openDktTransport()
 		},
 		destroy() {
 			unsubscribe?.()

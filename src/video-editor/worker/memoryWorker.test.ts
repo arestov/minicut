@@ -1,4 +1,7 @@
 import { getActiveProject, getClipIdsForTrack, getProjectEntity, getResourceEntities, getVideoTrack } from '../domain/selectors'
+import { defineShape } from '../../dkt-react-sync/shape/defineShape'
+import { createMiniCutPageSyncRuntime } from '../dkt/runtime/createMiniCutPageSyncRuntime'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { CMD, PATCH, type Entity } from '../domain/types'
 import { MemoryWorkerAuthority } from './memoryWorker'
 
@@ -21,6 +24,100 @@ const createClipWithEffect = () => {
 	})
 
 	return { worker, projectId, clipId, effectId: String(effectResult.createdIds?.effectId) }
+}
+
+const flushMicrotasks = async () => {
+	for (let index = 0; index < 8; index += 1) {
+		await Promise.resolve()
+	}
+}
+
+const waitForRootScope = (pageRuntime: ReturnType<typeof createMiniCutPageSyncRuntime>): Promise<ReactSyncScopeHandle> => {
+	const current = pageRuntime.getRootScope()
+	if (current) {
+		return Promise.resolve(current)
+	}
+
+	return new Promise((resolve) => {
+		const stop = pageRuntime.subscribeRootScope(() => {
+			const rootScope = pageRuntime.getRootScope()
+			if (!rootScope) {
+				return
+			}
+
+			stop()
+			resolve(rootScope)
+		})
+	})
+}
+
+const waitForOneRel = (
+	pageRuntime: ReturnType<typeof createMiniCutPageSyncRuntime>,
+	scope: ReactSyncScopeHandle,
+	relName: string,
+): Promise<ReactSyncScopeHandle> => {
+	const current = pageRuntime.readOne(scope, relName)
+	if (current) {
+		return Promise.resolve(current)
+	}
+
+	return new Promise((resolve) => {
+		const stop = pageRuntime.subscribeOne(scope, relName, () => {
+			const next = pageRuntime.readOne(scope, relName)
+			if (!next) {
+				return
+			}
+
+			stop()
+			resolve(next)
+		})
+	})
+}
+
+const waitForManyRel = (
+	pageRuntime: ReturnType<typeof createMiniCutPageSyncRuntime>,
+	scope: ReactSyncScopeHandle,
+	relName: string,
+): Promise<readonly ReactSyncScopeHandle[]> => {
+	const current = pageRuntime.readMany(scope, relName)
+	if (current.length > 0) {
+		return Promise.resolve(current)
+	}
+
+	return new Promise((resolve) => {
+		const stop = pageRuntime.subscribeMany(scope, relName, () => {
+			const next = pageRuntime.readMany(scope, relName)
+			if (next.length === 0) {
+				return
+			}
+
+			stop()
+			resolve(next)
+		})
+	})
+}
+
+const waitForStringAttr = (
+	pageRuntime: ReturnType<typeof createMiniCutPageSyncRuntime>,
+	scope: ReactSyncScopeHandle,
+	attrName: string,
+): Promise<string> => {
+	const current = pageRuntime.readAttrs(scope, [attrName])[attrName]
+	if (typeof current === 'string') {
+		return Promise.resolve(current)
+	}
+
+	return new Promise((resolve) => {
+		const stop = pageRuntime.subscribeAttrs(scope, [attrName], () => {
+			const next = pageRuntime.readAttrs(scope, [attrName])[attrName]
+			if (typeof next !== 'string') {
+				return
+			}
+
+			stop()
+			resolve(next)
+		})
+	})
 }
 
 describe('MemoryWorkerAuthority', () => {
@@ -145,5 +242,37 @@ describe('MemoryWorkerAuthority', () => {
 		expect(snapshot.projects[projectId]).toBeDefined()
 		expect(snapshot.entitiesById[audioClipId]).toBeUndefined()
 		expect(Object.values(snapshot.entitiesById).some((entity) => entity.type === 'effect')).toBe(false)
+	})
+
+	it('streams project hierarchy to a page DKT replica over openDktTransport', async () => {
+		const worker = new MemoryWorkerAuthority()
+		const pageRuntime = createMiniCutPageSyncRuntime({ transport: worker.openDktTransport() })
+		const shape = defineShape({
+			one: {
+				pioneer: defineShape({
+					many: {
+						project: defineShape({
+							attrs: ['sourceProjectId'],
+						}),
+					},
+				}),
+			},
+		})
+
+		try {
+			pageRuntime.bootstrap({ sessionKey: 'session:test' })
+			const rootScope = await waitForRootScope(pageRuntime)
+			pageRuntime.mountShape(rootScope, shape)
+			const appScope = await waitForOneRel(pageRuntime, rootScope, 'pioneer')
+			worker.dispatch({ c: CMD.PROJECT_CREATE, p: { title: 'Replica project' } })
+			await flushMicrotasks()
+			const projectScopes = await waitForManyRel(pageRuntime, appScope, 'project')
+			const sourceProjectId = await waitForStringAttr(pageRuntime, projectScopes[0], 'sourceProjectId')
+
+			expect(sourceProjectId).toBeTypeOf('string')
+		} finally {
+			pageRuntime.destroy()
+			worker.destroy()
+		}
 	})
 })

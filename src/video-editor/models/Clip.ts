@@ -23,6 +23,8 @@ export const Clip = model({
 	model_name: 'minicut_clip',
 	attrs: {
 		sourceClipId: ['input', null],
+		sourceResourceId: ['input', null],
+		sourceTextId: ['input', null],
 		name: ['input', 'Clip'],
 		color: ['input', '#2563eb'],
 		start: ['input', 0],
@@ -205,5 +207,5 @@ export const Clip = model({
 })
 
 export const CLIP_PROXY_CREATION_SHAPE = {
-	attrs: ['sourceClipId', 'name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
+	attrs: ['sourceClipId', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
 } as const

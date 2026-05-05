@@ -6,7 +6,24 @@ import { SYNCR_TYPES } from 'dkt-all/libs/provoda/SyncR_TYPES.js'
 import { getModelById } from 'dkt-all/libs/provoda/utils/getModelById.js'
 import { buildDispatchResult } from '../../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../../domain/applyPatch'
-import type { Command, DispatchResult, ProjectRegistry } from '../../domain/types'
+import {
+	getClipEntitiesForTrack,
+	getProjectEntity,
+	getResourceEntities,
+	getTracks,
+} from '../../domain/selectors'
+import type {
+	ClipAttrs,
+	Command,
+	DispatchResult,
+	EffectAttrs,
+	ProjectAttrs,
+	ProjectGraph,
+	ProjectRegistry,
+	ResourceAttrs,
+	TextAttrs,
+	TrackAttrs,
+} from '../../domain/types'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { MiniCutAppRoot } from '../../models/AppRoot'
 
@@ -17,6 +34,7 @@ type RuntimeModelLike = {
 	__getPublicAttrs?: () => readonly string[]
 	getLinedStructure?: (options: unknown, config: unknown) => Promise<readonly RuntimeModelLike[]> | readonly RuntimeModelLike[]
 	input?: (callback: () => void | Promise<void>) => unknown
+	queryRel?: (relName: string) => Promise<unknown> | unknown
 	dispatch: (actionName: string, payload?: unknown) => Promise<void> | void
 	start_page?: unknown
 }
@@ -89,6 +107,8 @@ export type MiniCutDktResourceProxyInput = {
 
 export type MiniCutDktClipProxyInput = {
 	sourceClipId: string
+	sourceResourceId?: string | null
+	sourceTextId?: string | null
 	name?: string
 	color?: string
 	start?: number
@@ -163,6 +183,146 @@ const serializeModel = (model: RuntimeModelLike): MiniCutDktSerializedModel => {
 		modelName: model.model_name ?? null,
 		attrs,
 		rels,
+	}
+
+
+}
+
+const SESSION_IMPORTANT_REL_PATHS = Object.freeze([Object.freeze(['pioneer'])])
+
+const MODEL_ROOT_REL_BY_MODEL_NAME: Partial<Record<string, string>> = {
+	minicut_project: 'project',
+	minicut_track: 'track',
+	minicut_resource: 'resource',
+	minicut_clip: 'clip',
+	minicut_text: 'text',
+	minicut_effect: 'effect',
+}
+
+const isRuntimeModelLike = (value: unknown): value is RuntimeModelLike =>
+	Boolean(value && typeof value === 'object' && '_node_id' in value)
+
+const normalizeModelList = (value: unknown): RuntimeModelLike[] => {
+	if (Array.isArray(value)) {
+		return value.filter(isRuntimeModelLike)
+	}
+
+	return isRuntimeModelLike(value) ? [value] : []
+}
+
+const queryModelRel = async (model: RuntimeModelLike, relName: string): Promise<RuntimeModelLike[]> => {
+	const queried = await model.queryRel?.(relName)
+	return normalizeModelList(queried ?? _getCurrentRel(model, relName))
+}
+
+const readInModelInput = async <Value>(model: RuntimeModelLike, read: () => Promise<Value> | Value): Promise<Value> => {
+	if (typeof model.input !== 'function') {
+		return read()
+	}
+
+	return new Promise((resolve, reject) => {
+		model.input(async () => {
+			try {
+				resolve(await read())
+			} catch (error) {
+				reject(error)
+			}
+		})
+	})
+}
+
+const asProjectAttrs = (attrs: Record<string, unknown>): ProjectAttrs => attrs as unknown as ProjectAttrs
+const asTrackAttrs = (attrs: Record<string, unknown>): TrackAttrs => attrs as unknown as TrackAttrs
+const asResourceAttrs = (attrs: Record<string, unknown>): ResourceAttrs => attrs as unknown as ResourceAttrs
+const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
+const asTextAttrs = (attrs: Record<string, unknown>): TextAttrs => attrs as unknown as TextAttrs
+const asEffectAttrs = (attrs: Record<string, unknown>): EffectAttrs => attrs as unknown as EffectAttrs
+
+const toProjectProxy = (snapshot: ProjectRegistry, project: ProjectGraph): MiniCutDktProjectProxyInput => {
+	const projectEntity = getProjectEntity(snapshot, project)
+	const attrs = asProjectAttrs(projectEntity.attrs)
+
+	return {
+		sourceProjectId: project.id,
+		title: attrs.title,
+		fps: attrs.fps,
+		width: attrs.width,
+		height: attrs.height,
+		duration: attrs.duration,
+		createdAt: attrs.createdAt,
+		updatedAt: attrs.updatedAt,
+	}
+}
+
+const toTrackProxy = (track: { id: string; attrs: Record<string, unknown> }): MiniCutDktTrackProxyInput => {
+	const attrs = asTrackAttrs(track.attrs)
+	return {
+		sourceTrackId: track.id,
+		kind: attrs.kind,
+		name: attrs.name,
+		muted: attrs.muted,
+		locked: attrs.locked,
+		height: attrs.height,
+	}
+}
+
+const toResourceProxy = (resource: { id: string; attrs: Record<string, unknown> }): MiniCutDktResourceProxyInput => {
+	const attrs = asResourceAttrs(resource.attrs)
+	return {
+		sourceResourceId: resource.id,
+		name: attrs.name,
+		kind: attrs.kind,
+		url: attrs.url,
+		mime: attrs.mime,
+		duration: attrs.duration,
+		width: attrs.width,
+		height: attrs.height,
+		size: attrs.size,
+		source: attrs.source,
+		status: attrs.status,
+		data: attrs.data,
+	}
+}
+
+const toClipProxy = (clip: { id: string; attrs: Record<string, unknown>; rels: Record<string, unknown> }): MiniCutDktClipProxyInput => {
+	const attrs = asClipAttrs(clip.attrs)
+	return {
+		sourceClipId: clip.id,
+		sourceResourceId: typeof clip.rels.resource === 'string' ? clip.rels.resource : null,
+		sourceTextId: typeof clip.rels.text === 'string' ? clip.rels.text : null,
+		name: attrs.name,
+		color: attrs.color,
+		start: attrs.start,
+		in: attrs.in,
+		duration: attrs.duration,
+		fadeIn: attrs.fadeIn,
+		fadeOut: attrs.fadeOut,
+		audio: attrs.audio,
+		opacity: attrs.opacity,
+		transform: attrs.transform,
+	}
+}
+
+const toTextProxy = (text: { id: string; attrs: Record<string, unknown> }): MiniCutDktTextProxyInput => {
+	const attrs = asTextAttrs(text.attrs)
+	return {
+		sourceTextId: text.id,
+		content: attrs.content,
+		style: attrs.style,
+		box: attrs.box,
+	}
+}
+
+const toEffectProxy = (effect: { id: string; attrs: Record<string, unknown> }): MiniCutDktEffectProxyInput => {
+	const attrs = asEffectAttrs(effect.attrs)
+	return {
+		sourceEffectId: effect.id,
+		name: attrs.name,
+		kind: attrs.kind,
+		enabled: attrs.enabled,
+		amount: attrs.amount,
+		params: attrs.params as Record<string, unknown> | undefined,
+		color: attrs.color as Record<string, unknown> | undefined,
 	}
 }
 
@@ -267,6 +427,30 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await target.dispatch(actionName, payload)
 	}
 
+	const dispatchScopedAction = async (
+		actionName: string,
+		payload?: unknown,
+		scopeNodeId?: string | null,
+		sessionKey = 'minicut-local',
+	): Promise<void> => {
+		const sessionRoot = await bootstrapSessionRoot(sessionKey)
+		if (!sessionRoot) {
+			throw new Error('MiniCut DKT runtime is disabled')
+		}
+
+		let target = sessionRoot
+		if (typeof scopeNodeId === 'string' && scopeNodeId) {
+			const scopedTarget = getModelById(sessionRoot, scopeNodeId) as RuntimeModelLike | null
+			if (!scopedTarget) {
+				throw new Error(`MiniCut DKT scope was not found: ${scopeNodeId}`)
+			}
+
+			target = scopedTarget
+		}
+
+		await target.dispatch(actionName, payload)
+	}
+
 	const dispatchSessionAction = async (actionName: string, payload?: unknown): Promise<void> => {
 		const sessionRoot = await bootstrapSessionRoot()
 		if (!sessionRoot) {
@@ -287,6 +471,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 	const replaceRegistrySnapshot = async (snapshot: ProjectRegistry): Promise<void> => {
 		await dispatchAction('replaceRegistrySnapshot', snapshot)
+		await materializeRegistryHierarchy(snapshot)
 	}
 
 	const dispatchCommand = async (command: Command): Promise<DispatchResult> => {
@@ -297,35 +482,33 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 		const registry = structuredClone(app.appModel.states?.registrySnapshot as ProjectRegistry)
 		const result = buildDispatchResult(registry, command)
-		await app.appModel.dispatch('replaceRegistrySnapshot', applyPatchEnvelopeToRegistry(registry, result.envelope))
+		const nextSnapshot = applyPatchEnvelopeToRegistry(registry, result.envelope)
+		await app.appModel.dispatch('replaceRegistrySnapshot', nextSnapshot)
+		await materializeRegistryHierarchy(nextSnapshot)
 		return structuredClone(result)
 	}
 
 	const findProxyNodeId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
-		const state = await debugDumpAppState()
-		const models = [
-			...(state?.runtimeModels ?? []),
-			...(state?.lined ?? []),
-		]
-		const match = models.find((model) => (
-			model.modelName === modelName
-			&& model.attrs[sourceAttrName] === sourceId
-			&& typeof model.nodeId === 'string'
-		))
-
-		return match?.nodeId ?? null
-	}
-
-	const waitForProxyNodeId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
-		for (let attempt = 0; attempt < 20; attempt++) {
-			const nodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
-			if (nodeId) {
-				return nodeId
-			}
-			await new Promise((resolve) => setTimeout(resolve, 0))
+		const app = await bootstrapApp()
+		if (!app) {
+			return null
 		}
 
-		return findProxyNodeId(modelName, sourceAttrName, sourceId)
+		const relName = MODEL_ROOT_REL_BY_MODEL_NAME[modelName]
+		if (!relName) {
+			return null
+		}
+
+		return readInModelInput(app.appModel, async () => {
+			const models = await queryModelRel(app.appModel, relName)
+			const match = models.find((model) => (
+				model.model_name === modelName
+				&& model.states?.[sourceAttrName] === sourceId
+				&& typeof model._node_id === 'string'
+			))
+
+			return match?._node_id ?? null
+		})
 	}
 
 	const ensureProxy = async (
@@ -353,7 +536,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await app.appModel.dispatch(createActionName, input)
-		const createdNodeId = await waitForProxyNodeId(modelName, sourceAttrName, sourceId)
+		const createdNodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
 		if (!createdNodeId) {
 			throw new Error(`MiniCut DKT ${modelName} proxy was not created for ${sourceId}`)
 		}
@@ -396,6 +579,20 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	const ensureEffectProxy = async (effect: MiniCutDktEffectProxyInput): Promise<string> =>
 		ensureProxy(effectProxyNodeIds, effect, 'minicut_effect', 'sourceEffectId', 'createEffectProxy', effect.sourceEffectId)
 
+	const rememberProxyNodeId = async (
+		cache: Map<string, string>,
+		modelName: string,
+		sourceAttrName: string,
+		sourceId: string,
+	): Promise<string> => {
+		const nodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
+		if (!nodeId) {
+			throw new Error(`MiniCut DKT ${modelName} proxy was not created for ${sourceId}`)
+		}
+		cache.set(sourceId, nodeId)
+		return nodeId
+	}
+
 	const dispatchEffectAction = async (effect: MiniCutDktEffectProxyInput, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureEffectProxy(effect)
 		await dispatchAction(actionName, payload, nodeId)
@@ -413,6 +610,121 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return {
 			lined: lined.map(serializeModel),
 			runtimeModels: runtimeModels.map(serializeModel),
+		}
+	}
+
+	const materializeRegistryHierarchy = async (snapshot: ProjectRegistry): Promise<void> => {
+		for (const project of Object.values(snapshot.projects)) {
+			const projectProxy = toProjectProxy(snapshot, project)
+			if (!(await findProxyNodeId('minicut_project', 'sourceProjectId', project.id))) {
+				await dispatchAction('createProjectProxy', projectProxy)
+				await rememberProxyNodeId(projectProxyNodeIds, 'minicut_project', 'sourceProjectId', project.id)
+			}
+
+			await dispatchProjectAction(projectProxy, 'renameProject', { title: projectProxy.title })
+			await dispatchProjectAction(projectProxy, 'setProjectFormat', {
+				fps: projectProxy.fps,
+				width: projectProxy.width,
+				height: projectProxy.height,
+			})
+			await dispatchProjectAction(projectProxy, 'setProjectDuration', { duration: projectProxy.duration })
+
+			for (const resource of getResourceEntities(snapshot, project)) {
+				const resourceProxy = toResourceProxy(resource)
+				if (!(await findProxyNodeId('minicut_resource', 'sourceResourceId', resource.id))) {
+					await dispatchProjectAction(projectProxy, 'importResource', resourceProxy)
+					await rememberProxyNodeId(resourceProxyNodeIds, 'minicut_resource', 'sourceResourceId', resource.id)
+				}
+
+				await dispatchResourceAction(resourceProxy, 'renameResource', { name: resourceProxy.name })
+				await dispatchResourceAction(resourceProxy, 'setResourceStatus', { status: resourceProxy.status })
+			}
+
+			for (const track of getTracks(snapshot, project)) {
+				const trackProxy = toTrackProxy(track)
+				if (!(await findProxyNodeId('minicut_track', 'sourceTrackId', track.id))) {
+					await dispatchProjectAction(projectProxy, 'addTrack', trackProxy)
+					await rememberProxyNodeId(trackProxyNodeIds, 'minicut_track', 'sourceTrackId', track.id)
+				}
+
+				await dispatchTrackAction(trackProxy, 'renameTrack', { name: trackProxy.name })
+				await dispatchTrackAction(trackProxy, 'setTrackMuted', { muted: trackProxy.muted })
+				await dispatchTrackAction(trackProxy, 'setTrackLocked', { locked: trackProxy.locked })
+
+				for (const clip of getClipEntitiesForTrack(snapshot, track.id)) {
+					const clipProxy = toClipProxy(clip)
+					const textEntity = typeof clip.rels.text === 'string'
+						? snapshot.entitiesById[clip.rels.text]
+						: null
+
+					if (!(await findProxyNodeId('minicut_clip', 'sourceClipId', clip.id))) {
+						if (textEntity) {
+							await dispatchTrackAction(trackProxy, 'addTextClip', {
+								...clipProxy,
+								text: toTextProxy(textEntity),
+							})
+							await rememberProxyNodeId(clipProxyNodeIds, 'minicut_clip', 'sourceClipId', clip.id)
+							await rememberProxyNodeId(textProxyNodeIds, 'minicut_text', 'sourceTextId', textEntity.id)
+						} else {
+							await dispatchTrackAction(trackProxy, 'addClip', clipProxy)
+							await rememberProxyNodeId(clipProxyNodeIds, 'minicut_clip', 'sourceClipId', clip.id)
+						}
+					}
+
+					await dispatchClipAction(clipProxy, 'rename', { name: clipProxy.name })
+					if (clipProxy.color) {
+						await dispatchClipAction(clipProxy, 'color', { color: clipProxy.color })
+					}
+					if (clipProxy.opacity?.value != null) {
+						await dispatchClipAction(clipProxy, 'updateOpacity', { opacityPercent: clipProxy.opacity.value * 100 })
+					}
+					if (clipProxy.audio) {
+						await dispatchClipAction(clipProxy, 'setAudio', clipProxy.audio)
+					}
+					if (clipProxy.transform) {
+						await dispatchClipAction(clipProxy, 'setTransform', {
+							x: clipProxy.transform.x?.value,
+							y: clipProxy.transform.y?.value,
+							scale: clipProxy.transform.scale?.value,
+							rotation: clipProxy.transform.rotation?.value,
+						})
+					}
+
+					if (textEntity) {
+						const textProxy = toTextProxy(textEntity)
+						await dispatchTextAction(textProxy, 'setTextContent', { content: textProxy.content })
+						await dispatchTextAction(textProxy, 'setTextStyle', { style: textProxy.style })
+						await dispatchTextAction(textProxy, 'setTextBox', { box: textProxy.box })
+					}
+
+					const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
+					for (const effectId of effectIds) {
+						const effect = snapshot.entitiesById[effectId]
+						if (!effect) {
+							continue
+						}
+
+						const effectProxy = toEffectProxy(effect)
+						if (!(await findProxyNodeId('minicut_effect', 'sourceEffectId', effect.id))) {
+							await dispatchClipAction(clipProxy, 'addEffect', effectProxy)
+							await rememberProxyNodeId(effectProxyNodeIds, 'minicut_effect', 'sourceEffectId', effect.id)
+						}
+
+						await dispatchEffectAction(effectProxy, 'setEffectName', { name: effectProxy.name })
+						await dispatchEffectAction(effectProxy, 'setEffectKind', { kind: effectProxy.kind })
+						await dispatchEffectAction(effectProxy, 'setEffectEnabled', { enabled: effectProxy.enabled })
+						if (effectProxy.amount != null) {
+							await dispatchEffectAction(effectProxy, 'setEffectAmount', { amount: effectProxy.amount })
+						}
+						if (effectProxy.params) {
+							await dispatchEffectAction(effectProxy, 'setEffectParams', { params: effectProxy.params })
+						}
+						if (effectProxy.color) {
+							await dispatchEffectAction(effectProxy, 'setEffectColor', { color: effectProxy.color })
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -436,18 +748,20 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			}
 			activeSessionKey = sessionKey || 'minicut-local'
 			const sessionRoot = await bootstrapSessionRoot(activeSessionKey)
-			const streamRoot = sessionRoot ?? app.appModel
+			if (!sessionRoot) {
+				throw new Error('MiniCut DKT session root is not available')
+			}
 
 			if (!stream) {
 				stream = createWorkerStream(transport)
-				await app.runtime.sync_sender.addSyncStream(streamRoot, stream, [])
+				await app.runtime.sync_sender.addSyncStream(sessionRoot, stream, SESSION_IMPORTANT_REL_PATHS)
 			}
 
 			transport.send({
 				type: DKT_MSG.RUNTIME_READY,
 				requestId,
 				sessionKey: activeSessionKey,
-				rootNodeId: streamRoot._node_id ?? null,
+				rootNodeId: sessionRoot._node_id ?? null,
 			})
 		}
 
@@ -464,7 +778,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					destroy()
 					return
 				case DKT_MSG.DISPATCH_ACTION:
-						await dispatchAction(message.actionName, message.payload, message.scopeNodeId, activeSessionKey)
+					await dispatchScopedAction(message.actionName, message.payload, message.scopeNodeId, activeSessionKey)
 					if (message.requestId) {
 						transport.send({ type: DKT_MSG.RUNTIME_READY, requestId: message.requestId, rootNodeId: null })
 					}

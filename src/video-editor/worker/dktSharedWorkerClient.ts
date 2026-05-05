@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import type { DomSyncTransportLike } from 'dkt/dom-sync/transport.js'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
 import type { Command, DispatchResult, PatchEnvelope, ProjectRegistry } from '../domain/types'
 import type { EditorAuthorityClient, PatchListener } from './authorityClient'
@@ -26,6 +27,7 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 	#onError?: (error: Error) => void
 	#onSyncMessage?: (message: Extract<MiniCutDktTransportMessage, { type: typeof DKT_MSG.SYNC_HANDLE }>) => void
 	#listeners = new Set<PatchListener>()
+	#transportListeners = new Set<(message: MiniCutDktTransportMessage) => void>()
 	#pending = new Map<string, PendingRequest>()
 	#isDestroyed = false
 	#loadFailed = false
@@ -87,6 +89,35 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 		}
 		return () => {
 			this.#onSyncMessage = previous
+		}
+	}
+
+	openDktTransport(): DomSyncTransportLike<MiniCutDktTransportMessage> {
+		const localListeners = new Set<(message: MiniCutDktTransportMessage) => void>()
+		const forward = (message: MiniCutDktTransportMessage) => {
+			for (const listener of localListeners) {
+				listener(message)
+			}
+		}
+
+		this.#transportListeners.add(forward)
+
+		return {
+			send: (message) => {
+				if (!this.#isDestroyed) {
+					this.#worker.port.postMessage(message)
+				}
+			},
+			listen(listener) {
+				localListeners.add(listener)
+				return () => {
+					localListeners.delete(listener)
+				}
+			},
+			destroy: () => {
+				localListeners.clear()
+				this.#transportListeners.delete(forward)
+			},
 		}
 	}
 
@@ -160,6 +191,10 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 	}
 
 	#handleMessage(message: MiniCutDktTransportMessage): void {
+		for (const listener of this.#transportListeners) {
+			listener(message)
+		}
+
 		switch (message.type) {
 			case DKT_MSG.SYNC_HANDLE:
 				this.#onSyncMessage?.(message)

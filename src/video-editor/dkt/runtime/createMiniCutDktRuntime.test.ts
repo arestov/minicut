@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createEmptyRegistry, createProjectGraph } from '../../domain/createProject'
 import { CMD } from '../../domain/types'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { createMiniCutDktRuntime } from './createMiniCutDktRuntime'
@@ -276,13 +277,37 @@ describe('createMiniCutDktRuntime', () => {
 		const result = await runtime.dispatchCommand({ c: CMD.PROJECT_CREATE, p: { title: 'DKT Project' } })
 		const projectId = result.createdIds?.projectId
 		const snapshot = await waitForRegistryProject(runtime, String(projectId))
+		const projectModel = await waitForModelAttr(runtime, 'minicut_project', 'sourceProjectId', String(projectId))
+		const appRoot = await waitForModelAttr(runtime, 'minicut_app_root', 'hasProjects', true)
 
 		expect(projectId).toBeTypeOf('string')
 		expect(snapshot.projects[String(projectId)]).toBeTruthy()
 		expect(Object.keys(snapshot.entitiesById).length).toBeGreaterThan(0)
+		expect(projectModel?.attrs.sourceProjectId).toBe(String(projectId))
+		expect(Array.isArray(appRoot?.rels.project)).toBe(true)
+		expect((appRoot?.rels.project as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0)
 	})
 
-	it('boots transport sync on the session root and resolves scoped dispatch inside that session tree', async () => {
+	it('materializes project hierarchy when replacing the registry snapshot directly', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const registry = createEmptyRegistry()
+		const created = createProjectGraph('Snapshot Project', 1)
+		registry.activeProjectId = created.project.id
+		registry.projects[created.project.id] = created.project
+		for (const entity of created.entities) {
+			registry.entitiesById[entity.id] = entity
+		}
+
+		await runtime.replaceRegistrySnapshot(registry)
+
+		const projectModel = await waitForModelAttr(runtime, 'minicut_project', 'sourceProjectId', created.project.id)
+		const appRoot = await waitForModelAttr(runtime, 'minicut_app_root', 'hasProjects', true)
+		expect(projectModel?.attrs.sourceProjectId).toBe(created.project.id)
+		expect(Array.isArray(appRoot?.rels.project)).toBe(true)
+		expect((appRoot?.rels.project as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0)
+	})
+
+	it('boots transport sync on the session root and resolves scoped dispatch inside that tree', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
 		const memory = createMemoryTransport()
 		const connection = runtime.connect(memory.transport)
