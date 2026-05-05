@@ -40,6 +40,7 @@ import {
 	type SelectedClipSummary,
 } from '../render-sync'
 import type { EditorScope } from '../render-sync/EditorScope'
+import { useActiveProjectScope } from '../ui/dkt/hooks'
 import { IconButton } from './ControlPrimitives'
 import { TrackLabel, TrackLane } from './TrackRow'
 
@@ -437,7 +438,7 @@ export const TimelineView = () => {
 	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
 	const sessionAttrs = useEditorAttrs<{ timelineZoom?: unknown }>(['timelineZoom'], SESSION_SCOPE)
 	const selectedClipSummary = useEditorComp<SelectedClipSummary | null>('selectedClipSummary', SESSION_SCOPE)
-	const projectScope = useEditorOne('activeProject', ROOT_SCOPE)
+	const projectScope = useActiveProjectScope()
 	const sessionDispatch = useEditorActions(SESSION_SCOPE)
 	const rootDispatch = useEditorActions(ROOT_SCOPE)
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null

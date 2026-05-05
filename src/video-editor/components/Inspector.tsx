@@ -1,4 +1,5 @@
-import { EditorScopeProvider, ROOT_SCOPE, SESSION_SCOPE, useEditorActions, useEditorAttrs, useEditorOne } from '../render-sync'
+import { EditorScopeProvider, ROOT_SCOPE, SESSION_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
+import { useSelectedEntityScope } from '../ui/dkt/hooks'
 import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 import { InspectorAudioTabPanel } from './inspector/InspectorAudioTabPanel'
 import { InspectorClipHeader } from './inspector/InspectorClipHeader'
@@ -12,7 +13,7 @@ export const Inspector = ({ mediaElementRegistry }: { mediaElementRegistry?: Pre
 	const sessionDispatch = useEditorActions(SESSION_SCOPE)
 	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
 	const sessionAttrs = useEditorAttrs<{ activeInspectorTab?: InspectorTab }>(['activeInspectorTab'], SESSION_SCOPE)
-	const selectedEntityScope = useEditorOne('selectedEntity', SESSION_SCOPE)
+	const selectedEntityScope = useSelectedEntityScope()
 	const activeTab = sessionAttrs.activeInspectorTab ?? 'edit'
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 	const isClip = activeProjectId && selectedEntityScope?.type === 'clip'

@@ -9,10 +9,10 @@ import {
 	useEditorAttrs,
 	useEditorComp,
 	useEditorMany,
-	useEditorOne,
 	useEditorRenderRuntime,
 } from '../render-sync'
 import type { EditorScope } from '../render-sync/EditorScope'
+import { useActiveProjectScope } from '../ui/dkt/hooks'
 import { Button, IconButton } from './ControlPrimitives'
 
 const isPreviewableUrl = (url: string): boolean =>
@@ -175,7 +175,7 @@ export const MediaBin = () => {
 	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 	const rootDispatch = useEditorActions(ROOT_SCOPE)
 	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
-	const activeProjectScope = useEditorOne('activeProject', ROOT_SCOPE)
+	const activeProjectScope = useActiveProjectScope()
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 	const normalizedQuery = query.trim().toLowerCase()
 
