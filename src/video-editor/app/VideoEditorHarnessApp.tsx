@@ -2,11 +2,11 @@ import { useEffect, useMemo } from 'react'
 import { VideoEditorProvider } from './VideoEditorContext'
 import { createVideoEditorHarness, type VideoEditorHarness } from './createVideoEditorHarness'
 import { createBrowserHarnessPlatform } from './platform'
-import { VideoEditorApp } from '../ui/VideoEditorApp'
+import { VideoEditorApp } from '../components/VideoEditorApp'
 import { CMD } from '../domain/types'
 import { createDefaultRtcConfig } from '../p2p/PageP2PManager'
 import { resolveRoomUrlState, type RoomUrlResolution } from './roomUrlState'
-import '../ui/styles.css'
+import '../components/styles.css'
 
 interface VideoEditorHarnessAppProps {
 	harness?: VideoEditorHarness

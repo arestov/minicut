@@ -1,5 +1,5 @@
 import { model } from 'dkt/model.js'
-import { defaultTextBox, defaultTextStyle, reduceDktTextAction } from '../textActions'
+import { defaultTextBox, defaultTextStyle, reduceDktTextAction } from '../dkt/textActions'
 
 export const Text = model({
 	model_name: 'minicut_text',

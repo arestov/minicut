@@ -1,5 +1,5 @@
 import { model } from 'dkt/model.js'
-import { reduceDktEffectAction } from '../effectActions'
+import { reduceDktEffectAction } from '../dkt/effectActions'
 
 export const Effect = model({
 	model_name: 'minicut_effect',

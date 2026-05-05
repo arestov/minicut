@@ -2,7 +2,7 @@ import { prepare as prepareAppRuntime } from 'dkt/runtime/app/prepare.js'
 import { _getCurrentRel, _listRels } from 'dkt-all/libs/provoda/_internal/_listRels.js'
 import { hookSessionRoot } from 'dkt-all/libs/provoda/provoda/BrowseMap.js'
 import { getModelById } from 'dkt-all/libs/provoda/utils/getModelById.js'
-import { MiniCutAppRoot } from '../models/AppRoot'
+import { MiniCutAppRoot } from '../../models/AppRoot'
 
 type RuntimeModelLike = {
 	_node_id?: string | null

@@ -4,7 +4,7 @@ import { Clip, CLIP_PROXY_CREATION_SHAPE } from './Clip'
 import { Effect, EFFECT_PROXY_CREATION_SHAPE } from './Effect'
 import { EditorSessionRoot } from './SessionRoot'
 import { Text, TEXT_PROXY_CREATION_SHAPE } from './Text'
-import { defaultTextBox, defaultTextStyle } from '../textActions'
+import { defaultTextBox, defaultTextStyle } from '../dkt/textActions'
 
 const appProps = mergeDcl({
 	init: (target: { start_page?: unknown }) => {
