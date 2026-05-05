@@ -21,6 +21,7 @@ export interface EditorAuthorityPort {
 	getSnapshot(): Promise<ProjectRegistry> | ProjectRegistry
 	getHistoryState(): Promise<HistoryState> | HistoryState
 	subscribe(listener: (envelope: PatchEnvelope) => void): () => void
+	syncHistoryState(): void
 }
 
 export interface EditorSessionPort {
