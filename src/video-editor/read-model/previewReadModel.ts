@@ -6,13 +6,13 @@ export type {
 	RenderedClip,
 	ResolvedAnimatedScalar,
 	TimelineClipInterval,
-} from '../legend/previewComps'
+} from './previewComps'
 
 export {
 	createPreviewFrame,
 	renderPreviewClipSourceAtCursor,
 	renderPreviewStructureAtCursor,
-} from '../legend/previewComps'
+} from './previewComps'
 
 export {
 	createPlaybackDuration$,
