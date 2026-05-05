@@ -44,6 +44,36 @@ runEditorAction({
 - Effects (`File`, duration probing, object URLs, export renderer, resource transfer, P2P authority) живут за DI ports.
 - Multi-step flows возвращают transaction result: patches, session patch, created/deleted ids, postCommit effects.
 
+## DKT-style DI target
+
+Да, DI нужно добавить в план явно. Без этого `createLegendActionRuntime` станет просто новым большим файлом, который импортирует Legend observables, platform, export renderer, P2P transfer manager и authority напрямую. В DKT-style форме runtime должен получать capabilities через typed environment, а не знать конкретную инфраструктуру.
+
+Целевая pre-DKT форма:
+
+```ts
+interface EditorActionEnvironment {
+  stores: EditorStorePort
+  authority: EditorAuthorityPort
+  session: EditorSessionPort
+  media: EditorMediaPort
+  export: EditorExportPort
+  transfers: EditorResourceTransferPort
+  lifecycle: EditorLifecyclePort
+}
+```
+
+Где:
+
+- `EditorStorePort` читает registry snapshot и применяет authoritative patches через текущий Legend adapter.
+- `EditorAuthorityPort` dispatch/undo/redo/history/snapshot/subscribe поверх `EditorAuthorityClient`.
+- `EditorSessionPort` делает tab-local session mutations named actions, а не raw `.set()` scattered по harness.
+- `EditorMediaPort` владеет `File`, kind detection, duration probing и object URL lifecycle.
+- `EditorExportPort` строит export snapshot и вызывает renderer.
+- `EditorResourceTransferPort` регистрирует local resources, syncRegistry, resolveUrl и playhead windows.
+- `EditorLifecyclePort` дает `isDestroyed`, timers и cleanup registration.
+
+Это не должен быть service locator. DI объект создается в `createVideoEditorHarness.ts` один раз и передается в `createLegendActionRuntime`. Domain code получает только pure inputs, без DI.
+
 ## Non-goals
 
 - Не переписывать проект на DKT runtime сейчас.
@@ -102,6 +132,33 @@ New tests:
 Done when:
 
 - Render-sync dispatch and upcoming harness runtime can share the same action request vocabulary.
+
+## Step 2.5: introduce DKT-style DI ports
+
+Commit: `feat(video-editor): add editor action di ports`
+
+Files:
+
+- Add `src/video-editor/app/editorActionEnvironment.ts`.
+- Update `src/video-editor/app/createVideoEditorHarness.ts` to construct the environment, without moving action behavior yet.
+- Update `src/video-editor/app/actionRuntimeTypes.ts` later if Step 3 creates it after this step.
+
+What to do:
+
+- Define interfaces for `EditorStorePort`, `EditorAuthorityPort`, `EditorSessionPort`, `EditorMediaPort`, `EditorExportPort`, `EditorResourceTransferPort`, `EditorLifecyclePort`.
+- Keep the first implementation thin: mostly wrappers around existing `projects$`, `session$`, `authorityClient`, `platform`, `exportRenderer`, `resourceTransferManager`.
+- Do not move effect behavior yet; just name the dependencies and make them injectable.
+- Ensure these interfaces do not leak React or UI component types.
+
+Tests:
+
+- Run `npm run test:video-editor -- src/video-editor/app/createVideoEditorHarness.test.ts`.
+- Run `npm run test:video-editor -- src/video-editor/render-sync/createLegendEditorRenderRuntime.test.ts`.
+
+Done when:
+
+- `createVideoEditorHarness.ts` can pass one environment object to future action runtime.
+- Action runtime extraction has typed DI seams before behavior moves.
 
 ## Step 3: split harness action runtime from harness construction
 
@@ -436,16 +493,17 @@ Done when:
 Recommended order:
 
 1. Contract/types first (`actionScope`, `actionRequests`).
-2. Move action runtime out of harness without behavior changes.
-3. Convert selected clip actions to node-scoped actions.
-4. Add command builder registry.
-5. Split command handlers.
-6. Table-drive patch appliers.
-7. Model session root actions.
-8. Isolate effects.
-9. Add transaction executor.
-10. Split derived comps.
-11. Enforce boundaries.
+2. Add DKT-style DI ports/environment.
+3. Move action runtime out of harness without behavior changes.
+4. Convert selected clip actions to node-scoped actions.
+5. Add command builder registry.
+6. Split command handlers.
+7. Table-drive patch appliers.
+8. Model session root actions.
+9. Isolate effects.
+10. Add transaction executor.
+11. Split derived comps.
+12. Enforce boundaries.
 
 Reason: this order keeps each PR/commit testable and avoids touching async effects and command semantics at the same time.
 
