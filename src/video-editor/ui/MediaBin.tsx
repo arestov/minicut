@@ -1,19 +1,19 @@
-import { observer } from '@legendapp/state/react'
 import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useState } from 'react'
-import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../domain/types'
 import type { ResourceTransferView } from '../media/resourceTransferManager'
 import {
-	getActiveProjectId$,
-	getProjectResourceIds$,
-	resourceAttrs$,
-} from '../legend/observableSelectors'
+	EditorScopeProvider,
+	ROOT_SCOPE,
+	useEditorActions,
+	useEditorAttrs,
+	useEditorComp,
+	useEditorMany,
+	useEditorOne,
+	useEditorRenderRuntime,
+} from '../render-sync'
+import type { EditorScope } from '../render-sync/EditorScope'
 import { Button, IconButton } from './ControlPrimitives'
-
-interface ResourceRowProps {
-	resourceId: string
-}
 
 const isPreviewableUrl = (url: string): boolean =>
 	url.startsWith('blob:') || url.startsWith('/') || url.startsWith('./') || url.startsWith('http') || url.startsWith('data:')
@@ -27,7 +27,7 @@ const ResourceThumbnail = ({
 	kind: ResourceAttrs['kind']
 	name: string
 	url: string
-	transfer?: ResourceTransferView
+	transfer?: ResourceTransferView | null
 }) => {
 	const resolvedUrl = transfer?.previewUrl || url
 	const canPreview = isPreviewableUrl(resolvedUrl)
@@ -47,16 +47,29 @@ const ResourceThumbnail = ({
 	)
 }
 
-const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
-	const { projects$, actions, resourceTransfers$ } = useVideoEditor()
-	const resource$ = resourceAttrs$(projects$, resourceId)
-	const transfer = resourceTransfers$[resourceId].get() as ResourceTransferView | undefined
-	const name = String(resource$.name.get())
-	const kind = resource$.kind.get()
-	const mime = String(resource$.mime.get())
-	const duration = Number(resource$.duration.get())
-	const url = String(resource$.url.get())
-	const totalBytes = transfer?.totalBytes ?? Number(resource$.size.get() ?? 0)
+interface ResourceRowProps {
+	resourceScope: EditorScope
+}
+
+interface ResourceRenderAttrs {
+	name?: unknown
+	kind?: ResourceAttrs['kind']
+	mime?: unknown
+	duration?: unknown
+	url?: unknown
+	size?: unknown
+}
+
+const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
+	const dispatch = useEditorActions(resourceScope)
+	const resourceAttrs = useEditorAttrs<ResourceRenderAttrs>(['name', 'kind', 'mime', 'duration', 'url', 'size'], resourceScope)
+	const transfer = useEditorComp<ResourceTransferView | null>('resourceTransfer', resourceScope)
+	const name = String(resourceAttrs.name)
+	const kind = resourceAttrs.kind ?? 'video'
+	const mime = String(resourceAttrs.mime)
+	const duration = Number(resourceAttrs.duration)
+	const url = String(resourceAttrs.url)
+	const totalBytes = transfer?.totalBytes ?? Number(resourceAttrs.size ?? 0)
 	const progressPercent = Math.round((transfer?.progress ?? 0) * 100)
 	const statusLabel = transfer
 		? `${transfer.mode} · ${transfer.status}${totalBytes > 0 ? ` · ${progressPercent}%` : ''}`
@@ -76,7 +89,7 @@ const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 							icon={Plus}
 							label="Add to timeline"
 							variant="secondary"
-							onClick={() => actions.addResourceToTimeline(resourceId)}
+							onClick={() => dispatch('addResourceToTimeline')}
 						>
 							Add
 						</IconButton>
@@ -85,10 +98,10 @@ const ResourceRow = observer(({ resourceId }: ResourceRowProps) => {
 			</div>
 		</li>
 	)
-})
+}
 
-const TextTimelineActionRow = observer(() => {
-	const { actions } = useVideoEditor()
+const TextTimelineActionRow = () => {
+	const dispatch = useEditorActions(ROOT_SCOPE)
 
 	return (
 		<li className="ve-resource-row ve-resource-row--text-action">
@@ -100,7 +113,7 @@ const TextTimelineActionRow = observer(() => {
 					<Button
 						type="button"
 						variant="secondary"
-						onClick={() => actions.addTextClip()}
+						onClick={() => dispatch('addTextClip')}
 						aria-label="Add Text to Timeline"
 					>
 						Add Text to Timeline
@@ -109,21 +122,26 @@ const TextTimelineActionRow = observer(() => {
 			</div>
 		</li>
 	)
-})
+}
 
-export const MediaBin = observer(() => {
-	const [query, setQuery] = useState('')
-	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
-	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
-	const { projects$, session$, actions } = useVideoEditor()
-	const activeProjectId = getActiveProjectId$(projects$, session$)
-	const resources = getProjectResourceIds$(projects$, activeProjectId)
-	const normalizedQuery = query.trim().toLowerCase()
-	const filteredResources = resources.filter((resourceId) => {
-		const resource$ = resourceAttrs$(projects$, resourceId)
-		const kind = resource$.kind.get()
-		const name = String(resource$.name.get())
-		const mime = String(resource$.mime.get())
+const ProjectMediaList = ({
+	kindFilter,
+	normalizedQuery,
+	projectScope,
+	viewMode,
+}: {
+	kindFilter: ResourceAttrs['kind'] | 'all'
+	normalizedQuery: string
+	projectScope: EditorScope
+	viewMode: 'list' | 'grid'
+}) => {
+	const runtime = useEditorRenderRuntime()
+	const resourceScopes = useEditorMany('resources', projectScope)
+	const filteredResourceScopes = resourceScopes.filter((resourceScope) => {
+		const attrs = runtime.readAttrs(resourceScope, ['kind', 'name', 'mime'])
+		const kind = attrs.kind
+		const name = String(attrs.name ?? '')
+		const mime = String(attrs.mime ?? '')
 		const matchesKind = kindFilter === 'all' || kind === kindFilter
 		const matchesQuery = normalizedQuery.length === 0
 			|| name.toLowerCase().includes(normalizedQuery)
@@ -131,6 +149,35 @@ export const MediaBin = observer(() => {
 
 		return matchesKind && matchesQuery
 	})
+
+	return (
+		<>
+			<div className="ve-media-count">{filteredResourceScopes.length} of {resourceScopes.length} assets</div>
+			<div className="ve-media-bin__body">
+				<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
+					<TextTimelineActionRow />
+					{filteredResourceScopes.map((resourceScope) => (
+						<EditorScopeProvider key={resourceScope.nodeId} scope={resourceScope}>
+							<ResourceRow resourceScope={resourceScope} />
+						</EditorScopeProvider>
+					))}
+				</ul>
+				{resourceScopes.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
+				{resourceScopes.length > 0 && filteredResourceScopes.length === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
+			</div>
+		</>
+	)
+}
+
+export const MediaBin = () => {
+	const [query, setQuery] = useState('')
+	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
+	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+	const rootDispatch = useEditorActions(ROOT_SCOPE)
+	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
+	const activeProjectScope = useEditorOne('activeProject', ROOT_SCOPE)
+	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
+	const normalizedQuery = query.trim().toLowerCase()
 
 	return (
 		<section className="ve-panel ve-media-bin" aria-label="Media bin">
@@ -147,7 +194,7 @@ export const MediaBin = observer(() => {
 						disabled={!activeProjectId}
 						onChange={(event) => {
 							if (event.currentTarget.files) {
-								actions.importFiles(event.currentTarget.files)
+								rootDispatch('importFiles', { files: event.currentTarget.files })
 								event.currentTarget.value = ''
 							}
 						}}
@@ -196,26 +243,26 @@ export const MediaBin = observer(() => {
 					/>
 				</div>
 			</div>
-			<div className="ve-media-count">{filteredResources.length} of {resources.length} assets</div>
-			<div className="ve-media-bin__body">
-				{!activeProjectId ? (
-					<div className="ve-empty-state">
-						<p className="ve-empty">No active project.</p>
-						<button type="button" onClick={() => actions.createProject()}>New project</button>
+			{!activeProjectId || !activeProjectScope ? (
+				<>
+					<div className="ve-media-count">0 of 0 assets</div>
+					<div className="ve-media-bin__body">
+						<div className="ve-empty-state">
+							<p className="ve-empty">No active project.</p>
+							<button type="button" onClick={() => rootDispatch('createProject')}>New project</button>
+						</div>
 					</div>
-				) : (
-					<>
-						<ul className={`ve-resource-list ve-resource-list--${viewMode}`}>
-							<TextTimelineActionRow />
-							{filteredResources.map((resourceId) => (
-								<ResourceRow key={resourceId} resourceId={resourceId} />
-							))}
-						</ul>
-						{resources.length === 0 ? <p className="ve-empty">Import video, image, or audio files to populate the bin.</p> : null}
-						{resources.length > 0 && filteredResources.length === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
-					</>
-				)}
-			</div>
+				</>
+			) : (
+				<EditorScopeProvider scope={activeProjectScope}>
+					<ProjectMediaList
+						kindFilter={kindFilter}
+						normalizedQuery={normalizedQuery}
+						projectScope={activeProjectScope}
+						viewMode={viewMode}
+					/>
+				</EditorScopeProvider>
+			)}
 		</section>
 	)
-})
+}

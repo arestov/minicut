@@ -1,7 +1,7 @@
-import { observer } from '@legendapp/state/react'
 import { useState } from 'react'
 import { Download, FolderPlus, Redo2, Undo2 } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { HISTORY_SCOPE, ROOT_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
 import type { ExportProgressEvent } from '../render/exportRenderer'
 import { IconButton } from './ControlPrimitives'
 import { ProjectDropdown } from './ProjectDropdown'
@@ -18,13 +18,16 @@ const formatExportProgress = (event: ExportProgressEvent): string => {
 	return `Export ${exportStageLabel[event.stage]} ${progressPercent}%`
 }
 
-export const Toolbar = observer(() => {
-	const { projects$, session$, history$, actions } = useVideoEditor()
+export const Toolbar = () => {
+	const { actions } = useVideoEditor()
+	const rootDispatch = useEditorActions(ROOT_SCOPE)
+	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
+	const historyAttrs = useEditorAttrs<{ canUndo?: unknown, canRedo?: unknown }>(['canUndo', 'canRedo'], HISTORY_SCOPE)
 	const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'ready' | 'error'>('idle')
 	const [exportProgress, setExportProgress] = useState<ExportProgressEvent>({ stage: 'queued', progress: 0 })
-	const activeProjectId = session$.activeProjectId.get() ?? projects$.activeProjectId.get()
-	const canUndo = history$.canUndo.get()
-	const canRedo = history$.canRedo.get()
+	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
+	const canUndo = Boolean(historyAttrs.canUndo)
+	const canRedo = Boolean(historyAttrs.canRedo)
 
 	const exportProject = (): void => {
 		setExportStatus('rendering')
@@ -67,15 +70,15 @@ export const Toolbar = observer(() => {
 					icon={FolderPlus}
 					label="New project"
 					variant="ghost"
-					onClick={() => actions.createProject()}
+					onClick={() => rootDispatch('createProject')}
 				>
 					New
 				</IconButton>
 			</div>
 			<div className="ve-toolbar__actions">
 				<div className="ve-toolbar__history" aria-label="History controls">
-					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" onClick={() => actions.undo()} disabled={!canUndo} />
-					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" onClick={() => actions.redo()} disabled={!canRedo} />
+					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" onClick={() => rootDispatch('undo')} disabled={!canUndo} />
+					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" onClick={() => rootDispatch('redo')} disabled={!canRedo} />
 				</div>
 				<IconButton
 					type="button"
@@ -93,4 +96,4 @@ export const Toolbar = observer(() => {
 			</div>
 		</header>
 	)
-})
+}

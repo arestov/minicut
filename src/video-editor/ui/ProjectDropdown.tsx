@@ -1,27 +1,34 @@
-﻿import { useState } from 'react'
-import { observer } from '@legendapp/state/react'
+import { useState } from 'react'
 import { Check, ChevronDown, Plus } from 'lucide-react'
-import { useVideoEditor } from '../app/VideoEditorContext'
 import {
-	getActiveProjectId$,
-	getProjectResourceIds$,
-	getProjectRootEntityId$,
-	projectEntityAttrs$,
-} from '../legend/observableSelectors'
+	EditorScopeProvider,
+	ROOT_SCOPE,
+	useEditorActions,
+	useEditorAttrs,
+	useEditorComp,
+	useEditorMany,
+	useEditorOne,
+} from '../render-sync'
+import type { EditorScope } from '../render-sync/EditorScope'
 import { Button, IconButton } from './ControlPrimitives'
 
 interface ProjectItemProps {
-	projectId: string
 	activeProjectId: string | null
 	onSelect: () => void
+	projectScope: EditorScope
 }
 
-const ProjectItem = observer(({ projectId, activeProjectId, onSelect }: ProjectItemProps) => {
- 	const { projects$, actions } = useVideoEditor()
-	const project$ = projects$.projects[projectId]
-	const rootEntityId = getProjectRootEntityId$(projects$, projectId)
-	const projectTitle = rootEntityId ? String(projectEntityAttrs$(projects$, rootEntityId).title.get()) : 'Project'
-	const resourceCount = getProjectResourceIds$(projects$, projectId).length
+interface ProjectAttrs {
+	title?: unknown
+}
+
+const ProjectItem = ({ projectScope, activeProjectId, onSelect }: ProjectItemProps) => {
+	const dispatch = useEditorActions(ROOT_SCOPE)
+	const projectAttrs = useEditorAttrs<ProjectAttrs>(['title'], projectScope)
+	const projectId = useEditorComp<string | null>('projectId', projectScope)
+	const projectVersion = useEditorComp<number>('projectVersion', projectScope)
+	const resourceCount = useEditorComp<number>('resourceCount', projectScope)
+	const projectTitle = String(projectAttrs.title ?? 'Project')
 	const isActive = projectId === activeProjectId
 
 	return (
@@ -30,7 +37,9 @@ const ProjectItem = observer(({ projectId, activeProjectId, onSelect }: ProjectI
 				type="button"
 				className={isActive ? 'is-active' : ''}
 				onClick={() => {
-					actions.setActiveProject(projectId)
+					if (projectId) {
+						dispatch('setActiveProject', { projectId })
+					}
 					onSelect()
 				}}
 				aria-pressed={isActive}
@@ -39,16 +48,17 @@ const ProjectItem = observer(({ projectId, activeProjectId, onSelect }: ProjectI
 					{projectTitle}
 					{isActive ? <Check size={14} aria-hidden="true" /> : null}
 				</span>
-				<small>v{project$.version.get()} - {resourceCount} resources</small>
+				<small>v{projectVersion} - {resourceCount} resources</small>
 			</button>
 		</li>
 	)
-})
+}
 
-const ProjectDropdownMenu = observer(({ onClose }: { onClose: () => void }) => {
-	const { projects$, session$, actions } = useVideoEditor()
-	const projectIds = Object.keys(projects$.projects.get())
-	const activeProjectId = getActiveProjectId$(projects$, session$)
+const ProjectDropdownMenu = ({ onClose }: { onClose: () => void }) => {
+	const dispatch = useEditorActions(ROOT_SCOPE)
+	const projectScopes = useEditorMany('projects', ROOT_SCOPE)
+	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
+	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 
 	return (
 		<div className="ve-project-dropdown__menu is-open">
@@ -61,40 +71,41 @@ const ProjectDropdownMenu = observer(({ onClose }: { onClose: () => void }) => {
 					icon={Plus}
 					label="New project"
 					onClick={() => {
-						actions.createProject()
+						dispatch('createProject')
 						onClose()
 					}}
 				>
 					New project
 				</IconButton>
 			</div>
-			{projectIds.length === 0 ? (
+			{projectScopes.length === 0 ? (
 				<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
 			) : (
 				<ul className="ve-project-list ve-project-dropdown__list">
-					{projectIds.map((id) => (
-						<ProjectItem
-							key={id}
-							projectId={id}
-							activeProjectId={activeProjectId}
-							onSelect={onClose}
-						/>
+					{projectScopes.map((projectScope) => (
+						<EditorScopeProvider key={projectScope.nodeId} scope={projectScope}>
+							<ProjectItem
+								projectScope={projectScope}
+								activeProjectId={activeProjectId}
+								onSelect={onClose}
+							/>
+						</EditorScopeProvider>
 					))}
 				</ul>
 			)}
 		</div>
 	)
-})
+}
 
-export const ProjectDropdown = observer(() => {
+const ActiveProjectTitle = ({ projectScope }: { projectScope: EditorScope }) => {
+	const projectAttrs = useEditorAttrs<ProjectAttrs>(['title'], projectScope)
+
+	return <span>{String(projectAttrs.title ?? 'No project')}</span>
+}
+
+export const ProjectDropdown = () => {
 	const [isOpen, setIsOpen] = useState(false)
-	const { projects$, session$ } = useVideoEditor()
-	const activeProjectId = getActiveProjectId$(projects$, session$)
-	const activeRootId = getProjectRootEntityId$(projects$, activeProjectId)
-	const activeTitle = activeRootId
-		? String(projectEntityAttrs$(projects$, activeRootId).title.get())
-		: 'No project'
-
+	const activeProjectScope = useEditorOne('activeProject', ROOT_SCOPE)
 	const close = () => setIsOpen(false)
 
 	return (
@@ -108,10 +119,16 @@ export const ProjectDropdown = observer(() => {
 				aria-haspopup="menu"
 				onClick={() => setIsOpen((v) => !v)}
 			>
-				<span>{activeTitle}</span>
+				{activeProjectScope ? (
+					<EditorScopeProvider scope={activeProjectScope}>
+						<ActiveProjectTitle projectScope={activeProjectScope} />
+					</EditorScopeProvider>
+				) : (
+					<span>No project</span>
+				)}
 				<ChevronDown className="ve-project-dropdown__chevron" size={14} aria-hidden="true" />
 			</Button>
 			{isOpen ? <ProjectDropdownMenu onClose={close} /> : null}
 		</div>
 	)
-})
+}

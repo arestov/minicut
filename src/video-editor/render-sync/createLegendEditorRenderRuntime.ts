@@ -8,6 +8,7 @@ import type {
 	HistoryState,
 	ProjectRegistry,
 } from '../domain/types'
+import type { ResourceTransferView } from '../media/resourceTransferManager'
 import {
 	createEntityScope,
 	HISTORY_SCOPE,
@@ -23,16 +24,26 @@ type ObservableNode<Value = unknown> = {
 }
 
 type HarnessActions = {
+	addResourceToTimeline(resourceId: string): void
+	addTextClip(content?: string): void
 	addTrack(kind: 'video' | 'audio'): void
+	createProject(title?: string): void
 	deleteSelectedClip(): void
+	importFiles(files: FileList | File[]): void
+	importSampleResource(): void
 	moveClipById(clipId: string, delta: number): void
 	nudgeSelectedClip(delta: number): void
+	redo(): void
 	resizeClipById(clipId: string, edge: 'start' | 'end', delta: number): void
 	selectEntity(entityId: string | null): void
+	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void
+	setActiveProject(projectId: string): void
 	splitClipByIdAt(clipId: string, time: number): void
 	splitSelectedClip(): void
+	tickPlayback(deltaSeconds: number): void
 	togglePlayback(): void
 	setCursor(value: number): void
+	undo(): void
 	zoomTimeline(delta: number): void
 }
 
@@ -52,6 +63,7 @@ export interface CreateLegendEditorRenderRuntimeOptions {
 	projects$: Observable<ProjectRegistry>
 	session$: Observable<EditorSessionState>
 	history$: Observable<HistoryState>
+	resourceTransfers$: Observable<Record<string, ResourceTransferView>>
 	actions: HarnessActions
 }
 
@@ -210,6 +222,7 @@ export const createLegendEditorRenderRuntime = ({
 	projects$,
 	session$,
 	history$,
+	resourceTransfers$,
 	actions,
 }: CreateLegendEditorRenderRuntimeOptions): EditorRenderRuntime => {
 	const readOne = (scope: EditorScope, relName: string): EditorScope | null => {
@@ -305,6 +318,20 @@ export const createLegendEditorRenderRuntime = ({
 
 		readComp(scope, compName) {
 			const registry = projects$.get()
+			if (scope.type === 'project' && compName === 'projectVersion') {
+				const project = Object.values(registry.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)
+				return project?.version ?? 0
+			}
+			if (scope.type === 'project' && compName === 'resourceCount') {
+				const resources = registry.entitiesById[scope.nodeId]?.rels.resources
+				return Array.isArray(resources) ? resources.length : 0
+			}
+			if (scope.type === 'project' && compName === 'projectId') {
+				return Object.values(registry.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)?.id ?? null
+			}
+			if (scope.type === 'resource' && compName === 'resourceTransfer') {
+				return resourceTransfers$.get()[scope.nodeId] ?? null
+			}
 			if (scope.type === 'track' && compName === 'trackEnd') {
 				return getTrackEnd(registry, scope.nodeId)
 			}
@@ -325,11 +352,66 @@ export const createLegendEditorRenderRuntime = ({
 			return combineCleanups([
 				subscribeNode(projects$, listener),
 				subscribeNode(session$, listener),
+				subscribeNode(resourceTransfers$, listener),
 			])
 		},
 
 		getDispatch(scope = ROOT_SCOPE): EditorScopedDispatch {
 			return (actionName, payload) => {
+				if (actionName === 'createProject') {
+					actions.createProject(typeof payload === 'string' ? payload : undefined)
+					return
+				}
+				if (actionName === 'setActiveProject') {
+					const projectId = typeof payload === 'string'
+						? payload
+						: (payload as Record<string, unknown> | null)?.projectId
+					if (typeof projectId === 'string') {
+						actions.setActiveProject(projectId)
+					}
+					return
+				}
+				if (actionName === 'undo') {
+					actions.undo()
+					return
+				}
+				if (actionName === 'redo') {
+					actions.redo()
+					return
+				}
+				if (actionName === 'importSampleResource') {
+					actions.importSampleResource()
+					return
+				}
+				if (actionName === 'importFiles') {
+					const files = (payload as Record<string, unknown> | null)?.files
+					if (files instanceof FileList || Array.isArray(files)) {
+						actions.importFiles(files)
+					}
+					return
+				}
+				if (actionName === 'addTextClip') {
+					actions.addTextClip()
+					return
+				}
+				if (actionName === 'addResourceToTimeline' && scope?.type === 'resource') {
+					actions.addResourceToTimeline(scope.nodeId)
+					return
+				}
+				if (actionName === 'setActiveInspectorTab') {
+					const tab = (payload as Record<string, unknown> | null)?.tab
+					if (tab === 'edit' || tab === 'color' || tab === 'audio' || tab === 'export') {
+						actions.setActiveInspectorTab(tab)
+					}
+					return
+				}
+				if (actionName === 'tickPlayback') {
+					const deltaSeconds = asNumberPayload(payload, 'deltaSeconds')
+					if (deltaSeconds !== null) {
+						actions.tickPlayback(deltaSeconds)
+					}
+					return
+				}
 				if (actionName === 'addTrack') {
 					const kind = (payload as Record<string, unknown> | null)?.kind
 					if (kind === 'video' || kind === 'audio') {

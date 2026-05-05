@@ -557,6 +557,10 @@ export const createVideoEditorHarness = (
 			session$.selectedEntityId.set(entityId)
 		},
 
+		setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void {
+			session$.activeInspectorTab.set(tab)
+		},
+
 		renameSelectedClip(name: string): void {
 			const clip = getSelectedClip(projects$.get(), session$.get())
 			if (!clip) {
@@ -919,6 +923,7 @@ export const createVideoEditorHarness = (
 		projects$,
 		session$,
 		history$,
+		resourceTransfers$: resourceTransferManager.transfers$,
 		actions,
 	})
 

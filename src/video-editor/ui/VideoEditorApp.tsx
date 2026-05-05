@@ -4,8 +4,7 @@ import { TimelineView } from './TimelineView'
 import { Inspector } from './Inspector'
 import { PreviewPanel } from './PreviewPanel'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { observer } from '@legendapp/state/react'
-import { useVideoEditor } from '../app/VideoEditorContext'
+import { SESSION_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
 import { createPreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const playbackUiFrameMs = 1000 / 30
@@ -15,9 +14,9 @@ const previewWidthMin = 360
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
-const PlaybackLoop = observer(() => {
-	const { session$, actions } = useVideoEditor()
-	const isPlaying = session$.isPlaying.get()
+const PlaybackLoop = () => {
+	const sessionDispatch = useEditorActions(SESSION_SCOPE)
+	const { isPlaying } = useEditorAttrs<{ isPlaying?: unknown }>(['isPlaying'], SESSION_SCOPE)
 
 	useEffect(() => {
 		if (!isPlaying) {
@@ -34,27 +33,27 @@ const PlaybackLoop = observer(() => {
 			if (accumulatedMs >= playbackUiFrameMs) {
 				const deltaSeconds = Math.min(accumulatedMs / 1000, 0.25)
 				accumulatedMs = 0
-				actions.tickPlayback(deltaSeconds)
+				sessionDispatch('tickPlayback', { deltaSeconds })
 			}
 			frameId = requestAnimationFrame(tick)
 		}
 
 		frameId = requestAnimationFrame(tick)
 		return () => cancelAnimationFrame(frameId)
-	}, [actions, isPlaying])
+	}, [sessionDispatch, isPlaying])
 
 	return null
-})
+}
 
-export const VideoEditorApp = observer(() => {
-	const { session$ } = useVideoEditor()
+export const VideoEditorApp = () => {
+	const { activeInspectorTab } = useEditorAttrs<{ activeInspectorTab?: unknown }>(['activeInspectorTab'], SESSION_SCOPE)
 	const mediaElementRegistryRef = useRef(createPreviewMediaElementRegistry())
 	const mainTopRef = useRef<HTMLDivElement | null>(null)
 	const isResizingInspectorRef = useRef(false)
 	const stopDocumentResizeRef = useRef<(() => void) | null>(null)
 	const [inspectorWidth, setInspectorWidth] = useState(280)
 	const [isResizingInspector, setIsResizingInspector] = useState(false)
-	const showColorScopes = session$.activeInspectorTab.get() === 'color'
+	const showColorScopes = activeInspectorTab === 'color'
 	const resizeInspector = (clientX: number): void => {
 		const rect = mainTopRef.current?.getBoundingClientRect()
 		if (!rect) {
@@ -167,4 +166,4 @@ export const VideoEditorApp = observer(() => {
 			</main>
 		</div>
 	)
-})
+}
