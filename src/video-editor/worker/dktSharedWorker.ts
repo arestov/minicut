@@ -1,10 +1,10 @@
 /// <reference lib="webworker" />
 
-import { createMiniCutDktRuntime } from '../dkt/runtime/createMiniCutDktRuntime'
+import { createMiniCutDktWorkerModelRuntime } from '../dkt/runtime/workerModelRuntime'
 import { createPortTransport } from '../dkt/shared/createPortTransport'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
 
-const runtime = createMiniCutDktRuntime({ enabled: true })
+const runtime = createMiniCutDktWorkerModelRuntime()
 
 const sharedWorkerScope = self as unknown as SharedWorkerGlobalScope
 

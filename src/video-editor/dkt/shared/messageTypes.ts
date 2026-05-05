@@ -118,3 +118,13 @@ export type MiniCutDktTransportMessage =
 	| DktSyncHandleMessage
 	| DktSyncUpdateStructureUsageMessage
 	| DktSyncRequireShapeMessage
+
+export const DKT_LEGACY_REGISTRY_MSG_TYPES = new Set<string>([
+	DKT_MSG.DISPATCH_COMMAND,
+	DKT_MSG.REPLACE_SNAPSHOT,
+	DKT_MSG.SNAPSHOT,
+	DKT_MSG.PATCHES,
+])
+
+export const isLegacyDktRegistryMessage = (message: MiniCutDktTransportMessage): boolean =>
+	DKT_LEGACY_REGISTRY_MSG_TYPES.has(message.type)
