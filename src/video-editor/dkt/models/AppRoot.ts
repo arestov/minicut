@@ -1,6 +1,6 @@
 import { appRoot } from 'dkt/appRoot.js'
 import { merge as mergeDcl } from 'dkt/dcl/merge.js'
-import { Clip } from './Clip'
+import { Clip, CLIP_PROXY_CREATION_SHAPE } from './Clip'
 import { EditorSessionRoot } from './SessionRoot'
 
 const appProps = mergeDcl({
@@ -23,6 +23,40 @@ const appProps = mergeDcl({
 		hasProjects: ['comp', ['projectMetaList'], (projectMetaList: unknown) => Array.isArray(projectMetaList) && projectMetaList.length > 0],
 	},
 	actions: {
+		createClipProxy: {
+			to: {
+				_clipProxy: [
+					'<< clip << #',
+					{
+						method: 'at_end',
+						can_create: true,
+						creation_shape: CLIP_PROXY_CREATION_SHAPE,
+					},
+				],
+			},
+			fn: (payload: unknown) => {
+				const value = payload as {
+					sourceClipId?: unknown
+					name?: unknown
+					color?: unknown
+					opacity?: unknown
+				} | null
+				if (typeof value?.sourceClipId !== 'string' || !value.sourceClipId) {
+					return {}
+				}
+
+				return {
+					_clipProxy: {
+						attrs: {
+							sourceClipId: value.sourceClipId,
+							name: typeof value.name === 'string' ? value.name : 'Clip',
+							color: typeof value.color === 'string' ? value.color : '#2563eb',
+							opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
+						},
+					},
+				}
+			},
+		},
 		setActiveProjectHint: {
 			to: {
 				activeProjectHint: ['activeProjectHint'],

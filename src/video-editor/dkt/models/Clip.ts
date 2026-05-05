@@ -13,6 +13,7 @@ const getOpacityPercent = (payload: unknown): number | null => {
 export const Clip = model({
 	model_name: 'minicut_clip',
 	attrs: {
+		sourceClipId: ['input', null],
 		name: ['input', 'Clip'],
 		color: ['input', '#2563eb'],
 		opacity: ['input', { value: 1 }],
@@ -30,3 +31,7 @@ export const Clip = model({
 		},
 	},
 })
+
+export const CLIP_PROXY_CREATION_SHAPE = {
+	attrs: ['sourceClipId', 'name', 'color', 'opacity'],
+} as const

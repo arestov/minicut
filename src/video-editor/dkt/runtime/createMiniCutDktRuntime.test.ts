@@ -9,6 +9,9 @@ const findModel = (state: Awaited<ReturnType<ReturnType<typeof createMiniCutDktR
 	return matches[0] ?? null
 }
 
+const attrEquals = (value: unknown, expectedValue: unknown): boolean =>
+	Object.is(value, expectedValue) || JSON.stringify(value) === JSON.stringify(expectedValue)
+
 const waitForModelAttr = async (
 	runtime: ReturnType<typeof createMiniCutDktRuntime>,
 	modelName: string,
@@ -18,7 +21,7 @@ const waitForModelAttr = async (
 	for (let attempt = 0; attempt < 20; attempt++) {
 		const state = await runtime.debugDumpAppState()
 		const model = findModel(state, modelName)
-		if (model?.attrs[attrName] === expectedValue) {
+		if (attrEquals(model?.attrs[attrName], expectedValue)) {
 			return model
 		}
 		await new Promise((resolve) => setTimeout(resolve, 0))
@@ -58,5 +61,19 @@ describe('createMiniCutDktRuntime', () => {
 
 		expect(model?.attrs.cursor).toBe(4.13)
 		expect(model?.attrs.selectedEntityId).toBe('clip:session')
+	})
+
+	it('creates a DKT clip proxy and dispatches scoped clip actions', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		await runtime.dispatchClipAction({
+			sourceClipId: 'clip:opacity',
+			name: 'Opacity clip',
+			color: '#ef4444',
+			opacity: { value: 1 },
+		}, 'updateOpacity', { opacityPercent: 37 })
+
+		const model = await waitForModelAttr(runtime, 'minicut_clip', 'opacity', { value: 0.4 })
+		expect(model?.attrs.sourceClipId).toBe('clip:opacity')
+		expect(model?.attrs.opacity).toEqual({ value: 0.4 })
 	})
 })

@@ -35,6 +35,19 @@ export const createLegendActionRuntime = (
 		})
 		void executeActionBuildResult(env, result)
 	}
+	const dispatchDktClipOpacity = (clipId: string, clipAttrs: ClipAttrs, opacityPercent: number): void => {
+		const dispatch = env.dkt?.dispatchClipAction
+		if (!dispatch) {
+			return
+		}
+
+		void Promise.resolve(dispatch({
+			sourceClipId: clipId,
+			name: clipAttrs.name,
+			color: clipAttrs.color,
+			opacity: clipAttrs.opacity,
+		}, 'updateOpacity', { opacityPercent })).catch(() => undefined)
+	}
 	const applySessionPatch = (patch: Record<string, unknown>): void => {
 		if ('selectedEntityId' in patch) {
 			env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
@@ -93,10 +106,11 @@ export const createLegendActionRuntime = (
 
 		updateClipOpacityById(clipId: string, opacityPercent: number): void {
 			const clip = env.stores.getRegistry().entitiesById[clipId]
-			if (!clip) {
+			if (!clip || clip.type !== 'clip') {
 				return
 			}
 
+			dispatchDktClipOpacity(clip.id, asClipAttrs(clip.attrs), opacityPercent)
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'setOpacity', { opacityPercent })
 		},
 

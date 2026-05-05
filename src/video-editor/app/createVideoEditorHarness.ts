@@ -350,6 +350,10 @@ export const createVideoEditorHarness = (
 				const runtime = await getDktRuntime()
 				await runtime.dispatchSessionAction(actionName, payload)
 			},
+			dispatchClipAction: async (clip, actionName, payload) => {
+				const runtime = await getDktRuntime()
+				await runtime.dispatchClipAction(clip, actionName, payload)
+			},
 		},
 		platform,
 	}

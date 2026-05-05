@@ -6,6 +6,7 @@ import type { EditorAuthorityClient } from '../worker/authorityClient'
 import type { VideoEditorHarnessPlatform } from './platform'
 import type { DispatchRuntimeTaskOptions, DispatchRuntimeTaskPayload, RuntimeTaskDescriptor } from './runtimeTaskFacade'
 import type { DktSessionActionName } from '../dkt/sessionActions'
+import type { MiniCutDktClipProxyInput } from '../dkt/runtime/createMiniCutDktRuntime'
 
 export interface EditorStorePort {
 	projects$: Observable<ProjectRegistry>
@@ -77,6 +78,7 @@ export interface EditorRuntimeTaskPort {
 
 export interface EditorDktRuntimePort {
 	dispatchSessionAction(actionName: DktSessionActionName, payload?: unknown): Promise<void> | void
+	dispatchClipAction(clip: MiniCutDktClipProxyInput, actionName: 'updateOpacity', payload?: unknown): Promise<void> | void
 }
 
 export interface EditorActionEnvironment {
