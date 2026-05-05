@@ -5,7 +5,7 @@ import {
 	createPreviewStructure$,
 	type PreviewFrame,
 	type PreviewStructure,
-} from '../legend/derivedTimeline'
+	} from '../read-model/previewReadModel'
 
 const subscribeComputed = (computedValue: { onChange(listener: () => void): () => void }, listener: () => void): (() => void) =>
 	computedValue.onChange(() => listener())

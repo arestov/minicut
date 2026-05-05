@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RenderedClip, PreviewFrame } from '../legend/derivedTimeline'
+import type { RenderedClip, PreviewFrame } from '../read-model/previewReadModel'
 import { createPreviewScopeData, type PreviewScopeData, type RgbaSampleFrame, type ScopeDensityFrame } from '../render/colorScopes'
 import { drawScopeDensityCanvas, drawVectorscopePoints, parseScopeColor, type ScopeRgbColor } from '../render/colorScopeCanvas'
 import type { PreviewMediaElementRegistry } from './mediaElementRegistry'

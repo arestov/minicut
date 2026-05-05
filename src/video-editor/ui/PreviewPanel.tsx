@@ -5,7 +5,7 @@ import type {
 	RenderedClip,
 	PreviewFrame,
 	PreviewStructure,
-} from '../legend/derivedTimeline'
+} from '../read-model/previewReadModel'
 import { SESSION_SCOPE, useEditorActions, useEditorAttrs, usePreviewReadModels } from '../render-sync'
 import { formatSeconds } from './format'
 import { Button, IconButton } from './ControlPrimitives'

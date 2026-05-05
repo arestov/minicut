@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
+import type { PreviewFrame, PreviewStructure, RenderedClip } from '../read-model/previewReadModel'
 import { RendererStage } from './RendererStage'
 import { PreviewMediaElementRegistry } from './mediaElementRegistry'
 

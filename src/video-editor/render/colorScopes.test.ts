@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RenderedClip } from '../legend/derivedTimeline'
+import type { RenderedClip } from '../read-model/previewReadModel'
 import { createPreviewScopeData, type RgbaSampleFrame, type ScopeDensityFrame } from './colorScopes'
 
 const createClip = (overrides: Partial<RenderedClip> = {}): RenderedClip => ({

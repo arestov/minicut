@@ -1,4 +1,4 @@
-import type { PreviewFrame, RenderedClip } from '../legend/derivedTimeline'
+import type { PreviewFrame, RenderedClip } from '../read-model/previewReadModel'
 import type { ResourceKind, TextAttrs } from '../domain/types'
 import { compileEffectColorProgram, type ColorProgram } from './colorProgram'
 

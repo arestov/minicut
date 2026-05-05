@@ -1,4 +1,4 @@
-import type { RenderedClip } from '../legend/derivedTimeline'
+import type { RenderedClip } from '../read-model/previewReadModel'
 
 export interface RgbaSampleFrame {
 	width: number

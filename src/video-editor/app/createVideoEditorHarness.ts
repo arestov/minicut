@@ -1,5 +1,5 @@
 import { observable, type Observable } from '@legendapp/state'
-import { createPlaybackDuration$ } from '../legend/derivedTimeline'
+import { createPlaybackDuration$ } from '../read-model/previewReadModel'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
 import { createSessionStore } from '../legend/sessionStore'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'

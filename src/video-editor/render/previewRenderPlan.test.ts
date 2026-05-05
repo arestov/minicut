@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { PreviewFrame, RenderedClip } from '../legend/derivedTimeline'
+import type { PreviewFrame, RenderedClip } from '../read-model/previewReadModel'
 import type { EffectRenderInstruction } from './colorPipeline'
 import { compilePreviewRenderPlan, getPreviewOperationValue } from './previewRenderPlan'
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react'
-import type { PreviewFrame, PreviewStructure, RenderedClip } from '../legend/derivedTimeline'
+import type { PreviewFrame, PreviewStructure, RenderedClip } from '../read-model/previewReadModel'
 import { mergeColorProgramCssFilters, type ColorProgram } from '../render/colorProgram'
 import { compilePreviewLayerOperation, compilePreviewRenderPlan, getPreviewOperationValue, type PreviewLayerOperation } from '../render/previewRenderPlan'
 // Keep Vite's worker query import explicit.
