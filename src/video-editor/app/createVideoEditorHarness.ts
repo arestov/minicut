@@ -27,6 +27,7 @@ import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
 } from './platform'
+import { createLegendEditorRenderRuntime } from '../render-sync/createLegendEditorRenderRuntime'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 const SNAPSHOT_BOOTSTRAP_RETRY_MS = 250
@@ -914,12 +915,19 @@ export const createVideoEditorHarness = (
 			session$.timelineZoom.set(clamp(session$.timelineZoom.get() + delta, TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_MAX))
 		},
 	}
+	const renderRuntime = createLegendEditorRenderRuntime({
+		projects$,
+		session$,
+		history$,
+		actions,
+	})
 
 	return {
 		worker: authorityClient,
 		projects$,
 		session$,
 		history$,
+		renderRuntime,
 		resourceTransfers$: resourceTransferManager.transfers$,
 		resolveResourceUrl(resourceId: string, fallbackUrl: string): string {
 			return resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl)
