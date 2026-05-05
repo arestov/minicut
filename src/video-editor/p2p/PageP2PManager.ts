@@ -698,6 +698,9 @@ export const createPageP2PManager = (
 		}
 		const proxyPort = proxyWorker.port
 		proxyPort.start()
+		if (config.workerProtocol === 'dkt') {
+			proxyPort.postMessage({ type: DKT_MSG.BOOTSTRAP })
+		}
 		proxyWorker.onerror = (e) => {
 			console.error(e.message, e)
 			const error = new Error('P2P server proxy SharedWorker failed to load')
@@ -725,7 +728,7 @@ export const createPageP2PManager = (
 			}
 		}
 
-		proxyPort.onmessage = (event: MessageEvent<WireMessage>) => {
+		proxyPort.onmessage = (event: MessageEvent<WireMessage | MiniCutDktTransportMessage>) => {
 			if (dc.readyState === 'open') {
 				dc.send(JSON.stringify(event.data))
 			}
