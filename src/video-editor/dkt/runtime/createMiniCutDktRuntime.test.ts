@@ -100,15 +100,14 @@ describe('createMiniCutDktRuntime', () => {
 
 	it('creates DKT text and effect proxies and dispatches attr actions', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
-		await runtime.dispatchTextAction({
+		const textProxy = {
 			sourceTextId: 'text:caption',
 			content: 'Before',
 			style: { fontSize: 64, color: '#ffffff' },
 			box: { width: 760, height: 220 },
-		}, 'updateText', {
-			content: 'After',
-			style: { color: '#111827' },
-		})
+		}
+		await runtime.dispatchTextAction(textProxy, 'setTextContent', { content: 'After' })
+		await runtime.dispatchTextAction(textProxy, 'setTextStyle', { style: { color: '#111827' } })
 
 		await runtime.dispatchEffectAction({
 			sourceEffectId: 'effect:tint',
@@ -116,7 +115,7 @@ describe('createMiniCutDktRuntime', () => {
 			kind: 'tint',
 			enabled: true,
 			amount: 0.25,
-		}, 'updateAttrs', { amount: 0.8 })
+		}, 'setEffectAmount', { amount: 0.8 })
 
 		const text = await waitForModelAttr(runtime, 'minicut_text', 'content', 'After')
 		const effect = await waitForModelAttr(runtime, 'minicut_effect', 'amount', 0.8)

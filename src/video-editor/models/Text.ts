@@ -1,5 +1,11 @@
 import { model } from 'dkt/model.js'
-import { defaultTextBox, defaultTextStyle, reduceDktTextAction } from '../dkt/textActions'
+import {
+	defaultTextBox,
+	defaultTextStyle,
+	reduceTextBoxAction,
+	reduceTextContentAction,
+	reduceTextStyleAction,
+} from '../dkt/textActions'
 
 export const Text = model({
 	model_name: 'minicut_text',
@@ -10,21 +16,35 @@ export const Text = model({
 		box: ['input', defaultTextBox],
 	},
 	actions: {
-		updateText: {
+		setTextContent: {
 			to: {
 				content: ['content'],
+			},
+			fn: (payload: unknown) => reduceTextContentAction(payload) ?? '$noop',
+		},
+		setTextStyle: {
+			to: {
 				style: ['style'],
-				box: ['box'],
 			},
 			fn: [
-				['style', 'box'] as const,
-				(payload: unknown, style: unknown, box: unknown) => {
-					const patch = reduceDktTextAction(payload, {
+				['style'] as const,
+				(payload: unknown, style: unknown) => {
+					const patch = reduceTextStyleAction(payload, {
 						style: style && typeof style === 'object' ? style as typeof defaultTextStyle : defaultTextStyle,
-						box: box && typeof box === 'object' ? box as typeof defaultTextBox : defaultTextBox,
 					})
 					return patch ?? '$noop'
 				},
+			],
+		},
+		setTextBox: {
+			to: {
+				box: ['box'],
+			},
+			fn: [
+				['box'] as const,
+				(payload: unknown, box: unknown) => reduceTextBoxAction(payload, {
+					box: box && typeof box === 'object' ? box as typeof defaultTextBox : defaultTextBox,
+				}) ?? '$noop',
 			],
 		},
 	},

@@ -191,12 +191,16 @@ describe('createLegendActionRuntime DKT clip wiring', () => {
 		expect(dispatchTextAction).toHaveBeenCalledWith(expect.objectContaining({
 			sourceTextId: 'text:dkt-runtime-caption',
 			content: 'Before',
-		}), 'updateText', { content: 'After', style: { color: '#111827' } })
+		}), 'setTextContent', { content: 'After' })
+		expect(dispatchTextAction).toHaveBeenCalledWith(expect.objectContaining({
+			sourceTextId: 'text:dkt-runtime-caption',
+			content: 'Before',
+		}), 'setTextStyle', { style: { color: '#111827' } })
 		expect(dispatchEffectAction).toHaveBeenCalledWith(expect.objectContaining({
 			sourceEffectId: 'effect:dkt-runtime-tint',
 			name: 'Tint',
 			kind: 'tint',
 			amount: 0.25,
-		}), 'updateAttrs', { amount: 0.8 })
+		}), 'setEffectAmount', { amount: 0.8 })
 	})
 })

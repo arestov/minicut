@@ -14,6 +14,8 @@ import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import { executeActionBuildResult } from './actionTransactionExecutor'
 import type { DktClipActionName } from '../dkt/clipActions'
 import type { DktTimelineClipActionName } from '../dkt/timelineActions'
+import type { DktTextActionName } from '../dkt/textActions'
+import type { DktEffectActionName } from '../dkt/effectActions'
 
 const minimumSplitOffset = 0.01
 
@@ -65,12 +67,24 @@ export const createDktActionRuntime = (
 			return
 		}
 
-		void Promise.resolve(dispatch({
+		const textProxy = {
 			sourceTextId: textId,
 			content: textAttrs.content,
 			style: textAttrs.style,
 			box: textAttrs.box,
-		}, 'updateText', attrs)).catch(() => undefined)
+		}
+		const dktActions: Array<[DktTextActionName, unknown]> = []
+		if ('content' in attrs) {
+			dktActions.push(['setTextContent', { content: attrs.content }])
+		}
+		if ('style' in attrs) {
+			dktActions.push(['setTextStyle', { style: attrs.style }])
+		}
+		if ('box' in attrs) {
+			dktActions.push(['setTextBox', { box: attrs.box }])
+		}
+
+		void Promise.all(dktActions.map(([actionName, payload]) => dispatch(textProxy, actionName, payload))).catch(() => undefined)
 	}
 	const dispatchDktEffectAction = (effectId: string, effectAttrs: EffectAttrs, attrs: Partial<EffectAttrs>): void => {
 		const dispatch = env.dkt?.dispatchEffectAction
@@ -78,7 +92,7 @@ export const createDktActionRuntime = (
 			return
 		}
 
-		void Promise.resolve(dispatch({
+		const effectProxy = {
 			sourceEffectId: effectId,
 			name: effectAttrs.name,
 			kind: effectAttrs.kind,
@@ -86,7 +100,28 @@ export const createDktActionRuntime = (
 			amount: effectAttrs.amount,
 			params: effectAttrs.params as Record<string, unknown> | undefined,
 			color: effectAttrs.color as Record<string, unknown> | undefined,
-		}, 'updateAttrs', attrs)).catch(() => undefined)
+		}
+		const dktActions: Array<[DktEffectActionName, unknown]> = []
+		if ('name' in attrs) {
+			dktActions.push(['setEffectName', { name: attrs.name }])
+		}
+		if ('kind' in attrs) {
+			dktActions.push(['setEffectKind', { kind: attrs.kind }])
+		}
+		if ('enabled' in attrs) {
+			dktActions.push(['setEffectEnabled', { enabled: attrs.enabled }])
+		}
+		if ('amount' in attrs) {
+			dktActions.push(['setEffectAmount', { amount: attrs.amount }])
+		}
+		if ('params' in attrs) {
+			dktActions.push(['setEffectParams', { params: attrs.params }])
+		}
+		if ('color' in attrs) {
+			dktActions.push(['setEffectColor', { color: attrs.color }])
+		}
+
+		void Promise.all(dktActions.map(([actionName, payload]) => dispatch(effectProxy, actionName, payload))).catch(() => undefined)
 	}
 	const applySessionPatch = (patch: Record<string, unknown>): void => {
 		if ('selectedEntityId' in patch) {

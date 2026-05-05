@@ -1,5 +1,12 @@
 import { model } from 'dkt/model.js'
-import { reduceDktEffectAction } from '../dkt/effectActions'
+import {
+	reduceEffectAmountAction,
+	reduceEffectColorAction,
+	reduceEffectEnabledAction,
+	reduceEffectKindAction,
+	reduceEffectNameAction,
+	reduceEffectParamsAction,
+} from '../dkt/effectActions'
 
 export const Effect = model({
 	model_name: 'minicut_effect',
@@ -13,16 +20,41 @@ export const Effect = model({
 		color: ['input', null],
 	},
 	actions: {
-		updateAttrs: {
+		setEffectName: {
 			to: {
 				name: ['name'],
+			},
+			fn: (payload: unknown) => reduceEffectNameAction(payload) ?? '$noop',
+		},
+		setEffectKind: {
+			to: {
 				kind: ['kind'],
+			},
+			fn: (payload: unknown) => reduceEffectKindAction(payload) ?? '$noop',
+		},
+		setEffectEnabled: {
+			to: {
 				enabled: ['enabled'],
+			},
+			fn: (payload: unknown) => reduceEffectEnabledAction(payload) ?? '$noop',
+		},
+		setEffectAmount: {
+			to: {
 				amount: ['amount'],
+			},
+			fn: (payload: unknown) => reduceEffectAmountAction(payload) ?? '$noop',
+		},
+		setEffectParams: {
+			to: {
 				params: ['params'],
+			},
+			fn: (payload: unknown) => reduceEffectParamsAction(payload) ?? '$noop',
+		},
+		setEffectColor: {
+			to: {
 				color: ['color'],
 			},
-			fn: (payload: unknown) => reduceDktEffectAction(payload) ?? '$noop',
+			fn: (payload: unknown) => reduceEffectColorAction(payload) ?? '$noop',
 		},
 	},
 })
