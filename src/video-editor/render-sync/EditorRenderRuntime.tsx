@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type PropsWithChildren } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useSyncExternalStore, type PropsWithChildren } from 'react'
 import { ROOT_SCOPE, type EditorScope } from './EditorScope'
 import { useVideoEditor } from '../app/VideoEditorContext'
 
@@ -23,6 +23,36 @@ const EditorScopeContext = createContext<EditorScope | null>(null)
 const normalizeFields = (fields: readonly string[]): readonly string[] =>
 	Object.freeze(Array.from(new Set(fields)).sort())
 
+const areRecordsShallowEqual = (left: Record<string, unknown> | null, right: Record<string, unknown>): boolean => {
+	if (!left) {
+		return false
+	}
+
+	const leftKeys = Object.keys(left)
+	const rightKeys = Object.keys(right)
+	return leftKeys.length === rightKeys.length
+		&& rightKeys.every((key) => Object.is(left[key], right[key]))
+}
+
+const areScopesEqual = (left: EditorScope | null, right: EditorScope | null): boolean =>
+	left?.nodeId === right?.nodeId && left?.type === right?.type
+
+const areScopeArraysEqual = (left: readonly EditorScope[] | null, right: readonly EditorScope[]): boolean =>
+	Boolean(left)
+	&& left!.length === right.length
+	&& right.every((scope, index) => areScopesEqual(left![index], scope))
+
+const areCompValuesEqual = (left: unknown, right: unknown): boolean => {
+	if (Object.is(left, right)) {
+		return true
+	}
+	if (!left || !right || typeof left !== 'object' || typeof right !== 'object') {
+		return false
+	}
+
+	return areRecordsShallowEqual(left as Record<string, unknown>, right as Record<string, unknown>)
+}
+
 export const EditorScopeProvider = ({ scope, children }: PropsWithChildren<{ scope: EditorScope }>) => (
 	<EditorScopeContext.Provider value={scope}>{children}</EditorScopeContext.Provider>
 )
@@ -46,12 +76,21 @@ export const useEditorAttrs = <Value extends Record<string, unknown> = Record<st
 	const resolvedScope = useResolvedScope(scope)
 	const fieldsKey = fields.join('\u001f')
 	const normalizedFields = useMemo(() => normalizeFields(fields), [fieldsKey])
+	const snapshotRef = useRef<Value | null>(null)
 	const subscribe = useCallback(
 		(listener: () => void) => runtime.subscribeAttrs(resolvedScope, normalizedFields, listener),
 		[runtime, resolvedScope, normalizedFields],
 	)
 	const getSnapshot = useCallback(
-		() => runtime.readAttrs(resolvedScope, normalizedFields) as Value,
+		() => {
+			const nextSnapshot = runtime.readAttrs(resolvedScope, normalizedFields) as Value
+			if (areRecordsShallowEqual(snapshotRef.current, nextSnapshot)) {
+				return snapshotRef.current as Value
+			}
+
+			snapshotRef.current = nextSnapshot
+			return nextSnapshot
+		},
 		[runtime, resolvedScope, normalizedFields],
 	)
 
@@ -61,12 +100,21 @@ export const useEditorAttrs = <Value extends Record<string, unknown> = Record<st
 export const useEditorOne = (relName: string, scope?: EditorScope | null): EditorScope | null => {
 	const runtime = useEditorRenderRuntime()
 	const resolvedScope = useResolvedScope(scope)
+	const snapshotRef = useRef<EditorScope | null>(null)
 	const subscribe = useCallback(
 		(listener: () => void) => runtime.subscribeOne(resolvedScope, relName, listener),
 		[runtime, resolvedScope, relName],
 	)
 	const getSnapshot = useCallback(
-		() => runtime.readOne(resolvedScope, relName),
+		() => {
+			const nextSnapshot = runtime.readOne(resolvedScope, relName)
+			if (areScopesEqual(snapshotRef.current, nextSnapshot)) {
+				return snapshotRef.current
+			}
+
+			snapshotRef.current = nextSnapshot
+			return nextSnapshot
+		},
 		[runtime, resolvedScope, relName],
 	)
 
@@ -76,12 +124,21 @@ export const useEditorOne = (relName: string, scope?: EditorScope | null): Edito
 export const useEditorMany = (relName: string, scope?: EditorScope | null): EditorScope[] => {
 	const runtime = useEditorRenderRuntime()
 	const resolvedScope = useResolvedScope(scope)
+	const snapshotRef = useRef<EditorScope[] | null>(null)
 	const subscribe = useCallback(
 		(listener: () => void) => runtime.subscribeMany(resolvedScope, relName, listener),
 		[runtime, resolvedScope, relName],
 	)
 	const getSnapshot = useCallback(
-		() => runtime.readMany(resolvedScope, relName),
+		() => {
+			const nextSnapshot = runtime.readMany(resolvedScope, relName)
+			if (areScopeArraysEqual(snapshotRef.current, nextSnapshot)) {
+				return snapshotRef.current as EditorScope[]
+			}
+
+			snapshotRef.current = nextSnapshot
+			return nextSnapshot
+		},
 		[runtime, resolvedScope, relName],
 	)
 
@@ -91,12 +148,21 @@ export const useEditorMany = (relName: string, scope?: EditorScope | null): Edit
 export const useEditorComp = <Value,>(compName: string, scope?: EditorScope | null): Value => {
 	const runtime = useEditorRenderRuntime()
 	const resolvedScope = useResolvedScope(scope)
+	const snapshotRef = useRef<Value | null>(null)
 	const subscribe = useCallback(
 		(listener: () => void) => runtime.subscribeComp(resolvedScope, compName, listener),
 		[runtime, resolvedScope, compName],
 	)
 	const getSnapshot = useCallback(
-		() => runtime.readComp(resolvedScope, compName) as Value,
+		() => {
+			const nextSnapshot = runtime.readComp(resolvedScope, compName) as Value
+			if (areCompValuesEqual(snapshotRef.current, nextSnapshot)) {
+				return snapshotRef.current as Value
+			}
+
+			snapshotRef.current = nextSnapshot
+			return nextSnapshot
+		},
 		[runtime, resolvedScope, compName],
 	)
 
