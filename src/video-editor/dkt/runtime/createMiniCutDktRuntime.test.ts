@@ -69,6 +69,8 @@ describe('createMiniCutDktRuntime', () => {
 			sourceClipId: 'clip:opacity',
 			name: 'Opacity clip',
 			color: '#ef4444',
+			start: 1,
+			in: 1,
 			duration: 4,
 			fadeIn: 0,
 			fadeOut: 0,
@@ -84,11 +86,15 @@ describe('createMiniCutDktRuntime', () => {
 		await runtime.dispatchClipAction(clipProxy, 'updateOpacity', { opacityPercent: 37 })
 		await runtime.dispatchClipAction(clipProxy, 'rename', { name: 'Renamed clip' })
 		await runtime.dispatchClipAction(clipProxy, 'setFade', { edge: 'in', delta: 0.5 })
+		await runtime.dispatchClipAction(clipProxy, 'trim', { edge: 'start', delta: 0.5 })
 
-		const model = await waitForModelAttr(runtime, 'minicut_clip', 'fadeIn', 0.5)
+		const model = await waitForModelAttr(runtime, 'minicut_clip', 'start', 1.5)
 		expect(model?.attrs.sourceClipId).toBe('clip:opacity')
 		expect(model?.attrs.name).toBe('Renamed clip')
 		expect(model?.attrs.fadeIn).toBe(0.5)
+		expect(model?.attrs.start).toBe(1.5)
+		expect(model?.attrs.in).toBe(1.5)
+		expect(model?.attrs.duration).toBe(3.5)
 		expect(model?.attrs.opacity).toEqual({ value: 0.4 })
 	})
 

@@ -144,6 +144,8 @@ describe('createLegendActionRuntime DKT clip wiring', () => {
 			sourceClipId: 'clip:dkt-runtime-opacity',
 			name: 'Runtime opacity clip',
 			color: '#ef4444',
+			start: 0,
+			in: 0,
 			duration: 4,
 			fadeIn: 0,
 			fadeOut: 0,
@@ -156,6 +158,29 @@ describe('createLegendActionRuntime DKT clip wiring', () => {
 				rotation: { value: 0 },
 			},
 		}, 'updateOpacity', { opacityPercent: 37 })
+	})
+
+	it('dispatches timeline-safe clip attrs to DKT before structural authority mirror', () => {
+		const { env, dispatchClipAction } = createEnv()
+		const actions = createLegendActionRuntime(env, {
+			playbackDuration$: { get: () => 10 } as never,
+			resourceChunkSize: 1024,
+		})
+
+		actions.trimClipById('clip:dkt-runtime-opacity', 'start', 0.5)
+		actions.resizeClipById('clip:dkt-runtime-opacity', 'end', -0.5)
+		actions.moveClipById('clip:dkt-runtime-opacity', 1)
+		actions.splitClipByIdAt('clip:dkt-runtime-opacity', 2)
+
+		expect(dispatchClipAction).toHaveBeenCalledWith(expect.objectContaining({
+			sourceClipId: 'clip:dkt-runtime-opacity',
+			start: 0,
+			in: 0,
+			duration: 4,
+		}), 'trim', { edge: 'start', delta: 0.5 })
+		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'resize', { edge: 'end', delta: -0.5 })
+		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'moveBy', { delta: 1 })
+		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'splitAt', { time: 2 })
 	})
 
 	it('dispatches text and effect attr edits to DKT before mirroring through authority', () => {

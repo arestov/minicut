@@ -1,9 +1,12 @@
 import { model } from 'dkt/model.js'
 import { defaultClipTransform, reduceDktClipAction } from '../clipActions'
+import { reduceDktTimelineClipAction } from '../timelineActions'
 
 const defaultModelClipAttrs = {
 	name: 'Clip',
 	color: '#2563eb',
+	start: 0,
+	in: 0,
 	opacity: { value: 1 },
 	fadeIn: 0,
 	fadeOut: 0,
@@ -18,6 +21,8 @@ export const Clip = model({
 		sourceClipId: ['input', null],
 		name: ['input', 'Clip'],
 		color: ['input', '#2563eb'],
+		start: ['input', 0],
+		in: ['input', 0],
 		duration: ['input', 0],
 		fadeIn: ['input', 0],
 		fadeOut: ['input', 0],
@@ -101,9 +106,77 @@ export const Clip = model({
 				},
 			],
 		},
+		moveBy: {
+			to: {
+				start: ['start'],
+			},
+			fn: [
+				['start', 'in', 'duration'] as const,
+				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
+					const patch = reduceDktTimelineClipAction('moveBy', payload, {
+						start: typeof start === 'number' ? start : 0,
+						in: typeof inPoint === 'number' ? inPoint : 0,
+						duration: typeof duration === 'number' ? duration : 0,
+					})
+					return patch ?? '$noop'
+				},
+			],
+		},
+		trim: {
+			to: {
+				start: ['start'],
+				in: ['in'],
+				duration: ['duration'],
+			},
+			fn: [
+				['start', 'in', 'duration'] as const,
+				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
+					const patch = reduceDktTimelineClipAction('trim', payload, {
+						start: typeof start === 'number' ? start : 0,
+						in: typeof inPoint === 'number' ? inPoint : 0,
+						duration: typeof duration === 'number' ? duration : 0,
+					})
+					return patch ?? '$noop'
+				},
+			],
+		},
+		resize: {
+			to: {
+				start: ['start'],
+				in: ['in'],
+				duration: ['duration'],
+			},
+			fn: [
+				['start', 'in', 'duration'] as const,
+				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
+					const patch = reduceDktTimelineClipAction('resize', payload, {
+						start: typeof start === 'number' ? start : 0,
+						in: typeof inPoint === 'number' ? inPoint : 0,
+						duration: typeof duration === 'number' ? duration : 0,
+					})
+					return patch ?? '$noop'
+				},
+			],
+		},
+		splitAt: {
+			to: {
+				duration: ['duration'],
+			},
+			fn: [
+				['start', 'in', 'duration'] as const,
+				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
+					const patch = reduceDktTimelineClipAction('splitAt', payload, {
+						start: typeof start === 'number' ? start : 0,
+						in: typeof inPoint === 'number' ? inPoint : 0,
+						duration: typeof duration === 'number' ? duration : 0,
+					})
+					return patch ?? '$noop'
+				},
+			],
+		},
 	},
 })
 
 export const CLIP_PROXY_CREATION_SHAPE = {
-	attrs: ['sourceClipId', 'name', 'color', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
+	attrs: ['sourceClipId', 'name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
 } as const

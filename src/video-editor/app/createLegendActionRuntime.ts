@@ -13,6 +13,7 @@ import { createMediaImportActions } from './mediaImportActions'
 import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import { executeActionBuildResult } from './actionTransactionExecutor'
 import type { DktClipActionName } from '../dkt/clipActions'
+import type { DktTimelineClipActionName } from '../dkt/timelineActions'
 
 const minimumSplitOffset = 0.01
 
@@ -38,7 +39,7 @@ export const createLegendActionRuntime = (
 		})
 		void executeActionBuildResult(env, result)
 	}
-	const dispatchDktClipAction = (clipId: string, clipAttrs: ClipAttrs, actionName: DktClipActionName, payload: unknown): void => {
+	const dispatchDktClipAction = (clipId: string, clipAttrs: ClipAttrs, actionName: DktClipActionName | DktTimelineClipActionName, payload: unknown): void => {
 		const dispatch = env.dkt?.dispatchClipAction
 		if (!dispatch) {
 			return
@@ -48,6 +49,8 @@ export const createLegendActionRuntime = (
 			sourceClipId: clipId,
 			name: clipAttrs.name,
 			color: clipAttrs.color,
+			start: clipAttrs.start,
+			in: clipAttrs.in,
 			duration: clipAttrs.duration,
 			fadeIn: clipAttrs.fadeIn,
 			fadeOut: clipAttrs.fadeOut,
@@ -213,10 +216,11 @@ export const createLegendActionRuntime = (
 
 		trimClipById(clipId: string, edge: 'start' | 'end', delta: number): void {
 			const clip = env.stores.getRegistry().entitiesById[clipId]
-			if (!clip) {
+			if (!clip || clip.type !== 'clip') {
 				return
 			}
 
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'trim', { edge, delta })
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'trim', { edge, delta })
 		},
 
@@ -237,6 +241,7 @@ export const createLegendActionRuntime = (
 				return
 			}
 
+			dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'resize', { edge, delta })
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'resize', { edge, delta })
 		},
 
@@ -324,6 +329,7 @@ export const createLegendActionRuntime = (
 
 			const attrs = asClipAttrs(clip.attrs)
 			const splitTime = clamp(roundToHundredths(env.session.get().cursor), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
+			dispatchDktClipAction(clip.id, attrs, 'splitAt', { time: splitTime })
 			void executeActionBuildResult(env, {
 				type: 'transaction',
 				steps: [
@@ -344,6 +350,7 @@ export const createLegendActionRuntime = (
 
 			const attrs = asClipAttrs(clip.attrs)
 			const splitTime = clamp(roundToHundredths(time), attrs.start + minimumSplitOffset, attrs.start + attrs.duration - minimumSplitOffset)
+			dispatchDktClipAction(clip.id, attrs, 'splitAt', { time: splitTime })
 			void executeActionBuildResult(env, {
 				type: 'transaction',
 				steps: [
@@ -384,6 +391,11 @@ export const createLegendActionRuntime = (
 		moveClipById(clipId: string, delta: number): void {
 			if (delta === 0) {
 				return
+			}
+
+			const clip = env.stores.getRegistry().entitiesById[clipId]
+			if (clip?.type === 'clip') {
+				dispatchDktClipAction(clip.id, asClipAttrs(clip.attrs), 'moveBy', { delta })
 			}
 
 			dispatchBuiltCommand(createScope(clipId, 'clip'), 'moveBy', { delta })

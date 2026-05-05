@@ -113,6 +113,8 @@ const appProps = mergeDcl({
 					sourceClipId?: unknown
 					name?: unknown
 					color?: unknown
+					start?: unknown
+					in?: unknown
 					duration?: unknown
 					fadeIn?: unknown
 					fadeOut?: unknown
@@ -130,6 +132,8 @@ const appProps = mergeDcl({
 							sourceClipId: value.sourceClipId,
 							name: typeof value.name === 'string' ? value.name : 'Clip',
 							color: typeof value.color === 'string' ? value.color : '#2563eb',
+							start: typeof value.start === 'number' ? value.start : 0,
+							in: typeof value.in === 'number' ? value.in : 0,
 							duration: typeof value.duration === 'number' ? value.duration : 0,
 							fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
 							fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,

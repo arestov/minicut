@@ -27,6 +27,8 @@ export type MiniCutDktClipProxyInput = {
 	sourceClipId: string
 	name?: string
 	color?: string
+	start?: number
+	in?: number
 	duration?: number
 	fadeIn?: number
 	fadeOut?: number
