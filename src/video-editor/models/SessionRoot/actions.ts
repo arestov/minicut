@@ -11,6 +11,7 @@ export type DktSessionActionName =
 	| 'setCursor'
 	| 'setPlaying'
 	| 'setTimelineZoom'
+	| 'tickPlayback'
 	| 'syncSelectedClipRel'
 	| 'togglePlayback'
 	| 'zoomTimeline'
@@ -74,6 +75,18 @@ export const reduceSessionTogglePlaybackAction = (
 ): Pick<EditorSessionState, 'isPlaying'> => ({
 	isPlaying: !state.isPlaying,
 })
+
+export const reduceSessionTickPlaybackAction = (
+	payload: unknown,
+	state: Pick<EditorSessionState, 'cursor' | 'isPlaying'>,
+): Pick<EditorSessionState, 'cursor'> | null => {
+	if (!state.isPlaying) {
+		return null
+	}
+
+	const deltaSeconds = finiteNumber((payload as { deltaSeconds?: unknown } | null)?.deltaSeconds)
+	return deltaSeconds === null ? null : { cursor: Math.max(0, roundToHundredths(state.cursor + deltaSeconds)) }
+}
 
 export const reduceSessionZoomTimelineAction = (
 	payload: unknown,
@@ -184,6 +197,19 @@ export const sessionTogglePlaybackAction = {
 	],
 } as const satisfies DktActionDescriptor
 
+export const sessionTickPlaybackAction = {
+	to: {
+		cursor: ['cursor'],
+	},
+	fn: [
+		['cursor', 'isPlaying'] as const,
+		(payload: unknown, cursor: unknown, isPlaying: unknown) => reduceSessionTickPlaybackAction(payload, {
+			cursor: typeof cursor === 'number' ? cursor : 0,
+			isPlaying: Boolean(isPlaying),
+		}) ?? '$noop',
+	],
+} as const satisfies DktActionDescriptor
+
 export const sessionZoomTimelineAction = {
 	to: {
 		timelineZoom: ['timelineZoom'],
@@ -209,6 +235,7 @@ export const dktSessionActions = {
 	setPlaying: sessionSetPlayingAction,
 	setTimelineZoom: sessionSetTimelineZoomAction,
 	syncSelectedClipRel: sessionSyncSelectedClipRelAction,
+	tickPlayback: sessionTickPlaybackAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
 } as const satisfies Record<DktSessionActionName, DktActionDescriptor>

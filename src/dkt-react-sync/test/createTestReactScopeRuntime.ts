@@ -12,15 +12,20 @@ export const createTestReactScopeRuntime = ({
   relsByNodeId?: Record<string, Record<string, string | string[] | null>>
   rootNodeId?: string
 } = {}): ReactScopeRuntime & {
+  dispatchCalls: Array<{ actionName: string; payload: unknown; scopeNodeId: string | null }>
   updateAttrs(nodeId: string, patch: Record<string, unknown>): void
+  updateOne(nodeId: string, relName: string, nodeIdOrNull: string | null): void
   updateMany(nodeId: string, relName: string, nodeIds: string[]): void
 } => {
   const rootScope = createTestScope(rootNodeId)
   const scopesByNodeId = new Map<string, ReactSyncScopeHandle>([[rootNodeId, rootScope]])
   const attrListenersByNodeId = new Map<string, Set<() => void>>()
+  const oneListenersByNodeId = new Map<string, Set<() => void>>()
   const manyListenersByNodeId = new Map<string, Set<() => void>>()
   const attrsCache = new Map<string, Record<string, unknown>>()
   const manyCache = new Map<string, readonly ReactSyncScopeHandle[]>()
+  const dispatchCalls: Array<{ actionName: string; payload: unknown; scopeNodeId: string | null }> = []
+  const scopeDispatchCache = new WeakMap<ReactSyncScopeHandle, (actionName: string, payload?: unknown) => void>()
 
   const getScope = (nodeId: string): ReactSyncScopeHandle => {
     let scope = scopesByNodeId.get(nodeId)
@@ -45,6 +50,7 @@ export const createTestReactScopeRuntime = ({
   }
 
   return {
+    dispatchCalls,
     getRootScope() {
       return rootScope
     },
@@ -71,8 +77,8 @@ export const createTestReactScopeRuntime = ({
       const rel = relsByNodeId[scope._nodeId]?.[relName]
       return typeof rel === 'string' ? getScope(rel) : null
     },
-    subscribeOne() {
-      return () => {}
+    subscribeOne(scope, _relName, listener) {
+      return subscribeByNode(oneListenersByNodeId, scope._nodeId, listener)
     },
     readMany(scope, relName) {
       const cacheKey = `${scope._nodeId}\u001f${relName}`
@@ -94,9 +100,21 @@ export const createTestReactScopeRuntime = ({
     mountShape() {
       return () => {}
     },
-    dispatch() {},
-    getDispatch() {
-      return () => {}
+    dispatch(actionName, payload, scope) {
+      dispatchCalls.push({ actionName, payload, scopeNodeId: scope?._nodeId ?? null })
+    },
+    getDispatch(scope) {
+      if (!scope) {
+        return (actionName, payload) => this.dispatch(actionName, payload, null)
+      }
+
+      let dispatch = scopeDispatchCache.get(scope)
+      if (!dispatch) {
+        dispatch = (actionName, payload) => this.dispatch(actionName, payload, scope)
+        scopeDispatchCache.set(scope, dispatch)
+      }
+
+      return dispatch
     },
     updateAttrs(nodeId, patch) {
       attrsByNodeId[nodeId] = { ...(attrsByNodeId[nodeId] ?? {}), ...patch }
@@ -106,6 +124,10 @@ export const createTestReactScopeRuntime = ({
         }
       }
       notify(attrListenersByNodeId.get(nodeId))
+    },
+    updateOne(nodeId, relName, nodeIdOrNull) {
+      relsByNodeId[nodeId] = { ...(relsByNodeId[nodeId] ?? {}), [relName]: nodeIdOrNull }
+      notify(oneListenersByNodeId.get(nodeId))
     },
     updateMany(nodeId, relName, nodeIds) {
       relsByNodeId[nodeId] = { ...(relsByNodeId[nodeId] ?? {}), [relName]: nodeIds }

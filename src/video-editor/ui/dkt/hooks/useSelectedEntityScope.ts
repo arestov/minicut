@@ -1,3 +1,3 @@
-import { SESSION_SCOPE, useEditorOne } from '../../../render-sync'
+import { useOne } from '../../../../dkt-react-sync/hooks/useOne'
 
-export const useSelectedEntityScope = () => useEditorOne('selectedEntity', SESSION_SCOPE)
+export const useSelectedEntityScope = () => useOne('selectedClip')
