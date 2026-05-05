@@ -3,6 +3,7 @@ import { VideoEditorProvider } from './VideoEditorContext'
 import { createVideoEditorHarness, type VideoEditorHarness } from './createVideoEditorHarness'
 import { createBrowserHarnessPlatform } from './platform'
 import { VideoEditorApp } from '../components/VideoEditorApp'
+import { DktEditorRoot } from '../ui/dkt/DktEditorRoot'
 import { CMD } from '../domain/types'
 import { createDefaultRtcConfig } from '../p2p/PageP2PManager'
 import { resolveRoomUrlState, type RoomUrlResolution } from './roomUrlState'
@@ -238,7 +239,9 @@ export const VideoEditorHarnessApp = ({
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>
-			<VideoEditorApp />
+			<DktEditorRoot runtime={ownedHarness.pageRuntime}>
+				<VideoEditorApp />
+			</DktEditorRoot>
 		</VideoEditorProvider>
 	)
 }

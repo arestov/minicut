@@ -188,7 +188,16 @@ const serializeModel = (model: RuntimeModelLike): MiniCutDktSerializedModel => {
 
 }
 
-const SESSION_IMPORTANT_REL_PATHS = Object.freeze([Object.freeze(['pioneer'])])
+const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
+	Object.freeze(['pioneer']),
+	Object.freeze(['pioneer', 'project']),
+	Object.freeze(['pioneer', 'project', 'tracks']),
+	Object.freeze(['pioneer', 'project', 'resources']),
+	Object.freeze(['pioneer', 'project', 'tracks', 'clips']),
+	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'resource']),
+	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'text']),
+	Object.freeze(['pioneer', 'project', 'tracks', 'clips', 'effects']),
+])
 
 const MODEL_ROOT_REL_BY_MODEL_NAME: Partial<Record<string, string>> = {
 	minicut_project: 'project',

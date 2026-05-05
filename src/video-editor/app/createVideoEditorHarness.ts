@@ -1,6 +1,7 @@
 import { createPlaybackDuration$ } from '../read-model/previewReadModel'
 import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../dkt/state/projectStore'
 import { createSessionStore } from '../dkt/state/sessionStore'
+import { createMiniCutPageSyncRuntime } from '../dkt/runtime/createMiniCutPageSyncRuntime'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import type {
 	Command,
@@ -12,6 +13,7 @@ import { createProjectCreationCommand } from '../domain/actionCommandBuilders'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportRenderer } from '../render/exportRenderer'
 import { createDktEditorRenderRuntime } from '../render-sync/createDktEditorRenderRuntime'
+import { createDktPageEditorRenderRuntime } from '../render-sync/createDktPageEditorRenderRuntime'
 import { createDktRegistryRenderStore } from '../render-sync/DktRegistryRenderStore'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createDktActionRuntime } from './createDktActionRuntime'
@@ -91,6 +93,14 @@ const resolveActiveProjectId = (
 	return Object.keys(registry.projects)[0] ?? null
 }
 
+const createMiniCutPageRuntime = (authorityClient: EditorAuthorityClient) => {
+	if (typeof authorityClient.openDktTransport !== 'function') {
+		return null
+	}
+
+	return createMiniCutPageSyncRuntime({ transport: authorityClient.openDktTransport() })
+}
+
 interface CreateVideoEditorHarnessOptions {
 	autoCreateInitialProject?: boolean
 	exportRenderer?: ExportRenderer
@@ -146,6 +156,7 @@ export const createVideoEditorHarness = (
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const renderRegistry = createDktRegistryRenderStore()
+	const pageRuntime = createMiniCutPageRuntime(authorityClient)
 	const playbackDuration$ = createPlaybackDuration$(projects$, session$)
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
@@ -385,7 +396,7 @@ export const createVideoEditorHarness = (
 		playbackDuration$,
 		resourceChunkSize,
 	})
-	const renderRuntime = createDktEditorRenderRuntime({
+	const legacyRenderRuntime = createDktEditorRenderRuntime({
 		registry: renderRegistry,
 		session: {
 			getSnapshot: () => session$.get(),
@@ -401,11 +412,17 @@ export const createVideoEditorHarness = (
 		},
 		actions,
 	})
+	const renderRuntime = createDktPageEditorRenderRuntime({
+		pageRuntime,
+		legacyRuntime: legacyRenderRuntime,
+		actions,
+	})
 
 	return {
 		worker: authorityClient,
 		projects$,
 		session$,
+		pageRuntime,
 		renderRuntime,
 		resourceTransfers$: resourceTransferManager.transfers$,
 		actionEnvironment,
@@ -433,6 +450,7 @@ export const createVideoEditorHarness = (
 				platform.revokeObjectUrl(url)
 			}
 			resourceTransferManager.destroy()
+			pageRuntime?.destroy()
 			authorityClient.destroy?.()
 			for (const url of exportObjectUrls) {
 				platform.revokeObjectUrl(url)
