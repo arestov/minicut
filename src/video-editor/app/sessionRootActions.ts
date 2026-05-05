@@ -109,11 +109,11 @@ export const createSessionRootActions = (
 	},
 
 	undo(): void {
-		Promise.resolve(env.authority.undo()).finally(env.authority.syncHistoryState)
+		return
 	},
 
 	redo(): void {
-		Promise.resolve(env.authority.redo()).finally(env.authority.syncHistoryState)
+		return
 	},
 
 	addTrack(kind: 'video' | 'audio'): void {

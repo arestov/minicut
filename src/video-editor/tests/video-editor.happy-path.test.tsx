@@ -613,7 +613,7 @@ describe('video editor harness', () => {
 		}
 	})
 
-	it('covers toolbar history/export, media controls, and timeline tool toggles', async () => {
+	it('covers toolbar export, media controls, and timeline tool toggles', async () => {
 		const { harness, user, unmount } = renderVideoEditor()
 
 		try {
@@ -624,10 +624,8 @@ describe('video editor harness', () => {
 			await importSampleResource(harness)
 			await importSampleResource(harness)
 			await importSampleResource(harness)
-			await user.click(screen.getByRole('button', { name: 'Undo' }))
-			expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
-			await user.click(screen.getByRole('button', { name: 'Redo' }))
-			expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
+			expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+			expect(screen.queryByRole('button', { name: 'Redo' })).not.toBeInTheDocument()
 			await user.click(screen.getByRole('button', { name: 'Export project' }))
 			expect(await screen.findByRole('status')).toHaveTextContent('Export ready')
 

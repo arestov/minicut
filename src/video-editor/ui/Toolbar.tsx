@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Download, FolderPlus, Redo2, Undo2 } from 'lucide-react'
+import { Download, FolderPlus } from 'lucide-react'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import { HISTORY_SCOPE, ROOT_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
+import { ROOT_SCOPE, useEditorActions, useEditorAttrs } from '../render-sync'
 import type { ExportProgressEvent } from '../render/exportRenderer'
 import { IconButton } from './ControlPrimitives'
 import { ProjectDropdown } from './ProjectDropdown'
@@ -22,12 +22,9 @@ export const Toolbar = () => {
 	const { actions } = useVideoEditor()
 	const rootDispatch = useEditorActions(ROOT_SCOPE)
 	const rootAttrs = useEditorAttrs<{ activeProjectId?: unknown }>(['activeProjectId'], ROOT_SCOPE)
-	const historyAttrs = useEditorAttrs<{ canUndo?: unknown, canRedo?: unknown }>(['canUndo', 'canRedo'], HISTORY_SCOPE)
 	const [exportStatus, setExportStatus] = useState<'idle' | 'rendering' | 'ready' | 'error'>('idle')
 	const [exportProgress, setExportProgress] = useState<ExportProgressEvent>({ stage: 'queued', progress: 0 })
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
-	const canUndo = Boolean(historyAttrs.canUndo)
-	const canRedo = Boolean(historyAttrs.canRedo)
 
 	const exportProject = (): void => {
 		setExportStatus('rendering')
@@ -76,10 +73,6 @@ export const Toolbar = () => {
 				</IconButton>
 			</div>
 			<div className="ve-toolbar__actions">
-				<div className="ve-toolbar__history" aria-label="History controls">
-					<IconButton type="button" icon={Undo2} label="Undo" variant="ghost" onClick={() => rootDispatch('undo')} disabled={!canUndo} />
-					<IconButton type="button" icon={Redo2} label="Redo" variant="ghost" onClick={() => rootDispatch('redo')} disabled={!canRedo} />
-				</div>
 				<IconButton
 					type="button"
 					icon={Download}

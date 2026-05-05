@@ -8,10 +8,10 @@ import type {
 	ProjectRegistry,
 	ResourceAttrs,
 	TextAttrs,
-} from '../domain/types'
-import { getEffectInstructionFilter, toEffectRenderInstruction, type EffectRenderInstruction } from '../render/colorPipeline'
-import type { ScalarKeyframe } from '../render/timing'
-import { createPreviewFrame, type PreviewClipSource, type PreviewFrame, type PreviewScene, type PreviewStructure, type ResolvedAnimatedScalar, type TimelineClipInterval } from '../read-model/previewComps'
+} from '../../domain/types'
+import { getEffectInstructionFilter, toEffectRenderInstruction, type EffectRenderInstruction } from '../../render/colorPipeline'
+import type { ScalarKeyframe } from '../../render/timing'
+import { createPreviewFrame, type PreviewClipSource, type PreviewFrame, type PreviewScene, type PreviewStructure, type ResolvedAnimatedScalar, type TimelineClipInterval } from '../../read-model/previewComps'
 import {
 	attrs$,
 	clipAttrs$,
@@ -29,8 +29,8 @@ import {
 	textAttrs$,
 } from './observableSelectors'
 
-export type { PreviewClipSource, PreviewFrame, PreviewScene, PreviewStructure, RenderedClip, ResolvedAnimatedScalar, TimelineClipInterval } from '../read-model/previewComps'
-export { createPreviewFrame, renderPreviewClipSourceAtCursor, renderPreviewStructureAtCursor } from '../read-model/previewComps'
+export type { PreviewClipSource, PreviewFrame, PreviewScene, PreviewStructure, RenderedClip, ResolvedAnimatedScalar, TimelineClipInterval } from '../../read-model/previewComps'
+export { createPreviewFrame, renderPreviewClipSourceAtCursor, renderPreviewStructureAtCursor } from '../../read-model/previewComps'
 
 const fallbackPlaybackDuration = 20
 

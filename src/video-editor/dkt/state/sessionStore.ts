@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import { observable, type Observable } from '@legendapp/state'
-import type { EditorSessionState } from '../domain/types'
+import type { EditorSessionState } from '../../domain/types'
 
 export const TIMELINE_ZOOM_MIN = 8
 export const TIMELINE_ZOOM_MAX = 96

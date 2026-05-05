@@ -26,7 +26,7 @@ import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,
 	TIMELINE_ZOOM_STEP,
-} from '../legend/sessionStore'
+} from '../dkt/state/sessionStore'
 import {
 	EditorScopeProvider,
 	ROOT_SCOPE,

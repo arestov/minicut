@@ -6,14 +6,12 @@ import type {
 	Entity,
 	EntityId,
 	EffectAttrs,
-	HistoryState,
 	ProjectRegistry,
 	TextAttrs,
 } from '../domain/types'
 import type { ResourceTransferView } from '../media/resourceTransferManager'
 import {
 	createEntityScope,
-	HISTORY_SCOPE,
 	ROOT_SCOPE,
 	SESSION_SCOPE,
 	type EditorScope,
@@ -39,7 +37,6 @@ type HarnessActions = {
 	importSampleResource(): void
 	moveClipById(clipId: string, delta: number): void
 	nudgeSelectedClip(delta: number): void
-	redo(): void
 	removeEffectFromClip(clipId: string, effectId: string): void
 	renameClipById(clipId: string, name: string): void
 	resizeClipById(clipId: string, edge: 'start' | 'end', delta: number): void
@@ -58,7 +55,6 @@ type HarnessActions = {
 	updateClipTransformById(clipId: string, partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void
 	updateEffectAttrs(effectId: string, attrs: Partial<EffectAttrs>): void
 	updateTextById(textId: string, attrs: Partial<TextAttrs>): void
-	undo(): void
 	zoomTimeline(delta: number): void
 }
 
@@ -82,7 +78,6 @@ export interface ClipTrackPositionSummary {
 export interface CreateLegendEditorRenderRuntimeOptions {
 	projects$: Observable<ProjectRegistry>
 	session$: Observable<EditorSessionState>
-	history$: Observable<HistoryState>
 	resourceTransfers$: Observable<Record<string, ResourceTransferView>>
 	actions: HarnessActions
 }
@@ -267,7 +262,6 @@ const cloneSnapshotValue = (value: unknown): unknown => {
 export const createLegendEditorRenderRuntime = ({
 	projects$,
 	session$,
-	history$,
 	resourceTransfers$,
 	actions,
 }: CreateLegendEditorRenderRuntimeOptions): EditorRenderRuntime => {
@@ -290,8 +284,6 @@ export const createLegendEditorRenderRuntime = ({
 		readAttrs(scope, fields) {
 			const source = scope.type === 'session'
 				? session$.get() as unknown as Record<string, unknown>
-				: scope.type === 'history'
-					? history$.get() as unknown as Record<string, unknown>
 					: scope.type === 'root'
 						? {
 							activeProjectId: getActiveProjectId(projects$.get(), session$.get()),
@@ -306,10 +298,6 @@ export const createLegendEditorRenderRuntime = ({
 			if (scope.type === 'session') {
 				const sessionNode = asObservableRecord(session$)
 				return combineCleanups(fields.map((field) => subscribeNode(sessionNode[field], listener)))
-			}
-			if (scope.type === 'history') {
-				const historyNode = asObservableRecord(history$)
-				return combineCleanups(fields.map((field) => subscribeNode(historyNode[field], listener)))
 			}
 			if (scope.type === 'root') {
 				return combineCleanups([
@@ -425,14 +413,6 @@ export const createLegendEditorRenderRuntime = ({
 					if (typeof projectId === 'string') {
 						actions.setActiveProject(projectId)
 					}
-					return
-				}
-				if (actionName === 'undo') {
-					actions.undo()
-					return
-				}
-				if (actionName === 'redo') {
-					actions.redo()
 					return
 				}
 				if (actionName === 'importSampleResource') {

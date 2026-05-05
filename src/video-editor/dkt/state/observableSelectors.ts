@@ -12,7 +12,7 @@ import type {
 	TextAttrs,
 	TimelineAttrs,
 	TrackAttrs,
-} from '../domain/types'
+} from '../../domain/types'
 
 export type ProjectsObservable = Observable<ProjectRegistry>
 

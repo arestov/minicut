@@ -1,6 +1,6 @@
 import { batch, mergeIntoObservable, observable, type Observable } from '@legendapp/state'
-import { createEmptyRegistry } from '../domain/createProject'
-import { PATCH, type Patch, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
+import { createEmptyRegistry } from '../../domain/createProject'
+import { PATCH, type Patch, type PatchEnvelope, type ProjectRegistry } from '../../domain/types'
 
 export const createProjectsStore = (): Observable<ProjectRegistry> =>
 	observable<ProjectRegistry>(createEmptyRegistry())

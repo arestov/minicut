@@ -1,7 +1,7 @@
 import { observable, type Observable } from '@legendapp/state'
 import { createPlaybackDuration$ } from '../read-model/previewReadModel'
-import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../legend/projectStore'
-import { createSessionStore } from '../legend/sessionStore'
+import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../dkt/state/projectStore'
+import { createSessionStore } from '../dkt/state/sessionStore'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import type {
 	Command,
@@ -14,9 +14,9 @@ import { CMD } from '../domain/types'
 import { hasDktReplicaSyncTargets, syncAuthorityEnvelopeToDktReplica } from '../dkt/replica/syncAuthorityEnvelope'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportRenderer } from '../render/exportRenderer'
-import { createLegendEditorRenderRuntime } from '../render-sync/createLegendEditorRenderRuntime'
+import { createDktEditorRenderRuntime } from '../render-sync/createDktEditorRenderRuntime'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
-import { createLegendActionRuntime } from './createLegendActionRuntime'
+import { createDktActionRuntime } from './createDktActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
 import {
@@ -188,11 +188,9 @@ export const createVideoEditorHarness = (
 	}
 
 	const syncHistoryState = (): void => {
-		Promise.resolve(authorityClient.getHistoryState()).then((state) => {
-			if (!isDestroyed) {
-				history$.set(state)
-			}
-		})
+		if (!isDestroyed) {
+			history$.set({ canUndo: false, canRedo: false })
+		}
 	}
 
 	const ensureInitialProject = (): void => {
@@ -371,14 +369,13 @@ export const createVideoEditorHarness = (
 		platform,
 	}
 
-	const actions = createLegendActionRuntime(actionEnvironment, {
+	const actions = createDktActionRuntime(actionEnvironment, {
 		playbackDuration$,
 		resourceChunkSize,
 	})
-	const renderRuntime = createLegendEditorRenderRuntime({
+	const renderRuntime = createDktEditorRenderRuntime({
 		projects$,
 		session$,
-		history$,
 		resourceTransfers$: resourceTransferManager.transfers$,
 		actions,
 	})

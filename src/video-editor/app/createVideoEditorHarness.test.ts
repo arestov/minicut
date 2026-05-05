@@ -565,7 +565,7 @@ describe('createVideoEditorHarness actions', () => {
 		}
 	})
 
-	it('undoes and redoes timeline edits through the harness', async () => {
+	it('keeps timeline unchanged when history actions are disabled', async () => {
 		const authority = new MemoryWorkerAuthority()
 		const harness = createVideoEditorHarness(authority)
 
@@ -582,7 +582,7 @@ describe('createVideoEditorHarness actions', () => {
 			let videoTrack = getVideoTrack(registry, project!)
 			expect(videoTrack).not.toBeNull()
 			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
-			expect(harness.history$.get().canUndo).toBe(true)
+			expect(harness.history$.get()).toMatchObject({ canUndo: false, canRedo: false })
 
 			harness.actions.undo()
 			await settleHarness()
@@ -592,8 +592,8 @@ describe('createVideoEditorHarness actions', () => {
 			expect(project).not.toBeNull()
 			videoTrack = getVideoTrack(registry, project!)
 			expect(videoTrack).not.toBeNull()
-			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(0)
-			expect(harness.history$.get()).toMatchObject({ canUndo: true, canRedo: true })
+			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
+			expect(harness.history$.get()).toMatchObject({ canUndo: false, canRedo: false })
 
 			harness.actions.redo()
 			await settleHarness()
@@ -604,7 +604,7 @@ describe('createVideoEditorHarness actions', () => {
 			videoTrack = getVideoTrack(registry, project!)
 			expect(videoTrack).not.toBeNull()
 			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
-			expect(harness.history$.get()).toMatchObject({ canUndo: true, canRedo: false })
+			expect(harness.history$.get()).toMatchObject({ canUndo: false, canRedo: false })
 		} finally {
 			harness.destroy()
 		}

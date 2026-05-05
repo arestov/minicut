@@ -22,4 +22,4 @@ export {
 	createTimelineClipIntervals$,
 	getActiveClipRefsAtCursor,
 	getTimelineClipIntervals$,
-} from '../legend/derivedTimeline'
+} from '../dkt/state/derivedTimeline'
