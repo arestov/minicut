@@ -1,6 +1,6 @@
 import type { EntityType } from '../domain/types'
 
-export type EditorScopeType = EntityType | 'root' | 'session' | 'history'
+export type EditorScopeType = EntityType | 'root' | 'session'
 
 export interface EditorScope {
 	nodeId: string
@@ -9,7 +9,6 @@ export interface EditorScope {
 
 export const ROOT_SCOPE: EditorScope = Object.freeze({ nodeId: '$root', type: 'root' })
 export const SESSION_SCOPE: EditorScope = Object.freeze({ nodeId: '$session', type: 'session' })
-export const HISTORY_SCOPE: EditorScope = Object.freeze({ nodeId: '$history', type: 'history' })
 
 export const createEntityScope = (nodeId: string, type: EntityType): EditorScope => ({
 	nodeId,

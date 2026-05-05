@@ -22,8 +22,6 @@ const appProps = mergeDcl({
 	},
 	attrs: {
 		activeProjectHint: ['input', null],
-		historyCanUndo: ['input', false],
-		historyCanRedo: ['input', false],
 		projectMetaList: ['input', []],
 		hasProjects: ['comp', ['projectMetaList'], (projectMetaList: unknown) => Array.isArray(projectMetaList) && projectMetaList.length > 0],
 	},
@@ -138,19 +136,6 @@ const appProps = mergeDcl({
 			fn: (payload: unknown) => ({
 				activeProjectHint: typeof payload === 'string' && payload ? payload : null,
 			}),
-		},
-		setHistoryAvailability: {
-			to: {
-				historyCanUndo: ['historyCanUndo'],
-				historyCanRedo: ['historyCanRedo'],
-			},
-			fn: (payload: unknown) => {
-				const value = payload as { canUndo?: unknown; canRedo?: unknown } | null
-				return {
-					historyCanUndo: value?.canUndo === true,
-					historyCanRedo: value?.canRedo === true,
-				}
-			},
 		},
 	},
 })
