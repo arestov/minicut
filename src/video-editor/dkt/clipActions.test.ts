@@ -1,0 +1,75 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { buildDispatchResult } from '../domain/applyCommand'
+import { buildEditorActionCommand, expectCommand } from '../domain/actionCommandBuilders'
+import { createEntityActionScope } from '../domain/actionScope'
+import { createProjectGraph } from '../domain/createProject'
+import { CMD } from '../domain/types'
+import { clipUpdateOpacityAction, createClipUpdateOpacityEnvelope } from './clipActions'
+
+const createRegistryWithClip = () => {
+	const { project, entities } = createProjectGraph('DKT clip action', 1)
+	const videoTrack = entities.find((entity) => entity.type === 'track' && entity.attrs.kind === 'video')!
+	const clip = {
+		id: 'clip:dkt-opacity',
+		type: 'clip' as const,
+		attrs: {
+			name: 'Clip',
+			start: 1,
+			duration: 4,
+			in: 0,
+			fadeIn: 0,
+			fadeOut: 0,
+			audio: { gain: 1, pan: 0 },
+			opacity: { value: 1 },
+			transform: {
+				x: { value: 0 },
+				y: { value: 0 },
+				scale: { value: 1 },
+				rotation: { value: 0 },
+			},
+		},
+		rels: { effects: [] },
+	}
+	videoTrack.rels = { ...videoTrack.rels, clips: [clip.id] }
+
+	return {
+		registry: {
+			activeProjectId: project.id,
+			projects: { [project.id]: project },
+			entitiesById: Object.fromEntries([...entities, clip].map((entity) => [entity.id, entity])),
+		},
+		projectId: project.id,
+		clipId: clip.id,
+	}
+}
+
+describe('clean DKT clip actions', () => {
+	it('declares updateOpacity as a direct opacity target write', () => {
+		expect(clipUpdateOpacityAction.to).toEqual(['opacity'])
+		expect(clipUpdateOpacityAction.fn(37)).toEqual({ value: 0.4 })
+		expect(clipUpdateOpacityAction.fn(Number.NaN)).toBeNull()
+	})
+
+	it('matches the current command oracle for finite opacity updates', () => {
+		const { registry, projectId, clipId } = createRegistryWithClip()
+		const command = expectCommand(buildEditorActionCommand({
+			scope: createEntityActionScope(clipId, 'clip'),
+			name: 'setOpacity',
+			payload: { opacityPercent: 37 },
+		}, { registry, activeProjectId: projectId }))
+
+		expect(command?.c).toBe(CMD.CLIP_UPDATE_ATTRS)
+		const oracle = buildDispatchResult(registry, command!)
+		const directWriteEnvelope = createClipUpdateOpacityEnvelope(registry, clipId, 37)
+
+		expect(directWriteEnvelope).toEqual(oracle.envelope)
+	})
+
+	it('does not depend on command dispatch bridge code', () => {
+		const source = readFileSync(path.resolve(process.cwd(), 'src/video-editor/dkt/clipActions.ts'), 'utf8')
+		expect(source).not.toContain('CMD')
+		expect(source).not.toContain('$fx_dispatchCommand')
+	})
+})
