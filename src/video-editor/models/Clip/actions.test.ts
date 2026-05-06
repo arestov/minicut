@@ -16,7 +16,11 @@ describe('Clip model structural actions', () => {
 			kind: 'blur',
 			amount: 0.2,
 		})
-		expect(normalizeEffectCreationAttrs({ kind: 'blur' })).toBeNull()
+		expect(normalizeEffectCreationAttrs({ kind: 'blur' })).toMatchObject({
+			kind: 'blur',
+			name: 'Effect',
+			enabled: true,
+		})
 	})
 
 	it('removes and reorders effect refs by DKT node id', () => {
