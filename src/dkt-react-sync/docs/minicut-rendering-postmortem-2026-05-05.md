@@ -2,6 +2,8 @@
 
 Date: 2026-05-05
 
+Status note: this file is retained as a postmortem. The old wording about temporary compatibility is superseded by `docs/dkt-hard-rewrite-anti-patterns-2026-05-06.md` and `docs/dkt-hard-rewrite-migration-plan-2026-05-06.md`; the current migration allows no fallback bridge in the running editor path.
+
 ## Summary
 
 The latest DKT rendering attempt fixed several real streaming races, but it did so by adding too much intelligence to the render adapter. The most visible symptom was `ReactSyncReceiver.allSubs`: a graph-wide subscription added so UI selectors would wake up when related nodes arrived in separate sync messages.
@@ -50,7 +52,7 @@ If a component needs `project.totalDuration`, it reads a project comp. If a clip
 
 ## Required Next Direction
 
-The adapter should be treated as temporary compatibility. It must shrink, not grow.
+The adapter should not be extended. Under the current hard rewrite plan, legacy compatibility is deleted first and the pure DKT render path is rebuilt from model attrs, comp attrs, rels, comp rels, and scoped actions.
 
 Priority order:
 

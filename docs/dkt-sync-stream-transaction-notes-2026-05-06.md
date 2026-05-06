@@ -54,4 +54,6 @@ No render path should join against root-routed rels to compensate for missing ow
 
 ## Migration rule
 
-Any temporary compatibility code that still needs a legacy `ProjectRegistry` shape must build it on demand from direct `PageSyncRuntime` owner rels. It must not bootstrap from `getSnapshot`, replay `PatchEnvelope`, or project runtime model state into `projects$`.
+Do not add temporary compatibility code that builds a legacy `ProjectRegistry` shape for the running editor path.
+
+If a feature still needs registry-shaped data, that feature is not migrated yet. Phase 1 of the hard rewrite should delete the legacy runtime path and leave the affected tests or features visibly incomplete until the pure DKT model attrs, comp attrs, rels, comp rels, actions, tasks, and effects are implemented.

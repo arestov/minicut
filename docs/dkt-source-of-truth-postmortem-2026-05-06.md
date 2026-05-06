@@ -2,6 +2,8 @@
 
 Date: 2026-05-06
 
+Status note: this file is retained as a postmortem and historical guide. Any lines below that mention temporary compatibility, bridges, or projections are superseded by the hard rewrite documents from 2026-05-06. The current migration allows no fallback or compatibility bridge in the running editor path.
+
 ## Short verdict
 
 The current MiniCut runtime still has two source-of-truth paths:
