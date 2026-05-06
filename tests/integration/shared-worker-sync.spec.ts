@@ -21,7 +21,7 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await expect(secondPage.getByRole('button', { name: /Project \d+/i })).toBeVisible()
 	const secondProjectsRegion = secondPage.getByLabel('Projects')
 	await secondProjectsRegion.getByRole('button').click()
-	await secondProjectsRegion.getByRole('button', { name: new RegExp(sourceProjectName, 'i') }).click()
+	await secondProjectsRegion.getByRole('menuitem', { name: new RegExp(sourceProjectName, 'i') }).click()
 
 	await firstPage.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
 	await expect(

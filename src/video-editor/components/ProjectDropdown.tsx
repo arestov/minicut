@@ -28,8 +28,9 @@ const ProjectItem = ({ activeProjectId, onSelect }: ProjectItemProps) => {
 	const isActive = projectId === activeProjectId
 
 	return (
-		<li>
+		<li role="none">
 			<button
+				role="menuitem"
 				type="button"
 				className={isActive ? 'is-active' : ''}
 				onClick={() => {
@@ -101,7 +102,7 @@ const ProjectDropdownMenu = ({ activeProjectId, onClose }: { activeProjectId: st
 			{projectScopes.length === 0 ? (
 				<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
 			) : (
-				<ul className="ve-project-list ve-project-dropdown__list">
+		<ul role="menu" className="ve-project-list ve-project-dropdown__list">
 					{projectScopes.map((projectScope) => (
 						<ScopeContext.Provider key={projectScope._nodeId} value={projectScope}>
 							<ProjectItem

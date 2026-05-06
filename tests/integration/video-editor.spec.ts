@@ -389,10 +389,10 @@ test('project dropdown shows items when opened', async ({ page }) => {
 
 	const projectsRegion = page.getByLabel('Projects')
 	await projectsRegion.getByRole('button', { name: /Project \d+/i }).click()
-	const projectList = projectsRegion.getByRole('list')
+	const projectList = projectsRegion.getByRole('menu')
 
-	await expect(projectList.getByRole('button', { name: /Project 1/i })).toBeVisible()
-	await expect(projectList.getByRole('button', { name: /Project 2/i })).toBeVisible()
+	await expect(projectList.getByRole('menuitem', { name: /Project 1/i })).toBeVisible()
+	await expect(projectList.getByRole('menuitem', { name: /Project 2/i })).toBeVisible()
 })
 
 test('importing into an empty timeline auto-adds the first resource', async ({ page }) => {
