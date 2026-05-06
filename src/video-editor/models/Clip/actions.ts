@@ -5,6 +5,11 @@ import type { MiniCutDktEffectSeed } from '../../dkt/runtime/createMiniCutDktRun
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
+const asString = (value: unknown): string | null => typeof value === 'string' ? value : null
+const asNumber = (value: unknown): number | null => typeof value === 'number' ? value : null
+const asBoolean = (value: unknown): boolean | null => typeof value === 'boolean' ? value : null
+const asObject = <Value extends object>(value: unknown): Value | null =>
+	value && typeof value === 'object' ? value as Value : null
 
 export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTimelineAttrs' | 'setTransform' | 'setMediaKind' | 'setClipAttrs' | 'addEffect' | 'removeEffect' | 'reorderEffect'
 export type DktTimelineClipActionName = 'moveBy' | 'trim' | 'resize' | 'splitAt'
@@ -246,20 +251,18 @@ export const createClipUpdateOpacityEnvelope = (
 
 export const normalizeEffectCreationAttrs = (payload: unknown) => {
 	const value = payload as MiniCutDktEffectSeed | null
-	const sourceEffectId = typeof value?.sourceEffectId === 'string' && value.sourceEffectId
-		? value.sourceEffectId
-		: typeof (payload as { effectId?: unknown } | null)?.effectId === 'string'
-			? String((payload as { effectId: string }).effectId)
-			: createDktEffectSourceId(value?.kind)
+	const sourceEffectId = asString(value?.sourceEffectId)
+		?? asString((payload as { effectId?: unknown } | null)?.effectId)
+		?? createDktEffectSourceId(value?.kind)
 
 	return {
 		sourceEffectId,
-		name: typeof value?.name === 'string' ? value.name : defaultEffectAttrs.name,
-		kind: typeof value?.kind === 'string' ? value.kind : defaultEffectAttrs.kind,
-		enabled: typeof value?.enabled === 'boolean' ? value.enabled : defaultEffectAttrs.enabled,
-		amount: typeof value?.amount === 'number' ? value.amount : null,
-		params: value?.params && typeof value.params === 'object' ? value.params : null,
-		color: value?.color && typeof value.color === 'object' ? value.color : null,
+		name: asString(value?.name) ?? defaultEffectAttrs.name,
+		kind: asString(value?.kind) ?? defaultEffectAttrs.kind,
+		enabled: asBoolean(value?.enabled) ?? defaultEffectAttrs.enabled,
+		amount: asNumber(value?.amount),
+		params: asObject(value?.params),
+		color: asObject(value?.color),
 	}
 }
 
