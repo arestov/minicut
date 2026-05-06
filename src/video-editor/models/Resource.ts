@@ -19,6 +19,7 @@ export const Resource = model({
 		source: ['input', { kind: 'local' }],
 		status: ['input', 'missing'],
 		data: ['input', null],
+		timelineAddRequest: ['input', null],
 		isReady: ['comp', ['status'], (status: unknown) => status === 'ready'],
 	},
 	actions: {
@@ -82,6 +83,19 @@ export const Resource = model({
 					data: value.data && typeof value.data === 'object' ? value.data : null,
 				}
 			},
+		},
+		requestAddToTimeline: {
+			to: {
+				timelineAddRequest: ['timelineAddRequest'],
+			},
+			fn: (payload: unknown) => ({
+				timelineAddRequest: {
+					resourceId: typeof (payload as { resourceId?: unknown } | null)?.resourceId === 'string'
+						? (payload as { resourceId: string }).resourceId
+						: null,
+					requestedAt: Date.now(),
+				},
+			}),
 		},
 	},
 })

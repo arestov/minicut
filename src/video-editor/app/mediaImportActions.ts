@@ -1,12 +1,18 @@
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import { createProjectImportFilesEffectPayload, PROJECT_IMPORT_FILES_FX } from '../models/Project/effects'
-import { createResourceImportCommand, createTextAddCommand, createTimelineAddClipCommand } from '../domain/actionCommandBuilders'
-import { getActiveProject, getAudioTrack, getProjectMetaList, getVideoTrack } from '../domain/selectors'
-import { getActionActiveProjectId, isProjectTimelineEmpty } from './actionRuntimeSelectors'
+import { createTextAddCommand } from '../domain/actionCommandBuilders'
+import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
+let sampleResourceSequence = 0
+let importedResourceSequence = 0
+
+const createDktResourceSourceId = (prefix: string): string => {
+	importedResourceSequence += 1
+	return `${prefix}:${Date.now().toString(36)}:${importedResourceSequence}`
+}
 
 export const createMediaImportActions = (
 	env: EditorActionEnvironment,
@@ -16,14 +22,6 @@ export const createMediaImportActions = (
 	const resourceChunkSize = options.resourceChunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE
 	let importFilesQueue = Promise.resolve()
 
-	const addResourceToTimelineIfEmpty = (projectId: string, resourceId: string): void => {
-		if (env.lifecycle.isDestroyed() || !isProjectTimelineEmpty(env.stores.getRegistry(), projectId)) {
-			return
-		}
-
-		getActions().addResourceToTimeline(resourceId)
-	}
-
 	const getAuthorityPeerId = (): string | null => {
 		const peerId = (env.authority.client as Partial<{ peerId: unknown }>).peerId
 		return typeof peerId === 'string' ? peerId : null
@@ -32,14 +30,11 @@ export const createMediaImportActions = (
 	return {
 		importSampleResource(): void {
 			const projectId = getActionActiveProjectId(env)
-			const registry = env.stores.getRegistry()
-			const project = getActiveProject(registry, env.session.get())
-			const resourceOrdinal = project
-				? (getProjectMetaList(registry).find((meta) => meta.id === project.id)?.resourceCount ?? 0) + 1
-				: 1
+			sampleResourceSequence += 1
+			const resourceOrdinal = sampleResourceSequence
 			const kind = sampleKindCycle[(resourceOrdinal - 1) % sampleKindCycle.length]
-			env.authority.dispatch(createResourceImportCommand({
-					projectId,
+			const resource = {
+				sourceResourceId: createDktResourceSourceId('sample-resource'),
 					name: `Sample asset ${resourceOrdinal}`,
 					kind,
 					duration: 4 + resourceOrdinal,
@@ -47,12 +42,8 @@ export const createMediaImportActions = (
 					url: `sample://asset-${resourceOrdinal}`,
 					width: kind === 'audio' ? undefined : 1920,
 					height: kind === 'audio' ? undefined : 1080,
-			})).then((result) => {
-				const resourceId = result.createdIds?.resourceId
-				if (resourceId) {
-					addResourceToTimelineIfEmpty(projectId, String(resourceId))
-				}
-			})
+			}
+			void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId }, 'importResource', resource)).catch(() => undefined)
 		},
 
 		importFiles(files: FileList | File[]): void {
@@ -94,24 +85,28 @@ export const createMediaImportActions = (
 					const source = ownerPeerId
 						? { kind: 'p2p' as const, ownerPeerId }
 						: { kind: 'local' as const }
-
-					env.authority.dispatch(createResourceImportCommand({
-							projectId,
-							name,
-							kind,
-							duration,
-							mime,
-							url: source.kind === 'p2p' ? '' : url,
-							width: kind === 'audio' ? undefined : 1920,
-							height: kind === 'audio' ? undefined : 1080,
-							size,
-							source,
-							dataStatus: source.kind === 'p2p' ? 'missing' : 'ready',
+					const resourceId = createDktResourceSourceId('imported-resource')
+					const resource = {
+						sourceResourceId: resourceId,
+						name,
+						kind,
+						duration,
+						mime,
+						url: source.kind === 'p2p' ? '' : url,
+						width: kind === 'audio' ? undefined : 1920,
+						height: kind === 'audio' ? undefined : 1080,
+						size,
+						source,
+						status: source.kind === 'p2p' ? 'missing' : 'ready',
+						data: {
 							chunkSize: resourceChunkSize,
-					})).then((result) => {
-						const resourceId = result.createdIds?.resourceId
-						if (resourceId) {
-							env.transfers.manager.registerLocalResource(String(resourceId), file, {
+							dataStatus: source.kind === 'p2p' ? 'missing' : 'ready',
+						},
+					}
+
+					void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId }, 'importResource', resource)).then(() => {
+						if (!env.lifecycle.isDestroyed()) {
+							env.transfers.manager.registerLocalResource(resourceId, file, {
 								objectUrl: url,
 								kind,
 								mime,
@@ -123,9 +118,8 @@ export const createMediaImportActions = (
 								fallbackUrl: source.kind === 'p2p' ? '' : url,
 								name,
 							})
-							addResourceToTimelineIfEmpty(projectId, String(resourceId))
 						}
-					})
+					}).catch(() => undefined)
 				})
 			}
 
@@ -133,30 +127,7 @@ export const createMediaImportActions = (
 		},
 
 		addResourceToTimeline(resourceId: string): void {
-			const projectId = getActionActiveProjectId(env)
-			const registry = env.stores.getRegistry()
-			const project = getActiveProject(registry, env.session.get())
-			if (!project) {
-				throw new Error('No active project to add a clip into')
-			}
-
-			const resource = registry.entitiesById[resourceId]
-			const track = resource?.attrs.kind === 'audio'
-				? getAudioTrack(registry, project)
-				: getVideoTrack(registry, project)
-			if (!track) {
-				throw new Error('No compatible track available')
-			}
-
-			env.authority.dispatch(createTimelineAddClipCommand({
-				projectId,
-				resourceId,
-				trackId: track.id,
-				includeLinkedAudio: resource?.attrs.kind === 'video' ? true : undefined,
-			})).then((result) => {
-				const clipId = String(result.createdIds?.clipId)
-				env.session.selectEntity(clipId)
-			})
+			void Promise.resolve(env.dkt?.dispatchResourceAction({ sourceResourceId: resourceId }, 'requestAddToTimeline', { resourceId })).catch(() => undefined)
 		},
 
 		addTextClip(content = 'Title'): void {
