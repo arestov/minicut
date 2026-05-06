@@ -1,47 +1,21 @@
 import { getActiveProject, getSelectedClip } from '../domain/selectors'
-import type { ProjectRegistry, ResourceAttrs } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { VideoEditorHarnessActions } from './actionRuntimeTypes'
-import { createExportBlobUrlEffectPayload, EXPORT_BLOB_URL_FX } from '../models/Project/effects'
+import { createExportBlobUrlEffectPayload, createProjectRenderExportEffectData, EXPORT_BLOB_URL_FX, PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
 
-const asResourceAttrs = (attrs: Record<string, unknown>): ResourceAttrs => attrs as unknown as ResourceAttrs
-
-export const createExportRegistrySnapshot = (env: EditorActionEnvironment, registry: ProjectRegistry): ProjectRegistry => {
-	const snapshot = structuredClone(registry)
-	for (const [resourceId, entity] of Object.entries(snapshot.entitiesById)) {
-		if (!entity || entity.type !== 'resource') {
-			continue
-		}
-
-		const attrs = asResourceAttrs(entity.attrs)
-		const transfer = env.transfers.manager.getTransfer(resourceId)
-		if (!transfer || transfer.status !== 'ready') {
-			continue
-		}
-
-		const resolvedUrl = env.transfers.resolveResourceUrl(resourceId, attrs.url)
-		if (!resolvedUrl) {
-			continue
-		}
-
-		entity.attrs = {
-				...attrs,
-				url: resolvedUrl,
-				status: 'ready',
-				data: {
-					...attrs.data,
-					status: 'ready',
-					loadedBytes: transfer.loadedBytes,
-					ranges: {
-						...attrs.data.ranges,
-						loaded: transfer.loadedRanges,
-						requested: transfer.requestedRanges,
-					},
-				},
-		}
-	}
-
-	return snapshot
+const dispatchRenderExportTask = (env: EditorActionEnvironment, projectId: string, range: 'project' | 'clip', clipId?: string): void => {
+	const task = env.tasks.dispatchTask(PROJECT_RENDER_EXPORT_FX, {
+		data: createProjectRenderExportEffectData({
+			projectId,
+			clipId,
+			range,
+			format: 'video-webm',
+		}),
+	}, {
+		queuePolicy: 'queue-all',
+		intentKey: `${PROJECT_RENDER_EXPORT_FX}:${range}`,
+	})
+	env.tasks.completeTask(task)
 }
 
 export const createExportActions = (
@@ -55,7 +29,8 @@ export const createExportActions = (
 			return null
 		}
 
-		const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'clip', clipId }, format: 'video-webm' }, onProgress)
+		dispatchRenderExportTask(env, project.id, 'clip', clipId)
+		const result = await env.export.render({ registry, projectId: project.id, range: { type: 'clip', clipId }, format: 'video-webm' }, onProgress)
 		const blobTask = env.tasks.dispatchTask(EXPORT_BLOB_URL_FX, createExportBlobUrlEffectPayload(result.blob, { projectId: project.id, clipId }), {
 			queuePolicy: 'queue-all',
 			intentKey: `${EXPORT_BLOB_URL_FX}:clip`,
@@ -87,7 +62,8 @@ export const createExportActions = (
 			return null
 		}
 
-		const result = await env.export.render({ registry: createExportRegistrySnapshot(env, registry), projectId: project.id, range: { type: 'project' }, format: 'video-webm' }, onProgress)
+		dispatchRenderExportTask(env, project.id, 'project')
+		const result = await env.export.render({ registry, projectId: project.id, range: { type: 'project' }, format: 'video-webm' }, onProgress)
 		const blobTask = env.tasks.dispatchTask(EXPORT_BLOB_URL_FX, createExportBlobUrlEffectPayload(result.blob, { projectId: project.id }), {
 			queuePolicy: 'queue-all',
 			intentKey: `${EXPORT_BLOB_URL_FX}:project`,
