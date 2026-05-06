@@ -9,7 +9,7 @@ import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
 } from './platform'
-import { createDktActionRuntime } from './createDktActionRuntime'
+import { createEditorHarnessAdapter } from './editorHarnessAdapter'
 import type { EditorActionEnvironment, EditorDktScopePort } from './editorActionEnvironment'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 
@@ -250,7 +250,7 @@ export const createVideoEditorHarness = (
 		platform,
 	}
 
-	const actions = createDktActionRuntime(env, { resourceChunkSize })
+	const actions = createEditorHarnessAdapter(env, { resourceChunkSize })
 
 	return {
 		// Only essential public API

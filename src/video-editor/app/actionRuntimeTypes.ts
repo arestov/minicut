@@ -1,4 +1,3 @@
-import type { EffectAttrs } from '../models/Effect/types'
 import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRenderer'
 
 export interface VideoEditorHarnessActions {
@@ -47,6 +46,6 @@ export interface VideoEditorHarnessActions {
 	zoomTimeline(delta: number): void
 }
 
-export interface CreateDktActionRuntimeOptions {
+export interface CreateEditorHarnessAdapterOptions {
 	resourceChunkSize: number
 }

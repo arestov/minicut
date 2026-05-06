@@ -1,7 +1,7 @@
 ﻿import { createProjectRenderExportEffectData, PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
-import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 
 const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
 let projectSequence = 0
@@ -142,9 +142,9 @@ PROJECT_RENDER_EXPORT_FX,
 env.tasks.completeTask(task)
 }
 
-export const createDktActionRuntime = (
+export const createEditorHarnessAdapter = (
 env: EditorActionEnvironment,
-_options: CreateDktActionRuntimeOptions,
+_options: CreateEditorHarnessAdapterOptions,
 ): VideoEditorHarnessActions => {
 _resourceChunkSizeRef.set(env, _options.resourceChunkSize)
 
