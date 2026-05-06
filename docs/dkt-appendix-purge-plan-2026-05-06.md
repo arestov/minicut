@@ -472,3 +472,5 @@ playwright test --grep @smoke
 - `419ba87` - step2 partial: remove command-builder modules and obsolete domain tests; move action request types to render-sync.
 - `55cbd55` - step5 partial: drop obsolete app action-runtime helper tests/files.
 - `3f71661` - step2 hard cut: purge remaining legacy domain command modules; keep only `domain/types.ts`, `domain/resourceData.ts`, `domain/id.ts`.
+- `98cabe5` - step1/5: remove render-sync compatibility runtime from harness and delete render-sync folder.
+- `d82914e` - step5: remove app traversal helpers (`mediaImportActions`, `exportActions`, `sessionRootActions`) and collapse to root-scoped DKT dispatch runtime.
