@@ -4,69 +4,128 @@ import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from '.
 import { createSessionRootActions } from './sessionRootActions'
 import { createExportActions } from './exportActions'
 import { createMediaImportActions } from './mediaImportActions'
-import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
-import type { DktEffectActionName } from '../models/Effect/actions'
-import type { DktTextActionName } from '../models/Text/actions'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 
 const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
 
+/** Traverse session root → activeProject → tracks → clips to find clip scope by sourceClipId. */
+const findClipScope = (env: EditorActionEnvironment, clipId: string): ReactSyncScopeHandle | null => {
+	const dkt = env.dkt
+	if (!dkt) {
+		return null
+	}
+
+	const rootScope = dkt.getRootScope()
+	if (!rootScope) {
+		return null
+	}
+
+	const projectScope = dkt.readOne(rootScope, 'activeProject')
+	if (!projectScope) {
+		return null
+	}
+
+	for (const trackScope of dkt.readMany(projectScope, 'tracks')) {
+		for (const clipScope of dkt.readMany(trackScope, 'clips')) {
+			if (dkt.readAttrs(clipScope, ['sourceClipId']).sourceClipId === clipId) {
+				return clipScope
+			}
+		}
+	}
+
+	return null
+}
+
+/** Find text scope by traversing clips and their text child. */
+const findTextScope = (env: EditorActionEnvironment, textId: string): ReactSyncScopeHandle | null => {
+	const dkt = env.dkt
+	if (!dkt) {
+		return null
+	}
+
+	const rootScope = dkt.getRootScope()
+	if (!rootScope) {
+		return null
+	}
+
+	const projectScope = dkt.readOne(rootScope, 'activeProject')
+	if (!projectScope) {
+		return null
+	}
+
+	for (const trackScope of dkt.readMany(projectScope, 'tracks')) {
+		for (const clipScope of dkt.readMany(trackScope, 'clips')) {
+			const textScope = dkt.readOne(clipScope, 'text')
+			if (textScope && dkt.readAttrs(textScope, ['sourceTextId']).sourceTextId === textId) {
+				return textScope
+			}
+		}
+	}
+
+	return null
+}
+
+/** Find effect scope by traversing clips and their effects children. */
+const findEffectScope = (env: EditorActionEnvironment, effectId: string): ReactSyncScopeHandle | null => {
+	const dkt = env.dkt
+	if (!dkt) {
+		return null
+	}
+
+	const rootScope = dkt.getRootScope()
+	if (!rootScope) {
+		return null
+	}
+
+	const projectScope = dkt.readOne(rootScope, 'activeProject')
+	if (!projectScope) {
+		return null
+	}
+
+	for (const trackScope of dkt.readMany(projectScope, 'tracks')) {
+		for (const clipScope of dkt.readMany(trackScope, 'clips')) {
+			for (const effectScope of dkt.readMany(clipScope, 'effects')) {
+				if (dkt.readAttrs(effectScope, ['sourceEffectId']).sourceEffectId === effectId) {
+					return effectScope
+				}
+			}
+		}
+	}
+
+	return null
+}
+
 const getSelectedEntityId = (env: EditorActionEnvironment): string | null => {
-	const selectedEntityId = env.session.get().selectedEntityId
+	const rootScope = env.dkt?.getRootScope()
+	if (!rootScope) {
+		return null
+	}
+
+	const selectedEntityId = env.dkt?.readAttrs(rootScope, ['selectedEntityId']).selectedEntityId
 	return typeof selectedEntityId === 'string' && selectedEntityId ? selectedEntityId : null
 }
 
-/** @deprecated Compatibility bridge while import/export and preview still mirror through command envelopes. */
+const getCursor = (env: EditorActionEnvironment): number => {
+	const rootScope = env.dkt?.getRootScope()
+	if (!rootScope) {
+		return 0
+	}
+
+	const cursor = env.dkt?.readAttrs(rootScope, ['cursor']).cursor
+	return typeof cursor === 'number' ? cursor : 0
+}
+
+const dispatchClipAction = (env: EditorActionEnvironment, clipId: string, actionName: string, payload: unknown): void => {
+	const scope = findClipScope(env, clipId)
+	if (scope) {
+		env.dkt?.dispatch(actionName, payload, scope)
+	}
+}
+
 export const createDktActionRuntime = (
 	env: EditorActionEnvironment,
 	options: CreateDktActionRuntimeOptions,
 ): VideoEditorHarnessActions => {
-	const dispatchDktClipAction = (clipId: string, actionName: DktClipActionName | DktTimelineClipActionName, payload: unknown): void => {
-		const dispatch = env.dkt?.dispatchClipAction
-		if (!dispatch) {
-			return
-		}
-
-		void Promise.resolve(dispatch({
-			sourceClipId: clipId,
-		}, actionName, payload)).catch(() => undefined)
-	}
-	const dispatchDktTextAction = (textId: string, actionName: DktTextActionName, payload: unknown): void => {
-		const dispatch = env.dkt?.dispatchTextAction
-		if (!dispatch) {
-			return
-		}
-
-		void Promise.resolve(dispatch({ sourceTextId: textId }, actionName, payload)).catch(() => undefined)
-	}
-	const dispatchDktEffectAction = (effectId: string, attrs: Partial<EffectAttrs>): void => {
-		const dispatch = env.dkt?.dispatchEffectAction
-		if (!dispatch) {
-			return
-		}
-
-		const effectSeed = { sourceEffectId: effectId }
-		const dktActions: Array<[DktEffectActionName, unknown]> = []
-		if ('name' in attrs) {
-			dktActions.push(['setEffectName', { name: attrs.name }])
-		}
-		if ('kind' in attrs) {
-			dktActions.push(['setEffectKind', { kind: attrs.kind }])
-		}
-		if ('enabled' in attrs) {
-			dktActions.push(['setEffectEnabled', { enabled: attrs.enabled }])
-		}
-		if ('amount' in attrs) {
-			dktActions.push(['setEffectAmount', { amount: attrs.amount }])
-		}
-		if ('params' in attrs) {
-			dktActions.push(['setEffectParams', { params: attrs.params }])
-		}
-		if ('color' in attrs) {
-			dktActions.push(['setEffectColor', { color: attrs.color }])
-		}
-
-		void Promise.all(dktActions.map(([actionName, payload]) => dispatch(effectSeed, actionName, payload))).catch(() => undefined)
-	}
 	const sessionRootActions = createSessionRootActions(env, options)
 	const exportActions = createExportActions(env)
 	const mediaImportActions = createMediaImportActions(env, options, () => actions)
@@ -80,7 +139,7 @@ export const createDktActionRuntime = (
 		},
 
 		renameClipById(clipId: string, name: string): void {
-			dispatchDktClipAction(clipId, 'rename', { name })
+			dispatchClipAction(env, clipId, 'rename', { name })
 		},
 
 		renameSelectedClip(name: string): void {
@@ -91,7 +150,7 @@ export const createDktActionRuntime = (
 		},
 
 		colorClipById(clipId: string, color: string): void {
-			dispatchDktClipAction(clipId, 'color', { color })
+			dispatchClipAction(env, clipId, 'color', { color })
 		},
 
 		colorSelectedClip(color: string): void {
@@ -102,7 +161,7 @@ export const createDktActionRuntime = (
 		},
 
 		updateClipOpacityById(clipId: string, opacityPercent: number): void {
-			dispatchDktClipAction(clipId, 'updateOpacity', { opacityPercent })
+			dispatchClipAction(env, clipId, 'updateOpacity', { opacityPercent })
 		},
 
 		updateSelectedClipOpacity(opacityPercent: number): void {
@@ -113,7 +172,7 @@ export const createDktActionRuntime = (
 		},
 
 		updateClipFadeById(clipId: string, edge: 'in' | 'out', delta: number): void {
-			dispatchDktClipAction(clipId, 'setFade', { edge, delta })
+			dispatchClipAction(env, clipId, 'setFade', { edge, delta })
 		},
 
 		updateSelectedClipFade(edge: 'in' | 'out', delta: number): void {
@@ -124,7 +183,7 @@ export const createDktActionRuntime = (
 		},
 
 		updateClipTransformById(clipId: string, partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
-			dispatchDktClipAction(clipId, 'setTransform', partial)
+			dispatchClipAction(env, clipId, 'setTransform', partial)
 		},
 
 		updateSelectedClipTransform(partial: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>): void {
@@ -135,7 +194,7 @@ export const createDktActionRuntime = (
 		},
 
 		updateClipAudioById(clipId: string, partial: Partial<Record<'gain' | 'pan', number>>): void {
-			dispatchDktClipAction(clipId, 'setAudio', partial)
+			dispatchClipAction(env, clipId, 'setAudio', partial)
 		},
 
 		updateSelectedClipAudio(partial: Partial<Record<'gain' | 'pan', number>>): void {
@@ -146,7 +205,7 @@ export const createDktActionRuntime = (
 		},
 
 		trimClipById(clipId: string, edge: 'start' | 'end', delta: number): void {
-			dispatchDktClipAction(clipId, 'trim', { edge, delta })
+			dispatchClipAction(env, clipId, 'trim', { edge, delta })
 		},
 
 		trimSelectedClip(edge: 'start' | 'end', delta: number): void {
@@ -161,11 +220,11 @@ export const createDktActionRuntime = (
 				return
 			}
 
-			dispatchDktClipAction(clipId, 'resize', { edge, delta })
+			dispatchClipAction(env, clipId, 'resize', { edge, delta })
 		},
 
 		addEffectToClip(clipId: string, kind: 'blur' | 'sharpen' | 'tint'): void {
-			dispatchDktClipAction(clipId, 'addEffect', { kind })
+			dispatchClipAction(env, clipId, 'addEffect', { kind })
 		},
 
 		addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void {
@@ -176,7 +235,7 @@ export const createDktActionRuntime = (
 		},
 
 		addColorCorrectionToClip(clipId: string): void {
-			dispatchDktClipAction(clipId, 'addEffect', { kind: 'tint' })
+			dispatchClipAction(env, clipId, 'addEffect', { kind: 'tint' })
 		},
 
 		addColorCorrectionToSelectedClip(): void {
@@ -187,23 +246,51 @@ export const createDktActionRuntime = (
 		},
 
 		updateTextById(textId: string, attrs: Partial<TextAttrs>): void {
+			const scope = findTextScope(env, textId)
+			if (!scope) {
+				return
+			}
+
 			if ('content' in attrs) {
-				dispatchDktTextAction(textId, 'setTextContent', { content: attrs.content })
+				env.dkt?.dispatch('setTextContent', { content: attrs.content }, scope)
 			}
 			if ('style' in attrs) {
-				dispatchDktTextAction(textId, 'setTextStyle', { style: attrs.style })
+				env.dkt?.dispatch('setTextStyle', { style: attrs.style }, scope)
 			}
 			if ('box' in attrs) {
-				dispatchDktTextAction(textId, 'setTextBox', { box: attrs.box })
+				env.dkt?.dispatch('setTextBox', { box: attrs.box }, scope)
 			}
 		},
 
-		updateEffectAttrs(effectId, attrs): void {
-			dispatchDktEffectAction(effectId, attrs)
+		updateEffectAttrs(effectId: string, attrs: Partial<EffectAttrs>): void {
+			const scope = findEffectScope(env, effectId)
+			if (!scope) {
+				return
+			}
+
+			if ('name' in attrs) {
+				env.dkt?.dispatch('setEffectName', { name: attrs.name }, scope)
+			}
+			if ('kind' in attrs) {
+				env.dkt?.dispatch('setEffectKind', { kind: attrs.kind }, scope)
+			}
+			if ('enabled' in attrs) {
+				env.dkt?.dispatch('setEffectEnabled', { enabled: attrs.enabled }, scope)
+			}
+			if ('amount' in attrs) {
+				env.dkt?.dispatch('setEffectAmount', { amount: attrs.amount }, scope)
+			}
+			if ('params' in attrs) {
+				env.dkt?.dispatch('setEffectParams', { params: attrs.params }, scope)
+			}
+			if ('color' in attrs) {
+				env.dkt?.dispatch('setEffectColor', { color: attrs.color }, scope)
+			}
 		},
 
 		deleteClipById(clipId: string): void {
-			dispatchDktClipAction(clipId, 'setTimelineAttrs', { duration: 0 })
+			// Soft delete: collapse duration to 0
+			dispatchClipAction(env, clipId, 'setTimelineAttrs', { duration: 0 })
 		},
 
 		deleteSelectedClip(): void {
@@ -219,15 +306,15 @@ export const createDktActionRuntime = (
 				return
 			}
 
-			dispatchDktClipAction(clipId, 'splitAt', { time: roundToHundredths(env.session.get().cursor) })
+			dispatchClipAction(env, clipId, 'splitAt', { time: roundToHundredths(getCursor(env)) })
 		},
 
 		splitClipByIdAt(clipId: string, time: number): void {
-			dispatchDktClipAction(clipId, 'splitAt', { time: roundToHundredths(time) })
+			dispatchClipAction(env, clipId, 'splitAt', { time: roundToHundredths(time) })
 		},
 
 		removeEffectFromClip(clipId: string, effectId: string): void {
-			dispatchDktClipAction(clipId, 'removeEffect', { effectId })
+			dispatchClipAction(env, clipId, 'removeEffect', { effectId })
 		},
 
 		removeEffectFromSelectedClip(effectId: string): void {
@@ -251,10 +338,11 @@ export const createDktActionRuntime = (
 				return
 			}
 
-			dispatchDktClipAction(clipId, 'moveBy', { delta })
+			dispatchClipAction(env, clipId, 'moveBy', { delta })
 		},
 	}
 
 	return actions
 }
+
 

@@ -1,75 +1,11 @@
-import type { EditorSessionState } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
-import {
-	type DktSessionActionName,
-	reduceSessionSelectEntityAction,
-	reduceSessionSetActiveProjectAction,
-	reduceSessionSetCursorAction,
-	reduceSessionTogglePlaybackAction,
-	reduceSessionZoomTimelineAction,
-} from '../models/SessionRoot/actions'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 
 let projectCreationSequence = 0
 
-const createDktSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`
-
-const dispatchDktSessionAction = (
-	env: EditorActionEnvironment,
-	actionName: DktSessionActionName,
-	payload?: unknown,
-): void => {
-	const dispatch = env.dkt?.dispatchSessionAction
-	if (!dispatch) {
-		return
-	}
-
-	void Promise.resolve(dispatch(actionName, payload)).catch(() => undefined)
-}
-
-const applySessionRootPatch = (env: EditorActionEnvironment, patch: Record<string, unknown>, options: { syncDkt?: boolean } = {}): void => {
-	if ('activeProjectId' in patch) {
-		const activeProjectId = typeof patch.activeProjectId === 'string' ? patch.activeProjectId : null
-		env.session.setActiveProject(activeProjectId)
-		if (options.syncDkt) {
-			dispatchDktSessionAction(env, 'setActiveProject', activeProjectId)
-		}
-	}
-	if ('selectedEntityId' in patch) {
-		const selectedEntityId = (patch.selectedEntityId as string | null | undefined) ?? null
-		env.session.selectEntity(selectedEntityId)
-		if (options.syncDkt && !('activeProjectId' in patch)) {
-			dispatchDktSessionAction(env, 'selectEntity', selectedEntityId)
-		}
-	}
-	if ('cursor' in patch && typeof patch.cursor === 'number' && Number.isFinite(patch.cursor)) {
-		const cursor = Math.max(0, patch.cursor)
-		env.session.setCursor(cursor)
-		if (options.syncDkt && !('activeProjectId' in patch)) {
-			dispatchDktSessionAction(env, 'setCursor', cursor)
-		}
-	}
-	if ('isPlaying' in patch && typeof patch.isPlaying === 'boolean') {
-		env.session.setPlaying(patch.isPlaying)
-	}
-	if ('timelineZoom' in patch && typeof patch.timelineZoom === 'number' && Number.isFinite(patch.timelineZoom)) {
-		env.session.setTimelineZoom(patch.timelineZoom)
-	}
-}
-
-const dispatchAndApplySessionPatch = (
-	env: EditorActionEnvironment,
-	actionName: DktSessionActionName,
-	patch: Record<string, unknown> | null,
-	payload?: unknown,
-): void => {
-	if (!patch) {
-		return
-	}
-
-	dispatchDktSessionAction(env, actionName, payload)
-	applySessionRootPatch(env, patch)
-}
+const getRootScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null =>
+	env.dkt?.getRootScope() ?? null
 
 export const createSessionRootActions = (
 	env: EditorActionEnvironment,
@@ -86,65 +22,106 @@ export const createSessionRootActions = (
 	| 'zoomTimeline'
 > => ({
 	createProject(title?: string): void {
+		const rootScope = getRootScope(env)
+		if (!rootScope) {
+			return
+		}
+
 		projectCreationSequence += 1
-		const projectId = createDktSourceId(`project:${projectCreationSequence}`)
 		const projectTitle = typeof title === 'string' && title ? title : 'Untitled project'
-		dispatchDktSessionAction(env, 'createProject', {
-			sourceProjectId: projectId,
-			title: projectTitle,
-		})
-		applySessionRootPatch(env, { activeProjectId: projectId, selectedEntityId: null, cursor: 0 })
+		env.dkt?.dispatch('createProject', { title: projectTitle }, rootScope)
 	},
 
 	setActiveProject(projectId: string): void {
-		dispatchAndApplySessionPatch(env, 'setActiveProject', reduceSessionSetActiveProjectAction(projectId), projectId)
+		const rootScope = getRootScope(env)
+		if (!rootScope) {
+			return
+		}
+
+		env.dkt?.dispatch('setActiveProject', projectId, rootScope)
 	},
 
 	addTrack(kind: 'video' | 'audio'): void {
-		const projectId = env.session.get().activeProjectId
-		if (typeof projectId !== 'string' || !projectId) {
+		const rootScope = getRootScope(env)
+		if (!rootScope || !env.dkt) {
 			return
 		}
 
-		void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId }, 'addTrack', {
-			sourceTrackId: createDktSourceId(`track:${projectCreationSequence}`),
+		const projectScope = env.dkt.readOne(rootScope, 'activeProject')
+		if (!projectScope) {
+			return
+		}
+
+		env.dkt.dispatch('addTrack', {
 			kind,
 			name: kind === 'audio' ? 'Audio Track' : 'Video Track',
 			height: kind === 'audio' ? 72 : 84,
-		})).catch(() => undefined)
+		}, projectScope)
 	},
 
 	selectEntity(entityId: string | null): void {
-		dispatchAndApplySessionPatch(env, 'selectEntity', reduceSessionSelectEntityAction(entityId), entityId)
-	},
-
-	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void {
-		env.session.setActiveInspectorTab(tab)
-	},
-
-	togglePlayback(): void {
-		dispatchAndApplySessionPatch(env, 'togglePlayback', reduceSessionTogglePlaybackAction(env.session.get()))
-	},
-
-	setCursor(value: number): void {
-		dispatchAndApplySessionPatch(env, 'setCursor', reduceSessionSetCursorAction(value), value)
-	},
-
-	tickPlayback(deltaSeconds: number): void {
-		const session = env.session.get()
-		if (!session.isPlaying) {
+		const rootScope = getRootScope(env)
+		if (!rootScope) {
 			return
 		}
 
-		const duration = options.playbackDuration$.get()
+		env.dkt?.dispatch('selectEntity', entityId, rootScope)
+	},
+
+	setActiveInspectorTab(tab): void {
+		const rootScope = getRootScope(env)
+		if (!rootScope) {
+			return
+		}
+
+		env.dkt?.dispatch('setActiveInspectorTab', tab, rootScope)
+	},
+
+	togglePlayback(): void {
+		const rootScope = getRootScope(env)
+		if (!rootScope) {
+			return
+		}
+
+		env.dkt?.dispatch('togglePlayback', undefined, rootScope)
+	},
+
+	setCursor(value: number): void {
+		const rootScope = getRootScope(env)
+		if (!rootScope) {
+			return
+		}
+
+		env.dkt?.dispatch('setCursor', value, rootScope)
+	},
+
+	tickPlayback(deltaSeconds: number): void {
+		const rootScope = getRootScope(env)
+		if (!rootScope || !env.dkt) {
+			return
+		}
+
+		const attrs = env.dkt.readAttrs(rootScope, ['isPlaying', 'cursor'])
+		if (!attrs.isPlaying) {
+			return
+		}
+
+		const duration = options.playbackDuration$?.get() ?? Infinity
 		if (!Number.isFinite(duration) || duration <= 0) {
 			return
 		}
 
-		env.session.setCursor((session.cursor + deltaSeconds) % duration)
+		const cursor = typeof attrs.cursor === 'number' ? attrs.cursor : 0
+		const newCursor = (cursor + deltaSeconds) % duration
+		env.dkt.dispatch('setCursor', newCursor, rootScope)
 	},
 
 	zoomTimeline(delta: number): void {
-		dispatchAndApplySessionPatch(env, 'zoomTimeline', reduceSessionZoomTimelineAction(delta, env.session.get()), delta)
+		const rootScope = getRootScope(env)
+		if (!rootScope) {
+			return
+		}
+
+		env.dkt?.dispatch('zoomTimeline', delta, rootScope)
 	},
 })

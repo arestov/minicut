@@ -4,6 +4,7 @@ export const DKT_MSG = {
 	DISPATCH_ACTION: 'dkt:dispatch-action',
 	RUNTIME_READY: 'dkt:runtime-ready',
 	RUNTIME_ERROR: 'dkt:runtime-error',
+	RUNTIME_LOG: 'dkt:runtime-log',
 	SYNC_HANDLE: 'dkt:sync-handle',
 	SYNC_UPDATE_STRUCTURE_USAGE: 'dkt:sync-update-structure-usage',
 	SYNC_REQUIRE_SHAPE: 'dkt:sync-require-shape',
@@ -46,12 +47,18 @@ export type DktSyncRequireShapeMessage = {
 	data: unknown
 }
 
+export type DktRuntimeLogMessage = {
+	type: typeof DKT_MSG.RUNTIME_LOG
+	message: unknown
+}
+
 export type MiniCutDktTransportMessage =
 	| { type: typeof DKT_MSG.BOOTSTRAP; sessionKey?: string; route?: unknown }
 	| { type: typeof DKT_MSG.CLOSE_SESSION }
 	| DktDispatchActionMessage
 	| DktRuntimeReadyMessage
 	| DktRuntimeErrorMessage
+	| DktRuntimeLogMessage
 	| DktSyncHandleMessage
 	| DktSyncUpdateStructureUsageMessage
 	| DktSyncRequireShapeMessage

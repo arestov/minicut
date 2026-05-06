@@ -52,7 +52,7 @@ export interface VideoEditorHarnessActions {
 }
 
 export interface CreateDktActionRuntimeOptions {
-	playbackDuration$: Observable<number>
+	playbackDuration$?: Observable<number>
 	resourceChunkSize: number
 }
 

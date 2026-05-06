@@ -9,6 +9,8 @@ import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
 } from './platform'
+import { createDktActionRuntime } from './createDktActionRuntime'
+import type { EditorActionEnvironment, EditorDktScopePort } from './editorActionEnvironment'
 
 const EMPTY_CLEANUP = () => {}
 
@@ -113,8 +115,60 @@ export const createVideoEditorHarness = (
 	// Cleanup: no registry subscription, no projects$/session$ stores
 	const unsubscribe = EMPTY_CLEANUP
 
+	const dktPort: EditorDktScopePort | null = pageRuntime
+		? {
+			getRootScope: () => pageRuntime.getRootScope(),
+			dispatch: (actionName, payload, scope) => pageRuntime.dispatch(actionName, payload, scope ?? null),
+			readAttrs: (scope, attrNames) => pageRuntime.readAttrs(scope, attrNames),
+			readOne: (scope, relName) => pageRuntime.readOne(scope, relName),
+			readMany: (scope, relName) => pageRuntime.readMany(scope, relName),
+		}
+		: null
+
+	const env: EditorActionEnvironment = {
+		pageRuntime,
+		dkt: dktPort,
+		media: {
+			getFileKind,
+			createObjectUrl: (blob) => platform.createObjectUrl(blob),
+			revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
+			getImportedResourceDuration: (url, kind) => platform.getImportedResourceDuration(url, kind),
+		},
+		export: {
+			renderer: exportRenderer,
+			render: (request, onProgress) => exportRenderer.render(request, onProgress),
+		},
+		transfers: {
+			manager: resourceTransferManager,
+			getPeerId: () => {
+				const peerId = (authorityClientRef as Partial<{ peerId: unknown }> | null)?.peerId
+				return typeof peerId === 'string' ? peerId : null
+			},
+			resolveResourceUrl: (resourceId, fallbackUrl) => resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl),
+			requestPlayheadWindow: (resourceId, time) => resourceTransferManager.requestPlayheadWindow(resourceId, time),
+			notePreviewError: (resourceId) => resourceTransferManager.notePreviewError(resourceId),
+		},
+		lifecycle: {
+			isDestroyed: () => isDestroyed,
+			setTimeout: (handler, ms) => platform.setTimeout(handler, ms),
+			clearTimeout: (id) => platform.clearTimeout(id),
+			registerObjectUrl: (url, bucket) => {
+				if (bucket === 'export') {
+					exportObjectUrls.add(url)
+				} else {
+					importedObjectUrls.add(url)
+				}
+			},
+		},
+		tasks: runtimeTasks,
+		platform,
+	}
+
+	const actions = createDktActionRuntime(env, { resourceChunkSize })
+
 	const renderRuntime = createDktPageEditorRenderRuntime({
 		pageRuntime,
+		actions,
 	})
 
 	return {
@@ -122,6 +176,7 @@ export const createVideoEditorHarness = (
 		worker: authorityClient,
 		pageRuntime,
 		renderRuntime,
+		actions,
 		resourceTransfers$: resourceTransferManager.transfers$,
 		
 		resolveResourceUrl(resourceId: string, fallbackUrl: string): string {

@@ -16,7 +16,10 @@ const countRenderIndexPatches = (patches: Patch[]): number =>
 	}, 0)
 
 const createDenseTimeline = () => {
-	const worker = new MemoryWorkerAuthority()
+	// Phase 5 TODO: rewrite benchmark for DKT action runtime; keep legacy benchmark compile-safe for now.
+	const worker = new MemoryWorkerAuthority() as unknown as {
+		dispatch: (command: unknown) => { createdIds?: Record<string, unknown>; envelope: { patches: Patch[] } }
+	}
 	const projectResult = worker.dispatch({ c: CMD.PROJECT_CREATE, p: { title: 'Render index bench' } })
 	const projectId = String(projectResult.createdIds?.projectId)
 	const resourceResult = worker.dispatch({

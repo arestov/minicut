@@ -1,40 +1,15 @@
-import type { Observable } from '@legendapp/state'
-import type { DispatchResult, EditorSessionState, PatchEnvelope, ProjectRegistry, ResourceKind, Command } from '../domain/types'
+import type { ResourceKind } from '../domain/types'
 import type { ResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportProgressEvent, ExportRenderer, ExportRenderRequest, ExportRenderResult } from '../render/exportRenderer'
-import type { EditorAuthorityClient } from '../worker/authorityClient'
 import type { VideoEditorHarnessPlatform } from './platform'
 import type { DispatchRuntimeTaskOptions, DispatchRuntimeTaskPayload, RuntimeTaskDescriptor } from './runtimeTaskFacade'
-import type { DktSessionActionName } from '../models/SessionRoot/actions'
-import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
-import type { DktTextActionName } from '../models/Text/actions'
-import type { DktEffectActionName } from '../models/Effect/actions'
-import type { MiniCutDktClipSeed, MiniCutDktEffectSeed, MiniCutDktProjectSeed, MiniCutDktResourceSeed, MiniCutDktTextSeed, MiniCutDktTrackSeed } from '../dkt/runtime/createMiniCutDktRuntime'
+import type { PageSyncRuntime } from '../../dkt-react-sync/runtime/PageSyncRuntime'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 
-export interface EditorStorePort {
-	projects$: Observable<ProjectRegistry>
-	getRegistry(): ProjectRegistry
-	applySnapshot(snapshot: ProjectRegistry): void
-	applyPatchEnvelope(envelope: PatchEnvelope): void
-}
-
-export interface EditorAuthorityPort {
-	client: EditorAuthorityClient
-	dispatch(command: Command): Promise<DispatchResult>
-	getSnapshot(): Promise<ProjectRegistry> | ProjectRegistry
-	subscribe(listener: (envelope: PatchEnvelope) => void): () => void
-}
-
-export interface EditorSessionPort {
-	session$: Observable<EditorSessionState>
-	get(): EditorSessionState
-	setActiveProject(projectId: string | null): void
-	selectEntity(entityId: string | null): void
-	setCursor(value: number): void
-	setPlaying(value: boolean): void
-	setTimelineZoom(value: number): void
-	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void
-}
+/**
+ * Phase 1 hard rewrite: registry-based ports removed.
+ * EditorActionEnvironment now uses pageRuntime for all DKT dispatch.
+ */
 
 export interface EditorMediaPort {
 	getFileKind(file: File): Extract<ResourceKind, 'video' | 'audio' | 'image'> | null
@@ -50,7 +25,7 @@ export interface EditorExportPort {
 
 export interface EditorResourceTransferPort {
 	manager: ResourceTransferManager
-	syncRegistry(registry: ProjectRegistry): void
+	getPeerId(): string | null
 	resolveResourceUrl(resourceId: string, fallbackUrl: string): string
 	requestPlayheadWindow(resourceId: string, time: number): void
 	notePreviewError(resourceId: string): void
@@ -74,25 +49,22 @@ export interface EditorRuntimeTaskPort {
 	completeTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
 }
 
-export interface EditorDktRuntimePort {
-	dispatchSessionAction(actionName: DktSessionActionName, payload?: unknown): Promise<void> | void
-	dispatchProjectAction(project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> | void
-	dispatchTrackAction(track: MiniCutDktTrackSeed, actionName: string, payload?: unknown): Promise<void> | void
-	dispatchResourceAction(resource: MiniCutDktResourceSeed, actionName: string, payload?: unknown): Promise<void> | void
-	dispatchClipAction(clip: MiniCutDktClipSeed, actionName: DktClipActionName | DktTimelineClipActionName, payload?: unknown): Promise<void> | void
-	dispatchTextAction(text: MiniCutDktTextSeed, actionName: DktTextActionName, payload?: unknown): Promise<void> | void
-	dispatchEffectAction(effect: MiniCutDktEffectSeed, actionName: DktEffectActionName, payload?: unknown): Promise<void> | void
+/** DKT scope dispatch port: dispatch actions directly on DKT model scopes. */
+export interface EditorDktScopePort {
+	getRootScope(): ReactSyncScopeHandle | null
+	dispatch(actionName: string, payload?: unknown, scope?: ReactSyncScopeHandle | null): void
+	readAttrs(scope: ReactSyncScopeHandle, attrNames: readonly string[]): Record<string, unknown>
+	readOne(scope: ReactSyncScopeHandle, relName: string): ReactSyncScopeHandle | null
+	readMany(scope: ReactSyncScopeHandle, relName: string): readonly ReactSyncScopeHandle[]
 }
 
 export interface EditorActionEnvironment {
-	stores: EditorStorePort
-	authority: EditorAuthorityPort
-	session: EditorSessionPort
+	pageRuntime: PageSyncRuntime | null
+	dkt: EditorDktScopePort | null
 	media: EditorMediaPort
 	export: EditorExportPort
 	transfers: EditorResourceTransferPort
 	lifecycle: EditorLifecyclePort
 	tasks: EditorRuntimeTaskPort
-	dkt?: EditorDktRuntimePort
 	platform: VideoEditorHarnessPlatform
 }

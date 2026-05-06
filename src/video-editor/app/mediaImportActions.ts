@@ -1,9 +1,8 @@
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import { createProjectImportFilesEffectPayload, PROJECT_IMPORT_FILES_FX } from '../models/Project/effects'
-import { getTracks } from '../domain/selectors'
-import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 
 const sampleKindCycle = ['video', 'audio', 'image'] as const
 let sampleResourceSequence = 0
@@ -14,6 +13,15 @@ const createDktResourceSourceId = (prefix: string): string => {
 	return `${prefix}:${Date.now().toString(36)}:${importedResourceSequence}`
 }
 
+const getActiveProjectScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => {
+	const rootScope = env.dkt?.getRootScope()
+	if (!rootScope) {
+		return null
+	}
+
+	return env.dkt?.readOne(rootScope, 'activeProject') ?? null
+}
+
 export const createMediaImportActions = (
 	env: EditorActionEnvironment,
 	options: CreateDktActionRuntimeOptions,
@@ -22,33 +30,36 @@ export const createMediaImportActions = (
 	const resourceChunkSize = options.resourceChunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE
 	let importFilesQueue = Promise.resolve()
 
-	const getAuthorityPeerId = (): string | null => {
-		const peerId = (env.authority.client as Partial<{ peerId: unknown }>).peerId
-		return typeof peerId === 'string' ? peerId : null
-	}
-
 	return {
 		importSampleResource(): void {
-			const projectId = getActionActiveProjectId(env)
+			const projectScope = getActiveProjectScope(env)
+			if (!projectScope) {
+				return
+			}
+
 			sampleResourceSequence += 1
 			const resourceOrdinal = sampleResourceSequence
 			const kind = sampleKindCycle[(resourceOrdinal - 1) % sampleKindCycle.length]
 			const resource = {
 				sourceResourceId: createDktResourceSourceId('sample-resource'),
-					name: `Sample asset ${resourceOrdinal}`,
-					kind,
-					duration: 4 + resourceOrdinal,
-					mime: `${kind}/sample`,
-					url: `sample://asset-${resourceOrdinal}`,
-					width: kind === 'audio' ? undefined : 1920,
-					height: kind === 'audio' ? undefined : 1080,
+				name: `Sample asset ${resourceOrdinal}`,
+				kind,
+				duration: 4 + resourceOrdinal,
+				mime: `${kind}/sample`,
+				url: `sample://asset-${resourceOrdinal}`,
+				width: kind === 'audio' ? undefined : 1920,
+				height: kind === 'audio' ? undefined : 1080,
 			}
-			void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId }, 'importResource', resource)).catch(() => undefined)
+			env.dkt?.dispatch('importResource', resource, projectScope)
 		},
 
 		importFiles(files: FileList | File[]): void {
-			const projectId = getActionActiveProjectId(env)
-			const task = env.tasks.dispatchTask(PROJECT_IMPORT_FILES_FX, createProjectImportFilesEffectPayload(files, { projectId }))
+			const projectScope = getActiveProjectScope(env)
+			if (!projectScope) {
+				return
+			}
+
+			const task = env.tasks.dispatchTask(PROJECT_IMPORT_FILES_FX, createProjectImportFilesEffectPayload(files, { projectId: '' }))
 			if (task.dropped) {
 				return
 			}
@@ -75,13 +86,14 @@ export const createMediaImportActions = (
 				}
 				env.lifecycle.registerObjectUrl(url, 'import')
 				const durationPromise = env.media.getImportedResourceDuration(url, kind)
+				const capturedProjectScope = projectScope
 				importFilesQueue = importFilesQueue.then(async () => {
 					const duration = await durationPromise
 					if (env.lifecycle.isDestroyed()) {
 						return
 					}
 
-					const ownerPeerId = getAuthorityPeerId()
+					const ownerPeerId = env.transfers.getPeerId()
 					const source = ownerPeerId
 						? { kind: 'p2p' as const, ownerPeerId }
 						: { kind: 'local' as const }
@@ -104,22 +116,21 @@ export const createMediaImportActions = (
 						},
 					}
 
-					void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId }, 'importResource', resource)).then(() => {
-						if (!env.lifecycle.isDestroyed()) {
-							env.transfers.manager.registerLocalResource(resourceId, file, {
-								objectUrl: url,
-								kind,
-								mime,
-								duration,
-								size,
-								chunkSize: resourceChunkSize,
-								ownerPeerId,
-								sourceKind: source.kind,
-								fallbackUrl: source.kind === 'p2p' ? '' : url,
-								name,
-							})
-						}
-					}).catch(() => undefined)
+					env.dkt?.dispatch('importResource', resource, capturedProjectScope)
+					if (!env.lifecycle.isDestroyed()) {
+						env.transfers.manager.registerLocalResource(resourceId, file, {
+							objectUrl: url,
+							kind,
+							mime,
+							duration,
+							size,
+							chunkSize: resourceChunkSize,
+							ownerPeerId,
+							sourceKind: source.kind,
+							fallbackUrl: source.kind === 'p2p' ? '' : url,
+							name,
+						})
+					}
 				})
 			}
 
@@ -127,48 +138,84 @@ export const createMediaImportActions = (
 		},
 
 		addResourceToTimeline(resourceId: string): void {
-			void Promise.resolve(env.dkt?.dispatchResourceAction({ sourceResourceId: resourceId }, 'requestAddToTimeline', { resourceId })).catch(() => undefined)
+			// Find resource scope by sourceResourceId and dispatch requestAddToTimeline
+			const dkt = env.dkt
+			if (!dkt) {
+				return
+			}
+
+			const rootScope = dkt.getRootScope()
+			if (!rootScope) {
+				return
+			}
+
+			const projectScope = dkt.readOne(rootScope, 'activeProject')
+			if (!projectScope) {
+				return
+			}
+
+			for (const resourceScope of dkt.readMany(projectScope, 'resources')) {
+				if (dkt.readAttrs(resourceScope, ['sourceResourceId']).sourceResourceId === resourceId) {
+					dkt.dispatch('requestAddToTimeline', { resourceId }, resourceScope)
+					return
+				}
+			}
 		},
 
 		addTextClip(content = 'Title'): void {
-			const projectId = getActionActiveProjectId(env)
-			const registry = env.stores.getRegistry()
-			const project = registry.projects[projectId]
-			if (!project) {
+			const dkt = env.dkt
+			if (!dkt) {
 				return
 			}
 
-			const tracks = getTracks(registry, project)
-			const targetTrack = tracks.find((track) => track.attrs.kind === 'video') ?? tracks[0]
-			if (!targetTrack) {
+			const rootScope = dkt.getRootScope()
+			if (!rootScope) {
 				return
 			}
 
+			const projectScope = dkt.readOne(rootScope, 'activeProject')
+			if (!projectScope) {
+				return
+			}
+
+			// Find first video track
+			let targetTrackScope: ReactSyncScopeHandle | null = null
+			for (const trackScope of dkt.readMany(projectScope, 'tracks')) {
+				const kind = dkt.readAttrs(trackScope, ['kind']).kind
+				if (kind === 'video') {
+					targetTrackScope = trackScope
+					break
+				}
+			}
+			if (!targetTrackScope) {
+				const trackScopes = dkt.readMany(projectScope, 'tracks')
+				targetTrackScope = trackScopes[0] ?? null
+			}
+
+			if (!targetTrackScope) {
+				return
+			}
+
+			const cursor = dkt.readAttrs(rootScope, ['cursor']).cursor
+			const cursorNum = typeof cursor === 'number' ? cursor : 0
 			const clipId = createDktResourceSourceId('text-clip')
 			const textId = createDktResourceSourceId('text-node')
-			const cursor = Number(env.session.get().cursor ?? 0)
-			const duration = 4
-			void Promise.resolve(env.dkt?.dispatchTrackAction(
-				{ sourceTrackId: targetTrack.id },
-				'addTextClip',
-				{
-					sourceClipId: clipId,
+			dkt.dispatch('addTextClip', {
+				sourceClipId: clipId,
+				sourceTextId: textId,
+				name: content,
+				mediaKind: 'video',
+				start: Number.isFinite(cursorNum) ? cursorNum : 0,
+				in: 0,
+				duration: 4,
+				text: {
 					sourceTextId: textId,
-					name: content,
-					mediaKind: 'video',
-					start: Number.isFinite(cursor) ? cursor : 0,
-					in: 0,
-					duration,
-					text: {
-						sourceTextId: textId,
-						content,
-					},
+					content,
 				},
-			)).then(() => {
-				if (!env.lifecycle.isDestroyed()) {
-					env.session.selectEntity(clipId)
-				}
-			}).catch(() => undefined)
+			}, targetTrackScope)
+
+			dkt.dispatch('selectEntity', clipId, rootScope)
 		},
 	}
 }
+

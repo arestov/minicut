@@ -42,7 +42,7 @@ type HarnessActions = {
 
 export interface CreateDktPageEditorRenderRuntimeOptions {
 	pageRuntime: PageSyncRuntime | null
-	actions: HarnessActions
+	actions?: HarnessActions
 }
 
 const SOURCE_ATTR_BY_TYPE: Partial<Record<EntityType, string>> = {
@@ -295,7 +295,7 @@ const dispatchSessionDktAction = (
 
 const createScopedDispatch = (
 	runtime: PageSyncRuntime | null,
-	actions: HarnessActions,
+	actions: HarnessActions | undefined,
 	scope: EditorScope | null,
 ): EditorScopedDispatch => ((actionName, payload) => {
 	if (!runtime) {

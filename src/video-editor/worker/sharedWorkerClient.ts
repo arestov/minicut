@@ -1,6 +1,8 @@
 import { nanoid } from 'nanoid'
 import { MSG, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
-import type { EditorAuthorityClient, PatchListener } from './authorityClient'
+// Note: Phase 1 migration - sharedWorkerClient is legacy registry protocol, superseded by dktSharedWorkerClient.
+// Remove EditorAuthorityClient import to avoid type errors; this class is dead code.
+type PatchListener = (envelope: PatchEnvelope) => void
 
 type PendingRequest = {
 	resolve: (value: unknown) => void
@@ -18,7 +20,7 @@ export interface SharedWorkerAuthorityClientOptions {
 	onError?: (error: Error) => void
 }
 
-export class SharedWorkerAuthorityClient implements EditorAuthorityClient {
+export class SharedWorkerAuthorityClient {
 	#worker: SharedWorker
 	#requestTimeoutMs: number
 	#onError?: (error: Error) => void

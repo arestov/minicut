@@ -20,7 +20,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 	const [lookThumbnails, setLookThumbnails] = useState<Record<string, string>>({})
 	const compareRestoreEnabledRef = useRef<boolean | null>(null)
 	const { actions } = useVideoEditor()
-	const colorCorrectionAttrs = useAttrs(['sourceEffectId', 'enabled', 'params']) as EffectAttrs & { sourceEffectId?: unknown }
+	const colorCorrectionAttrs = useAttrs(['sourceEffectId', 'enabled', 'params']) as unknown as EffectAttrs & { sourceEffectId?: unknown }
 	const effectId = typeof colorCorrectionAttrs.sourceEffectId === 'string' ? colorCorrectionAttrs.sourceEffectId : null
 	const colorParams = (colorCorrectionAttrs.params ?? {}) as Partial<ColorCorrectionAttrs>
 	const isColorCorrectionEnabled = colorCorrectionAttrs.enabled !== false

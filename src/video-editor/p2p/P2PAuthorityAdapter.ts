@@ -1,11 +1,7 @@
-import { nanoid } from 'nanoid'
 import type { DomSyncTransportLike } from 'dkt/dom-sync/transport.js'
-import { PATCH, type Command, type DispatchResult, type PatchEnvelope, type ProjectRegistry } from '../domain/types'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
-import { applyPatchEnvelopeInPlace } from '../domain/applyPatchInPlace'
-import { createEmptyRegistry } from '../domain/createProject'
 import { createFallbackAuthorityClient } from '../worker/fallbackAuthorityClient'
-import type { DktSyncListener, EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
+import type { DktSyncListener, EditorAuthorityClient } from '../worker/authorityClient'
 import type { AuthorityResourceBindings } from '../worker/createAuthorityClient'
 import type { BridgeSignalingFactory } from './BridgeSignaling'
 import {
@@ -16,166 +12,38 @@ import {
 	type PageP2PManagerEvents,
 } from './PageP2PManager'
 
-interface PendingCall<T> {
-	run(client: EditorAuthorityClient): void
-	reject(error: unknown): void
-	timeoutId: ReturnType<typeof setTimeout>
-}
-
-interface TransportPendingRequest {
-	resolve(value: unknown): void
-	reject(reason: unknown): void
-	timeoutId: ReturnType<typeof setTimeout>
-}
-
-const DEFAULT_REQUEST_TIMEOUT_MS = 5_000
-const DEFAULT_PENDING_CALL_TIMEOUT_MS = 30_000
 const P2P_SHARED_WORKER_NAME_PREFIX = 'minicut-video-editor-authority:p2p:'
 
-type RestorableAuthorityClient = EditorAuthorityClient & {
-	replaceSnapshot(snapshot: ProjectRegistry): Promise<void>
-}
+const toWorkerScopeKey = (roomId: string): string =>
+	roomId.replace(/[^a-zA-Z0-9:_-]/g, '-').slice(0, 80)
 
-const canReplaceSnapshot = (client: EditorAuthorityClient): client is RestorableAuthorityClient =>
-	typeof (client as Partial<RestorableAuthorityClient>).replaceSnapshot === 'function'
-
-const getRegistryEnvelopeProjectId = (snapshot: ProjectRegistry): string =>
-	snapshot.activeProjectId ?? Object.keys(snapshot.projects)[0] ?? '__workspace__'
-
-const createRegistrySetEnvelope = (snapshot: ProjectRegistry): PatchEnvelope => {
-	const projectId = getRegistryEnvelopeProjectId(snapshot)
-	return {
-		projectId,
-		version: snapshot.projects[projectId]?.version ?? 0,
-		patches: [{ c: PATCH.REGISTRY_SET, p: { registry: structuredClone(snapshot) } }],
-	}
-}
-
+/**
+ * Phase 1: DKT-only transport authority wrapping P2P transport.
+ * No registry protocol. Only openDktTransport() which forwards DKT messages over the P2P link.
+ */
 const createTransportAuthorityClient = (
 	transport: P2PTransportLike,
-	requestTimeoutMs: number,
 ): EditorAuthorityClient => {
-	const listeners = new Set<PatchListener>()
 	const syncListeners = new Set<DktSyncListener>()
-	const pending = new Map<string, TransportPendingRequest>()
 	let destroyed = false
 
-	const cleanupPending = (error: Error): void => {
-		for (const [requestId, request] of pending) {
-			clearTimeout(request.timeoutId)
-			request.reject(new Error(`${error.message}: ${requestId}`))
-		}
-		pending.clear()
-	}
-
-	const unlisten = transport.listen((message) => {
-		if (destroyed) {
+	const unlistenTransport = transport.listen((message) => {
+		if (destroyed || !message || typeof message !== 'object' || !('type' in message)) {
 			return
 		}
 
-		if (!('type' in message)) {
-			return
+		if (message.type === DKT_MSG.SYNC_HANDLE) {
+			const syncMsg = message as Extract<MiniCutDktTransportMessage, { type: typeof DKT_MSG.SYNC_HANDLE }>
+			for (const listener of syncListeners) {
+				listener(syncMsg)
+			}
 		}
-
-		switch (message.type) {
-			case DKT_MSG.SYNC_HANDLE:
-				for (const listener of syncListeners) {
-					listener(message)
-				}
-				return
-			case DKT_MSG.PATCHES:
-				for (const listener of listeners) {
-					listener(message.envelope as PatchEnvelope)
-				}
-				return
-			case DKT_MSG.SNAPSHOT:
-				resolvePending(message.requestId, message.snapshot)
-				return
-			case DKT_MSG.DISPATCH_RESULT:
-				resolvePending(message.requestId, message.result)
-				return
-			case DKT_MSG.RUNTIME_ERROR:
-				rejectPending(message.requestId, new Error(String(message.message ?? 'Unknown P2P DKT authority error')))
-				return
-		}
-	})
-
-	const resolvePending = (requestId: string | undefined, value: unknown): void => {
-		if (!requestId) {
-			return
-		}
-		const request = pending.get(requestId)
-		if (!request) {
-			return
-		}
-		pending.delete(requestId)
-		clearTimeout(request.timeoutId)
-		request.resolve(value)
-	}
-
-	const rejectPending = (requestId: string | undefined, error: Error): void => {
-		if (!requestId) {
-			return
-		}
-		const request = pending.get(requestId)
-		if (!request) {
-			return
-		}
-		pending.delete(requestId)
-		clearTimeout(request.timeoutId)
-		request.reject(error)
-	}
-
-	const request = <T>(message: MiniCutDktTransportMessage): Promise<T> => new Promise((resolve, reject) => {
-		if (destroyed) {
-			reject(new Error('P2P transport authority is destroyed'))
-			return
-		}
-
-		const requestId = nanoid(8)
-		const timeoutId = setTimeout(() => {
-			pending.delete(requestId)
-			reject(new Error(`P2P DKT authority request timed out: ${message.type}`))
-		}, requestTimeoutMs)
-
-		pending.set(requestId, {
-			resolve: resolve as (value: unknown) => void,
-			reject,
-			timeoutId,
-		})
-		transport.send({ ...message, requestId })
 	})
 
 	return {
-		getSnapshot() {
-			return request<ProjectRegistry>({ type: DKT_MSG.GET_SNAPSHOT })
-		},
-
-		subscribe(listener) {
-			listeners.add(listener)
-			return () => {
-				listeners.delete(listener)
-			}
-		},
-
-		dispatch(command) {
-			return request<DispatchResult>({ type: DKT_MSG.DISPATCH_COMMAND, command })
-		},
-
-		replaceSnapshot(snapshot) {
-			return request<ProjectRegistry>({ type: DKT_MSG.REPLACE_SNAPSHOT, snapshot: structuredClone(snapshot) }).then(() => undefined)
-		},
-
-		subscribeDktSync(listener) {
-			syncListeners.add(listener)
-			return () => {
-				syncListeners.delete(listener)
-			}
-		},
-
 		openDktTransport(): DomSyncTransportLike<MiniCutDktTransportMessage> {
 			const transportListeners = new Set<(message: MiniCutDktTransportMessage) => void>()
-			const unlistenTransport = transport.listen((message) => {
+			const unlistenAll = transport.listen((message) => {
 				if (message && typeof message === 'object' && 'type' in message) {
 					for (const listener of transportListeners) {
 						listener(message as MiniCutDktTransportMessage)
@@ -195,8 +63,15 @@ const createTransportAuthorityClient = (
 				},
 				destroy() {
 					transportListeners.clear()
-					unlistenTransport()
+					unlistenAll()
 				},
+			}
+		},
+
+		subscribeDktSync(listener) {
+			syncListeners.add(listener)
+			return () => {
+				syncListeners.delete(listener)
 			}
 		},
 
@@ -206,17 +81,12 @@ const createTransportAuthorityClient = (
 			}
 
 			destroyed = true
-			unlisten()
-			listeners.clear()
+			unlistenTransport()
 			syncListeners.clear()
-			cleanupPending(new Error('P2P authority request cancelled'))
 			transport.destroy()
 		},
 	}
 }
-
-const toWorkerScopeKey = (roomId: string): string =>
-	roomId.replace(/[^a-zA-Z0-9:_-]/g, '-').slice(0, 80)
 
 export interface CreateP2PAuthorityAdapterConfig {
 	roomId: string
@@ -250,41 +120,14 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		})
 	})
 	const createManager = config.createManager ?? createPageP2PManager
-	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
-	const pendingCallTimeoutMs = config.pendingCallTimeoutMs ?? DEFAULT_PENDING_CALL_TIMEOUT_MS
 
 	let destroyed = false
 	let role: 'server' | 'client' | 'undecided' = 'undecided'
 	let activeClient: EditorAuthorityClient | null = null
-	let activeClientUnsubscribe: (() => void) | null = null
-	let activeClientSyncUnsubscribe: (() => void) | null = null
-	let hasCachedSnapshot = false
-	let cachedSnapshot = createEmptyRegistry()
-	let activationHydrationPending = false
-	let activationToken = 0
 
-	const listeners = new Set<PatchListener>()
 	const dktSyncListeners = new Set<DktSyncListener>()
-	const pending: PendingCall<unknown>[] = []
-
-	const setCachedSnapshot = (snapshot: ProjectRegistry): void => {
-		hasCachedSnapshot = true
-		cachedSnapshot = structuredClone(snapshot)
-	}
-
-	const failPending = (error: Error): void => {
-		const calls = pending.splice(0, pending.length)
-		for (const call of calls) {
-			clearTimeout(call.timeoutId)
-			call.reject(error)
-		}
-	}
 
 	const cleanupActiveClient = (): void => {
-		activeClientUnsubscribe?.()
-		activeClientUnsubscribe = null
-		activeClientSyncUnsubscribe?.()
-		activeClientSyncUnsubscribe = null
 		activeClient?.destroy?.()
 		activeClient = null
 	}
@@ -295,120 +138,13 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			return
 		}
 
-		activationToken += 1
-		const currentActivationToken = activationToken
 		cleanupActiveClient()
 		role = nextRole
-		const shouldRestoreServerSnapshot = nextRole === 'server' && hasCachedSnapshot && canReplaceSnapshot(nextClient)
-		const shouldSyncClientSnapshot = nextRole === 'client'
-		activationHydrationPending = shouldRestoreServerSnapshot || shouldSyncClientSnapshot
 		activeClient = nextClient
-		activeClientUnsubscribe = nextClient.subscribe((envelope) => {
-			if (hasCachedSnapshot) {
-				try {
-					applyPatchEnvelopeInPlace(cachedSnapshot, envelope)
-				} catch {
-					// ignore invalid cache update attempts
-				}
-			}
-
-			for (const listener of listeners) {
-				listener(envelope)
-			}
-		})
-		activeClientSyncUnsubscribe = nextClient.subscribeDktSync?.((message) => {
+		nextClient.subscribeDktSync?.((message) => {
 			for (const listener of dktSyncListeners) {
 				listener(message)
 			}
-		}) ?? null
-
-		const flushQueuedCalls = (): void => {
-			if (destroyed || currentActivationToken !== activationToken || activationHydrationPending) {
-				return
-			}
-
-			const queuedCalls = pending.splice(0, pending.length)
-			for (const call of queuedCalls) {
-				clearTimeout(call.timeoutId)
-				call.run(nextClient)
-			}
-		}
-
-		if (shouldRestoreServerSnapshot) {
-			void Promise.resolve(nextClient.replaceSnapshot(cachedSnapshot)).then(() => {
-				if (destroyed || currentActivationToken !== activationToken) {
-					return
-				}
-
-				activationHydrationPending = false
-				flushQueuedCalls()
-			}).catch((error: unknown) => {
-				if (destroyed || currentActivationToken !== activationToken) {
-					return
-				}
-
-				activationHydrationPending = false
-				config.onError?.(error)
-				flushQueuedCalls()
-			})
-			return
-		}
-
-		if (shouldSyncClientSnapshot) {
-			void Promise.resolve(nextClient.getSnapshot()).then((snapshot) => {
-				if (destroyed || currentActivationToken !== activationToken) {
-					return
-				}
-
-				setCachedSnapshot(snapshot)
-				const envelope = createRegistrySetEnvelope(snapshot)
-				for (const listener of listeners) {
-					listener(envelope)
-				}
-				activationHydrationPending = false
-				flushQueuedCalls()
-			}).catch((error) => {
-				if (destroyed || currentActivationToken !== activationToken) {
-					return
-				}
-
-				activationHydrationPending = false
-				config.onError?.(error)
-				flushQueuedCalls()
-			})
-			return
-		}
-
-		flushQueuedCalls()
-	}
-
-	const invoke = <T>(operation: (client: EditorAuthorityClient) => T | Promise<T>): Promise<T> => {
-		if (destroyed) {
-			return Promise.reject(new Error('P2P authority adapter is destroyed'))
-		}
-
-		if (activeClient && !activationHydrationPending) {
-			return Promise.resolve(operation(activeClient))
-		}
-
-		return new Promise<T>((resolve, reject) => {
-			const timeoutId = setTimeout(() => {
-				const index = pending.findIndex((call) => call.timeoutId === timeoutId)
-				if (index === -1) {
-					return
-				}
-
-				pending.splice(index, 1)
-				reject(new Error('P2P authority role resolution timed out'))
-			}, pendingCallTimeoutMs)
-
-			pending.push({
-				run(client) {
-					Promise.resolve(operation(client)).then(resolve, reject)
-				},
-				reject,
-				timeoutId,
-			})
 		})
 	}
 
@@ -437,7 +173,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 					roomId: config.roomId,
 					peerId: manager.peerId,
 				})
-				activateClient('client', createTransportAuthorityClient(transport, requestTimeoutMs))
+				activateClient('client', createTransportAuthorityClient(transport))
 			},
 
 			onClientResourceTransport(transport) {
@@ -459,7 +195,6 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 					reason,
 				})
 				cleanupActiveClient()
-				failPending(new Error(`P2P session lost: ${reason}`))
 				config.onSessionLost?.(reason)
 			},
 
@@ -479,20 +214,6 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			return manager.peerId
 		},
 
-		getSnapshot() {
-			return invoke((client) => client.getSnapshot()).then((snapshot) => {
-				setCachedSnapshot(snapshot)
-				return snapshot
-			})
-		},
-
-		subscribe(listener) {
-			listeners.add(listener)
-			return () => {
-				listeners.delete(listener)
-			}
-		},
-
 		subscribeDktSync(listener) {
 			dktSyncListeners.add(listener)
 			return () => {
@@ -500,13 +221,9 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			}
 		},
 
-		dispatch(command: Command) {
-			return invoke((client) => client.dispatch(command))
-		},
-
 		openDktTransport() {
 			if (!activeClient || typeof activeClient.openDktTransport !== 'function') {
-				throw new Error('Active P2P authority cannot open DKT transport')
+				throw new Error('Active P2P authority cannot open DKT transport: no active client or transport unavailable')
 			}
 
 			return activeClient.openDktTransport()
@@ -518,8 +235,6 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			}
 
 			destroyed = true
-			failPending(new Error('P2P authority adapter destroyed'))
-			listeners.clear()
 			dktSyncListeners.clear()
 			cleanupActiveClient()
 			manager.destroy()

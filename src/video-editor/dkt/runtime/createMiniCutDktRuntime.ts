@@ -240,12 +240,13 @@ const queryModelRel = async (model: RuntimeModelLike, relName: string): Promise<
 }
 
 const readInModelInput = async <Value>(model: RuntimeModelLike, read: () => Promise<Value> | Value): Promise<Value> => {
-	if (typeof model.input !== 'function') {
+	const inputFn = model.input
+	if (typeof inputFn !== 'function') {
 		return read()
 	}
 
 	return new Promise((resolve, reject) => {
-		model.input(async () => {
+		inputFn(async () => {
 			try {
 				resolve(await read())
 			} catch (error) {
@@ -574,9 +575,9 @@ const toResourceSeed = (resource: { id: string; attrs: Record<string, unknown> }
 		width: attrs.width,
 		height: attrs.height,
 		size: attrs.size,
-		source: attrs.source,
+		source: attrs.source as unknown as Record<string, unknown> | undefined,
 		status: attrs.status,
-		data: attrs.data,
+		data: attrs.data as unknown as Record<string, unknown> | undefined,
 	}
 }
 
@@ -605,8 +606,8 @@ const toTextSeed = (text: { id: string; attrs: Record<string, unknown> }): MiniC
 	return {
 		sourceTextId: text.id,
 		content: attrs.content,
-		style: attrs.style,
-		box: attrs.box,
+		style: attrs.style as unknown as Record<string, unknown> | undefined,
+		box: attrs.box as unknown as Record<string, unknown> | undefined,
 	}
 }
 
@@ -740,7 +741,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 		await target.dispatch(actionName, payload)
 		if (target === sessionRoot) {
-			await syncSessionDerivedState(sessionRoot)
+			await syncSessionSelectionRels(sessionRoot)
 		}
 	}
 
@@ -751,7 +752,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await sessionRoot.dispatch(actionName, payload)
-		await syncSessionDerivedState(sessionRoot)
+		await syncSessionSelectionRels(sessionRoot)
 	}
 
 	// Phase 1 hard rewrite: All registry materialization functions removed.
@@ -1078,7 +1079,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			await sessionRoot.dispatch('setActiveProject', activeProjectId)
 		}
 		if (sessionRoot) {
-			await syncSessionDerivedState(sessionRoot)
+			await syncSessionSelectionRels(sessionRoot)
 		}
 	}
 

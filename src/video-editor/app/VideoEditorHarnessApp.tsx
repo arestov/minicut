@@ -4,7 +4,6 @@ import { createVideoEditorHarness, type VideoEditorHarness } from './createVideo
 import { createBrowserHarnessPlatform } from './platform'
 import { VideoEditorApp } from '../components/VideoEditorApp'
 import { DktEditorRoot } from '../ui/dkt/DktEditorRoot'
-import { CMD } from '../domain/types'
 import { createDefaultRtcConfig } from '../p2p/PageP2PManager'
 import { resolveRoomUrlState, type RoomUrlResolution } from './roomUrlState'
 import '../components/styles.css'
@@ -182,7 +181,6 @@ export const VideoEditorHarnessApp = ({
 		}
 
 		const debug = {
-			getProjectCount: () => Object.keys(ownedHarness.projects$.get().projects).length,
 			getResourceTransfers: () => Object.values(ownedHarness.resourceTransfers$.get()).map((transfer) => ({
 				resourceId: transfer.resourceId,
 				name: transfer.name,
@@ -201,11 +199,7 @@ export const VideoEditorHarnessApp = ({
 				lastError: transfer.lastError,
 			})),
 			getProjectTitles: () => {
-				const registry = ownedHarness.projects$.get()
-				return Object.values(registry.projects)
-					.map((project) => registry.entitiesById[project.rootEntityId]?.attrs?.title)
-					.filter((title): title is string => typeof title === 'string')
-					.sort((left, right) => left.localeCompare(right))
+				return []
 			},
 			getRole: () => {
 				const worker = ownedHarness.worker as { role?: string }
@@ -221,21 +215,8 @@ export const VideoEditorHarnessApp = ({
 			setCursor: (cursor: number) => {
 				ownedHarness.actions.setCursor(cursor)
 			},
-			dispatchCreateProject: async (title?: string) => {
-				let timeoutId = 0
-				const timeoutPromise = new Promise<never>((_, reject) => {
-					timeoutId = window.setTimeout(() => {
-						reject(new Error('dispatchCreateProject timed out'))
-					}, 5_000)
-				})
-				try {
-					await Promise.race([
-						Promise.resolve(ownedHarness.worker.dispatch({ c: CMD.PROJECT_CREATE, p: { title } })),
-						timeoutPromise,
-					])
-				} finally {
-					window.clearTimeout(timeoutId)
-				}
+			dispatchCreateProject: async (_title?: string) => {
+				ownedHarness.actions.createProject()
 			},
 		}
 

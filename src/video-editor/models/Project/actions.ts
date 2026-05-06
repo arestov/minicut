@@ -18,7 +18,7 @@ export const normalizeTrackCreationAttrs = (payload: unknown) => {
 
 	return {
 		sourceTrackId,
-		kind: value.kind === 'audio' ? 'audio' : 'video',
+		kind: value?.kind === 'audio' ? 'audio' : 'video',
 		name: asString(value?.name) ?? 'Track',
 		muted: asBoolean(value?.muted) ?? false,
 		locked: asBoolean(value?.locked) ?? false,
