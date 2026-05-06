@@ -1,7 +1,7 @@
 import { observable } from '@legendapp/state'
 import { describe, expect, it, vi } from 'vitest'
 import { createProjectGraph } from '../domain/createProject'
-import { CMD, type EditorSessionState, type Entity } from '../domain/types'
+import type { EditorSessionState, Entity } from '../domain/types'
 import { createDktActionRuntime } from './createDktActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 
@@ -126,8 +126,8 @@ const createEnv = () => {
 }
 
 describe('createDktActionRuntime DKT clip wiring', () => {
-	it('dispatches opacity edits to DKT clip action before mirroring through the current authority path', () => {
-		const { env, dispatchClipAction } = createEnv()
+	it('dispatches opacity edits to DKT clip action without authority mirroring', () => {
+		const { env, dispatchClipAction, dispatch } = createEnv()
 		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,
 			resourceChunkSize: 1024,
@@ -137,26 +137,12 @@ describe('createDktActionRuntime DKT clip wiring', () => {
 
 		expect(dispatchClipAction).toHaveBeenCalledWith({
 			sourceClipId: 'clip:dkt-runtime-opacity',
-			name: 'Runtime opacity clip',
-			color: '#ef4444',
-			start: 0,
-			in: 0,
-			duration: 4,
-			fadeIn: 0,
-			fadeOut: 0,
-			audio: { gain: 1, pan: 0 },
-			opacity: { value: 1 },
-			transform: {
-				x: { value: 0 },
-				y: { value: 0 },
-				scale: { value: 1 },
-				rotation: { value: 0 },
-			},
 		}, 'updateOpacity', { opacityPercent: 37 })
+		expect(dispatch).not.toHaveBeenCalled()
 	})
 
-	it('dispatches timeline-safe clip attrs to DKT before structural authority mirror', () => {
-		const { env, dispatchClipAction } = createEnv()
+	it('dispatches timeline clip actions to DKT without structural authority mirror', () => {
+		const { env, dispatchClipAction, dispatch } = createEnv()
 		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,
 			resourceChunkSize: 1024,
@@ -169,17 +155,15 @@ describe('createDktActionRuntime DKT clip wiring', () => {
 
 		expect(dispatchClipAction).toHaveBeenCalledWith(expect.objectContaining({
 			sourceClipId: 'clip:dkt-runtime-opacity',
-			start: 0,
-			in: 0,
-			duration: 4,
 		}), 'trim', { edge: 'start', delta: 0.5 })
 		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'resize', { edge: 'end', delta: -0.5 })
 		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'moveBy', { delta: 1 })
 		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'splitAt', { time: 2 })
+		expect(dispatch).not.toHaveBeenCalled()
 	})
 
-	it('mirrors text through model commands and effect attrs through DKT seed actions', async () => {
-		const { env, dispatchTextAction, dispatchEffectAction } = createEnv()
+	it('dispatches text and effect attrs through DKT seed actions only', async () => {
+		const { env, dispatchTextAction, dispatchEffectAction, dispatch } = createEnv()
 		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,
 			resourceChunkSize: 1024,
@@ -189,19 +173,9 @@ describe('createDktActionRuntime DKT clip wiring', () => {
 		actions.updateEffectAttrs('effect:dkt-runtime-tint', { amount: 0.8 })
 		await Promise.resolve()
 
-		expect(dispatchTextAction).not.toHaveBeenCalled()
-		expect(env.authority.dispatch).toHaveBeenCalledWith({
-			c: CMD.TEXT_UPDATE_ATTRS,
-			p: {
-				id: 'text:dkt-runtime-caption',
-				attrs: { content: 'After', style: { color: '#111827' } },
-			},
-		})
-		expect(dispatchEffectAction).toHaveBeenCalledWith(expect.objectContaining({
-			sourceEffectId: 'effect:dkt-runtime-tint',
-			name: 'Tint',
-			kind: 'tint',
-			amount: 0.25,
-		}), 'setEffectAmount', { amount: 0.8 })
+		expect(dispatchTextAction).toHaveBeenCalledWith({ sourceTextId: 'text:dkt-runtime-caption' }, 'setTextContent', { content: 'After' })
+		expect(dispatchTextAction).toHaveBeenCalledWith({ sourceTextId: 'text:dkt-runtime-caption' }, 'setTextStyle', { style: { color: '#111827' } })
+		expect(dispatchEffectAction).toHaveBeenCalledWith({ sourceEffectId: 'effect:dkt-runtime-tint' }, 'setEffectAmount', { amount: 0.8 })
+		expect(dispatch).not.toHaveBeenCalled()
 	})
 })

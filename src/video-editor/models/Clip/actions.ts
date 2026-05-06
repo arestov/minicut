@@ -6,7 +6,7 @@ import type { MiniCutDktEffectSeed } from '../../dkt/runtime/createMiniCutDktRun
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
-export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTimelineAttrs' | 'setTransform' | 'setMediaKind' | 'setClipAttrs'
+export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTimelineAttrs' | 'setTransform' | 'setMediaKind' | 'setClipAttrs' | 'addEffect' | 'removeEffect' | 'reorderEffect'
 export type DktTimelineClipActionName = 'moveBy' | 'trim' | 'resize' | 'splitAt'
 
 export type DktClipActionPatch = Partial<Pick<ClipAttrs,
@@ -250,10 +250,7 @@ export const normalizeEffectCreationAttrs = (payload: unknown) => {
 		? value.sourceEffectId
 		: typeof (payload as { effectId?: unknown } | null)?.effectId === 'string'
 			? String((payload as { effectId: string }).effectId)
-			: null
-	if (!sourceEffectId) {
-		return null
-	}
+			: createDktEffectSourceId(value?.kind)
 
 	return {
 		sourceEffectId,
@@ -264,6 +261,14 @@ export const normalizeEffectCreationAttrs = (payload: unknown) => {
 		params: value?.params && typeof value.params === 'object' ? value.params : null,
 		color: value?.color && typeof value.color === 'object' ? value.color : null,
 	}
+}
+
+let effectCreationSequence = 0
+
+const createDktEffectSourceId = (kind: unknown): string => {
+	effectCreationSequence += 1
+	const safeKind = typeof kind === 'string' && kind ? kind.replace(/[^a-z0-9_-]/gi, '-') : 'effect'
+	return `dkt-effect:${safeKind}:${Date.now().toString(36)}:${effectCreationSequence}`
 }
 
 const getNodeId = (model: unknown): string | null => (
