@@ -1,7 +1,6 @@
 import { createMiniCutPageSyncRuntime } from '../dkt/runtime/createMiniCutPageSyncRuntime'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import type { ExportRenderer } from '../render/exportRenderer'
-import { createDktPageEditorRenderRuntime } from '../render-sync/createDktPageEditorRenderRuntime'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
@@ -166,16 +165,10 @@ export const createVideoEditorHarness = (
 
 	const actions = createDktActionRuntime(env, { resourceChunkSize })
 
-	const renderRuntime = createDktPageEditorRenderRuntime({
-		pageRuntime,
-		actions,
-	})
-
 	return {
 		// Only essential public API
 		worker: authorityClient,
 		pageRuntime,
-		renderRuntime,
 		actions,
 		resourceTransfers$: resourceTransferManager.transfers$,
 		
