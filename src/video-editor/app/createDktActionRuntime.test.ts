@@ -178,7 +178,7 @@ describe('createDktActionRuntime DKT clip wiring', () => {
 		expect(dispatchClipAction).toHaveBeenCalledWith(expect.any(Object), 'splitAt', { time: 2 })
 	})
 
-	it('mirrors text through model commands and effect attrs through DKT proxy actions', async () => {
+	it('mirrors text through model commands and effect attrs through DKT seed actions', async () => {
 		const { env, dispatchTextAction, dispatchEffectAction } = createEnv()
 		const actions = createDktActionRuntime(env, {
 			playbackDuration$: { get: () => 10 } as never,

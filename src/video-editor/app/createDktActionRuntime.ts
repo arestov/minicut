@@ -71,7 +71,7 @@ export const createDktActionRuntime = (
 			return
 		}
 
-		const effectProxy = {
+		const effectSeed = {
 			sourceEffectId: effectId,
 			name: effectAttrs.name,
 			kind: effectAttrs.kind,
@@ -100,7 +100,7 @@ export const createDktActionRuntime = (
 			dktActions.push(['setEffectColor', { color: attrs.color }])
 		}
 
-		void Promise.all(dktActions.map(([actionName, payload]) => dispatch(effectProxy, actionName, payload))).catch(() => undefined)
+		void Promise.all(dktActions.map(([actionName, payload]) => dispatch(effectSeed, actionName, payload))).catch(() => undefined)
 	}
 	const applySessionPatch = (patch: Record<string, unknown>): void => {
 		if ('selectedEntityId' in patch) {

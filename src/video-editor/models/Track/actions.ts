@@ -1,13 +1,13 @@
 import { defaultClipTransform } from '../Clip/actions'
 import { defaultTextBox, defaultTextStyle } from '../Text/defaults'
-import type { MiniCutDktClipProxyInput, MiniCutDktTextProxyInput } from '../../dkt/runtime/createMiniCutDktRuntime'
+import type { MiniCutDktClipSeed, MiniCutDktTextSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
 
-export type TrackAddClipPayload = MiniCutDktClipProxyInput & {
+export type TrackAddClipPayload = MiniCutDktClipSeed & {
 	resourceId?: string | null
 }
 
-export type TrackAddTextClipPayload = MiniCutDktClipProxyInput & {
-	text?: MiniCutDktTextProxyInput
+export type TrackAddTextClipPayload = MiniCutDktClipSeed & {
+	text?: MiniCutDktTextSeed
 }
 
 export const normalizeClipCreationAttrs = (payload: unknown) => {
@@ -22,6 +22,7 @@ export const normalizeClipCreationAttrs = (payload: unknown) => {
 		sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
 		name: typeof value.name === 'string' ? value.name : 'Clip',
 		color: typeof value.color === 'string' ? value.color : '#2563eb',
+		mediaKind: typeof value.mediaKind === 'string' ? value.mediaKind : null,
 		start: typeof value.start === 'number' ? value.start : 0,
 		in: typeof value.in === 'number' ? value.in : 0,
 		duration: typeof value.duration === 'number' ? value.duration : 0,
@@ -34,7 +35,7 @@ export const normalizeClipCreationAttrs = (payload: unknown) => {
 }
 
 export const normalizeTextCreationAttrs = (payload: unknown) => {
-	const value = payload as MiniCutDktTextProxyInput | null
+	const value = payload as MiniCutDktTextSeed | null
 	if (typeof value?.sourceTextId !== 'string' || !value.sourceTextId) {
 		return null
 	}

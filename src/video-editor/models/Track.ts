@@ -1,9 +1,9 @@
 import { model } from 'dkt/model.js'
-import { CLIP_PROXY_CREATION_SHAPE } from './Clip'
-import { TEXT_PROXY_CREATION_SHAPE } from './Text'
+import { CLIP_CREATION_SHAPE } from './Clip'
+import { TEXT_CREATION_SHAPE } from './Text'
 import { normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef } from './Track/actions'
 
-export const TRACK_PROXY_CREATION_SHAPE = {
+export const TRACK_CREATION_SHAPE = {
 	attrs: ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height'],
 } as const
 
@@ -59,7 +59,7 @@ export const Track = model({
 			to: ['<< clip << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: CLIP_PROXY_CREATION_SHAPE,
+				creation_shape: CLIP_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const attrs = normalizeClipCreationAttrs(payload)
@@ -71,12 +71,12 @@ export const Track = model({
 				clip: ['<< clip << #', {
 					method: 'at_end',
 					can_create: true,
-					creation_shape: CLIP_PROXY_CREATION_SHAPE,
+					creation_shape: CLIP_CREATION_SHAPE,
 				}],
 				text: ['<< text << #', {
 					method: 'at_end',
 					can_create: true,
-					creation_shape: TEXT_PROXY_CREATION_SHAPE,
+					creation_shape: TEXT_CREATION_SHAPE,
 				}],
 			},
 			fn: (payload: unknown) => {
@@ -92,7 +92,7 @@ export const Track = model({
 			to: ['<< clip << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: CLIP_PROXY_CREATION_SHAPE,
+				creation_shape: CLIP_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const attrs = normalizeRightSplitClipAttrs(payload)

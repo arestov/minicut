@@ -1,5 +1,5 @@
 import { model } from 'dkt/model.js'
-import { EFFECT_PROXY_CREATION_SHAPE } from './Effect'
+import { EFFECT_CREATION_SHAPE } from './Effect'
 import {
 	clipSetAudioAction,
 	clipSetFadeAction,
@@ -11,6 +11,7 @@ import {
 	reorderEffectRefs,
 	reduceClipColorAction,
 	reduceClipRenameAction,
+	reduceClipSetMediaKindAction,
 	reduceClipUpdateOpacityAction,
 } from './Clip/actions'
 import {
@@ -28,6 +29,7 @@ export const Clip = model({
 		sourceTextId: ['input', null],
 		name: ['input', 'Clip'],
 		color: ['input', '#2563eb'],
+		mediaKind: ['input', null],
 		start: ['input', 0],
 		in: ['input', 0],
 		duration: ['input', 0],
@@ -54,6 +56,53 @@ export const Clip = model({
 				name: ['name'],
 			},
 			fn: (payload: unknown) => reduceClipRenameAction(payload) ?? '$noop',
+		},
+		setClipAttrs: {
+			to: {
+				sourceClipId: ['sourceClipId'],
+				sourceResourceId: ['sourceResourceId'],
+				sourceTextId: ['sourceTextId'],
+				name: ['name'],
+				color: ['color'],
+				mediaKind: ['mediaKind'],
+				start: ['start'],
+				in: ['in'],
+				duration: ['duration'],
+				fadeIn: ['fadeIn'],
+				fadeOut: ['fadeOut'],
+				audio: ['audio'],
+				opacity: ['opacity'],
+				transform: ['transform'],
+			},
+			fn: (payload: unknown) => {
+				const value = payload as Record<string, unknown> | null
+				if (!value || typeof value !== 'object') {
+					return '$noop'
+				}
+
+				return {
+					sourceClipId: typeof value.sourceClipId === 'string' ? value.sourceClipId : null,
+					sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : null,
+					sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
+					name: typeof value.name === 'string' ? value.name : 'Clip',
+					color: typeof value.color === 'string' ? value.color : '#2563eb',
+					mediaKind: typeof value.mediaKind === 'string' ? value.mediaKind : null,
+					start: typeof value.start === 'number' ? value.start : 0,
+					in: typeof value.in === 'number' ? value.in : 0,
+					duration: typeof value.duration === 'number' ? value.duration : 0,
+					fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
+					fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,
+					audio: value.audio && typeof value.audio === 'object' ? value.audio : { gain: 1, pan: 0 },
+					opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
+					transform: value.transform && typeof value.transform === 'object' ? value.transform : defaultClipTransform,
+				}
+			},
+		},
+		setMediaKind: {
+			to: {
+				mediaKind: ['mediaKind'],
+			},
+			fn: (payload: unknown) => reduceClipSetMediaKindAction(payload) ?? '$noop',
 		},
 		color: {
 			to: {
@@ -181,7 +230,7 @@ export const Clip = model({
 			to: ['<< effect << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: EFFECT_PROXY_CREATION_SHAPE,
+				creation_shape: EFFECT_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const attrs = normalizeEffectCreationAttrs(payload)
@@ -242,6 +291,6 @@ export const Clip = model({
 	},
 })
 
-export const CLIP_PROXY_CREATION_SHAPE = {
-	attrs: ['sourceClipId', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
+export const CLIP_CREATION_SHAPE = {
+	attrs: ['sourceClipId', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
 } as const

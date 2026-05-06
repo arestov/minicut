@@ -2,6 +2,7 @@ import { buildDispatchResult } from './applyCommand'
 import { applyPatchEnvelopeToRegistry } from './applyPatch'
 import { createEmptyRegistry } from './createProject'
 import {
+	getAudioTrack,
 	getActiveClipNamesAtCursor,
 	getClipEntitiesForTrack,
 	getClipIdsForTrack,
@@ -24,7 +25,7 @@ const createProjectWithClip = (duration = 8): { registry: ProjectRegistry, proje
 
 	const clipResult = buildDispatchResult(registry, {
 		c: CMD.TIMELINE_ADD_CLIP,
-		p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		p: { projectId, resourceId: String(importResult.createdIds?.resourceId), includeLinkedAudio: false },
 	})
 	registry = applyPatchEnvelopeToRegistry(registry, clipResult.envelope)
 
@@ -54,6 +55,33 @@ const expectClipInvariants = (registry: ProjectRegistry): void => {
 }
 
 describe('timeline invariants', () => {
+	it('adds linked audio for video clips by default', () => {
+		let registry = createEmptyRegistry()
+		const createResult = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: {} })
+		registry = applyPatchEnvelopeToRegistry(registry, createResult.envelope)
+		const projectId = String(createResult.createdIds?.projectId)
+
+		const importResult = buildDispatchResult(registry, {
+			c: CMD.RESOURCE_IMPORT,
+			p: { projectId, name: 'Camera', kind: 'video', duration: 3 },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, importResult.envelope)
+
+		const addResult = buildDispatchResult(registry, {
+			c: CMD.TIMELINE_ADD_CLIP,
+			p: { projectId, resourceId: String(importResult.createdIds?.resourceId) },
+		})
+		registry = applyPatchEnvelopeToRegistry(registry, addResult.envelope)
+
+		const project = registry.projects[projectId]
+		const audioTrack = getAudioTrack(registry, project)
+		expect(audioTrack).not.toBeNull()
+		const audioClipIds = getClipIdsForTrack(registry, String(audioTrack?.id))
+		expect(audioClipIds).toHaveLength(1)
+		expect(registry.entitiesById[audioClipIds[0]].attrs.name).toBe('Embedded audio')
+		expect(addResult.createdIds?.audioClipId).toBe(audioClipIds[0])
+	})
+
 	it('keeps active clip calculation consistent across time boundaries', () => {
 		let { registry, projectId, clipId } = createProjectWithClip(4)
 		const splitResult = buildDispatchResult(registry, {

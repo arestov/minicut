@@ -60,6 +60,6 @@ export const Effect = model({
 	},
 })
 
-export const EFFECT_PROXY_CREATION_SHAPE = {
+export const EFFECT_CREATION_SHAPE = {
 	attrs: ['sourceEffectId', 'name', 'kind', 'enabled', 'amount', 'params', 'color'],
 } as const

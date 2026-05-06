@@ -419,7 +419,7 @@ test('video resources add linked audio clips that play, inspect, and export sett
 
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Audio' }).click()
-	await inspector.getByLabel('Gain').fill('65')
+	await setRangeValue(inspector.getByLabel('Gain'), 65)
 	await expect(inspector.getByText('Gain 65%')).toBeVisible()
 
 	await setTimelineCursor(page, 0.5)
@@ -711,7 +711,7 @@ test('imports real media files, edits timeline clips, and previews actual media 
 
 	await timeline.getByRole('button', { name: /fixture-image.png/i }).click()
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
-	await inspector.getByLabel('Opacity').fill('60')
+	await setRangeValue(inspector.getByLabel('Opacity'), 60)
 	await inspector.getByLabel('X').fill('24')
 	await expect(inspector.getByText('Opacity 60%')).toBeVisible()
 
@@ -998,31 +998,32 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
 	const zoomIn = timeline.getByRole('button', { name: 'Zoom in' })
 	const zoomOut = timeline.getByRole('button', { name: 'Zoom out' })
+	const readZoom = async (): Promise<number> => Number.parseFloat((await timeline.getByText(/px\/s$/i).first().textContent() ?? '0').replace(/[^0-9.]/g, ''))
 	await zoomIn.click()
 	await expect(timeline.getByText('64 px/s')).toBeVisible()
 	await zoomOut.click()
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
 
-	for (let index = 0; index < 20; index += 1) {
-		if (await zoomIn.isDisabled()) {
-			break
-		}
+	while (await readZoom() < 96) {
+		const before = await readZoom()
 		await zoomIn.click()
+		await expect.poll(readZoom).toBeGreaterThan(before)
 	}
 	await expect(timeline.getByText('96 px/s')).toBeVisible()
 	await expect(zoomIn).toBeDisabled()
 
-	for (let index = 0; index < 30; index += 1) {
-		if (await zoomOut.isDisabled()) {
-			break
-		}
+	while (await readZoom() > 8) {
+		const before = await readZoom()
 		await zoomOut.click()
+		await expect.poll(readZoom).toBeLessThan(before)
 	}
 	await expect(timeline.getByText('8 px/s')).toBeVisible()
 	await expect(zoomOut).toBeDisabled()
 
 	for (let index = 0; index < 6; index += 1) {
+		const before = await readZoom()
 		await zoomIn.click()
+		await expect.poll(readZoom).toBeGreaterThan(before)
 	}
 	await expect(timeline.getByText('56 px/s')).toBeVisible()
 
@@ -1380,12 +1381,8 @@ test('preview sends playhead renders through an OffscreenCanvas worker', async (
 	await expect(renderer.getByLabel('Offscreen preview canvas')).toHaveAttribute('data-render-mode', 'offscreen')
 	await setTimelineCursor(page, 0.75)
 
-	const probe = await page.evaluate(() => ({
-		transfers: window.__previewOffscreenTransfers,
-		messages: window.__previewWorkerMessages,
-	}))
-	expect(probe.transfers).toBe(1)
-	expect(probe.messages).toEqual(expect.arrayContaining([
+	await expect.poll(async () => page.evaluate(() => window.__previewOffscreenTransfers)).toBe(1)
+	await expect.poll(async () => page.evaluate(() => window.__previewWorkerMessages)).toEqual(expect.arrayContaining([
 		expect.objectContaining({ type: 'init' }),
 		expect.objectContaining({
 			type: 'setScene',

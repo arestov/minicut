@@ -56,7 +56,7 @@ interface ResourceRenderAttrs {
 const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 	const { actions } = useVideoEditor()
 	const resourceAttrs = useAttrs(['sourceResourceId', 'name', 'kind', 'mime', 'duration', 'url', 'size']) as ResourceRenderAttrs & { sourceResourceId?: unknown }
-	const sourceResourceId = typeof resourceAttrs.sourceResourceId === 'string' ? resourceAttrs.sourceResourceId : resourceScope._nodeId
+	const sourceResourceId = typeof resourceAttrs.sourceResourceId === 'string' ? resourceAttrs.sourceResourceId : null
 	const name = String(resourceAttrs.name)
 	const kind = resourceAttrs.kind ?? 'video'
 	const mime = String(resourceAttrs.mime)
@@ -79,7 +79,12 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 							icon={Plus}
 							label="Add to timeline"
 							variant="secondary"
-							onClick={() => actions.addResourceToTimeline(sourceResourceId)}
+							disabled={!sourceResourceId}
+							onClick={() => {
+								if (sourceResourceId) {
+									actions.addResourceToTimeline(sourceResourceId)
+								}
+							}}
 						>
 							Add
 						</IconButton>

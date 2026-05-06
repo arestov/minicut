@@ -9,7 +9,7 @@ import type { DktSessionActionName } from '../models/SessionRoot/actions'
 import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
 import type { DktTextActionName } from '../models/Text/actions'
 import type { DktEffectActionName } from '../models/Effect/actions'
-import type { MiniCutDktClipProxyInput, MiniCutDktEffectProxyInput, MiniCutDktTextProxyInput } from '../dkt/runtime/createMiniCutDktRuntime'
+import type { MiniCutDktClipSeed, MiniCutDktEffectSeed, MiniCutDktTextSeed } from '../dkt/runtime/createMiniCutDktRuntime'
 
 export interface EditorStorePort {
 	projects$: Observable<ProjectRegistry>
@@ -76,9 +76,9 @@ export interface EditorRuntimeTaskPort {
 
 export interface EditorDktRuntimePort {
 	dispatchSessionAction(actionName: DktSessionActionName, payload?: unknown): Promise<void> | void
-	dispatchClipAction(clip: MiniCutDktClipProxyInput, actionName: DktClipActionName | DktTimelineClipActionName, payload?: unknown): Promise<void> | void
-	dispatchTextAction(text: MiniCutDktTextProxyInput, actionName: DktTextActionName, payload?: unknown): Promise<void> | void
-	dispatchEffectAction(effect: MiniCutDktEffectProxyInput, actionName: DktEffectActionName, payload?: unknown): Promise<void> | void
+	dispatchClipAction(clip: MiniCutDktClipSeed, actionName: DktClipActionName | DktTimelineClipActionName, payload?: unknown): Promise<void> | void
+	dispatchTextAction(text: MiniCutDktTextSeed, actionName: DktTextActionName, payload?: unknown): Promise<void> | void
+	dispatchEffectAction(effect: MiniCutDktEffectSeed, actionName: DktEffectActionName, payload?: unknown): Promise<void> | void
 }
 
 export interface EditorActionEnvironment {

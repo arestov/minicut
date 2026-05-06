@@ -71,7 +71,7 @@ const createWorkerStream = (transport: DomSyncTransportViewLike<MiniCutDktTransp
 	},
 })
 
-export type MiniCutDktProjectProxyInput = {
+export type MiniCutDktProjectSeed = {
 	sourceProjectId: string
 	title?: string
 	fps?: number
@@ -82,7 +82,7 @@ export type MiniCutDktProjectProxyInput = {
 	updatedAt?: number
 }
 
-export type MiniCutDktTrackProxyInput = {
+export type MiniCutDktTrackSeed = {
 	sourceTrackId: string
 	kind?: 'video' | 'audio'
 	name?: string
@@ -91,7 +91,7 @@ export type MiniCutDktTrackProxyInput = {
 	height?: number
 }
 
-export type MiniCutDktResourceProxyInput = {
+export type MiniCutDktResourceSeed = {
 	sourceResourceId: string
 	name?: string
 	kind?: string
@@ -106,12 +106,13 @@ export type MiniCutDktResourceProxyInput = {
 	data?: Record<string, unknown>
 }
 
-export type MiniCutDktClipProxyInput = {
+export type MiniCutDktClipSeed = {
 	sourceClipId: string
 	sourceResourceId?: string | null
 	sourceTextId?: string | null
 	name?: string
 	color?: string
+	mediaKind?: string
 	start?: number
 	in?: number
 	duration?: number
@@ -127,14 +128,14 @@ export type MiniCutDktClipProxyInput = {
 	}
 }
 
-export type MiniCutDktTextProxyInput = {
+export type MiniCutDktTextSeed = {
 	sourceTextId: string
 	content?: string
 	style?: Record<string, unknown>
 	box?: Record<string, unknown>
 }
 
-export type MiniCutDktEffectProxyInput = {
+export type MiniCutDktEffectSeed = {
 	sourceEffectId: string
 	name?: string
 	kind?: string
@@ -257,7 +258,7 @@ const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unkn
 const asTextAttrs = (attrs: Record<string, unknown>): TextAttrs => attrs as unknown as TextAttrs
 const asEffectAttrs = (attrs: Record<string, unknown>): EffectAttrs => attrs as unknown as EffectAttrs
 
-const toProjectProxy = (snapshot: ProjectRegistry, project: ProjectGraph): MiniCutDktProjectProxyInput => {
+const toProjectSeed = (snapshot: ProjectRegistry, project: ProjectGraph): MiniCutDktProjectSeed => {
 	const projectEntity = getProjectEntity(snapshot, project)
 	const attrs = asProjectAttrs(projectEntity.attrs)
 
@@ -273,7 +274,7 @@ const toProjectProxy = (snapshot: ProjectRegistry, project: ProjectGraph): MiniC
 	}
 }
 
-const toTrackProxy = (track: { id: string; attrs: Record<string, unknown> }): MiniCutDktTrackProxyInput => {
+const toTrackSeed = (track: { id: string; attrs: Record<string, unknown> }): MiniCutDktTrackSeed => {
 	const attrs = asTrackAttrs(track.attrs)
 	return {
 		sourceTrackId: track.id,
@@ -285,7 +286,7 @@ const toTrackProxy = (track: { id: string; attrs: Record<string, unknown> }): Mi
 	}
 }
 
-const toResourceProxy = (resource: { id: string; attrs: Record<string, unknown> }): MiniCutDktResourceProxyInput => {
+const toResourceSeed = (resource: { id: string; attrs: Record<string, unknown> }): MiniCutDktResourceSeed => {
 	const attrs = asResourceAttrs(resource.attrs)
 	return {
 		sourceResourceId: resource.id,
@@ -303,7 +304,7 @@ const toResourceProxy = (resource: { id: string; attrs: Record<string, unknown> 
 	}
 }
 
-const toClipProxy = (clip: { id: string; attrs: Record<string, unknown>; rels: Record<string, unknown> }): MiniCutDktClipProxyInput => {
+const toClipSeed = (clip: { id: string; attrs: Record<string, unknown>; rels: Record<string, unknown> }): MiniCutDktClipSeed => {
 	const attrs = asClipAttrs(clip.attrs)
 	return {
 		sourceClipId: clip.id,
@@ -311,6 +312,7 @@ const toClipProxy = (clip: { id: string; attrs: Record<string, unknown>; rels: R
 		sourceTextId: typeof clip.rels.text === 'string' ? clip.rels.text : null,
 		name: attrs.name,
 		color: attrs.color,
+		mediaKind: attrs.mediaKind,
 		start: attrs.start,
 		in: attrs.in,
 		duration: attrs.duration,
@@ -322,7 +324,7 @@ const toClipProxy = (clip: { id: string; attrs: Record<string, unknown>; rels: R
 	}
 }
 
-const toTextProxy = (text: { id: string; attrs: Record<string, unknown> }): MiniCutDktTextProxyInput => {
+const toTextSeed = (text: { id: string; attrs: Record<string, unknown> }): MiniCutDktTextSeed => {
 	const attrs = asTextAttrs(text.attrs)
 	return {
 		sourceTextId: text.id,
@@ -332,7 +334,7 @@ const toTextProxy = (text: { id: string; attrs: Record<string, unknown> }): Mini
 	}
 }
 
-const toEffectProxy = (effect: { id: string; attrs: Record<string, unknown> }): MiniCutDktEffectProxyInput => {
+const toEffectSeed = (effect: { id: string; attrs: Record<string, unknown> }): MiniCutDktEffectSeed => {
 	const attrs = asEffectAttrs(effect.attrs)
 	return {
 		sourceEffectId: effect.id,
@@ -348,12 +350,12 @@ const toEffectProxy = (effect: { id: string; attrs: Record<string, unknown> }): 
 export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => {
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>()
-	const clipProxyNodeIds = new Map<string, string>()
-	const projectProxyNodeIds = new Map<string, string>()
-	const trackProxyNodeIds = new Map<string, string>()
-	const resourceProxyNodeIds = new Map<string, string>()
-	const textProxyNodeIds = new Map<string, string>()
-	const effectProxyNodeIds = new Map<string, string>()
+	const clipNodeIdsBySourceId = new Map<string, string>()
+	const projectNodeIdsBySourceId = new Map<string, string>()
+	const trackNodeIdsBySourceId = new Map<string, string>()
+	const resourceNodeIdsBySourceId = new Map<string, string>()
+	const textNodeIdsBySourceId = new Map<string, string>()
+	const effectNodeIdsBySourceId = new Map<string, string>()
 	const enabled = options.enabled === true
 
 	const bootstrapApp = async () => {
@@ -377,7 +379,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 						},
 					},
 				})
-
 				return { runtime, appModel: inited.app_model }
 			})()
 		}
@@ -426,7 +427,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		actionName: string,
 		payload?: unknown,
 		scopeNodeId?: string | null,
-		sessionKey = 'minicut-local',
 	): Promise<void> => {
 		const app = await bootstrapApp()
 		if (!app) {
@@ -435,12 +435,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 		let target = app.appModel
 		if (typeof scopeNodeId === 'string' && scopeNodeId) {
-			const sessionRoot = await bootstrapSessionRoot(sessionKey)
-			target = (
-				(sessionRoot ? getModelById(sessionRoot, scopeNodeId) as RuntimeModelLike | null : null)
-				?? (getModelById(app.appModel, scopeNodeId) as RuntimeModelLike | null)
-				?? target
-			)
+			target = (getModelById(app.appModel, scopeNodeId) as RuntimeModelLike | null) ?? target
 		}
 
 		await target.dispatch(actionName, payload)
@@ -519,7 +514,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return structuredClone(result)
 	}
 
-	const findProxyNodeId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
+	const findModelNodeIdBySourceId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
 		const app = await bootstrapApp()
 		if (!app) {
 			return null
@@ -542,7 +537,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		})
 	}
 
-	const ensureProxy = async (
+	const ensureSeededModel = async (
 		cache: Map<string, string>,
 		input: object,
 		modelName: string,
@@ -560,38 +555,38 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			return cachedNodeId
 		}
 
-		const existingNodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
+		const existingNodeId = await findModelNodeIdBySourceId(modelName, sourceAttrName, sourceId)
 		if (existingNodeId) {
 			cache.set(sourceId, existingNodeId)
 			return existingNodeId
 		}
 
 		await app.appModel.dispatch(createActionName, input)
-		const createdNodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
+		const createdNodeId = await findModelNodeIdBySourceId(modelName, sourceAttrName, sourceId)
 		if (!createdNodeId) {
-			throw new Error(`MiniCut DKT ${modelName} proxy was not created for ${sourceId}`)
+			throw new Error(`MiniCut DKT ${modelName} model was not created for ${sourceId}`)
 		}
 
 		cache.set(sourceId, createdNodeId)
 		return createdNodeId
 	}
 
-	const getProxyModelByNodeId = async (nodeId: string): Promise<unknown> => {
+	const getSeededModelByNodeId = async (nodeId: string): Promise<unknown> => {
 		const app = await bootstrapApp()
 		const model = app ? getModelById(app.appModel, nodeId) : null
 		if (!model) {
-			throw new Error(`MiniCut DKT proxy model is not available for ${nodeId}`)
+			throw new Error(`MiniCut DKT model is not available for ${nodeId}`)
 		}
 		return model
 	}
 
-	const findProxyModelBySourceId = async (modelName: string, sourceAttrName: string, sourceId: string | null): Promise<unknown | null> => {
+	const findSeededModelBySourceId = async (modelName: string, sourceAttrName: string, sourceId: string | null): Promise<unknown | null> => {
 		if (!sourceId) {
 			return null
 		}
 
-		const nodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
-		return nodeId ? getProxyModelByNodeId(nodeId) : null
+		const nodeId = await findModelNodeIdBySourceId(modelName, sourceAttrName, sourceId)
+		return nodeId ? getSeededModelByNodeId(nodeId) : null
 	}
 
 	const syncSessionSelectionRels = async (sessionRoot: RuntimeModelLike): Promise<void> => {
@@ -602,8 +597,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			? sessionRoot.states.selectedEntityId
 			: null
 
-		const activeProject = await findProxyModelBySourceId('minicut_project', 'sourceProjectId', activeProjectId)
-		const selectedClip = await findProxyModelBySourceId('minicut_clip', 'sourceClipId', selectedEntityId)
+		const activeProject = await findSeededModelBySourceId('minicut_project', 'sourceProjectId', activeProjectId)
+		const selectedClip = await findSeededModelBySourceId('minicut_clip', 'sourceClipId', selectedEntityId)
 		await sessionRoot.dispatch('syncActiveProjectRel', { project: activeProject })
 		await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClip })
 	}
@@ -650,42 +645,42 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await syncSessionSelectedClipTrackPosition(sessionRoot)
 	}
 
-	const dispatchProjectAction = async (project: MiniCutDktProjectProxyInput, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureProxy(projectProxyNodeIds, project, 'minicut_project', 'sourceProjectId', 'createProjectProxy', project.sourceProjectId)
+	const dispatchProjectAction = async (project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> => {
+		const nodeId = await ensureSeededModel(projectNodeIdsBySourceId, project, 'minicut_project', 'sourceProjectId', 'createProjectModel', project.sourceProjectId)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const dispatchTrackAction = async (track: MiniCutDktTrackProxyInput, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureProxy(trackProxyNodeIds, track, 'minicut_track', 'sourceTrackId', 'createTrackProxy', track.sourceTrackId)
+	const dispatchTrackAction = async (track: MiniCutDktTrackSeed, actionName: string, payload?: unknown): Promise<void> => {
+		const nodeId = await ensureSeededModel(trackNodeIdsBySourceId, track, 'minicut_track', 'sourceTrackId', 'createTrackModel', track.sourceTrackId)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const dispatchResourceAction = async (resource: MiniCutDktResourceProxyInput, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureProxy(resourceProxyNodeIds, resource, 'minicut_resource', 'sourceResourceId', 'createResourceProxy', resource.sourceResourceId)
+	const dispatchResourceAction = async (resource: MiniCutDktResourceSeed, actionName: string, payload?: unknown): Promise<void> => {
+		const nodeId = await ensureSeededModel(resourceNodeIdsBySourceId, resource, 'minicut_resource', 'sourceResourceId', 'createResourceModel', resource.sourceResourceId)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const ensureClipProxy = async (clip: MiniCutDktClipProxyInput): Promise<string> =>
-		ensureProxy(clipProxyNodeIds, clip, 'minicut_clip', 'sourceClipId', 'createClipProxy', clip.sourceClipId)
+	const ensureClipSeed = async (clip: MiniCutDktClipSeed): Promise<string> =>
+		ensureSeededModel(clipNodeIdsBySourceId, clip, 'minicut_clip', 'sourceClipId', 'createClipModel', clip.sourceClipId)
 
-	const dispatchClipAction = async (clip: MiniCutDktClipProxyInput, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureClipProxy(clip)
+	const dispatchClipAction = async (clip: MiniCutDktClipSeed, actionName: string, payload?: unknown): Promise<void> => {
+		const nodeId = await ensureClipSeed(clip)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const ensureTextProxy = async (text: MiniCutDktTextProxyInput): Promise<string> =>
-		ensureProxy(textProxyNodeIds, text, 'minicut_text', 'sourceTextId', 'createTextProxy', text.sourceTextId)
+	const ensureTextSeed = async (text: MiniCutDktTextSeed): Promise<string> =>
+		ensureSeededModel(textNodeIdsBySourceId, text, 'minicut_text', 'sourceTextId', 'createTextModel', text.sourceTextId)
 
-	const dispatchTextAction = async (text: MiniCutDktTextProxyInput, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureTextProxy(text)
+	const dispatchTextAction = async (text: MiniCutDktTextSeed, actionName: string, payload?: unknown): Promise<void> => {
+		const nodeId = await ensureTextSeed(text)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
-	const ensureEffectProxy = async (effect: MiniCutDktEffectProxyInput): Promise<string> =>
-		ensureProxy(effectProxyNodeIds, effect, 'minicut_effect', 'sourceEffectId', 'createEffectProxy', effect.sourceEffectId)
+	const ensureEffectSeed = async (effect: MiniCutDktEffectSeed): Promise<string> =>
+		ensureSeededModel(effectNodeIdsBySourceId, effect, 'minicut_effect', 'sourceEffectId', 'createEffectModel', effect.sourceEffectId)
 
-	const syncEffectProxyAttrs = async (effect: MiniCutDktEffectProxyInput): Promise<string> => {
-		const nodeId = await ensureEffectProxy(effect)
+	const syncEffectSeedAttrs = async (effect: MiniCutDktEffectSeed): Promise<string> => {
+		const nodeId = await ensureEffectSeed(effect)
 		await dispatchAction('setEffectName', { name: effect.name }, nodeId)
 		await dispatchAction('setEffectKind', { kind: effect.kind }, nodeId)
 		await dispatchAction('setEffectEnabled', { enabled: effect.enabled }, nodeId)
@@ -695,22 +690,22 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return nodeId
 	}
 
-	const rememberProxyNodeId = async (
+	const rememberModelNodeId = async (
 		cache: Map<string, string>,
 		modelName: string,
 		sourceAttrName: string,
 		sourceId: string,
 	): Promise<string> => {
-		const nodeId = await findProxyNodeId(modelName, sourceAttrName, sourceId)
+		const nodeId = await findModelNodeIdBySourceId(modelName, sourceAttrName, sourceId)
 		if (!nodeId) {
-			throw new Error(`MiniCut DKT ${modelName} proxy was not created for ${sourceId}`)
+			throw new Error(`MiniCut DKT ${modelName} model was not created for ${sourceId}`)
 		}
 		cache.set(sourceId, nodeId)
 		return nodeId
 	}
 
-	const dispatchEffectAction = async (effect: MiniCutDktEffectProxyInput, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureEffectProxy(effect)
+	const dispatchEffectAction = async (effect: MiniCutDktEffectSeed, actionName: string, payload?: unknown): Promise<void> => {
+		const nodeId = await ensureEffectSeed(effect)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
@@ -731,87 +726,83 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 	const materializeRegistryHierarchy = async (snapshot: ProjectRegistry): Promise<void> => {
 		for (const project of Object.values(snapshot.projects)) {
-			const projectProxy = toProjectProxy(snapshot, project)
-			if (!(await findProxyNodeId('minicut_project', 'sourceProjectId', project.id))) {
-				await dispatchAction('createProjectProxy', projectProxy)
-				await rememberProxyNodeId(projectProxyNodeIds, 'minicut_project', 'sourceProjectId', project.id)
+			const projectSeed = toProjectSeed(snapshot, project)
+			if (!(await findModelNodeIdBySourceId('minicut_project', 'sourceProjectId', project.id))) {
+				await dispatchAction('createProjectModel', projectSeed)
+				await rememberModelNodeId(projectNodeIdsBySourceId, 'minicut_project', 'sourceProjectId', project.id)
 			}
 
-			await dispatchProjectAction(projectProxy, 'renameProject', { title: projectProxy.title })
-			await dispatchProjectAction(projectProxy, 'setProjectFormat', {
-				fps: projectProxy.fps,
-				width: projectProxy.width,
-				height: projectProxy.height,
+			await dispatchProjectAction(projectSeed, 'renameProject', { title: projectSeed.title })
+			await dispatchProjectAction(projectSeed, 'setProjectFormat', {
+				fps: projectSeed.fps,
+				width: projectSeed.width,
+				height: projectSeed.height,
 			})
-			await dispatchProjectAction(projectProxy, 'setProjectDuration', { duration: projectProxy.duration })
+			await dispatchProjectAction(projectSeed, 'setProjectDuration', { duration: projectSeed.duration })
 
 			const resourceModels: unknown[] = []
 			for (const resource of getResourceEntities(snapshot, project)) {
-				const resourceProxy = toResourceProxy(resource)
-				const resourceNodeId = await ensureProxy(
-					resourceProxyNodeIds,
-					resourceProxy,
+				const resourceSeed = toResourceSeed(resource)
+				const resourceNodeId = await ensureSeededModel(
+					resourceNodeIdsBySourceId,
+					resourceSeed,
 					'minicut_resource',
 					'sourceResourceId',
-					'createResourceProxy',
+					'createResourceModel',
 					resource.id,
 				)
-				resourceModels.push(await getProxyModelByNodeId(resourceNodeId))
-
-				await dispatchResourceAction(resourceProxy, 'renameResource', { name: resourceProxy.name })
-				await dispatchResourceAction(resourceProxy, 'setResourceStatus', { status: resourceProxy.status })
+				await dispatchResourceAction(resourceSeed, 'setResourceAttrs', resourceSeed)
+				resourceModels.push(await getSeededModelByNodeId(resourceNodeId))
 			}
-			await dispatchProjectAction(projectProxy, 'setResources', { resources: resourceModels })
+			await dispatchProjectAction(projectSeed, 'setResources', { resources: resourceModels })
 
 			const trackModels: unknown[] = []
 			for (const track of getTracks(snapshot, project)) {
-				const trackProxy = toTrackProxy(track)
-				const trackNodeId = await ensureProxy(
-					trackProxyNodeIds,
-					trackProxy,
+				const trackSeed = toTrackSeed(track)
+				const trackNodeId = await ensureSeededModel(
+					trackNodeIdsBySourceId,
+					trackSeed,
 					'minicut_track',
 					'sourceTrackId',
-					'createTrackProxy',
+					'createTrackModel',
 					track.id,
 				)
-				trackModels.push(await getProxyModelByNodeId(trackNodeId))
 
-				await dispatchTrackAction(trackProxy, 'renameTrack', { name: trackProxy.name })
-				await dispatchTrackAction(trackProxy, 'setTrackMuted', { muted: trackProxy.muted })
-				await dispatchTrackAction(trackProxy, 'setTrackLocked', { locked: trackProxy.locked })
+				await dispatchTrackAction(trackSeed, 'renameTrack', { name: trackSeed.name })
+				await dispatchTrackAction(trackSeed, 'setTrackMuted', { muted: trackSeed.muted })
+				await dispatchTrackAction(trackSeed, 'setTrackLocked', { locked: trackSeed.locked })
 
 				const clipModels: unknown[] = []
 				for (const clip of getClipEntitiesForTrack(snapshot, track.id)) {
-					const clipProxy = toClipProxy(clip)
+					const clipSeed = toClipSeed(clip)
 					const textEntity = typeof clip.rels.text === 'string'
 						? snapshot.entitiesById[clip.rels.text]
 						: null
-					const clipNodeId = await ensureClipProxy(clipProxy)
-					clipModels.push(await getProxyModelByNodeId(clipNodeId))
+					const clipNodeId = await ensureClipSeed(clipSeed)
 
-					await dispatchClipAction(clipProxy, 'rename', { name: clipProxy.name })
-					await dispatchClipAction(clipProxy, 'setTimelineAttrs', {
-						start: clipProxy.start,
-						in: clipProxy.in,
-						duration: clipProxy.duration,
-						fadeIn: clipProxy.fadeIn,
-						fadeOut: clipProxy.fadeOut,
+					await dispatchClipAction(clipSeed, 'setClipAttrs', clipSeed)
+					await dispatchClipAction(clipSeed, 'setTimelineAttrs', {
+						start: clipSeed.start,
+						in: clipSeed.in,
+						duration: clipSeed.duration,
+						fadeIn: clipSeed.fadeIn,
+						fadeOut: clipSeed.fadeOut,
 					})
-					if (clipProxy.color) {
-						await dispatchClipAction(clipProxy, 'color', { color: clipProxy.color })
+					if (clipSeed.color) {
+						await dispatchClipAction(clipSeed, 'color', { color: clipSeed.color })
 					}
-					if (clipProxy.opacity?.value != null) {
-						await dispatchClipAction(clipProxy, 'updateOpacity', { opacityPercent: clipProxy.opacity.value * 100 })
+					if (clipSeed.opacity?.value != null) {
+						await dispatchClipAction(clipSeed, 'updateOpacity', { opacityPercent: clipSeed.opacity.value * 100 })
 					}
-					if (clipProxy.audio) {
-						await dispatchClipAction(clipProxy, 'setAudio', clipProxy.audio)
+					if (clipSeed.audio) {
+						await dispatchClipAction(clipSeed, 'setAudio', clipSeed.audio)
 					}
-					if (clipProxy.transform) {
-						await dispatchClipAction(clipProxy, 'setTransform', {
-							x: clipProxy.transform.x?.value,
-							y: clipProxy.transform.y?.value,
-							scale: clipProxy.transform.scale?.value,
-							rotation: clipProxy.transform.rotation?.value,
+					if (clipSeed.transform) {
+						await dispatchClipAction(clipSeed, 'setTransform', {
+							x: clipSeed.transform.x?.value,
+							y: clipSeed.transform.y?.value,
+							scale: clipSeed.transform.scale?.value,
+							rotation: clipSeed.transform.rotation?.value,
 						})
 					}
 
@@ -819,29 +810,29 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 						? snapshot.entitiesById[clip.rels.resource]
 						: null
 					if (resourceEntity?.type === 'resource') {
-						const resourceProxy = toResourceProxy(resourceEntity)
-						const resourceNodeId = await ensureProxy(
-							resourceProxyNodeIds,
-							resourceProxy,
+						const resourceSeed = toResourceSeed(resourceEntity)
+						const resourceNodeId = await ensureSeededModel(
+							resourceNodeIdsBySourceId,
+							resourceSeed,
 							'minicut_resource',
 							'sourceResourceId',
-							'createResourceProxy',
+							'createResourceModel',
 							resourceEntity.id,
 						)
-						await dispatchClipAction(clipProxy, 'setResource', { resource: await getProxyModelByNodeId(resourceNodeId) })
+						await dispatchClipAction(clipSeed, 'setResource', { resource: await getSeededModelByNodeId(resourceNodeId) })
 					} else {
-						await dispatchClipAction(clipProxy, 'setResource', { resource: null })
+						await dispatchClipAction(clipSeed, 'setResource', { resource: null })
 					}
 
 					if (textEntity) {
-						const textProxy = toTextProxy(textEntity)
-						const textNodeId = await ensureTextProxy(textProxy)
-						await dispatchClipAction(clipProxy, 'setText', { text: await getProxyModelByNodeId(textNodeId) })
-						await dispatchTextAction(textProxy, 'setTextContent', { content: textProxy.content })
-						await dispatchTextAction(textProxy, 'setTextStyle', { style: textProxy.style })
-						await dispatchTextAction(textProxy, 'setTextBox', { box: textProxy.box })
+						const textSeed = toTextSeed(textEntity)
+						const textNodeId = await ensureTextSeed(textSeed)
+						await dispatchClipAction(clipSeed, 'setText', { text: await getSeededModelByNodeId(textNodeId) })
+						await dispatchTextAction(textSeed, 'setTextContent', { content: textSeed.content })
+						await dispatchTextAction(textSeed, 'setTextStyle', { style: textSeed.style })
+						await dispatchTextAction(textSeed, 'setTextBox', { box: textSeed.box })
 					} else {
-						await dispatchClipAction(clipProxy, 'setText', { text: null })
+						await dispatchClipAction(clipSeed, 'setText', { text: null })
 					}
 
 					const effectIds = Array.isArray(clip.rels.effects) ? clip.rels.effects : []
@@ -852,28 +843,30 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 							continue
 						}
 
-						const effectProxy = toEffectProxy(effect)
-						const effectNodeId = await syncEffectProxyAttrs(effectProxy)
-						effectModels.push(await getProxyModelByNodeId(effectNodeId))
+						const effectSeed = toEffectSeed(effect)
+						const effectNodeId = await syncEffectSeedAttrs(effectSeed)
+						effectModels.push(await getSeededModelByNodeId(effectNodeId))
 
-						await dispatchEffectAction(effectProxy, 'setEffectName', { name: effectProxy.name })
-						await dispatchEffectAction(effectProxy, 'setEffectKind', { kind: effectProxy.kind })
-						await dispatchEffectAction(effectProxy, 'setEffectEnabled', { enabled: effectProxy.enabled })
-						if (effectProxy.amount != null) {
-							await dispatchEffectAction(effectProxy, 'setEffectAmount', { amount: effectProxy.amount })
+						await dispatchEffectAction(effectSeed, 'setEffectName', { name: effectSeed.name })
+						await dispatchEffectAction(effectSeed, 'setEffectKind', { kind: effectSeed.kind })
+						await dispatchEffectAction(effectSeed, 'setEffectEnabled', { enabled: effectSeed.enabled })
+						if (effectSeed.amount != null) {
+							await dispatchEffectAction(effectSeed, 'setEffectAmount', { amount: effectSeed.amount })
 						}
-						if (effectProxy.params) {
-							await dispatchEffectAction(effectProxy, 'setEffectParams', { params: effectProxy.params })
+						if (effectSeed.params) {
+							await dispatchEffectAction(effectSeed, 'setEffectParams', { params: effectSeed.params })
 						}
-						if (effectProxy.color) {
-							await dispatchEffectAction(effectProxy, 'setEffectColor', { color: effectProxy.color })
+						if (effectSeed.color) {
+							await dispatchEffectAction(effectSeed, 'setEffectColor', { color: effectSeed.color })
 						}
 					}
-					await dispatchClipAction(clipProxy, 'setEffects', { effects: effectModels })
+					await dispatchClipAction(clipSeed, 'setEffects', { effects: effectModels })
+					clipModels.push(await getSeededModelByNodeId(clipNodeId))
 				}
-				await dispatchTrackAction(trackProxy, 'setClips', { clips: clipModels })
+				await dispatchTrackAction(trackSeed, 'setClips', { clips: clipModels })
+				trackModels.push(await getSeededModelByNodeId(trackNodeId))
 			}
-			await dispatchProjectAction(projectProxy, 'setTracks', { tracks: trackModels })
+			await dispatchProjectAction(projectSeed, 'setTracks', { tracks: trackModels })
 		}
 
 		const activeProjectId = snapshot.activeProjectId ?? Object.keys(snapshot.projects)[0] ?? null
@@ -1014,14 +1007,14 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		getRegistrySnapshot,
 		replaceRegistrySnapshot,
 		dispatchCommand,
-		ensureClipProxy,
+		ensureClipSeed,
 		dispatchProjectAction,
 		dispatchTrackAction,
 		dispatchResourceAction,
 		dispatchClipAction,
-		ensureTextProxy,
+		ensureTextSeed,
 		dispatchTextAction,
-		ensureEffectProxy,
+		ensureEffectSeed,
 		dispatchEffectAction,
 		connect,
 		debugDumpAppState,

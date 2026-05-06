@@ -44,7 +44,7 @@ export const handleTimelineAddClip: CommandHandler<CommandByCode<typeof CMD.TIME
 	]
 	let audioClipId: string | undefined
 
-	if (command.p.includeLinkedAudio && resourceKind === 'video') {
+	if (command.p.includeLinkedAudio !== false && resourceKind === 'video') {
 		const audioTrack = getAudioTrack(registry, project)
 		if (!audioTrack) {
 			throw new Error('No audio track available for linked video audio')

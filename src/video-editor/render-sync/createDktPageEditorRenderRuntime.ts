@@ -1,5 +1,4 @@
 import type { PageSyncRuntime } from '../../dkt-react-sync/runtime/PageSyncRuntime'
-import type { ReactSyncDebugGraph, ReactSyncDebugNode } from '../../dkt-react-sync/receiver/ReactSyncReceiver'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
 import type { EntityType } from '../domain/types'
@@ -47,17 +46,6 @@ export interface CreateDktPageEditorRenderRuntimeOptions {
 	actions: HarnessActions
 }
 
-const MODEL_TYPE_BY_NAME: Record<string, EntityType | 'session' | 'root'> = {
-	minicut_session_root: 'session',
-	minicut_app_root: 'root',
-	minicut_project: 'project',
-	minicut_track: 'track',
-	minicut_resource: 'resource',
-	minicut_clip: 'clip',
-	minicut_text: 'text',
-	minicut_effect: 'effect',
-}
-
 const SOURCE_ATTR_BY_TYPE: Partial<Record<EntityType, string>> = {
 	project: 'sourceProjectId',
 	track: 'sourceTrackId',
@@ -66,10 +54,6 @@ const SOURCE_ATTR_BY_TYPE: Partial<Record<EntityType, string>> = {
 	text: 'sourceTextId',
 	effect: 'sourceEffectId',
 }
-
-const TYPE_BY_SOURCE_ATTR: Record<string, EntityType> = Object.fromEntries(
-	Object.entries(SOURCE_ATTR_BY_TYPE).map(([type, attr]) => [attr, type]),
-) as Record<string, EntityType>
 
 const TYPE_BY_REL: Partial<Record<string, EntityType>> = {
 	activeProject: 'project',
@@ -98,29 +82,25 @@ const toDktRelName = (relName: string): string => DKT_REL_BY_UI_REL[relName] ?? 
 const EMPTY_LIST = Object.freeze([]) as readonly ReactSyncScopeHandle[]
 const EMPTY_CLEANUP = () => {}
 
-const toDktScope = (runtime: PageSyncRuntime, scope: EditorScope | null): ReactSyncScopeHandle | null => {
+const toDktScope = (scope: EditorScope | null): ReactSyncScopeHandle | null => {
 	if (!scope || scope === ROOT_SCOPE || scope === SESSION_SCOPE || scope.nodeId.startsWith('$')) {
 		return null
 	}
 	if (!(scope.type in SOURCE_ATTR_BY_TYPE)) {
 		return null
 	}
-	if (!runtime.debugDescribeNode(scope.nodeId)) {
-		return null
-	}
 
 	return { kind: 'scope', _nodeId: scope.nodeId }
 }
 
-const toEditorScope = (runtime: PageSyncRuntime, scope: ReactSyncScopeHandle | null, fallbackType: EditorScope['type'] = 'root'): EditorScope | null => {
+const toEditorScope = (scope: ReactSyncScopeHandle | null, fallbackType: EditorScope['type'] = 'root'): EditorScope | null => {
 	if (!scope) {
 		return null
 	}
 
-	const modelName = runtime.debugDescribeNode(scope._nodeId)?.modelName ?? null
 	return {
 		nodeId: scope._nodeId,
-		type: modelName ? MODEL_TYPE_BY_NAME[modelName] ?? fallbackType : fallbackType,
+		type: fallbackType,
 	}
 }
 
@@ -137,35 +117,15 @@ const combineCleanups = (cleanups: Array<() => void>): (() => void) => {
 	}
 }
 
-const readGraph = (runtime: PageSyncRuntime): ReactSyncDebugGraph => runtime.debugDumpGraph() as ReactSyncDebugGraph
-
-const getNodeType = (node: ReactSyncDebugNode): EditorScope['type'] => node.modelName ? MODEL_TYPE_BY_NAME[node.modelName] ?? 'root' : 'root'
-
 const findSourceIdForDktScope = (runtime: PageSyncRuntime, scope: EditorScope | null): string | null => {
 	if (!scope || scope === ROOT_SCOPE || scope === SESSION_SCOPE || scope.nodeId.startsWith('$')) {
 		return null
 	}
 
-	const node = runtime.debugDescribeNode(scope.nodeId)
-	if (!node) {
-		return null
-	}
-
-	const sourceAttr = SOURCE_ATTR_BY_TYPE[getNodeType(node) as EntityType]
-	const sourceId = sourceAttr ? node.attrs[sourceAttr] : null
+	const sourceAttr = SOURCE_ATTR_BY_TYPE[scope.type as EntityType]
+	const dktScope = toDktScope(scope)
+	const sourceId = sourceAttr && dktScope ? runtime.readAttrs(dktScope, [sourceAttr])[sourceAttr] : null
 	return typeof sourceId === 'string' ? sourceId : null
-}
-
-const findDktScopeBySourceId = (runtime: PageSyncRuntime, sourceId: string | null | undefined): EditorScope | null => {
-	if (!sourceId) {
-		return null
-	}
-
-	const match = readGraph(runtime).nodes.find((node) => (
-		Object.entries(TYPE_BY_SOURCE_ATTR).some(([attrName, type]) => node.attrs[attrName] === sourceId && getNodeType(node) === type)
-	))
-
-	return match ? { nodeId: match.nodeId, type: getNodeType(match) } : null
 }
 
 const getPageRoot = (runtime: PageSyncRuntime | null): ReactSyncScopeHandle | null => runtime?.getRootScope() ?? null
@@ -190,7 +150,20 @@ const readActiveProjectScope = (runtime: PageSyncRuntime): EditorScope | null =>
 		? projects[projects.length - 1]
 		: null
 
-	return toEditorScope(runtime, matched ?? pendingActiveProject ?? projects[0] ?? null, 'project')
+	return toEditorScope(matched ?? pendingActiveProject ?? projects[0] ?? null, 'project')
+}
+
+const readSelectedClipScope = (runtime: PageSyncRuntime): EditorScope | null => {
+	const root = getPageRoot(runtime)
+	const selectedClip = root ? runtime.readOne(root, 'selectedClip') : null
+	if (selectedClip) {
+		return toEditorScope(selectedClip, 'clip')
+	}
+
+	const selectedEntityId = runtime.getRootAttrs(['selectedEntityId']).selectedEntityId
+	return typeof selectedEntityId === 'string' && selectedEntityId
+		? { nodeId: selectedEntityId, type: 'clip' }
+		: null
 }
 
 const subscribeActiveProject = (runtime: PageSyncRuntime, listener: () => void): (() => void) => {
@@ -232,7 +205,6 @@ const subscribeActiveProject = (runtime: PageSyncRuntime, listener: () => void):
 
 const normalizeRootAttrs = (
 	runtime: PageSyncRuntime,
-	legacyRuntime: EditorRenderRuntime,
 	fields: readonly string[],
 ): Record<string, unknown> => {
 	const rootAttrs = runtime.getRootAttrs(fields)
@@ -252,7 +224,6 @@ const normalizeRootAttrs = (
 
 const normalizeSessionAttrs = (
 	runtime: PageSyncRuntime,
-	legacyRuntime: EditorRenderRuntime,
 	fields: readonly string[],
 ): Record<string, unknown> => {
 	const rootAttrs = runtime.getRootAttrs(fields)
@@ -260,8 +231,7 @@ const normalizeSessionAttrs = (
 
 	for (const field of fields) {
 		if (field === 'selectedEntityId') {
-			const selectedSourceId = rootAttrs.selectedEntityId
-			const selectedScope = typeof selectedSourceId === 'string' ? findDktScopeBySourceId(runtime, selectedSourceId) : null
+			const selectedScope = readSelectedClipScope(runtime)
 			result[field] = selectedScope?.nodeId ?? null
 			continue
 		}
@@ -282,9 +252,8 @@ const getStringPayload = (payload: unknown, key: string): string | null => {
 	return typeof value === 'string' ? value : null
 }
 
-const dispatchSessionMirror = (
+const dispatchSessionDktAction = (
 	runtime: PageSyncRuntime | null,
-	actions: HarnessActions,
 	actionName: EditorActionName,
 	payload: unknown,
 ): boolean => {
@@ -293,7 +262,6 @@ const dispatchSessionMirror = (
 		const value = getNumberPayload(payload, 'value')
 		if (value !== null) {
 			runtime?.dispatch('setCursor', value, rootScope)
-			actions.setCursor(value)
 		}
 		return true
 	}
@@ -301,43 +269,25 @@ const dispatchSessionMirror = (
 		const delta = getNumberPayload(payload, 'delta')
 		if (delta !== null) {
 			runtime?.dispatch('zoomTimeline', delta, rootScope)
-			actions.zoomTimeline(delta)
 		}
 		return true
 	}
 	if (actionName === 'togglePlayback') {
 		runtime?.dispatch('togglePlayback', undefined, rootScope)
-		actions.togglePlayback()
 		return true
 	}
 	if (actionName === 'setActiveProject') {
 		const projectId = typeof payload === 'string' ? payload : getStringPayload(payload, 'projectId')
 		if (projectId) {
 			runtime?.dispatch('setActiveProject', projectId, rootScope)
-			actions.setActiveProject(projectId)
 		}
 		return true
 	}
 	if (actionName === 'setActiveInspectorTab') {
 		const tab = (payload as Record<string, unknown> | null)?.tab
 		if (tab === 'edit' || tab === 'color' || tab === 'audio' || tab === 'export') {
-			actions.setActiveInspectorTab(tab)
+			runtime?.dispatch('setActiveInspectorTab', tab, rootScope)
 		}
-		return true
-	}
-	if (actionName === 'splitSelectedClip') {
-		actions.splitSelectedClip()
-		return true
-	}
-	if (actionName === 'nudgeSelectedClip') {
-		const delta = getNumberPayload(payload, 'delta')
-		if (delta !== null) {
-			actions.nudgeSelectedClip(delta)
-		}
-		return true
-	}
-	if (actionName === 'deleteSelectedClip') {
-		actions.deleteSelectedClip()
 		return true
 	}
 
@@ -350,28 +300,28 @@ const createScopedDispatch = (
 	actions: HarnessActions,
 	scope: EditorScope | null,
 ): EditorScopedDispatch => ((actionName, payload) => {
-	if (!scope || scope === ROOT_SCOPE || scope === SESSION_SCOPE || scope.nodeId.startsWith('$')) {
-		if (dispatchSessionMirror(runtime, actions, actionName, payload)) {
-			return
-		}
+	if (!runtime) {
 		legacyRuntime.getDispatch(scope)(actionName, payload as never)
 		return
 	}
 
-	const sourceId = runtime ? findSourceIdForDktScope(runtime, scope) : null
-	const dktScope = runtime ? toDktScope(runtime, scope) : null
+	if (!scope || scope === ROOT_SCOPE || scope === SESSION_SCOPE || scope.nodeId.startsWith('$')) {
+		dispatchSessionDktAction(runtime, actionName, payload)
+		return
+	}
 
-	if (scope.type === 'clip' && sourceId) {
+	const sourceId = findSourceIdForDktScope(runtime, scope)
+	const dktScope = toDktScope(scope)
+
+	if (scope.type === 'clip' && dktScope) {
 		if (actionName === 'select') {
-			runtime?.dispatch('selectEntity', sourceId, getPageRoot(runtime))
-			actions.selectEntity(sourceId)
+			runtime.dispatch('selectEntity', scope.nodeId, getPageRoot(runtime))
 			return
 		}
 		if (actionName === 'moveBy') {
 			const delta = getNumberPayload(payload, 'delta')
 			if (delta !== null) {
-				runtime?.dispatch('moveBy', { delta }, dktScope)
-				actions.moveClipById(sourceId, delta)
+				runtime.dispatch('moveBy', { delta }, dktScope)
 			}
 			return
 		}
@@ -379,44 +329,35 @@ const createScopedDispatch = (
 			const edge = (payload as Record<string, unknown> | null)?.edge
 			const delta = getNumberPayload(payload, 'delta')
 			if ((edge === 'start' || edge === 'end') && delta !== null) {
-				runtime?.dispatch(actionName, { edge, delta }, dktScope)
-				if (actionName === 'resize') {
-					actions.resizeClipById(sourceId, edge, delta)
-				} else {
-					actions.trimClipById(sourceId, edge, delta)
-				}
+				runtime.dispatch(actionName, { edge, delta }, dktScope)
 			}
 			return
 		}
 		if (actionName === 'splitAt') {
 			const time = getNumberPayload(payload, 'time')
 			if (time !== null) {
-				runtime?.dispatch('splitAt', { time }, dktScope)
-				actions.splitClipByIdAt(sourceId, time)
+				runtime.dispatch('splitAt', { time }, dktScope)
 			}
 			return
 		}
 		if (actionName === 'rename') {
 			const name = getStringPayload(payload, 'name')
 			if (name !== null) {
-				runtime?.dispatch('rename', { name }, dktScope)
-				actions.renameClipById(sourceId, name)
+				runtime.dispatch('rename', { name }, dktScope)
 			}
 			return
 		}
 		if (actionName === 'color') {
 			const color = getStringPayload(payload, 'color')
 			if (color !== null) {
-				runtime?.dispatch('color', { color }, dktScope)
-				actions.colorClipById(sourceId, color)
+				runtime.dispatch('color', { color }, dktScope)
 			}
 			return
 		}
 		if (actionName === 'setOpacity') {
 			const opacityPercent = getNumberPayload(payload, 'opacityPercent')
 			if (opacityPercent !== null) {
-				runtime?.dispatch('updateOpacity', { opacityPercent }, dktScope)
-				actions.updateClipOpacityById(sourceId, opacityPercent)
+				runtime.dispatch('updateOpacity', { opacityPercent }, dktScope)
 			}
 			return
 		}
@@ -424,64 +365,78 @@ const createScopedDispatch = (
 			const edge = (payload as Record<string, unknown> | null)?.edge
 			const delta = getNumberPayload(payload, 'delta')
 			if ((edge === 'in' || edge === 'out') && delta !== null) {
-				runtime?.dispatch('setFade', { edge, delta }, dktScope)
-				actions.updateClipFadeById(sourceId, edge, delta)
+				runtime.dispatch('setFade', { edge, delta }, dktScope)
 			}
 			return
 		}
 		if (actionName === 'setTransform') {
-			runtime?.dispatch('setTransform', payload, dktScope)
-			actions.updateClipTransformById(sourceId, payload as Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>)
+			runtime.dispatch('setTransform', payload, dktScope)
 			return
 		}
 		if (actionName === 'setAudio') {
-			runtime?.dispatch('setAudio', payload, dktScope)
-			actions.updateClipAudioById(sourceId, payload as Partial<Record<'gain' | 'pan', number>>)
+			runtime.dispatch('setAudio', payload, dktScope)
 			return
 		}
 		if (actionName === 'addEffect') {
 			const kind = (payload as Record<string, unknown> | null)?.kind
 			if (kind === 'blur' || kind === 'sharpen' || kind === 'tint') {
-				actions.addEffectToClip(sourceId, kind)
+				runtime.dispatch('addEffect', { kind }, dktScope)
 			}
 			return
 		}
 		if (actionName === 'addColorCorrection') {
-			actions.addColorCorrectionToClip(sourceId)
+			runtime.dispatch('addEffect', { kind: 'tint' }, dktScope)
 			return
 		}
 		if (actionName === 'removeEffect') {
 			const effectId = getStringPayload(payload, 'effectId')
 			if (effectId !== null) {
-				const sourceEffectScope = runtime ? findDktScopeBySourceId(runtime, effectId) : null
-				actions.removeEffectFromClip(sourceId, sourceEffectScope ? findSourceIdForDktScope(runtime!, sourceEffectScope) ?? effectId : effectId)
+				runtime.dispatch('removeEffect', { effectId }, dktScope)
 			}
-			return
-		}
-		if (actionName === 'deleteSelectedClip' || actionName === 'deleteClip') {
-			actions.deleteClipById(sourceId)
 			return
 		}
 	}
 
 	if (scope.type === 'resource' && sourceId && actionName === 'addResourceToTimeline') {
-		actions.addResourceToTimeline(sourceId)
 		return
 	}
 
-	if (scope.type === 'text' && sourceId && actionName === 'updateText') {
-		runtime?.dispatch('setTextContent', payload, dktScope)
-		actions.updateTextById(sourceId, payload as Record<string, unknown>)
+	if (scope.type === 'text' && dktScope && actionName === 'updateText') {
+		const value = payload as Record<string, unknown> | null
+		if (typeof value?.content === 'string') {
+			runtime.dispatch('setTextContent', { content: value.content }, dktScope)
+		}
+		if (value?.style && typeof value.style === 'object') {
+			runtime.dispatch('setTextStyle', { style: value.style }, dktScope)
+		}
+		if (value?.box && typeof value.box === 'object') {
+			runtime.dispatch('setTextBox', { box: value.box }, dktScope)
+		}
 		return
 	}
 
-	if (scope.type === 'effect' && sourceId && actionName === 'updateEffect') {
-		runtime?.dispatch('setEffectParams', payload, dktScope)
-		actions.updateEffectAttrs(sourceId, payload as Record<string, unknown>)
+	if (scope.type === 'effect' && dktScope && actionName === 'updateEffect') {
+		const value = payload as Record<string, unknown> | null
+		if ('name' in (value ?? {})) {
+			runtime.dispatch('setEffectName', { name: value?.name }, dktScope)
+		}
+		if ('kind' in (value ?? {})) {
+			runtime.dispatch('setEffectKind', { kind: value?.kind }, dktScope)
+		}
+		if ('enabled' in (value ?? {})) {
+			runtime.dispatch('setEffectEnabled', { enabled: value?.enabled }, dktScope)
+		}
+		if ('amount' in (value ?? {})) {
+			runtime.dispatch('setEffectAmount', { amount: value?.amount }, dktScope)
+		}
+		if ('params' in (value ?? {})) {
+			runtime.dispatch('setEffectParams', { params: value?.params }, dktScope)
+		}
+		if ('color' in (value ?? {})) {
+			runtime.dispatch('setEffectColor', { color: value?.color }, dktScope)
+		}
 		return
 	}
-
-	legacyRuntime.getDispatch(scope)(actionName, payload as never)
 }) as EditorScopedDispatch
 
 export const createDktPageEditorRenderRuntime = ({
@@ -496,13 +451,13 @@ export const createDktPageEditorRenderRuntime = ({
 			return legacyRuntime.readAttrs(scope, fields)
 		}
 		if (scope === ROOT_SCOPE || scope.type === 'root') {
-			return normalizeRootAttrs(pageRuntime, legacyRuntime, fields)
+			return normalizeRootAttrs(pageRuntime, fields)
 		}
 		if (scope === SESSION_SCOPE || scope.type === 'session') {
-			return normalizeSessionAttrs(pageRuntime, legacyRuntime, fields)
+			return normalizeSessionAttrs(pageRuntime, fields)
 		}
 
-		const dktScope = toDktScope(pageRuntime, scope)
+		const dktScope = toDktScope(scope)
 		return dktScope ? pageRuntime.readAttrs(dktScope, fields) : Object.fromEntries(fields.map((field) => [field, undefined]))
 	},
 	subscribeAttrs(scope, fields, listener) {
@@ -513,43 +468,35 @@ export const createDktPageEditorRenderRuntime = ({
 			return combineCleanups([
 				pageRuntime.subscribeRootAttrs(fields.filter((field) => field !== 'projectCount'), listener),
 				fields.includes('projectCount') ? subscribeActiveProject(pageRuntime, listener) : EMPTY_CLEANUP,
-				legacyRuntime.subscribeAttrs(ROOT_SCOPE, fields, listener),
 			])
 		}
 		if (scope === SESSION_SCOPE || scope.type === 'session') {
-			return combineCleanups([
-				pageRuntime.subscribeRootAttrs(fields, listener),
-				legacyRuntime.subscribeAttrs(SESSION_SCOPE, fields, listener),
-			])
+			return pageRuntime.subscribeRootAttrs(fields, listener)
 		}
 
-		const dktScope = toDktScope(pageRuntime, scope)
+		const dktScope = toDktScope(scope)
 		return dktScope ? pageRuntime.subscribeAttrs(dktScope, fields, listener) : EMPTY_CLEANUP
 	},
 	readOne(scope, relName) {
 		if (!pageRuntime) {
 			return legacyRuntime.readOne(scope, relName)
 		}
-		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(pageRuntime, scope)) {
+		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(scope)) {
 			return scope
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && relName === 'activeProject') {
 			return readActiveProjectScope(pageRuntime)
 		}
 		if ((scope === SESSION_SCOPE || scope.type === 'session') && relName === 'selectedEntity') {
-			const selectedSourceId = pageRuntime.getRootAttrs(['selectedEntityId']).selectedEntityId
-			if (typeof selectedSourceId !== 'string') {
-				return null
-			}
-			return findDktScopeBySourceId(pageRuntime, selectedSourceId)
+			return readSelectedClipScope(pageRuntime)
 		}
 
-		const dktScope = toDktScope(pageRuntime, scope)
+		const dktScope = toDktScope(scope)
 		if (!dktScope) {
 			return null
 		}
 		const dktRelName = toDktRelName(relName)
-		return toEditorScope(pageRuntime, pageRuntime.readOne(dktScope, dktRelName), TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root')
+		return toEditorScope(pageRuntime.readOne(dktScope, dktRelName), TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root')
 	},
 	subscribeOne(scope, relName, listener) {
 		if (!pageRuntime) {
@@ -559,13 +506,17 @@ export const createDktPageEditorRenderRuntime = ({
 			return subscribeActiveProject(pageRuntime, listener)
 		}
 		if ((scope === SESSION_SCOPE || scope.type === 'session') && relName === 'selectedEntity') {
-			return pageRuntime.subscribeRootAttrs(['selectedEntityId'], listener)
+			const root = getPageRoot(pageRuntime)
+			return combineCleanups([
+				root ? pageRuntime.subscribeOne(root, 'selectedClip', listener) : EMPTY_CLEANUP,
+				pageRuntime.subscribeRootAttrs(['selectedEntityId'], listener),
+			])
 		}
-		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(pageRuntime, scope)) {
+		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(scope)) {
 			return EMPTY_CLEANUP
 		}
 
-		const dktScope = toDktScope(pageRuntime, scope)
+		const dktScope = toDktScope(scope)
 		if (!dktScope) {
 			return EMPTY_CLEANUP
 		}
@@ -576,15 +527,15 @@ export const createDktPageEditorRenderRuntime = ({
 			return legacyRuntime.readMany(scope, relName)
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && (relName === 'projects' || relName === 'project')) {
-			return readProjectScopes(pageRuntime).map((projectScope) => toEditorScope(pageRuntime, projectScope, 'project')).filter((item): item is EditorScope => item != null)
+			return readProjectScopes(pageRuntime).map((projectScope) => toEditorScope(projectScope, 'project')).filter((item): item is EditorScope => item != null)
 		}
 
-		const dktScope = toDktScope(pageRuntime, scope)
+		const dktScope = toDktScope(scope)
 		if (!dktScope) {
 			return []
 		}
 		const dktRelName = toDktRelName(relName)
-		return pageRuntime.readMany(dktScope, dktRelName).map((item) => toEditorScope(pageRuntime, item, TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root')).filter((item): item is EditorScope => item != null)
+		return pageRuntime.readMany(dktScope, dktRelName).map((item) => toEditorScope(item, TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root')).filter((item): item is EditorScope => item != null)
 	},
 	subscribeMany(scope, relName, listener) {
 		if (!pageRuntime) {
@@ -594,7 +545,7 @@ export const createDktPageEditorRenderRuntime = ({
 			return subscribeActiveProject(pageRuntime, listener)
 		}
 
-		const dktScope = toDktScope(pageRuntime, scope)
+		const dktScope = toDktScope(scope)
 		if (!dktScope) {
 			return EMPTY_CLEANUP
 		}
@@ -604,14 +555,10 @@ export const createDktPageEditorRenderRuntime = ({
 		if (!pageRuntime) {
 			return legacyRuntime.readComp(scope, compName)
 		}
-		const sourceId = findSourceIdForDktScope(pageRuntime, scope)
-		const sourceType = sourceId && scope.type !== 'root' && scope.type !== 'session' ? scope.type as EntityType : null
-		return sourceId && sourceType
-			? legacyRuntime.readComp({ nodeId: sourceId, type: sourceType }, compName)
-			: legacyRuntime.readComp(scope, compName)
+		return null
 	},
 	subscribeComp(scope, compName, listener) {
-		return legacyRuntime.subscribeComp(scope, compName, listener)
+		return pageRuntime ? EMPTY_CLEANUP : legacyRuntime.subscribeComp(scope, compName, listener)
 	},
 	getDispatch(scope = ROOT_SCOPE) {
 		return createScopedDispatch(pageRuntime, legacyRuntime, actions, scope)

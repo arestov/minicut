@@ -209,7 +209,7 @@ describe('createDktPageEditorRenderRuntime', () => {
 		expect(clipScopes[0]).toMatchObject({ nodeId: 'clip-node', type: 'clip' })
 	})
 
-	it('dispatches scoped DKT clip actions and mirrors legacy source ids', () => {
+	it('dispatches scoped DKT clip actions without mirroring legacy source ids', () => {
 		const pageRuntime = createFakePageRuntime()
 		const actions = createActions()
 		const runtime = createDktPageEditorRenderRuntime({
@@ -225,13 +225,13 @@ describe('createDktPageEditorRenderRuntime', () => {
 		dispatch('setOpacity', { opacityPercent: 40 })
 
 		expect(pageRuntime.dispatched).toEqual([
-			{ actionName: 'selectEntity', payload: 'clip-source', scopeNodeId: 'root' },
+			{ actionName: 'selectEntity', payload: 'clip-node', scopeNodeId: 'root' },
 			{ actionName: 'moveBy', payload: { delta: 0.5 }, scopeNodeId: 'clip-node' },
 			{ actionName: 'updateOpacity', payload: { opacityPercent: 40 }, scopeNodeId: 'clip-node' },
 		])
-		expect(actions.selectEntity).toHaveBeenCalledWith('clip-source')
-		expect(actions.moveClipById).toHaveBeenCalledWith('clip-source', 0.5)
-		expect(actions.updateClipOpacityById).toHaveBeenCalledWith('clip-source', 40)
+		expect(actions.selectEntity).not.toHaveBeenCalled()
+		expect(actions.moveClipById).not.toHaveBeenCalled()
+		expect(actions.updateClipOpacityById).not.toHaveBeenCalled()
 	})
 
 	it('exposes partial streaming state without falling back to legacy project reads', () => {

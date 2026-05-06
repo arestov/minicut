@@ -125,6 +125,16 @@ export const VideoEditorHarnessApp = ({
 	dktBootstrapOptions,
 	harness: providedHarness,
 }: VideoEditorHarnessAppProps) => {
+	const resolvedDktBootstrapOptions = useMemo(() => {
+		if (dktBootstrapOptions !== undefined) {
+			return dktBootstrapOptions
+		}
+
+		const randomPart = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+			? crypto.randomUUID()
+			: Math.random().toString(36).slice(2)
+		return { sessionKey: `minicut-${randomPart}` }
+	}, [dktBootstrapOptions])
 	const resolvedRoom = useMemo(() => resolveBrowserRoom(), [])
 	const signalUrl = useMemo(() => resolveSignalUrl(), [])
 	const rtcConfig = useMemo(() => createDefaultRtcConfig(resolveTurnIceServer()), [])
@@ -241,7 +251,7 @@ export const VideoEditorHarnessApp = ({
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>
-			<DktEditorRoot runtime={ownedHarness.pageRuntime} bootstrapOptions={dktBootstrapOptions}>
+			<DktEditorRoot runtime={ownedHarness.pageRuntime} bootstrapOptions={resolvedDktBootstrapOptions}>
 				<VideoEditorApp />
 			</DktEditorRoot>
 		</VideoEditorProvider>

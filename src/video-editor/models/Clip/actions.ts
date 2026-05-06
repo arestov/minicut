@@ -1,12 +1,12 @@
 import { getProjectForEntity } from '../../domain/selectors'
 import { PATCH, type AnimatedScalar, type ClipAttrs, type PatchEnvelope, type ProjectRegistry, type TransformAttrs } from '../../domain/types'
 import { defaultEffectAttrs } from '../Effect/defaults'
-import type { MiniCutDktEffectProxyInput } from '../../dkt/runtime/createMiniCutDktRuntime'
+import type { MiniCutDktEffectSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
-export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTimelineAttrs' | 'setTransform'
+export type DktClipActionName = 'updateOpacity' | 'rename' | 'color' | 'setFade' | 'setAudio' | 'setTimelineAttrs' | 'setTransform' | 'setMediaKind' | 'setClipAttrs'
 export type DktTimelineClipActionName = 'moveBy' | 'trim' | 'resize' | 'splitAt'
 
 export type DktClipActionPatch = Partial<Pick<ClipAttrs,
@@ -66,6 +66,15 @@ export const clipColorAction = {
 export const reduceClipColorAction = (payload: unknown): Pick<ClipAttrs, 'color'> | null => {
 	const color = clipColorAction.fn(payload)
 	return color === null ? null : { color }
+}
+
+export const reduceClipSetMediaKindAction = (payload: unknown): Pick<ClipAttrs, 'mediaKind'> | null => {
+	const mediaKind = typeof payload === 'string'
+		? payload
+		: (payload as { mediaKind?: unknown } | null)?.mediaKind
+	return mediaKind === 'video' || mediaKind === 'audio' || mediaKind === 'image' || mediaKind === 'text'
+		? { mediaKind }
+		: null
 }
 
 export const clipSetFadeAction = {
@@ -236,7 +245,7 @@ export const createClipUpdateOpacityEnvelope = (
 }
 
 export const normalizeEffectCreationAttrs = (payload: unknown) => {
-	const value = payload as MiniCutDktEffectProxyInput | null
+	const value = payload as MiniCutDktEffectSeed | null
 	const sourceEffectId = typeof value?.sourceEffectId === 'string' && value.sourceEffectId
 		? value.sourceEffectId
 		: typeof (payload as { effectId?: unknown } | null)?.effectId === 'string'

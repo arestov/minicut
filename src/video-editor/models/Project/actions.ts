@@ -1,7 +1,7 @@
-import type { MiniCutDktResourceProxyInput, MiniCutDktTrackProxyInput } from '../../dkt/runtime/createMiniCutDktRuntime'
+import type { MiniCutDktResourceSeed, MiniCutDktTrackSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
 
-export type ProjectAddTrackPayload = MiniCutDktTrackProxyInput
-export type ProjectImportResourcePayload = MiniCutDktResourceProxyInput
+export type ProjectAddTrackPayload = MiniCutDktTrackSeed
+export type ProjectImportResourcePayload = MiniCutDktResourceSeed
 
 export const normalizeTrackCreationAttrs = (payload: unknown) => {
 	const value = payload as ProjectAddTrackPayload | null

@@ -64,8 +64,23 @@ const getCanvasSize = (canvas: HTMLCanvasElement): CanvasSize => ({
 	height: canvas.clientHeight || fallbackCanvasSize.height,
 })
 
-const getCanvasClipSources = (structure: PreviewStructure): PreviewCanvasClipSource[] =>
-	structure.clipSources.map((clip) => ({
+const getCanvasClipSources = (structure: PreviewStructure, frame: PreviewFrame): PreviewCanvasClipSource[] => {
+	const sourceClips = structure.clipSources.length > 0
+		? structure.clipSources
+		: frame.renderedClips.map((clip) => ({
+			name: clip.name,
+			color: clip.color,
+			resourceKind: clip.resourceKind,
+			filters: clip.filters,
+			text: clip.text,
+			start: clip.start,
+			duration: Number.MAX_SAFE_INTEGER,
+			fadeIn: 0,
+			fadeOut: 0,
+			opacity: { value: clip.opacity },
+		}))
+
+	return sourceClips.map((clip) => ({
 		name: clip.name,
 		color: clip.color,
 		kind: clip.resourceKind,
@@ -77,6 +92,21 @@ const getCanvasClipSources = (structure: PreviewStructure): PreviewCanvasClipSou
 		fadeOut: clip.fadeOut,
 		opacity: clip.opacity,
 	}))
+}
+
+const getCanvasSceneKey = (clips: readonly PreviewCanvasClipSource[]): string =>
+	clips.map((clip) => [
+		clip.name,
+		clip.kind,
+		clip.color,
+		clip.start,
+		clip.duration,
+		clip.fadeIn,
+		clip.fadeOut,
+		clip.opacity.value,
+		clip.filters.join(','),
+		clip.text?.content ?? '',
+	].join('\u001f')).join('\u001e')
 
 const isRealMediaUrl = (url: string): boolean =>
 	url.startsWith('blob:') ||
@@ -258,6 +288,8 @@ const usePreviewCanvasRenderer = (
 	const workerRef = useRef<Worker | null>(null)
 	const canvasSizeRef = useRef<CanvasSize>(fallbackCanvasSize)
 	const [renderMode, setRenderMode] = useState<'offscreen' | 'fallback'>('fallback')
+	const canvasSceneClips = getCanvasClipSources(structure, frame)
+	const canvasSceneKey = getCanvasSceneKey(canvasSceneClips)
 
 	useEffect(() => {
 		const canvas = canvasRef.current
@@ -288,9 +320,9 @@ const usePreviewCanvasRenderer = (
 	useEffect(() => {
 		workerRef.current?.postMessage({
 			type: 'setScene',
-			clips: getCanvasClipSources(structure),
+			clips: canvasSceneClips,
 		})
-	}, [structure])
+	}, [canvasSceneKey])
 
 	useEffect(() => {
 		const canvas = canvasRef.current
@@ -315,7 +347,7 @@ const usePreviewCanvasRenderer = (
 
 		setRenderMode('fallback')
 		drawFallbackPreview(canvas, canvasSizeRef.current, frame.cursor, frame.renderedClips)
-	}, [frame])
+	}, [frame.cursor])
 
 	return { canvasRef, renderMode }
 }

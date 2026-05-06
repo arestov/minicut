@@ -74,14 +74,18 @@ export const createMediaImportActions = (
 				if (!kind) {
 					continue
 				}
+				const name = file.name
+				const mime = file.type || `${kind}/unknown`
+				const size = file.size
 
 				const url = env.media.createObjectUrl(file)
 				if (!url) {
 					continue
 				}
 				env.lifecycle.registerObjectUrl(url, 'import')
+				const durationPromise = env.media.getImportedResourceDuration(url, kind)
 				importFilesQueue = importFilesQueue.then(async () => {
-					const duration = await env.media.getImportedResourceDuration(url, kind)
+					const duration = await durationPromise
 					if (env.lifecycle.isDestroyed()) {
 						return
 					}
@@ -93,14 +97,14 @@ export const createMediaImportActions = (
 
 					env.authority.dispatch(createResourceImportCommand({
 							projectId,
-							name: file.name,
+							name,
 							kind,
 							duration,
-							mime: file.type || `${kind}/unknown`,
+							mime,
 							url: source.kind === 'p2p' ? '' : url,
 							width: kind === 'audio' ? undefined : 1920,
 							height: kind === 'audio' ? undefined : 1080,
-							size: file.size,
+							size,
 							source,
 							dataStatus: source.kind === 'p2p' ? 'missing' : 'ready',
 							chunkSize: resourceChunkSize,
@@ -110,14 +114,14 @@ export const createMediaImportActions = (
 							env.transfers.manager.registerLocalResource(String(resourceId), file, {
 								objectUrl: url,
 								kind,
-								mime: file.type || `${kind}/unknown`,
+								mime,
 								duration,
-								size: file.size,
+								size,
 								chunkSize: resourceChunkSize,
 								ownerPeerId,
 								sourceKind: source.kind,
 								fallbackUrl: source.kind === 'p2p' ? '' : url,
-								name: file.name,
+								name,
 							})
 							addResourceToTimelineIfEmpty(projectId, String(resourceId))
 						}
@@ -148,7 +152,7 @@ export const createMediaImportActions = (
 				projectId,
 				resourceId,
 				trackId: track.id,
-				includeLinkedAudio: resource?.attrs.kind === 'video',
+				includeLinkedAudio: resource?.attrs.kind === 'video' ? true : undefined,
 			})).then((result) => {
 				const clipId = String(result.createdIds?.clipId)
 				env.session.selectEntity(clipId)

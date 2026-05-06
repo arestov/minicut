@@ -141,9 +141,9 @@ describe('createMiniCutDktRuntime', () => {
 		expect(model?.attrs.selectedEntityId).toBe('clip:session')
 	})
 
-	it('creates a DKT clip proxy and dispatches scoped clip actions', async () => {
+	it('creates a DKT clip seed and dispatches scoped clip actions', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
-		const clipProxy = {
+		const clipSeed = {
 			sourceClipId: 'clip:opacity',
 			name: 'Opacity clip',
 			color: '#ef4444',
@@ -161,10 +161,10 @@ describe('createMiniCutDktRuntime', () => {
 				rotation: { value: 0 },
 			},
 		}
-		await runtime.dispatchClipAction(clipProxy, 'updateOpacity', { opacityPercent: 37 })
-		await runtime.dispatchClipAction(clipProxy, 'rename', { name: 'Renamed clip' })
-		await runtime.dispatchClipAction(clipProxy, 'setFade', { edge: 'in', delta: 0.5 })
-		await runtime.dispatchClipAction(clipProxy, 'trim', { edge: 'start', delta: 0.5 })
+		await runtime.dispatchClipAction(clipSeed, 'updateOpacity', { opacityPercent: 37 })
+		await runtime.dispatchClipAction(clipSeed, 'rename', { name: 'Renamed clip' })
+		await runtime.dispatchClipAction(clipSeed, 'setFade', { edge: 'in', delta: 0.5 })
+		await runtime.dispatchClipAction(clipSeed, 'trim', { edge: 'start', delta: 0.5 })
 
 		const model = await waitForModelAttr(runtime, 'minicut_clip', 'start', 1.5)
 		expect(model?.attrs.sourceClipId).toBe('clip:opacity')
@@ -176,16 +176,16 @@ describe('createMiniCutDktRuntime', () => {
 		expect(model?.attrs.opacity).toEqual({ value: 0.4 })
 	})
 
-	it('creates DKT text and effect proxies and dispatches attr actions', async () => {
+	it('creates DKT text and effect seeds and dispatches attr actions', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
-		const textProxy = {
+		const textSeed = {
 			sourceTextId: 'text:caption',
 			content: 'Before',
 			style: { fontSize: 64, color: '#ffffff' },
 			box: { width: 760, height: 220 },
 		}
-		await runtime.dispatchTextAction(textProxy, 'setTextContent', { content: 'After' })
-		await runtime.dispatchTextAction(textProxy, 'setTextStyle', { style: { color: '#111827' } })
+		await runtime.dispatchTextAction(textSeed, 'setTextContent', { content: 'After' })
+		await runtime.dispatchTextAction(textSeed, 'setTextStyle', { style: { color: '#111827' } })
 
 		await runtime.dispatchEffectAction({
 			sourceEffectId: 'effect:tint',
@@ -204,7 +204,7 @@ describe('createMiniCutDktRuntime', () => {
 		expect(effect?.attrs.amount).toBe(0.8)
 	})
 
-	it('creates structural project, track, and resource proxies', async () => {
+	it('creates structural project, track, and resource seeds', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
 
 		await runtime.dispatchProjectAction({
@@ -238,16 +238,16 @@ describe('createMiniCutDktRuntime', () => {
 
 	it('creates hierarchy children through model-owned DKT actions', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
-		const projectProxy = {
+		const projectSeed = {
 			sourceProjectId: 'project:hierarchy',
 			title: 'Hierarchy',
 		}
-		const trackProxy = {
+		const trackSeed = {
 			sourceTrackId: 'track:hierarchy-video',
 			kind: 'video' as const,
 			name: 'Video Track',
 		}
-		const clipProxy = {
+		const clipSeed = {
 			sourceClipId: 'clip:hierarchy-text',
 			name: 'Text Clip',
 			start: 0,
@@ -255,23 +255,23 @@ describe('createMiniCutDktRuntime', () => {
 			duration: 3,
 		}
 
-		await runtime.dispatchProjectAction(projectProxy, 'addTrack', trackProxy)
-		await runtime.dispatchProjectAction(projectProxy, 'importResource', {
+		await runtime.dispatchProjectAction(projectSeed, 'addTrack', trackSeed)
+		await runtime.dispatchProjectAction(projectSeed, 'importResource', {
 			sourceResourceId: 'resource:hierarchy-video',
 			name: 'Hierarchy Video',
 			kind: 'video',
 			status: 'ready',
 		})
-		await runtime.dispatchTrackAction(trackProxy, 'addClip', clipProxy)
-		await runtime.dispatchTrackAction(trackProxy, 'addTextClip', {
-			...clipProxy,
+		await runtime.dispatchTrackAction(trackSeed, 'addClip', clipSeed)
+		await runtime.dispatchTrackAction(trackSeed, 'addTextClip', {
+			...clipSeed,
 			sourceClipId: 'clip:hierarchy-title',
 			text: {
 				sourceTextId: 'text:hierarchy-title',
 				content: 'Title',
 			},
 		})
-		await runtime.dispatchClipAction(clipProxy, 'addEffect', {
+		await runtime.dispatchClipAction(clipSeed, 'addEffect', {
 			sourceEffectId: 'effect:hierarchy-blur',
 			name: 'Blur',
 			kind: 'blur',

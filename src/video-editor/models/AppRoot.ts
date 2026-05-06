@@ -2,13 +2,13 @@ import { appRoot } from 'dkt/appRoot.js'
 import { merge as mergeDcl } from 'dkt/dcl/merge.js'
 import { createEmptyRegistry } from '../domain/createProject'
 import type { ProjectRegistry } from '../domain/types'
-import { Clip, CLIP_PROXY_CREATION_SHAPE } from './Clip'
-import { Effect, EFFECT_PROXY_CREATION_SHAPE } from './Effect'
+import { Clip, CLIP_CREATION_SHAPE } from './Clip'
+import { Effect, EFFECT_CREATION_SHAPE } from './Effect'
 import { EditorSessionRoot } from './SessionRoot'
-import { Project, PROJECT_PROXY_CREATION_SHAPE } from './Project'
-import { Resource, RESOURCE_PROXY_CREATION_SHAPE } from './Resource'
-import { Text, TEXT_PROXY_CREATION_SHAPE } from './Text'
-import { Track, TRACK_PROXY_CREATION_SHAPE } from './Track'
+import { Project, PROJECT_CREATION_SHAPE } from './Project'
+import { Resource, RESOURCE_CREATION_SHAPE } from './Resource'
+import { Text, TEXT_CREATION_SHAPE } from './Text'
+import { Track, TRACK_CREATION_SHAPE } from './Track'
 import { defaultTextBox, defaultTextStyle } from './Text/defaults'
 
 const appProps = mergeDcl({
@@ -46,11 +46,11 @@ const appProps = mergeDcl({
 					: '$noop'
 			},
 		},
-		createProjectProxy: {
+		createProjectModel: {
 			to: ['<< project << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: PROJECT_PROXY_CREATION_SHAPE,
+				creation_shape: PROJECT_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const value = payload as {
@@ -81,11 +81,11 @@ const appProps = mergeDcl({
 				}
 			},
 		},
-		createTrackProxy: {
+		createTrackModel: {
 			to: ['<< track << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: TRACK_PROXY_CREATION_SHAPE,
+				creation_shape: TRACK_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const value = payload as { sourceTrackId?: unknown; kind?: unknown; name?: unknown; muted?: unknown; locked?: unknown; height?: unknown } | null
@@ -105,11 +105,11 @@ const appProps = mergeDcl({
 				}
 			},
 		},
-		createResourceProxy: {
+		createResourceModel: {
 			to: ['<< resource << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: RESOURCE_PROXY_CREATION_SHAPE,
+				creation_shape: RESOURCE_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const value = payload as {
@@ -148,11 +148,11 @@ const appProps = mergeDcl({
 				}
 			},
 		},
-		createTextProxy: {
+		createTextModel: {
 			to: ['<< text << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: TEXT_PROXY_CREATION_SHAPE,
+				creation_shape: TEXT_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const value = payload as { sourceTextId?: unknown; content?: unknown; style?: unknown; box?: unknown } | null
@@ -170,11 +170,11 @@ const appProps = mergeDcl({
 				}
 			},
 		},
-		createEffectProxy: {
+		createEffectModel: {
 			to: ['<< effect << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: EFFECT_PROXY_CREATION_SHAPE,
+				creation_shape: EFFECT_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const value = payload as {
@@ -203,17 +203,20 @@ const appProps = mergeDcl({
 				}
 			},
 		},
-		createClipProxy: {
+		createClipModel: {
 			to: ['<< clip << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: CLIP_PROXY_CREATION_SHAPE,
+				creation_shape: CLIP_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const value = payload as {
 					sourceClipId?: unknown
+					sourceResourceId?: unknown
+					sourceTextId?: unknown
 					name?: unknown
 					color?: unknown
+					mediaKind?: unknown
 					start?: unknown
 					in?: unknown
 					duration?: unknown
@@ -230,8 +233,11 @@ const appProps = mergeDcl({
 				return {
 					attrs: {
 						sourceClipId: value.sourceClipId,
+						sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : null,
+						sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
 						name: typeof value.name === 'string' ? value.name : 'Clip',
 						color: typeof value.color === 'string' ? value.color : '#2563eb',
+						mediaKind: typeof value.mediaKind === 'string' ? value.mediaKind : null,
 						start: typeof value.start === 'number' ? value.start : 0,
 						in: typeof value.in === 'number' ? value.in : 0,
 						duration: typeof value.duration === 'number' ? value.duration : 0,

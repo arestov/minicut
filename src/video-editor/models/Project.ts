@@ -1,9 +1,9 @@
 import { model } from 'dkt/model.js'
-import { RESOURCE_PROXY_CREATION_SHAPE } from './Resource'
-import { TRACK_PROXY_CREATION_SHAPE } from './Track'
+import { RESOURCE_CREATION_SHAPE } from './Resource'
+import { TRACK_CREATION_SHAPE } from './Track'
 import { normalizeResourceCreationAttrs, normalizeTrackCreationAttrs } from './Project/actions'
 
-export const PROJECT_PROXY_CREATION_SHAPE = {
+export const PROJECT_CREATION_SHAPE = {
 	attrs: ['sourceProjectId', 'title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt'],
 } as const
 
@@ -70,7 +70,7 @@ export const Project = model({
 			to: ['<< track << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: TRACK_PROXY_CREATION_SHAPE,
+				creation_shape: TRACK_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const attrs = normalizeTrackCreationAttrs(payload)
@@ -81,7 +81,7 @@ export const Project = model({
 			to: ['<< resource << #', {
 				method: 'at_end',
 				can_create: true,
-				creation_shape: RESOURCE_PROXY_CREATION_SHAPE,
+				creation_shape: RESOURCE_CREATION_SHAPE,
 			}],
 			fn: (payload: unknown) => {
 				const attrs = normalizeResourceCreationAttrs(payload)

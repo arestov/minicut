@@ -45,6 +45,6 @@ export const Text = model({
 	},
 })
 
-export const TEXT_PROXY_CREATION_SHAPE = {
+export const TEXT_CREATION_SHAPE = {
 	attrs: ['sourceTextId', 'content', 'style', 'box'],
 } as const
