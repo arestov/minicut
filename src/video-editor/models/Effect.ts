@@ -36,6 +36,9 @@ export const Effect = model({
 		params: ['input', defaultEffectAttrs.params],
 		color: ['input', defaultEffectAttrs.color],
 	},
+	rels: {
+		clip: ['input', { linking: '<< clip << #' }],
+	},
 	actions: {
 		setEffectName: {
 			to: {

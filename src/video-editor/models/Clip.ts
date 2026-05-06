@@ -121,6 +121,8 @@ export const Clip = model({
 		effects: ['input', { many: true, linking: '<< effect << #' }],
 		text: ['input', { linking: '<< text << #' }],
 		resource: ['input', { linking: '<< resource << #' }],
+		track: ['input', { linking: '<< track << #' }],
+		project: ['input', { linking: '<< project << #' }],
 	},
 	actions: {
 		updateOpacity: {

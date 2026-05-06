@@ -54,7 +54,31 @@ return
 env.dkt?.dispatch(actionName, payload, projectScope)
 }
 
-// Dispatch to the selected clip scope via the selectedClip rel — not traversal.
+// Reading a direct rel on root — not traversal
+const getSelectedTextScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => {
+const rootScope = getRootScope(env)
+if (!rootScope || !env.pageRuntime) {
+return null
+}
+return env.pageRuntime.readOne(rootScope, 'selectedText')
+}
+
+const dispatchTextAttrs = (env: EditorActionEnvironment, attrs: Partial<{ content: string; style: object; box: object }>): void => {
+const textScope = getSelectedTextScope(env)
+if (!textScope) {
+return
+}
+if (typeof attrs.content === 'string') {
+env.dkt?.dispatch('setTextContent', { content: attrs.content }, textScope)
+}
+if (attrs.style && typeof attrs.style === 'object') {
+env.dkt?.dispatch('setTextStyle', { style: attrs.style }, textScope)
+}
+if (attrs.box && typeof attrs.box === 'object') {
+env.dkt?.dispatch('setTextBox', { box: attrs.box }, textScope)
+}
+}
+
 const dispatchSelectedClipAction = (env: EditorActionEnvironment, actionName: string, payload?: unknown): void => {
 const clipScope = getSelectedClipScope(env)
 if (!clipScope) {
@@ -191,23 +215,7 @@ content: typeof content === 'string' && content ? content : 'Text',
 })
 },
 updateSelectedText(attrs: Partial<TextAttrs>): void {
-const clipScope = getSelectedClipScope(env)
-if (!clipScope || !env.pageRuntime) {
-return
-}
-const textScope = env.pageRuntime.readOne(clipScope, 'text')
-if (!textScope) {
-return
-}
-if (typeof attrs.content === 'string') {
-env.dkt?.dispatch('setTextContent', { content: attrs.content }, textScope)
-}
-if (attrs.style && typeof attrs.style === 'object') {
-env.dkt?.dispatch('setTextStyle', { style: attrs.style }, textScope)
-}
-if (attrs.box && typeof attrs.box === 'object') {
-env.dkt?.dispatch('setTextBox', { box: attrs.box }, textScope)
-}
+dispatchTextAttrs(env, attrs)
 },
 addTrack(kind: 'video' | 'audio'): void {
 dispatchProject(env, 'addTrack', { kind })
@@ -276,23 +284,7 @@ addColorCorrectionToSelectedClip(): void {
 dispatchSelectedClipAction(env, 'addEffect', { kind: 'color-correction', name: 'Color correction' })
 },
 updateTextById(_textId: string, attrs: Partial<TextAttrs>): void {
-const rootScope = getRootScope(env)
-if (!rootScope || !env.pageRuntime) {
-return
-}
-const textScope = env.pageRuntime.readOne(rootScope, 'selectedText')
-if (!textScope) {
-return
-}
-if (typeof attrs.content === 'string') {
-env.dkt?.dispatch('setTextContent', { content: attrs.content }, textScope)
-}
-if (attrs.style && typeof attrs.style === 'object') {
-env.dkt?.dispatch('setTextStyle', { style: attrs.style }, textScope)
-}
-if (attrs.box && typeof attrs.box === 'object') {
-env.dkt?.dispatch('setTextBox', { box: attrs.box }, textScope)
-}
+dispatchTextAttrs(env, attrs)
 },
 updateEffectAttrs(_effectId: string, attrs: Partial<EffectAttrs>): void {
 const rootScope = getRootScope(env)
@@ -323,83 +315,16 @@ env.dkt?.dispatch('setEffectColor', { color: attrs.color }, effectScope)
 }
 },
 deleteClipById(_clipId: string): void {
-dispatchSelectedClipAction(env, 'removeClipSelf', undefined)
+dispatchRoot(env, 'deleteSelectedClip')
 },
 deleteSelectedClip(): void {
-dispatchSelectedClipAction(env, 'removeClipSelf', undefined)
+dispatchRoot(env, 'deleteSelectedClip')
 },
 splitSelectedClip(): void {
-const rootScope = getRootScope(env)
-const clipScope = getSelectedClipScope(env)
-if (!clipScope || !rootScope || !env.pageRuntime) {
-return
-}
-const rootAttrs = env.pageRuntime.readAttrs(rootScope, ['cursor']) as { cursor?: unknown }
-const cursor = typeof rootAttrs.cursor === 'number' ? roundToHundredths(rootAttrs.cursor) : null
-if (cursor == null) {
-return
-}
-const clipAttrs = env.pageRuntime.readAttrs(clipScope, [
-'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind',
-'start', 'in', 'duration', 'fadeIn', 'fadeOut',
-]) as Record<string, unknown>
-env.dkt?.dispatch('splitAt', { time: cursor }, clipScope)
-const projectScope = getActiveProjectScope(env)
-if (projectScope) {
-env.dkt?.dispatch('splitClipAt', {
-sourceClipId: createSourceId('clip'),
-sourceResourceId: typeof clipAttrs.sourceResourceId === 'string' ? clipAttrs.sourceResourceId : undefined,
-sourceTextId: typeof clipAttrs.sourceTextId === 'string' ? clipAttrs.sourceTextId : undefined,
-name: typeof clipAttrs.name === 'string' ? clipAttrs.name : 'Clip',
-color: typeof clipAttrs.color === 'string' ? clipAttrs.color : '#2563eb',
-mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : 'video',
-start: typeof clipAttrs.start === 'number' ? clipAttrs.start : 0,
-in: typeof clipAttrs.in === 'number' ? clipAttrs.in : 0,
-duration: typeof clipAttrs.duration === 'number' ? clipAttrs.duration : 0,
-fadeIn: typeof clipAttrs.fadeIn === 'number' ? clipAttrs.fadeIn : 0,
-fadeOut: typeof clipAttrs.fadeOut === 'number' ? clipAttrs.fadeOut : 0,
-splitTime: cursor,
-sourceClip: {
-start: typeof clipAttrs.start === 'number' ? clipAttrs.start : 0,
-in: typeof clipAttrs.in === 'number' ? clipAttrs.in : 0,
-duration: typeof clipAttrs.duration === 'number' ? clipAttrs.duration : 0,
-},
-}, projectScope)
-}
+dispatchRoot(env, 'splitSelectedClip')
 },
 splitClipByIdAt(_clipId: string, time: number): void {
-const clipScope = getSelectedClipScope(env)
-if (!clipScope || !env.pageRuntime) {
-return
-}
-const splitTime = roundToHundredths(time)
-const clipAttrs = env.pageRuntime.readAttrs(clipScope, [
-'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind',
-'start', 'in', 'duration', 'fadeIn', 'fadeOut',
-]) as Record<string, unknown>
-env.dkt?.dispatch('splitAt', { time: splitTime }, clipScope)
-const projectScope = getActiveProjectScope(env)
-if (projectScope) {
-env.dkt?.dispatch('splitClipAt', {
-sourceClipId: createSourceId('clip'),
-sourceResourceId: typeof clipAttrs.sourceResourceId === 'string' ? clipAttrs.sourceResourceId : undefined,
-sourceTextId: typeof clipAttrs.sourceTextId === 'string' ? clipAttrs.sourceTextId : undefined,
-name: typeof clipAttrs.name === 'string' ? clipAttrs.name : 'Clip',
-color: typeof clipAttrs.color === 'string' ? clipAttrs.color : '#2563eb',
-mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : 'video',
-start: typeof clipAttrs.start === 'number' ? clipAttrs.start : 0,
-in: typeof clipAttrs.in === 'number' ? clipAttrs.in : 0,
-duration: typeof clipAttrs.duration === 'number' ? clipAttrs.duration : 0,
-fadeIn: typeof clipAttrs.fadeIn === 'number' ? clipAttrs.fadeIn : 0,
-fadeOut: typeof clipAttrs.fadeOut === 'number' ? clipAttrs.fadeOut : 0,
-splitTime, 
-sourceClip: {
-start: typeof clipAttrs.start === 'number' ? clipAttrs.start : 0,
-in: typeof clipAttrs.in === 'number' ? clipAttrs.in : 0,
-duration: typeof clipAttrs.duration === 'number' ? clipAttrs.duration : 0,
-},
-}, projectScope)
-}
+dispatchSelectedClipAction(env, 'splitSelfAt', { time: roundToHundredths(time) })
 },
 removeEffectFromClip(_clipId: string, effectId: string): void {
 dispatchSelectedClipAction(env, 'removeEffect', { effectId })

@@ -28,6 +28,7 @@ export const Track = model({
 	rels: {
 		clips: ['input', { many: true, linking: '<< clip << #' }],
 		text: ['input', { many: true, linking: '<< text << #' }],
+		project: ['input', { linking: '<< project << #' }],
 	},
 	actions: {
 		renameTrack: {
