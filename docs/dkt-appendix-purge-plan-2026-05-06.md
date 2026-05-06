@@ -475,3 +475,4 @@ playwright test --grep @smoke
 - `98cabe5` - step1/5: remove render-sync compatibility runtime from harness and delete render-sync folder.
 - `d82914e` - step5: remove app traversal helpers (`mediaImportActions`, `exportActions`, `sessionRootActions`) and collapse to root-scoped DKT dispatch runtime.
 - `6ebd389` - step6 finalization: remove empty worker contract suites, skip headless registry scenario contract, and rebaseline Clip effect-normalization test to DKT defaults.
+- `16ef185` - step2/7 follow-up: finish type migration (session reducers, resource-derived typing, inspector model-type imports, transfer source-kind normalization).
