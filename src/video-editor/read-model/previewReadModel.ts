@@ -13,13 +13,3 @@ export {
 	renderPreviewClipSourceAtCursor,
 	renderPreviewStructureAtCursor,
 } from './previewComps'
-
-export {
-	createPlaybackDuration$,
-	createPreviewFrame$,
-	createPreviewScene$,
-	createPreviewStructure$,
-	createTimelineClipIntervals$,
-	getActiveClipRefsAtCursor,
-	getTimelineClipIntervals$,
-} from '../dkt/state/derivedTimeline'

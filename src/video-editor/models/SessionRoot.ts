@@ -1,6 +1,6 @@
 import { model } from 'dkt/model.js'
 import { SessionRoot as BaseSessionRoot } from 'dkt-all/libs/provoda/bwlev/SessionRoot.js'
-import { TIMELINE_ZOOM_DEFAULT } from '../dkt/state/sessionStore'
+import { TIMELINE_ZOOM_DEFAULT } from './sessionZoom'
 import { createPreviewFrame, type PreviewFrame, type PreviewStructure } from '../read-model/previewComps'
 import { dktSessionActions } from './SessionRoot/actions'
 

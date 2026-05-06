@@ -31,7 +31,7 @@ import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,
 	TIMELINE_ZOOM_STEP,
-} from '../dkt/state/sessionStore'
+} from '../models/sessionZoom'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import { IconButton } from './ControlPrimitives'
 import { TrackLabel, TrackLane } from './TrackRow'
