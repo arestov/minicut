@@ -1,4 +1,4 @@
-import { Gauge, Move, Scissors, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react'
+﻿import { Gauge, Move, Scissors, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
@@ -6,7 +6,8 @@ import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useOne } from '../../../dkt-react-sync/hooks/useOne'
 import { useVideoEditor } from '../../app/VideoEditorContext'
 import { createPaletteFromHex, sampleVideoFramePalette } from '../../color/framePalette'
-import type { TextAttrs, TransformAttrs } from '../../domain/types'
+import type { TextAttrs } from '../../models/Text/types'
+import type { TransformAttrs } from '../../models/Clip/types'
 import { Button, IconButton } from '../ControlPrimitives'
 import { formatPercent, formatSeconds } from '../format'
 import type { FramePaletteStatus } from '../FramePaletteAction'
@@ -174,3 +175,4 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 		</div>
 	)
 }
+

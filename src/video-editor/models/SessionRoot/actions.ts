@@ -1,5 +1,14 @@
-import type { EditorSessionState } from '../../domain/types'
 import { PROJECT_CREATION_SHAPE } from '../Project'
+
+/** Inline session state patch type – replaces legacy EditorSessionState from domain/types. */
+type SessionStateFields = {
+	activeProjectId: string | null
+	selectedEntityId: string | null
+	cursor: number
+	isPlaying: boolean
+	timelineZoom: number
+	activeInspectorTab: 'edit' | 'color' | 'audio' | 'export'
+}
 
 type CreateProjectPayload = {
 	sourceProjectId?: unknown
@@ -30,7 +39,7 @@ export type DktSessionActionName =
 	| 'togglePlayback'
 	| 'zoomTimeline'
 
-export type DktSessionActionPatch = Partial<Pick<EditorSessionState,
+export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 	| 'activeProjectId'
 	| 'selectedEntityId'
 	| 'cursor'
@@ -130,46 +139,46 @@ const createProjectCreationResult = (payload: unknown) => {
 	}
 }
 
-export const reduceSessionSelectEntityAction = (payload: unknown): Pick<EditorSessionState, 'selectedEntityId'> => ({
+export const reduceSessionSelectEntityAction = (payload: unknown): Pick<SessionStateFields, 'selectedEntityId'> => ({
 	selectedEntityId: typeof payload === 'string' ? payload : null,
 })
 
-export const reduceSessionSetActiveProjectAction = (payload: unknown): Pick<EditorSessionState, 'activeProjectId' | 'selectedEntityId' | 'cursor'> => ({
+export const reduceSessionSetActiveProjectAction = (payload: unknown): Pick<SessionStateFields, 'activeProjectId' | 'selectedEntityId' | 'cursor'> => ({
 	activeProjectId: typeof payload === 'string' ? payload : null,
 	selectedEntityId: null,
 	cursor: 0,
 })
 
-export const reduceSessionSetCursorAction = (payload: unknown): Pick<EditorSessionState, 'cursor'> | null => {
+export const reduceSessionSetCursorAction = (payload: unknown): Pick<SessionStateFields, 'cursor'> | null => {
 	const value = finiteNumber(payload)
 	return value === null ? null : { cursor: Math.max(0, roundToHundredths(value)) }
 }
 
-export const reduceSessionSetActiveInspectorTabAction = (payload: unknown): Pick<EditorSessionState, 'activeInspectorTab'> | null => {
+export const reduceSessionSetActiveInspectorTabAction = (payload: unknown): Pick<SessionStateFields, 'activeInspectorTab'> | null => {
 	return payload === 'edit' || payload === 'color' || payload === 'audio' || payload === 'export'
 		? { activeInspectorTab: payload }
 		: null
 }
 
-export const reduceSessionSetPlayingAction = (payload: unknown): Pick<EditorSessionState, 'isPlaying'> | null => {
+export const reduceSessionSetPlayingAction = (payload: unknown): Pick<SessionStateFields, 'isPlaying'> | null => {
 	return typeof payload === 'boolean' ? { isPlaying: payload } : null
 }
 
-export const reduceSessionSetTimelineZoomAction = (payload: unknown): Pick<EditorSessionState, 'timelineZoom'> | null => {
+export const reduceSessionSetTimelineZoomAction = (payload: unknown): Pick<SessionStateFields, 'timelineZoom'> | null => {
 	const value = finiteNumber(payload)
 	return value === null ? null : { timelineZoom: clamp(value, 8, 96) }
 }
 
 export const reduceSessionTogglePlaybackAction = (
-	state: Pick<EditorSessionState, 'isPlaying'>,
-): Pick<EditorSessionState, 'isPlaying'> => ({
+	state: Pick<SessionStateFields, 'isPlaying'>,
+): Pick<SessionStateFields, 'isPlaying'> => ({
 	isPlaying: !state.isPlaying,
 })
 
 export const reduceSessionTickPlaybackAction = (
 	payload: unknown,
-	state: Pick<EditorSessionState, 'cursor' | 'isPlaying'>,
-): Pick<EditorSessionState, 'cursor'> | null => {
+	state: Pick<SessionStateFields, 'cursor' | 'isPlaying'>,
+): Pick<SessionStateFields, 'cursor'> | null => {
 	if (!state.isPlaying) {
 		return null
 	}
@@ -180,8 +189,8 @@ export const reduceSessionTickPlaybackAction = (
 
 export const reduceSessionZoomTimelineAction = (
 	payload: unknown,
-	state: Pick<EditorSessionState, 'timelineZoom'>,
-): Pick<EditorSessionState, 'timelineZoom'> | null => {
+	state: Pick<SessionStateFields, 'timelineZoom'>,
+): Pick<SessionStateFields, 'timelineZoom'> | null => {
 	const delta = finiteNumber(payload)
 	return delta === null ? null : { timelineZoom: clamp(state.timelineZoom + delta, 8, 96) }
 }

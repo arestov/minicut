@@ -1,6 +1,7 @@
 import { observable, type Observable } from '@legendapp/state'
 import { DEFAULT_RESOURCE_CHUNK_SIZE, mergeByteRanges } from '../domain/resourceData'
-import type { ProjectRegistry, ResourceAttrs, ResourceByteRange } from '../domain/types'
+import type { ProjectRegistry, ResourceAttrs } from '../render/registryTypes'
+import type { ResourceByteRange, ResourceSourceKind } from '../domain/types'
 import type { P2PRawTransportLike } from '../p2p/PageP2PManager'
 import {
 	buildRangeKey,
@@ -24,7 +25,7 @@ interface ResourceSnapshot {
 	size?: number
 	chunkSize: number
 	ownerPeerId: string | null
-	sourceKind: ResourceAttrs['source']['kind']
+	sourceKind: ResourceSourceKind
 	fallbackUrl: string
 	name: string
 }
@@ -73,7 +74,7 @@ export interface ResourceTransferView {
 	canPreview: boolean
 	tailFallbackRequested: boolean
 	lastError: string | null
-	sourceKind: ResourceAttrs['source']['kind']
+	sourceKind: ResourceSourceKind
 	fallbackUrl: string
 	mode: 'local' | 'mirrored' | 'streaming'
 }
@@ -98,7 +99,7 @@ interface ChunkMetaMessage {
 	duration: number
 	chunkSize: number
 	ownerPeerId: string | null
-	sourceKind: ResourceAttrs['source']['kind']
+	sourceKind: ResourceSourceKind
 	fallbackUrl: string
 	reason: TransferReason
 }
@@ -178,6 +179,8 @@ const computeProgress = (loadedBytes: number, totalBytes: number, isReady: boole
 const isRealMediaUrl = (url: string): boolean =>
 	url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('http') || url.startsWith('/') || url.startsWith('./')
 
+const normalizeSourceKind = (value: unknown): ResourceSourceKind => value === 'p2p' ? 'p2p' : 'local'
+
 const appendZeroFillParts = (parts: BlobPart[], byteLength: number): void => {
 	let remaining = Math.max(0, Math.floor(byteLength))
 	while (remaining > 0) {
@@ -195,7 +198,7 @@ const toSnapshot = (resourceId: string, attrs: ResourceAttrs, defaultChunkSize: 
 	size: typeof attrs.size === 'number' && Number.isFinite(attrs.size) ? attrs.size : undefined,
 	chunkSize: Math.max(1, Number(attrs.data?.chunkSize) || defaultChunkSize),
 	ownerPeerId: typeof attrs.source?.ownerPeerId === 'string' ? attrs.source.ownerPeerId : null,
-	sourceKind: attrs.source?.kind ?? 'local',
+	sourceKind: normalizeSourceKind(attrs.source?.kind),
 	fallbackUrl: String(attrs.url ?? ''),
 	name: String(attrs.name ?? resourceId),
 })

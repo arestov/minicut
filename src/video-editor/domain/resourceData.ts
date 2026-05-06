@@ -1,5 +1,4 @@
 import type {
-	ResourceAttrs,
 	ResourceByteRange,
 	ResourceChunkMeta,
 	ResourceChunkStatus,
@@ -7,6 +6,12 @@ import type {
 	ResourceDataStatus,
 	ResourceDerived,
 } from './types'
+
+type ResourceDerivedInput = {
+	kind: 'video' | 'audio' | 'image' | 'text'
+	size?: number
+	data?: ResourceDataState
+}
 
 export const DEFAULT_RESOURCE_CHUNK_SIZE = 1024 * 1024
 export const RESOURCE_HEAD_PLAYABLE_BYTES = 2 * 1024 * 1024
@@ -172,7 +177,7 @@ const hasHeadRange = (
 	requiredBytes: number,
 ): boolean => ranges.some(([start, end]) => start <= 0 && end >= requiredBytes)
 
-export const getResourceDerived = (attrs: ResourceAttrs): ResourceDerived => {
+export const getResourceDerived = (attrs: ResourceDerivedInput): ResourceDerived => {
 	const data = attrs.data ?? createMissingResourceData()
 	const loadedBytes = Math.max(0, Number(data.loadedBytes) || 0)
 	const size = isFiniteNonNegative(attrs.size) ? attrs.size : undefined

@@ -1,4 +1,4 @@
-import { Palette, SlidersHorizontal } from 'lucide-react'
+﻿import { Palette, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
@@ -6,7 +6,8 @@ import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useVideoEditor } from '../../app/VideoEditorContext'
 import { readVideoFrameImageData } from '../../color/framePalette'
 import { buildLookColorCorrectionParams, getLookPreset, lookPresets } from '../../color/looks'
-import type { AnimatedScalar, ColorCorrectionAttrs, EffectAttrs } from '../../domain/types'
+import type { AnimatedScalar } from '../../render/registryTypes'
+import type { ColorCorrectionAttrs, EffectAttrs } from '../../models/Effect/types'
 import { Button } from '../ControlPrimitives'
 import { LookBrowser } from '../LookBrowser'
 import type { PreviewMediaElementRegistry } from '../mediaElementRegistry'
@@ -153,7 +154,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 			<label className="ve-slider-field"><span>Contrast</span><input type="range" aria-label="Contrast" min="0" max="200" value={Math.round(getParamValue('contrast', 1) * 100)} onChange={(event) => updateParam('contrast', Number(event.currentTarget.value) / 100)} /></label>
 			<label className="ve-slider-field"><span>Saturation</span><input type="range" aria-label="Saturation" min="0" max="250" value={Math.round(getParamValue('saturation', 1) * 100)} onChange={(event) => updateParam('saturation', Number(event.currentTarget.value) / 100)} /></label>
 			<label className="ve-slider-field"><span>Temperature</span><input type="range" aria-label="Temperature" min="-100" max="100" value={Math.round(getParamValue('temperature', 0) * 100)} onChange={(event) => updateParam('temperature', Number(event.currentTarget.value) / 100)} /></label>
-			<small>{isColorCorrectionEnabled ? 'Grade active' : 'Grade bypassed'} · Exposure {getParamValue('exposure', 0).toFixed(2)} · Contrast {getParamValue('contrast', 1).toFixed(2)} · Saturation {getParamValue('saturation', 1).toFixed(2)}</small>
+			<small>{isColorCorrectionEnabled ? 'Grade active' : 'Grade bypassed'} В· Exposure {getParamValue('exposure', 0).toFixed(2)} В· Contrast {getParamValue('contrast', 1).toFixed(2)} В· Saturation {getParamValue('saturation', 1).toFixed(2)}</small>
 		</>
 	)
 }
@@ -223,3 +224,4 @@ export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementR
 		</div>
 	)
 }
+
