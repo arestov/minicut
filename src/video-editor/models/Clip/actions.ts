@@ -1,5 +1,4 @@
-import { getProjectForEntity } from '../../domain/selectors'
-import { PATCH, type AnimatedScalar, type ClipAttrs, type PatchEnvelope, type ProjectRegistry, type TransformAttrs } from '../../domain/types'
+import { type AnimatedScalar, type ClipAttrs, type TransformAttrs } from '../../domain/types'
 import { defaultEffectAttrs } from '../Effect/defaults'
 import type { MiniCutDktEffectSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
 
@@ -215,38 +214,6 @@ export const reduceTimelineSplitAtAction = (
 	}
 
 	return { duration: roundToTenths(time - attrs.start) }
-}
-
-export const createClipUpdateOpacityEnvelope = (
-	registry: ProjectRegistry,
-	clipId: string,
-	opacityPercent: number,
-): PatchEnvelope | null => {
-	const clip = registry.entitiesById[clipId]
-	if (!clip || clip.type !== 'clip') {
-		return null
-	}
-
-	const nextOpacity = clipUpdateOpacityAction.fn(opacityPercent)
-	if (!nextOpacity) {
-		return null
-	}
-
-	const project = getProjectForEntity(registry, clipId)
-	if (!project) {
-		return null
-	}
-
-	return {
-		projectId: project.id,
-		version: project.version + 1,
-		patches: [
-			{
-				c: PATCH.SCALAR_SET,
-				p: { id: clipId, path: 'opacity.value', value: nextOpacity.value },
-			},
-		],
-	}
 }
 
 export const normalizeEffectCreationAttrs = (payload: unknown) => {

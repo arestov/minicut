@@ -1,6 +1,6 @@
 import type { PageSyncRuntime } from '../../dkt-react-sync/runtime/PageSyncRuntime'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
-import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
+import type { EditorActionName, EditorActionPayload } from './actionRequests'
 import type { EntityType } from '../domain/types'
 import { ROOT_SCOPE, SESSION_SCOPE, type EditorScope } from './EditorScope'
 import type { EditorRenderRuntime, EditorScopedDispatch } from './EditorRenderRuntime'

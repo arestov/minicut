@@ -1,5 +1,4 @@
-import type { EditorActionScope } from './actionScope'
-import type { EditorSessionState, EffectAttrs, TextAttrs } from './types'
+import type { EffectAttrs, TextAttrs } from '../domain/types'
 
 export type TimelineEdge = 'start' | 'end'
 export type FadeEdge = 'in' | 'out'
@@ -14,7 +13,7 @@ export interface EditorActionPayloads {
 	importFiles: { files: FileList | File[] }
 	addTextClip: { content?: string } | undefined
 	addResourceToTimeline: undefined
-	setActiveInspectorTab: { tab: EditorSessionState['activeInspectorTab'] }
+	setActiveInspectorTab: { tab: 'edit' | 'color' | 'audio' | 'export' }
 	tickPlayback: { deltaSeconds: number }
 	addTrack: { kind: 'video' | 'audio' }
 	setCursor: { value: number }
@@ -47,15 +46,3 @@ export interface EditorActionPayloads {
 
 export type EditorActionName = keyof EditorActionPayloads
 export type EditorActionPayload<Name extends EditorActionName = EditorActionName> = EditorActionPayloads[Name]
-
-export interface EditorActionRequest<Name extends EditorActionName = EditorActionName> {
-	scope: EditorActionScope
-	name: Name
-	payload: EditorActionPayload<Name>
-}
-
-export const createEditorActionRequest = <Name extends EditorActionName>(
-	scope: EditorActionScope,
-	name: Name,
-	payload: EditorActionPayload<Name>,
-): EditorActionRequest<Name> => ({ scope, name, payload })
