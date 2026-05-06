@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { defaultTextBox, defaultTextStyle, reduceTextBoxAction, reduceTextContentAction, reduceTextStyleAction } from './textActions'
+import { defaultTextBox, defaultTextStyle } from '../models/Text/defaults'
+import { reduceTextBoxAction, reduceTextContentAction, reduceTextStyleAction } from '../models/Text/actions'
 
 describe('DKT text actions', () => {
 	it('reduces concrete text attrs', () => {

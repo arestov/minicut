@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reduceEffectAmountAction, reduceEffectEnabledAction } from './effectActions'
+import { reduceEffectAmountAction, reduceEffectEnabledAction } from '../models/Effect/actions'
 
 describe('DKT effect actions', () => {
 	it('reduces concrete effect attrs', () => {

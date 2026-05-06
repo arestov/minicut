@@ -15,7 +15,7 @@ import {
 	reduceClipColorAction,
 	reduceClipRenameAction,
 	reduceClipUpdateOpacityAction,
-} from './clipActions'
+} from '../models/Clip/actions'
 
 const createRegistryWithClip = () => {
 	const { project, entities } = createProjectGraph('DKT clip action', 1)
@@ -95,7 +95,7 @@ describe('clean DKT clip actions', () => {
 	})
 
 	it('does not depend on command dispatch bridge code', () => {
-		const source = readFileSync(path.resolve(process.cwd(), 'src/video-editor/dkt/clipActions.ts'), 'utf8')
+		const source = readFileSync(path.resolve(process.cwd(), 'src/video-editor/models/Clip/actions.ts'), 'utf8')
 		expect(source).not.toContain('CMD')
 		expect(source).not.toContain('$fx_dispatchCommand')
 		expect(source).not.toContain('switch (actionName)')

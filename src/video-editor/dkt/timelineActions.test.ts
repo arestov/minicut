@@ -4,7 +4,7 @@ import {
 	reduceTimelineResizeAction,
 	reduceTimelineSplitAtAction,
 	reduceTimelineTrimAction,
-} from './timelineActions'
+} from '../models/Clip/actions'
 
 const attrs = {
 	start: 1,
