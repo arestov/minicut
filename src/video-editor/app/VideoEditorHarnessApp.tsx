@@ -199,8 +199,25 @@ export const VideoEditorHarnessApp = ({
 				lastError: transfer.lastError,
 			})),
 			getProjectTitles: () => {
-				return []
+				const runtime = ownedHarness.pageRuntime
+				const rootScope = runtime?.getRootScope()
+				const pioneerScope = rootScope ? runtime?.readOne(rootScope, 'pioneer') : null
+				if (!runtime || !pioneerScope) {
+					return []
+				}
+
+				return runtime.readMany(pioneerScope, 'project').map((scope) => {
+					const attrs = runtime.readAttrs(scope, ['sourceProjectId', 'title']) as {
+						sourceProjectId?: unknown
+						title?: unknown
+					}
+					return {
+						id: typeof attrs.sourceProjectId === 'string' ? attrs.sourceProjectId : null,
+						title: typeof attrs.title === 'string' ? attrs.title : 'Project',
+					}
+				})
 			},
+			getRuntimeMessages: () => ownedHarness.pageRuntime?.debugMessages?.() ?? [],
 			getRole: () => {
 				const worker = ownedHarness.worker as { role?: string }
 				return typeof worker.role === 'string' ? worker.role : null

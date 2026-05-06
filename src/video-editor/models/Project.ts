@@ -2,6 +2,7 @@ import { model } from 'dkt/model.js'
 import { RESOURCE_CREATION_SHAPE } from './Resource'
 import { TRACK_CREATION_SHAPE } from './Track'
 import { normalizeResourceCreationAttrs, normalizeTrackCreationAttrs } from './Project/actions'
+import type { PreviewClipSource, PreviewStructure } from '../read-model/previewComps'
 
 export const PROJECT_CREATION_SHAPE = {
 	attrs: ['sourceProjectId', 'title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt', 'autoCreateDefaultTracks'],
@@ -23,25 +24,32 @@ export const Project = model({
 		height: ['input', 1080],
 		duration: ['input', 0],
 		timelineDuration: ['comp', ['duration'], (duration: unknown) => asNumber(duration, 0)],
-		resourceCount: ['input', 0],
-		trackCount: ['input', 0],
 		previewFrame: ['input', null],
-		exportPlanStatus: ['input', 'idle'],
-		timelineSummary: ['comp', ['timelineDuration', 'trackCount'], (timelineDuration: unknown, trackCount: unknown) => ({
-			duration: asNumber(timelineDuration, 0),
-			trackCount: asNumber(trackCount, 0),
-		})],
-		resourceSummary: ['comp', ['resourceCount'], (resourceCount: unknown) => ({
-			count: asNumber(resourceCount, 0),
-		})],
 		createdAt: ['input', 0],
 		updatedAt: ['input', 0],
 		autoCreateDefaultTracks: ['input', false],
 		isLandscape: ['comp', ['width', 'height'], (width: unknown, height: unknown) => asNumber(width, 0) >= asNumber(height, 0)],
+		previewClipSources: ['comp', ['< @all:clipRenderData < tracks.clips'] as const,
+			(allTrackClipData: unknown): PreviewStructure => {
+				const sources: PreviewClipSource[] = []
+				if (Array.isArray(allTrackClipData)) {
+					for (const trackClips of allTrackClipData) {
+						if (Array.isArray(trackClips)) {
+							for (const clipData of trackClips) {
+								if (clipData && typeof clipData === 'object' && 'id' in clipData) {
+									sources.push(clipData as PreviewClipSource)
+								}
+							}
+						}
+					}
+				}
+				return { clipSources: sources }
+			}],
 	},
 	rels: {
 		tracks: ['input', { many: true, linking: '<< track << #' }],
 		resources: ['input', { many: true, linking: '<< resource << #' }],
+		primaryVideoTrack: ['input', { linking: '<< track << #' }],
 	},
 	actions: {
 		handleInit: {
@@ -64,6 +72,10 @@ export const Project = model({
 				}],
 				tracks: ['<< tracks', {
 					method: 'set_many',
+					can_use_refs: true,
+				}],
+				primaryVideoTrack: ['<< primaryVideoTrack', {
+					method: 'set_one',
 					can_use_refs: true,
 				}],
 			},
@@ -101,6 +113,7 @@ export const Project = model({
 							{ use_ref_id: 'defaultVideoTrack' },
 							{ use_ref_id: 'defaultAudioTrack' },
 						],
+					primaryVideoTrack: { use_ref_id: 'defaultVideoTrack' },
 					}
 				},
 			],
@@ -192,7 +205,13 @@ export const Project = model({
 						if (!attrs) {
 							return '$noop'
 						}
-						const hasTimelineClips = Array.isArray(clips) && clips.some(Boolean)
+						const hasTimelineClips = Array.isArray(clips) && clips.some((entry) => {
+							if (Array.isArray(entry)) {
+								return entry.length > 0
+							}
+
+							return Boolean(entry)
+						})
 
 						return {
 							resource: { attrs, hold_ref_id: 'newResource' },
@@ -210,11 +229,11 @@ export const Project = model({
 					[] as const,
 					(payload: unknown) => (payload as { shouldAddToTimeline?: unknown } | null)?.shouldAddToTimeline === true,
 				],
-				to: ['<< @one:tracks', { action: 'addClip', inline_subwalker: true }],
+				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
 				fn: (payload: unknown) => {
 					const value = payload as { resource?: Record<string, unknown>; shouldAddToTimeline?: unknown } | null
 					const resource = value?.resource ?? {}
-					const sourceResourceId = typeof resource?.sourceResourceId === 'string' ? resource.sourceResourceId : null
+					const sourceResourceId = typeof resource.sourceResourceId === 'string' ? resource.sourceResourceId : null
 					if (!sourceResourceId || value?.shouldAddToTimeline !== true) {
 						return '$noop'
 					}
@@ -249,5 +268,11 @@ export const Project = model({
 				return { resources: Array.isArray(resources) ? resources : [] }
 			},
 		},
+		addTextClipToVideoTrack: [
+			{
+				to: ['<< primaryVideoTrack', { action: 'addTextClip', inline_subwalker: true }],
+				fn: (payload: unknown) => payload,
+			},
+		],
 	},
 })

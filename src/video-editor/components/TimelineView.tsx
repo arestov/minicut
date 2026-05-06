@@ -22,10 +22,11 @@ import {
 	type ReactElement,
 	type SetStateAction,
 } from 'react'
-import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
-import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
+import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
+import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import {
 	TIMELINE_ZOOM_MAX,
@@ -263,28 +264,15 @@ const ResolvedProjectTimeline = ({
 	)
 }
 
-const FirstProjectTimelineFromPioneer = (props: Omit<TimelineBodyProps, 'trackItems'> & { renderHeader: (trackCount: number) => ReactElement }) => {
-	const projectScopes = useMany('project')
-	const firstProjectScope = projectScopes[0] ?? null
-
-	if (!firstProjectScope) {
-		return <>{props.renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>
-	}
-
-	return (
-		<ScopeContext.Provider value={firstProjectScope}>
-			<ResolvedProjectTimeline {...props} />
-		</ScopeContext.Provider>
-	)
-}
-
 export const TimelineView = () => {
 	const [activeTool, setActiveTool] = useState<TimelineTool>('select')
 	const [snappingEnabled, setSnappingEnabled] = useState(true)
 	const panState = useRef<{ x: number; scrollLeft: number } | null>(null)
 	const playheadDragPointerId = useRef<number | null>(null)
+	// session-level actions that don't have model actions yet (multi-step runtime ops)
 	const { actions } = useVideoEditor()
-	const rootAttrs = useAttrs(['activeProjectId', 'timelineZoom', 'selectedEntityId', 'cursor', 'selectedClipSummary']) as { activeProjectId?: unknown; timelineZoom?: unknown; selectedEntityId?: unknown; cursor?: unknown; selectedClipSummary?: SelectedClipSummary | null }
+	// session-scope attrs read via root hooks (we're inside ActiveProjectScope)
+	const rootAttrs = useRootAttrs(['activeProjectId', 'timelineZoom', 'selectedEntityId', 'cursor', 'selectedClipSummary']) as { activeProjectId?: unknown; timelineZoom?: unknown; selectedEntityId?: unknown; cursor?: unknown; selectedClipSummary?: SelectedClipSummary | null }
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 	const selectedEntityId = typeof rootAttrs.selectedEntityId === 'string' ? rootAttrs.selectedEntityId : null
 	const timelineZoom = Number(rootAttrs.timelineZoom)
@@ -292,6 +280,10 @@ export const TimelineView = () => {
 	const selectedClipSummary = rootAttrs.selectedClipSummary ?? null
 	const canZoomOut = timelineZoom > TIMELINE_ZOOM_MIN
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
+	// session dispatch for simple session actions
+	const sessionDispatch = useRootDispatch()
+	// project dispatch for addTrack — scope = activeProject via ActiveProjectScope
+	const projectDispatch = useActions()
 
 	const canStartPlayheadDrag = (event: ReactPointerEvent<HTMLDivElement>): boolean => {
 		if (activeTool === 'hand') {
@@ -314,7 +306,7 @@ export const TimelineView = () => {
 
 		const rect = event.currentTarget.getBoundingClientRect()
 		const timelineX = event.clientX - rect.left + event.currentTarget.scrollLeft
-		actions.setCursor(Math.max(0, timelineX / timelineZoom))
+		sessionDispatch('setCursor', Math.max(0, timelineX / timelineZoom))
 		event.preventDefault()
 	}
 
@@ -370,7 +362,7 @@ export const TimelineView = () => {
 			onDeleteSelected={() => actions.deleteSelectedClip()}
 			onNudgeSelected={(delta) => actions.nudgeSelectedClip(delta)}
 			onSplitSelected={() => actions.splitSelectedClip()}
-			onZoom={(delta) => actions.zoomTimeline(delta)}
+			onZoom={(delta) => sessionDispatch('zoomTimeline', delta)}
 			selectedClipSummary={selectedClipSummary}
 			snappingEnabled={snappingEnabled}
 			setActiveTool={setActiveTool}
@@ -389,39 +381,20 @@ export const TimelineView = () => {
 					<p className="ve-empty">Create a project to allocate timeline tracks.</p>
 				</>
 			) : (
-				<One rel="activeProject" fallback={(
-					<One rel="pioneer" fallback={<>{renderHeader(0)}<p className="ve-empty">Create a project to allocate timeline tracks.</p></>}>
-						<FirstProjectTimelineFromPioneer
-							activeProjectId={activeProjectId}
-							activeTool={activeTool}
-							handleHandPan={handleHandPan}
-							handlePlayheadPointerDown={handlePlayheadPointerDown}
-							onAddTrack={(kind) => actions.addTrack(kind)}
-							renderHeader={renderHeader}
-							snappingEnabled={snappingEnabled}
-							stopPlayheadDrag={stopPlayheadDrag}
-							cursorSeconds={cursorSeconds}
-							selectedEntityId={selectedEntityId}
-							timelineZoom={timelineZoom}
-							updateCursorFromPointer={updateCursorFromPointer}
-						/>
-					</One>
-				)}>
-					<ResolvedProjectTimeline
-						activeProjectId={activeProjectId}
-						activeTool={activeTool}
-						handleHandPan={handleHandPan}
-						handlePlayheadPointerDown={handlePlayheadPointerDown}
-						onAddTrack={(kind) => actions.addTrack(kind)}
-						renderHeader={renderHeader}
-						snappingEnabled={snappingEnabled}
-						stopPlayheadDrag={stopPlayheadDrag}
-						cursorSeconds={cursorSeconds}
-						selectedEntityId={selectedEntityId}
-						timelineZoom={timelineZoom}
-						updateCursorFromPointer={updateCursorFromPointer}
-					/>
-				</One>
+				<ResolvedProjectTimeline
+					activeProjectId={activeProjectId}
+					activeTool={activeTool}
+					handleHandPan={handleHandPan}
+					handlePlayheadPointerDown={handlePlayheadPointerDown}
+					onAddTrack={(kind) => projectDispatch('addTrack', kind)}
+					renderHeader={renderHeader}
+					snappingEnabled={snappingEnabled}
+					stopPlayheadDrag={stopPlayheadDrag}
+					cursorSeconds={cursorSeconds}
+					selectedEntityId={selectedEntityId}
+					timelineZoom={timelineZoom}
+					updateCursorFromPointer={updateCursorFromPointer}
+				/>
 			)}
 		</section>
 	)

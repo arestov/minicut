@@ -1,10 +1,10 @@
 ﻿import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
-import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
-import { useScope } from '../../dkt-react-sync/hooks/useScope'
+import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
+import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../render/registryTypes'
@@ -128,7 +128,7 @@ const ResourceListItem = ({
 }
 
 const TextTimelineActionRow = () => {
-	const { actions } = useVideoEditor()
+	const sessionDispatch = useRootDispatch()
 
 	return (
 		<li className="ve-resource-row ve-resource-row--text-action">
@@ -140,7 +140,7 @@ const TextTimelineActionRow = () => {
 					<Button
 						type="button"
 						variant="secondary"
-						onClick={() => actions.addTextClip()}
+						onClick={() => sessionDispatch('addTextClipToTimeline')}
 						aria-label="Add Text to Timeline"
 					>
 						Add Text to Timeline
@@ -190,29 +190,6 @@ const ProjectMediaList = ({
 				{resourceScopes.length > 0 && matchingResourceIds.size === 0 ? <p className="ve-empty">No assets match the current filters.</p> : null}
 			</div>
 		</>
-	)
-}
-
-const FirstProjectMediaListFromPioneer = ({
-	kindFilter,
-	normalizedQuery,
-	viewMode,
-}: {
-	kindFilter: ResourceAttrs['kind'] | 'all'
-	normalizedQuery: string
-	viewMode: 'list' | 'grid'
-}) => {
-	const projectScopes = useMany('project')
-	const firstProjectScope = projectScopes[0] ?? null
-
-	if (!firstProjectScope) {
-		return <MediaBinEmptyState />
-	}
-
-	return (
-		<ScopeContext.Provider value={firstProjectScope}>
-			<ProjectMediaList kindFilter={kindFilter} normalizedQuery={normalizedQuery} viewMode={viewMode} />
-		</ScopeContext.Provider>
 	)
 }
 
@@ -306,51 +283,6 @@ const MediaBinPanel = ({
 	)
 }
 
-const MediaBinWithRootScope = ({
-	kindFilter,
-	normalizedQuery,
-	query,
-	setKindFilter,
-	setQuery,
-	setViewMode,
-	viewMode,
-}: {
-	kindFilter: ResourceAttrs['kind'] | 'all'
-	normalizedQuery: string
-	query: string
-	setKindFilter: (value: ResourceAttrs['kind'] | 'all') => void
-	setQuery: (value: string) => void
-	setViewMode: (value: 'list' | 'grid') => void
-	viewMode: 'list' | 'grid'
-}) => {
-	const rootAttrs = useAttrs(['activeProjectId']) as { activeProjectId?: unknown }
-	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
-
-	return (
-		<MediaBinPanel
-			activeProjectId={activeProjectId}
-			kindFilter={kindFilter}
-			query={query}
-			setKindFilter={setKindFilter}
-			setQuery={setQuery}
-			setViewMode={setViewMode}
-			viewMode={viewMode}
-		>
-			<One rel="activeProject" fallback={(
-				<One rel="pioneer" fallback={<MediaBinEmptyState />}>
-					<FirstProjectMediaListFromPioneer kindFilter={kindFilter} normalizedQuery={normalizedQuery} viewMode={viewMode} />
-				</One>
-			)}>
-				<ProjectMediaList
-					kindFilter={kindFilter}
-					normalizedQuery={normalizedQuery}
-					viewMode={viewMode}
-				/>
-			</One>
-		</MediaBinPanel>
-	)
-}
-
 const MediaBinEmptyState = () => {
 	const { actions } = useVideoEditor()
 
@@ -371,35 +303,26 @@ export const MediaBin = () => {
 	const [query, setQuery] = useState('')
 	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
 	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
-	const rootScope = useScope()
 	const normalizedQuery = query.trim().toLowerCase()
-
-	if (!rootScope) {
-		return (
-			<MediaBinPanel
-				activeProjectId={null}
-				kindFilter={kindFilter}
-				query={query}
-				setKindFilter={setKindFilter}
-				setQuery={setQuery}
-				setViewMode={setViewMode}
-				viewMode={viewMode}
-			>
-				<MediaBinEmptyState />
-			</MediaBinPanel>
-		)
-	}
+	// activeProjectId lives on session scope; read via root hook (we're inside ActiveProjectScope)
+	const rootAttrs = useRootAttrs(['activeProjectId']) as { activeProjectId?: unknown }
+	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 
 	return (
-		<MediaBinWithRootScope
+		<MediaBinPanel
+			activeProjectId={activeProjectId}
 			kindFilter={kindFilter}
-			normalizedQuery={normalizedQuery}
 			query={query}
 			setKindFilter={setKindFilter}
 			setQuery={setQuery}
 			setViewMode={setViewMode}
 			viewMode={viewMode}
-		/>
+		>
+			{activeProjectId
+				? <ProjectMediaList kindFilter={kindFilter} normalizedQuery={normalizedQuery} viewMode={viewMode} />
+				: <MediaBinEmptyState />
+			}
+		</MediaBinPanel>
 	)
 }
 

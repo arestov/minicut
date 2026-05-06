@@ -1,4 +1,3 @@
-import { observable, type Observable } from '@legendapp/state'
 import { DEFAULT_RESOURCE_CHUNK_SIZE, mergeByteRanges } from '../domain/resourceData'
 import type { ProjectRegistry, ResourceAttrs } from '../render/registryTypes'
 import type { ResourceByteRange, ResourceSourceKind } from '../domain/types'
@@ -125,6 +124,36 @@ interface AttachedTransport {
 	generation: number
 }
 
+export interface ResourceTransferStore {
+	get(): Record<string, ResourceTransferView>
+	getItem(resourceId: string): ResourceTransferView | undefined
+	setItem(resourceId: string, view: ResourceTransferView): void
+	deleteItem(resourceId: string): void
+}
+
+const createResourceTransferStore = (): ResourceTransferStore => {
+	let state: Record<string, ResourceTransferView> = {}
+
+	return {
+		get: () => state,
+		getItem: (resourceId: string) => state[resourceId],
+		setItem: (resourceId: string, view: ResourceTransferView) => {
+			state = {
+				...state,
+				[resourceId]: view,
+			}
+		},
+		deleteItem: (resourceId: string) => {
+			if (!(resourceId in state)) {
+				return
+			}
+
+			const { [resourceId]: _ignored, ...rest } = state
+			state = rest
+		},
+	}
+}
+
 export interface CreateResourceTransferManagerOptions {
 	getRole: () => TransferRole
 	getPeerId: () => string | null
@@ -134,12 +163,13 @@ export interface CreateResourceTransferManagerOptions {
 	headBytes?: number
 	tailBytes?: number
 	playheadWindowSeconds?: number
-	transfers$?: Observable<Record<string, ResourceTransferView>>
+	transfers$?: ResourceTransferStore
 }
 
 export interface ResourceTransferManager {
-	readonly transfers$: Observable<Record<string, ResourceTransferView>>
+	readonly transfers$: ResourceTransferStore
 	syncRegistry(registry: ProjectRegistry): void
+	syncResources(resources: Array<{ resourceId: string; attrs: ResourceAttrs }>): void
 	registerLocalResource(resourceId: string, file: File | Blob, snapshot: Omit<ResourceSnapshot, 'resourceId'> & { objectUrl: string }): void
 	attachClientTransport(transport: P2PRawTransportLike): void
 	attachServerTransport(remotePeerId: string, transport: P2PRawTransportLike): void
@@ -240,7 +270,7 @@ const createRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => (
 export const createResourceTransferManager = (
 	options: CreateResourceTransferManagerOptions,
 ): ResourceTransferManager => {
-	const transfers$ = options.transfers$ ?? observable<Record<string, ResourceTransferView>>({})
+	const transfers$ = options.transfers$ ?? createResourceTransferStore()
 	const defaultChunkSize = options.chunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE
 	const chunkSendDelayMs = options.chunkSendDelayMs ?? 0
 	const maxCachedBytes = options.maxCachedBytes ?? 128 * 1024 * 1024
@@ -467,7 +497,7 @@ export const createResourceTransferManager = (
 		const local = localResources.get(resourceId)
 		if (local) {
 			const totalBytes = local.size ?? local.blob.size
-			transfers$[resourceId].set({
+			transfers$.setItem(resourceId, {
 				resourceId,
 				name: local.name,
 				kind: local.kind,
@@ -495,13 +525,13 @@ export const createResourceTransferManager = (
 
 		const state = remoteStates.get(resourceId)
 		if (!state) {
-			transfers$[resourceId].delete()
+			transfers$.deleteItem(resourceId)
 			return
 		}
 
 		const totalBytes = state.size ?? (state.status === 'ready' ? state.loadedBytes : 0)
 		const previewUrl = state.playbackUrl || state.previewUrl || (isRealMediaUrl(state.fallbackUrl) ? state.fallbackUrl : '')
-		transfers$[resourceId].set({
+		transfers$.setItem(resourceId, {
 			resourceId,
 			name: state.name,
 			kind: state.kind,
@@ -970,44 +1000,72 @@ export const createResourceTransferManager = (
 		})
 	}
 
+	const syncSnapshots = (snapshots: ResourceSnapshot[]): void => {
+		if (destroyed) {
+			return
+		}
+
+		const seen = new Set<string>()
+		for (const snapshot of snapshots) {
+			seen.add(snapshot.resourceId)
+			resourceSnapshots.set(snapshot.resourceId, snapshot)
+			if (localResources.has(snapshot.resourceId)) {
+				const local = localResources.get(snapshot.resourceId)
+				if (local) {
+					local.kind = snapshot.kind
+					local.mime = snapshot.mime
+					local.duration = snapshot.duration
+					local.size = snapshot.size
+					local.chunkSize = snapshot.chunkSize
+					local.ownerPeerId = snapshot.ownerPeerId
+					local.sourceKind = snapshot.sourceKind
+					local.fallbackUrl = snapshot.fallbackUrl
+					local.name = snapshot.name
+				}
+				updateTransferView(snapshot.resourceId)
+				continue
+			}
+
+			ensureRemoteState(snapshot)
+			updateTransferView(snapshot.resourceId)
+			if (snapshot.sourceKind === 'p2p' && snapshot.ownerPeerId !== options.getPeerId()) {
+				planNextRequest(snapshot.resourceId)
+			}
+		}
+
+		for (const resourceId of Array.from(resourceSnapshots.keys())) {
+			if (seen.has(resourceId) || localResources.has(resourceId)) {
+				continue
+			}
+
+			resourceSnapshots.delete(resourceId)
+			const state = remoteStates.get(resourceId)
+			if (state) {
+				clearRetryTimeout(state)
+				revokeRemoteUrls(state)
+				remoteStates.delete(resourceId)
+			}
+			transfers$.deleteItem(resourceId)
+		}
+	}
+
 	return {
 		transfers$,
 
 		syncRegistry(registry) {
-			if (destroyed) {
-				return
-			}
-
+			const snapshots: ResourceSnapshot[] = []
 			for (const [resourceId, entity] of Object.entries(registry.entitiesById)) {
 				if (entity.type !== 'resource') {
 					continue
 				}
-
-				const snapshot = toSnapshot(resourceId, entity.attrs as unknown as ResourceAttrs, defaultChunkSize)
-				resourceSnapshots.set(resourceId, snapshot)
-				if (localResources.has(resourceId)) {
-					const local = localResources.get(resourceId)
-					if (local) {
-						local.kind = snapshot.kind
-						local.mime = snapshot.mime
-						local.duration = snapshot.duration
-						local.size = snapshot.size
-						local.chunkSize = snapshot.chunkSize
-						local.ownerPeerId = snapshot.ownerPeerId
-						local.sourceKind = snapshot.sourceKind
-						local.fallbackUrl = snapshot.fallbackUrl
-						local.name = snapshot.name
-					}
-					updateTransferView(resourceId)
-					continue
-				}
-
-				ensureRemoteState(snapshot)
-				updateTransferView(resourceId)
-				if (snapshot.sourceKind === 'p2p' && snapshot.ownerPeerId !== options.getPeerId()) {
-					planNextRequest(resourceId)
-				}
+				snapshots.push(toSnapshot(resourceId, entity.attrs as unknown as ResourceAttrs, defaultChunkSize))
 			}
+
+			syncSnapshots(snapshots)
+		},
+
+		syncResources(resources) {
+			syncSnapshots(resources.map((resource) => toSnapshot(resource.resourceId, resource.attrs, defaultChunkSize)))
 		},
 
 		registerLocalResource(resourceId, file, snapshot) {
@@ -1081,7 +1139,7 @@ export const createResourceTransferManager = (
 				return local.objectUrl
 			}
 
-			const transfer = transfers$[resourceId].get()
+			const transfer = transfers$.getItem(resourceId)
 			if (transfer?.playbackUrl) {
 				return transfer.playbackUrl
 			}
@@ -1128,7 +1186,7 @@ export const createResourceTransferManager = (
 		},
 
 		getTransfer(resourceId) {
-			return transfers$[resourceId].get() ?? null
+			return transfers$.getItem(resourceId) ?? null
 		},
 
 		destroy() {

@@ -121,8 +121,6 @@ const summarizeProfile = (events: ScopeProfileEvent[], measuredMs: number) => {
 }
 
 test.describe('color scopes profile harness', () => {
-	test.skip(!process.env.MINICUT_PROFILE_COLOR_SCOPES, 'Opt-in harness; set MINICUT_PROFILE_COLOR_SCOPES=1 to run.')
-
 	test('logs vectorscope redraw cadence while playing a real video', async ({ page }) => {
 		const videoPath = await getProfileVideoPath()
 		await page.addInitScript(() => {

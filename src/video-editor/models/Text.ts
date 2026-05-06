@@ -6,6 +6,13 @@ export const Text = model({
 	model_name: 'minicut_text',
 	attrs: {
 		sourceTextId: ['input', null],
+		renderAttrs: ['comp', ['sourceTextId', 'content', 'style', 'box'] as const,
+			(sourceTextId: unknown, content: unknown, style: unknown, box: unknown) => ({
+				sourceTextId: typeof sourceTextId === 'string' ? sourceTextId : '',
+				content: typeof content === 'string' ? content : '',
+				style: style && typeof style === 'object' ? style as Record<string, unknown> : {},
+				box: box && typeof box === 'object' ? box as Record<string, unknown> : {},
+			})],
 		content: ['input', 'Text'],
 		style: ['input', defaultTextStyle],
 		box: ['input', defaultTextBox],

@@ -21,6 +21,11 @@ const resolveSignalUrl = (): string | null => {
 
 	const raw = new URLSearchParams(window.location.search).get('signalUrl')
 	if (!raw) {
+		// Keep automation runs local unless signalUrl is explicitly provided in the URL.
+		if (typeof navigator !== 'undefined' && navigator.webdriver === true) {
+			return null
+		}
+
 		const envSignalUrl = (import.meta.env as Record<string, unknown>).VITE_MINICUT_SIGNAL_URL
 		if (typeof envSignalUrl !== 'string' || envSignalUrl.length === 0) {
 			return null

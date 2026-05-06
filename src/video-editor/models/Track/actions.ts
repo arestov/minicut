@@ -61,11 +61,45 @@ const getNodeId = (model: unknown): string | null => (
 		: null
 )
 
+const getSourceClipId = (model: unknown): string | null => {
+	if (!model || typeof model !== 'object') return null
+	const md = model as Record<string, unknown>
+	if (typeof md.sourceClipId === 'string') return md.sourceClipId
+	return null
+}
+
+const getAttr = (model: unknown, key: string): unknown => {
+	const md = model && typeof model === 'object' ? model as Record<string, unknown> : null
+	return md?.[key]
+}
+
 export const removeClipRef = (clips: unknown[], clipId: unknown): unknown[] | null => {
-	if (typeof clipId !== 'string' || !clips.some((clip) => getNodeId(clip) === clipId)) {
-		return null
+	if (typeof clipId !== 'string') return null
+	const idx = clips.findIndex((clip) => getNodeId(clip) === clipId)
+	if (idx < 0) return null
+	return clips.filter((_, i) => i !== idx)
+}
+
+export const removeClipBySourceClipId = (clips: unknown[], sourceClipId: unknown): unknown[] | null => {
+	if (typeof sourceClipId !== 'string') return null
+	const idx = clips.findIndex((clip) => getSourceClipId(clip) === sourceClipId)
+	if (idx < 0) return null
+	return clips.filter((_, i) => i !== idx)
+}
+
+export const findClipAttrsBySourceClipId = (
+	clips: unknown[],
+	sourceClipId: unknown,
+	keys: readonly string[],
+): Record<string, unknown> | null => {
+	if (typeof sourceClipId !== 'string') return null
+	const clip = clips.find((c) => getSourceClipId(c) === sourceClipId)
+	if (!clip) return null
+	const result: Record<string, unknown> = {}
+	for (const key of keys) {
+		result[key] = getAttr(clip, key)
 	}
-	return clips.filter((clip) => getNodeId(clip) !== clipId)
+	return result
 }
 
 export const normalizeRightSplitClipAttrs = (payload: unknown) => {

@@ -3,9 +3,12 @@ import { MediaBin } from './MediaBin'
 import { TimelineView } from './TimelineView'
 import { Inspector } from './Inspector'
 import { PreviewPanel } from './PreviewPanel'
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRuntime'
+import { useScope } from '../../dkt-react-sync/hooks/useScope'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { createPreviewMediaElementRegistry } from './mediaElementRegistry'
 
 const playbackUiFrameMs = 1000 / 30
@@ -14,6 +17,28 @@ const inspectorWidthMax = 460
 const previewWidthMin = 360
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
+
+/**
+ * Provides project scope to children when an active project is set.
+ * Transparent (renders children at session scope) when there is no active project.
+ */
+const ActiveProjectScope = ({ children }: { children: React.ReactNode }) => {
+	const runtime = useReactScopeRuntime()
+	const sessionScope = useScope()
+	const projectScope = useSyncExternalStore(
+		(listener) => sessionScope ? runtime.subscribeOne(sessionScope, 'activeProject', listener) : () => {},
+		() => sessionScope ? runtime.readOne(sessionScope, 'activeProject') : null,
+		() => sessionScope ? runtime.readOne(sessionScope, 'activeProject') : null,
+	)
+	if (!projectScope) {
+		return <>{children}</>
+	}
+	return (
+		<ScopeContext.Provider value={projectScope}>
+			{children}
+		</ScopeContext.Provider>
+	)
+}
 
 const PlaybackLoop = () => {
 	const sessionDispatch = useActions()
@@ -139,31 +164,33 @@ export const VideoEditorApp = () => {
 			<PlaybackLoop />
 			<Toolbar />
 			<main className="ve-main">
-				<div
-					ref={mainTopRef}
-					className={`ve-main__top${showColorScopes ? ' ve-main__top--scopes' : ''}`}
-					style={{ '--ve-inspector-width': `${inspectorWidth}px` } as CSSProperties}
-				>
-					<MediaBin />
-					<PreviewPanel mediaElementRegistry={mediaElementRegistryRef.current} />
+				<ActiveProjectScope>
 					<div
-						role="separator"
-						aria-label="Resize preview and inspector panels"
-						aria-orientation="vertical"
-						aria-valuemin={inspectorWidthMin}
-						aria-valuemax={inspectorWidthMax}
-						aria-valuenow={Math.round(inspectorWidth)}
-						className={`ve-panel-resizer${isResizingInspector ? ' is-dragging' : ''}`}
-						tabIndex={0}
-						onPointerDown={handleResizePointerDown}
-						onPointerMove={handleResizePointerMove}
-						onPointerUp={stopResize}
-						onPointerCancel={stopResize}
-						onMouseDown={handleResizeMouseDown}
-					/>
-					<Inspector mediaElementRegistry={mediaElementRegistryRef.current} />
-				</div>
-				<TimelineView />
+						ref={mainTopRef}
+						className={`ve-main__top${showColorScopes ? ' ve-main__top--scopes' : ''}`}
+						style={{ '--ve-inspector-width': `${inspectorWidth}px` } as CSSProperties}
+					>
+						<MediaBin />
+						<PreviewPanel mediaElementRegistry={mediaElementRegistryRef.current} />
+						<div
+							role="separator"
+							aria-label="Resize preview and inspector panels"
+							aria-orientation="vertical"
+							aria-valuemin={inspectorWidthMin}
+							aria-valuemax={inspectorWidthMax}
+							aria-valuenow={Math.round(inspectorWidth)}
+							className={`ve-panel-resizer${isResizingInspector ? ' is-dragging' : ''}`}
+							tabIndex={0}
+							onPointerDown={handleResizePointerDown}
+							onPointerMove={handleResizePointerMove}
+							onPointerUp={stopResize}
+							onPointerCancel={stopResize}
+							onMouseDown={handleResizeMouseDown}
+						/>
+						<Inspector mediaElementRegistry={mediaElementRegistryRef.current} />
+					</div>
+					<TimelineView />
+				</ActiveProjectScope>
 			</main>
 		</div>
 	)

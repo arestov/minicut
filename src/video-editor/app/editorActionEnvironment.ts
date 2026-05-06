@@ -51,7 +51,6 @@ export interface EditorRuntimeTaskPort {
 
 /** DKT dispatch port used by harness actions. */
 export interface EditorDktScopePort {
-	getRootScope(): ReactSyncScopeHandle | null
 	dispatch(actionName: string, payload?: unknown, scope?: ReactSyncScopeHandle | null): void
 }
 

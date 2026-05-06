@@ -1,6 +1,7 @@
 import { createMiniCutPageSyncRuntime } from '../dkt/runtime/createMiniCutPageSyncRuntime'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import type { ExportRenderer } from '../render/exportRenderer'
+import type { ResourceAttrs } from '../render/registryTypes'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
@@ -10,6 +11,9 @@ import {
 } from './platform'
 import { createDktActionRuntime } from './createDktActionRuntime'
 import type { EditorActionEnvironment, EditorDktScopePort } from './editorActionEnvironment'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+
+type DktResourceAttrs = ResourceAttrs & { sourceResourceId: string }
 
 const EMPTY_CLEANUP = () => {}
 
@@ -44,6 +48,42 @@ const createMiniCutPageRuntime = (authorityClient: EditorAuthorityClient) => {
 	}
 
 	return createMiniCutPageSyncRuntime({ transport: authorityClient.openDktTransport() })
+}
+
+const readResourceAttrs = (pageRuntime: NonNullable<ReturnType<typeof createMiniCutPageRuntime>>, scope: ReactSyncScopeHandle): DktResourceAttrs | null => {
+	const attrs = pageRuntime.readAttrs(scope, [
+		'sourceResourceId',
+		'name',
+		'kind',
+		'url',
+		'mime',
+		'duration',
+		'width',
+		'height',
+		'size',
+		'source',
+		'status',
+		'data',
+	]) as Record<string, unknown>
+
+	if (typeof attrs.sourceResourceId !== 'string' || !attrs.sourceResourceId) {
+		return null
+	}
+
+	return {
+		sourceResourceId: attrs.sourceResourceId,
+		name: typeof attrs.name === 'string' ? attrs.name : attrs.sourceResourceId,
+		kind: attrs.kind === 'audio' || attrs.kind === 'image' || attrs.kind === 'text' ? attrs.kind : 'video',
+		url: typeof attrs.url === 'string' ? attrs.url : '',
+		mime: typeof attrs.mime === 'string' ? attrs.mime : 'application/octet-stream',
+		duration: typeof attrs.duration === 'number' ? attrs.duration : 0,
+		width: typeof attrs.width === 'number' ? attrs.width : undefined,
+		height: typeof attrs.height === 'number' ? attrs.height : undefined,
+		size: typeof attrs.size === 'number' ? attrs.size : undefined,
+		source: attrs.source && typeof attrs.source === 'object' ? attrs.source as Record<string, unknown> : undefined,
+		status: typeof attrs.status === 'string' ? attrs.status : undefined,
+		data: attrs.data && typeof attrs.data === 'object' ? attrs.data as Record<string, unknown> : undefined,
+	}
 }
 
 interface CreateVideoEditorHarnessOptions {
@@ -111,12 +151,62 @@ export const createVideoEditorHarness = (
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
 
-	// Cleanup: no legacy registry-state subscriptions
-	const unsubscribe = EMPTY_CLEANUP
+	const subscribeToResourceScopes = (): (() => void) => {
+		if (!pageRuntime) {
+			return EMPTY_CLEANUP
+		}
+
+		let disposeProjectResources = EMPTY_CLEANUP
+		let disposeActiveProject = EMPTY_CLEANUP
+
+		const syncActiveProjectResources = () => {
+			const rootScope = pageRuntime.getRootScope()
+			if (!rootScope) {
+				resourceTransferManager.syncResources([])
+				return
+			}
+
+			const projectScope = pageRuntime.readOne(rootScope, 'activeProject')
+			disposeProjectResources()
+			if (!projectScope) {
+				resourceTransferManager.syncResources([])
+				return
+			}
+
+			const syncResources = () => {
+				const resourceScopes = pageRuntime.readMany(projectScope, 'resources')
+				const resources = resourceScopes
+					.map((resourceScope) => {
+						const attrs = readResourceAttrs(pageRuntime, resourceScope)
+						if (!attrs || typeof attrs.sourceResourceId !== 'string') {
+							return null
+						}
+						return { resourceId: attrs.sourceResourceId, attrs }
+					})
+					.filter((entry): entry is { resourceId: string; attrs: DktResourceAttrs } => entry !== null)
+
+				resourceTransferManager.syncResources(resources)
+			}
+
+			disposeProjectResources = pageRuntime.subscribeMany(projectScope, 'resources', syncResources)
+			syncResources()
+		}
+
+		disposeActiveProject = pageRuntime.subscribeRootScope(() => {
+			syncActiveProjectResources()
+		})
+		syncActiveProjectResources()
+
+		return () => {
+			disposeProjectResources()
+			disposeActiveProject()
+		}
+	}
+
+	const unsubscribe = subscribeToResourceScopes()
 
 	const dktPort: EditorDktScopePort | null = pageRuntime
 		? {
-			getRootScope: () => pageRuntime.getRootScope(),
 			dispatch: (actionName, payload, scope) => pageRuntime.dispatch(actionName, payload, scope ?? null),
 		}
 		: null

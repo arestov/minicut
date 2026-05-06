@@ -22,42 +22,20 @@ export const EditorSessionRoot = model({
 		isPlaying: ['input', false],
 		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
 		timelineTool: ['input', 'select'],
-		activeTool: ['comp', ['timelineTool'], (timelineTool: unknown) => typeof timelineTool === 'string' ? timelineTool : 'select'],
 		snappingEnabled: ['input', true],
-		previewStructure: ['input', DEFAULT_PREVIEW_STRUCTURE],
-		previewFrame: ['comp', ['previewStructure', 'cursor'], (previewStructure: unknown, cursor: unknown): PreviewFrame => createPreviewFrame(
+		previewStructure: ['comp', ['< @one:previewClipSources < activeProject'] as const,
+			(previewClipSources: unknown): PreviewStructure => {
+				if (previewClipSources && typeof previewClipSources === 'object' && Array.isArray((previewClipSources as PreviewStructure).clipSources)) {
+					return previewClipSources as PreviewStructure
+				}
+				return DEFAULT_PREVIEW_STRUCTURE
+			}],
+		previewFrame: ['comp', ['previewStructure', 'cursor'] as const, (previewStructure: unknown, cursor: unknown): PreviewFrame => createPreviewFrame(
 			previewStructure && typeof previewStructure === 'object' && Array.isArray((previewStructure as { clipSources?: unknown }).clipSources)
 				? previewStructure as PreviewStructure
 				: DEFAULT_PREVIEW_STRUCTURE,
 			typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0,
 		)],
-		selectionKind: ['comp', ['selectedEntityId'], (selectedEntityId: unknown) => {
-			if (typeof selectedEntityId !== 'string' || !selectedEntityId) {
-				return 'none'
-			}
-
-			if (selectedEntityId.includes(':clip')) {
-				return 'clip'
-			}
-			if (selectedEntityId.includes(':track')) {
-				return 'track'
-			}
-			if (selectedEntityId.includes(':resource')) {
-				return 'resource'
-			}
-			if (selectedEntityId.includes(':text')) {
-				return 'text'
-			}
-			if (selectedEntityId.includes(':effect')) {
-				return 'effect'
-			}
-
-			return 'entity'
-		}],
-		selectedEntitySummary: ['comp', ['selectedEntityId', 'selectionKind'], (selectedEntityId: unknown, selectionKind: unknown) => ({
-			id: typeof selectedEntityId === 'string' ? selectedEntityId : null,
-			kind: typeof selectionKind === 'string' ? selectionKind : 'none',
-		})],
 		selectedClipTrackPosition: ['input', null],
 		selectedClipSummary: ['input', null],
 	},

@@ -212,19 +212,26 @@ const normalizeModelList = (value: unknown): RuntimeModelLike[] => {
 	return isRuntimeModelLike(value) ? [value] : []
 }
 
+
+const asString = (value: unknown, fallback: string): string =>
+	typeof value === 'string' ? value : fallback
+
+const asNullableString = (value: unknown): string | null =>
+	typeof value === 'string' ? value : null
+
+
 const queryModelRel = async (model: RuntimeModelLike, relName: string): Promise<RuntimeModelLike[]> => {
 	const queried = await model.queryRel?.(relName)
 	return normalizeModelList(queried ?? _getCurrentRel(model, relName))
 }
 
 const readInModelInput = async <Value>(model: RuntimeModelLike, read: () => Promise<Value> | Value): Promise<Value> => {
-	const inputFn = model.input
-	if (typeof inputFn !== 'function') {
+	if (typeof model.input !== 'function') {
 		return read()
 	}
 
 	return new Promise((resolve, reject) => {
-		inputFn(async () => {
+		model.input?.(async () => {
 			try {
 				resolve(await read())
 			} catch (error) {
@@ -351,9 +358,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await target.dispatch(actionName, payload)
-		if (target === sessionRoot) {
-			await syncSessionSelectionRels(sessionRoot)
-		}
+		await syncSessionSelectionRels(sessionRoot)
 	}
 
 	const dispatchSessionAction = async (actionName: string, payload?: unknown): Promise<void> => {
@@ -454,10 +459,64 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			? sessionRoot.states.selectedEntityId
 			: null
 
-		const activeProject = await findSeededModelBySourceId('minicut_project', 'sourceProjectId', activeProjectId)
-		const selectedClip = await findSeededModelBySourceId('minicut_clip', 'sourceClipId', selectedEntityId)
+		const activeProjectFromRel = (await queryModelRel(sessionRoot, 'activeProject'))[0] ?? null
+		let activeProject = activeProjectFromRel
+			?? await findSeededModelBySourceId('minicut_project', 'sourceProjectId', activeProjectId)
+
+		if (!isRuntimeModelLike(activeProject) && activeProjectId) {
+			const pioneer = (await queryModelRel(sessionRoot, 'pioneer'))[0] ?? null
+			if (isRuntimeModelLike(pioneer)) {
+				const projects = await queryModelRel(pioneer, 'project')
+				for (const project of projects) {
+					const sourceProjectId = asNullableString(project.states?.sourceProjectId)
+					if (sourceProjectId === activeProjectId) {
+						activeProject = project
+						break
+					}
+				}
+			}
+		}
 		await sessionRoot.dispatch('syncActiveProjectRel', { project: activeProject })
-		await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClip })
+
+		const activeProjectModel = isRuntimeModelLike(activeProject) ? activeProject : null
+		if (!activeProjectModel) {
+			await sessionRoot.dispatch('syncSelectedClipRel', { clip: null })
+			await sessionRoot.dispatch('syncSelectedClipSummary', { summary: null })
+			await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position: null })
+			return
+		}
+
+		// Find selected clip — minimal traversal (tracks → clips only, breaks early on match)
+		// previewStructure is now a DKT comp attr; no clipSources building needed here
+		let selectedClipModel: RuntimeModelLike | null = null
+		let selectedClipSummary: Record<string, unknown> | null = null
+		let selectedClipTrackPosition: Record<string, unknown> | null = null
+
+		if (selectedEntityId) {
+			const tracks = await queryModelRel(activeProjectModel, 'tracks')
+			outer: for (const [trackIndex, trackModel] of tracks.entries()) {
+				const trackName = asString(trackModel.states?.name, `Track ${trackIndex + 1}`)
+				const clipModels = await queryModelRel(trackModel, 'clips')
+				for (const clipModel of clipModels) {
+					const clipAttrs = clipModel.states ?? {}
+					const sourceClipId = asNullableString(clipAttrs.sourceClipId)
+					if (sourceClipId === selectedEntityId) {
+						selectedClipModel = clipModel
+						selectedClipSummary = {
+							color: asString(clipAttrs.color, '#2563eb'),
+							resourceName: asString(clipAttrs.name, 'Clip'),
+							trackName,
+						}
+						selectedClipTrackPosition = { trackName, ordinal: trackIndex + 1 }
+						break outer
+					}
+				}
+			}
+		}
+
+		await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClipModel })
+		await sessionRoot.dispatch('syncSelectedClipSummary', { summary: selectedClipSummary })
+		await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position: selectedClipTrackPosition })
 	}
 
 	const dispatchProjectAction = async (project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> => {

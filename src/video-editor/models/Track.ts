@@ -1,7 +1,7 @@
 import { model } from 'dkt/model.js'
 import { CLIP_CREATION_SHAPE } from './Clip'
 import { TEXT_CREATION_SHAPE } from './Text'
-import { normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef } from './Track/actions'
+import { normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef, removeClipBySourceClipId } from './Track/actions'
 
 export const TRACK_CREATION_SHAPE = {
 	attrs: ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height'],
@@ -163,6 +163,19 @@ export const Track = model({
 				(payload: unknown, clips: unknown[]) => {
 					const clipId = (payload as { clipId?: unknown } | null)?.clipId ?? payload
 					const nextClips = removeClipRef(Array.isArray(clips) ? clips : [], clipId)
+					return nextClips ? { clips: nextClips } : '$noop'
+				},
+			],
+		},
+		removeClipBySourceId: {
+			to: {
+				clips: ['<< clips', { method: 'set_many' }],
+			},
+			fn: [
+				['<< @all:clips'] as const,
+				(payload: unknown, clips: unknown[]) => {
+					const sourceClipId = (payload as { sourceClipId?: unknown } | null)?.sourceClipId ?? payload
+					const nextClips = removeClipBySourceClipId(Array.isArray(clips) ? clips : [], sourceClipId)
 					return nextClips ? { clips: nextClips } : '$noop'
 				},
 			],

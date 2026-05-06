@@ -35,9 +35,12 @@ export type DktSessionActionName =
 	| 'setPlaying'
 	| 'setTimelineZoom'
 	| 'tickPlayback'
+	| 'addTextClipToTimeline'
 	| 'syncSelectedClipRel'
 	| 'togglePlayback'
 	| 'zoomTimeline'
+	| 'deleteSelectedClip'
+	| 'splitSelectedClip'
 
 export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 	| 'activeProjectId'
@@ -51,7 +54,7 @@ export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 type DktActionDescriptor = {
 	to: unknown
 	fn: ((payload: unknown) => DktSessionActionPatch | '$noop')
-		| readonly [readonly string[], (payload: unknown, ...deps: unknown[]) => DktSessionActionPatch | '$noop']
+		| readonly [readonly string[], (payload: unknown, ...deps: unknown[]) => DktSessionActionPatch | Record<string, unknown> | '$noop']
 		| ((payload: unknown) => Record<string, unknown> | '$noop')
 }
 
@@ -113,7 +116,7 @@ let createdProjectSequence = 0
 const createProjectCreationResult = (payload: unknown) => {
 	const value = asObject(payload) as CreateProjectPayload | null
 	createdProjectSequence += 1
-	const projectId = asString(value?.sourceProjectId) ?? `project:${Date.now().toString(36)}:${createdProjectSequence}`
+	const projectId = asString(value?.sourceProjectId) ?? `project:${Date.now().toString(36)}:${createdProjectSequence}:${Math.random().toString(36).slice(2, 7)}`
 
 	const now = Date.now()
 
@@ -124,7 +127,7 @@ const createProjectCreationResult = (payload: unknown) => {
 		createdProject: {
 			attrs: {
 				sourceProjectId: projectId,
-				title: asString(value?.title) ?? 'Untitled project',
+				title: asString(value?.title) ?? `Project ${createdProjectSequence}`,
 				fps: asNumber(value?.fps, 30),
 				width: asNumber(value?.width, 1920),
 				height: asNumber(value?.height, 1080),
@@ -345,9 +348,62 @@ export const sessionZoomTimelineAction = {
 	],
 } as const satisfies DktActionDescriptor
 
+export const sessionDeleteSelectedClipAction = [
+	{
+		to: ['<< selectedClip', { action: 'removeSelf', inline_subwalker: true }],
+		fn: () => ({}),
+	},
+	{
+		to: {
+			selectedEntityId: ['selectedEntityId'],
+			selectedClip: ['<< selectedClip', { method: 'set_one' }],
+		},
+		fn: () => ({
+			selectedEntityId: null,
+			selectedClip: null,
+		}),
+	},
+] as const satisfies DktActionDefinition
+
+export const sessionSplitSelectedClipAction = [
+	{
+		to: ['<< selectedClip', { action: 'splitSelfAt', inline_subwalker: true }],
+		fn: [
+			['cursor'] as const,
+			(_payload: unknown, cursor: unknown) => {
+				const time = typeof cursor === 'number' && Number.isFinite(cursor) ? roundToHundredths(cursor) : null
+				if (time === null) return '$noop'
+				return { time }
+			},
+		],
+	},
+	{
+		to: {
+			selectedEntityId: ['selectedEntityId'],
+		},
+		fn: () => ({ selectedEntityId: null }),
+	},
+] as const satisfies DktActionDefinition
+
 export const dktSessionActions = {
 	createProject: sessionCreateProjectAction,
 	selectEntity: sessionSelectEntityAction,
+		addTextClipToTimeline: [
+			{
+				to: ['<< activeProject', { action: 'addTextClipToVideoTrack', inline_subwalker: true }],
+				fn: (payload: unknown) => payload as Record<string, unknown>,
+			},
+			{
+				to: {
+					selectedEntityId: ['selectedEntityId'],
+					selectedClip: ['<< selectedClip', { method: 'set_one', can_use_refs: true }],
+				},
+				fn: (payload: unknown) => ({
+					selectedEntityId: (payload as { sourceClipId?: string } | null)?.sourceClipId ?? null,
+					selectedClip: { use_ref_id: 'newTextClip' },
+				}),
+			},
+		],
 	setActiveProject: sessionSetActiveProjectAction,
 	syncActiveProjectRel: sessionSyncActiveProjectRelAction,
 	syncPreviewModel: sessionSyncPreviewModelAction,
@@ -361,4 +417,6 @@ export const dktSessionActions = {
 	tickPlayback: sessionTickPlaybackAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
+	deleteSelectedClip: sessionDeleteSelectedClipAction,
+	splitSelectedClip: sessionSplitSelectedClipAction,
 } as const satisfies Record<DktSessionActionName, DktActionDefinition>

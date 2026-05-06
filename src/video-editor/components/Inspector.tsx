@@ -1,6 +1,7 @@
-import { One } from '../../dkt-react-sync/components/One'
-import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useVideoEditor } from '../app/VideoEditorContext'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
+import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
+import { useRootOne } from '../../dkt-react-sync/hooks/useRootOne'
 import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 import { InspectorAudioTabPanel } from './inspector/InspectorAudioTabPanel'
 import { InspectorClipHeader } from './inspector/InspectorClipHeader'
@@ -36,22 +37,24 @@ const SelectedClipPanels = ({ activeTab, mediaElementRegistry, onChangeTab, trac
 )
 
 export const Inspector = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
-	const { actions } = useVideoEditor()
-	const rootAttrs = useAttrs(['activeProjectId', 'activeInspectorTab', 'selectedEntityId', 'selectedClipTrackPosition']) as { activeProjectId?: unknown; activeInspectorTab?: InspectorTab; selectedEntityId?: unknown; selectedClipTrackPosition?: SelectedClipTrackPosition | null }
-		const trackPosition = rootAttrs.selectedClipTrackPosition ?? null
-
+	const sessionDispatch = useRootDispatch()
+	const rootAttrs = useRootAttrs(['activeProjectId', 'activeInspectorTab', 'selectedEntityId', 'selectedClipTrackPosition']) as { activeProjectId?: unknown; activeInspectorTab?: InspectorTab; selectedEntityId?: unknown; selectedClipTrackPosition?: SelectedClipTrackPosition | null }
+	const trackPosition = rootAttrs.selectedClipTrackPosition ?? null
 	const activeTab = rootAttrs.activeInspectorTab ?? 'edit'
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 	const selectedEntityId = typeof rootAttrs.selectedEntityId === 'string' ? rootAttrs.selectedEntityId : null
-	const setActiveTab = (tab: InspectorTab): void => actions.setActiveInspectorTab(tab)
+	const setActiveTab = (tab: InspectorTab): void => sessionDispatch('setActiveInspectorTab', tab)
 
-	if (!activeProjectId || !selectedEntityId) {
+	// Read selectedClip rel from session scope (it lives on SessionRoot, not Project)
+	const selectedClipScope = useRootOne('selectedClip')
+
+	if (!activeProjectId || !selectedEntityId || !selectedClipScope) {
 		return <EmptyInspector activeTab={activeTab} onChange={setActiveTab} />
 	}
 
 	return (
-		<One rel="selectedClip" fallback={<EmptyInspector activeTab={activeTab} onChange={setActiveTab} />}>
+		<ScopeContext.Provider value={selectedClipScope}>
 			<SelectedClipPanels activeTab={activeTab} mediaElementRegistry={mediaElementRegistry} onChangeTab={setActiveTab} trackPosition={trackPosition} />
-		</One>
+		</ScopeContext.Provider>
 	)
 }

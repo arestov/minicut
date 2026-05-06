@@ -1,7 +1,7 @@
 import { Gauge, Pause, Play, Timer } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { useActions } from '../../dkt-react-sync/hooks/useActions'
-import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
+import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type {
 	RenderedClip,
@@ -139,8 +139,8 @@ const PreviewTransport = ({
 
 export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: PreviewMediaElementRegistry }) => {
 	const { resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
-	const sessionDispatch = useActions()
-	const attrs = useAttrs(['activeInspectorTab', 'isPlaying', 'previewFrame', 'previewStructure']) as {
+	const sessionDispatch = useRootDispatch()
+	const attrs = useRootAttrs(['activeInspectorTab', 'isPlaying', 'previewFrame', 'previewStructure']) as {
 		activeInspectorTab?: unknown
 		isPlaying?: unknown
 		previewFrame?: PreviewFrame

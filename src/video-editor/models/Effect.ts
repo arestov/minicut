@@ -2,6 +2,9 @@ import { model } from 'dkt/model.js'
 import {
 	reduceEffectAmountAction,
 	reduceEffectColorAction,
+} from './Effect/actions'
+import type { EffectRenderInstruction } from '../render/colorPipeline'
+import {
 	reduceEffectEnabledAction,
 	reduceEffectKindAction,
 	reduceEffectNameAction,
@@ -9,10 +12,23 @@ import {
 } from './Effect/actions'
 import { defaultEffectAttrs } from './Effect/defaults'
 
+const _asStr = (v: unknown, fb: string): string => typeof v === 'string' && v ? v : fb
+const _asBool = (v: unknown): boolean => v !== false
+
+
 export const Effect = model({
 	model_name: 'minicut_effect',
 	attrs: {
 		sourceEffectId: ['input', null],
+		renderInstruction: ['comp', ['kind', 'name', 'enabled', 'amount', 'params', 'color'] as const,
+			(kind: unknown, name: unknown, enabled: unknown, amount: unknown, params: unknown, color: unknown): EffectRenderInstruction => ({
+				kind: _asStr(kind, 'blur') as EffectRenderInstruction['kind'],
+				name: _asStr(name, 'Effect'),
+				enabled: _asBool(enabled),
+				...(typeof amount === 'number' && Number.isFinite(amount) ? { amount } : {}),
+				...(params && typeof params === 'object' ? { params: params as Record<string, unknown> } : {}),
+				...(color && typeof color === 'object' ? { color: color as Record<string, unknown> } : {}),
+			})],
 		name: ['input', defaultEffectAttrs.name],
 		kind: ['input', defaultEffectAttrs.kind],
 		enabled: ['input', defaultEffectAttrs.enabled],
