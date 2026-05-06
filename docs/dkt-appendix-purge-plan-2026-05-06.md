@@ -476,3 +476,5 @@ playwright test --grep @smoke
 - `d82914e` - step5: remove app traversal helpers (`mediaImportActions`, `exportActions`, `sessionRootActions`) and collapse to root-scoped DKT dispatch runtime.
 - `6ebd389` - step6 finalization: remove empty worker contract suites, skip headless registry scenario contract, and rebaseline Clip effect-normalization test to DKT defaults.
 - `16ef185` - step2/7 follow-up: finish type migration (session reducers, resource-derived typing, inspector model-type imports, transfer source-kind normalization).
+- `04b8eb9` - step2/7: migrate attr/model typing ownership from `domain/types.ts` into model-local `types.ts` and render registry types; rewire imports and tests.
+- `94692dd` - step1/2 cleanup: delete leftover legacy worker projection/index benchmark files tied to removed command+patch protocol.
