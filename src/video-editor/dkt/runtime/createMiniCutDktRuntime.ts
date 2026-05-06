@@ -26,7 +26,6 @@ import type {
 	TextAttrs,
 	TrackAttrs,
 } from '../../domain/types'
-import { createPreviewStructureFromRegistry } from './previewModelFromRegistry'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { MiniCutAppRoot } from '../../models/AppRoot'
 
@@ -755,46 +754,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await syncSessionDerivedState(sessionRoot)
 	}
 
-	const getRegistryState = async (): Promise<ProjectRegistry> => {
-		const app = await bootstrapApp()
-		if (!app) {
-			throw new Error('MiniCut DKT runtime is disabled')
-		}
-
-		const sessionRoot = await bootstrapSessionRoot()
-		const activeProjectId = sessionRoot && typeof sessionRoot.states?.activeProjectId === 'string'
-			? sessionRoot.states.activeProjectId
-			: null
-		return createRegistryFromModelTree(app.appModel, activeProjectId)
-	}
-
-	const replaceRegistryState = async (snapshot: ProjectRegistry): Promise<void> => {
-		await materializeRegistryHierarchy(snapshot)
-		const sessionRoot = await bootstrapSessionRoot()
-		if (sessionRoot) {
-			await syncSessionDerivedState(sessionRoot)
-		}
-	}
-
-	const dispatchCommand = async (command: Command): Promise<DispatchResult> => {
-		const app = await bootstrapApp()
-		if (!app) {
-			throw new Error('MiniCut DKT runtime is disabled')
-		}
-
-		const sessionRoot = await bootstrapSessionRoot()
-		const activeProjectId = sessionRoot && typeof sessionRoot.states?.activeProjectId === 'string'
-			? sessionRoot.states.activeProjectId
-			: null
-		const registry = await createRegistryFromModelTree(app.appModel, activeProjectId)
-		const result = buildDispatchResult(registry, command)
-		const nextSnapshot = applyPatchEnvelopeToRegistry(registry, result.envelope)
-		await materializeRegistryHierarchy(nextSnapshot)
-		if (sessionRoot) {
-			await syncSessionDerivedState(sessionRoot)
-		}
-		return structuredClone(result)
-	}
+	// Phase 1 hard rewrite: All registry materialization functions removed.
+	// Registry reading/writing belongs in Phase 2 DKT rebuild.
+	// Only DKT-native dispatch and session management remain.
 
 	const findModelNodeIdBySourceId = async (modelName: string, sourceAttrName: string, sourceId: string): Promise<string | null> => {
 		const app = await bootstrapApp()
@@ -871,6 +833,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return nodeId ? getSeededModelByNodeId(nodeId) : null
 	}
 
+	// Phase 1: Removed syncSessionDerivedState - registry materialization belongs in Phase 2 DKT rebuild
 	const syncSessionSelectionRels = async (sessionRoot: RuntimeModelLike): Promise<void> => {
 		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
 			? sessionRoot.states.activeProjectId
@@ -883,21 +846,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		const selectedClip = await findSeededModelBySourceId('minicut_clip', 'sourceClipId', selectedEntityId)
 		await sessionRoot.dispatch('syncActiveProjectRel', { project: activeProject })
 		await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClip })
-	}
-
-	const syncSessionDerivedState = async (sessionRoot: RuntimeModelLike): Promise<void> => {
-		await syncSessionSelectionRels(sessionRoot)
-		const app = await bootstrapApp()
-		if (!app) {
-			return
-		}
-
-		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
-			? sessionRoot.states.activeProjectId
-			: null
-		const snapshot = await createRegistryFromModelTree(app.appModel, activeProjectId)
-		const structure = createPreviewStructureFromRegistry(snapshot, activeProjectId)
-		await sessionRoot.dispatch('syncPreviewModel', { structure })
 	}
 
 	const dispatchProjectAction = async (project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> => {
@@ -1185,32 +1133,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					return
 				case DKT_MSG.DISPATCH_ACTION:
 					await dispatchScopedAction(message.actionName, message.payload, message.scopeNodeId, activeSessionKey)
-					if (!message.scopeNodeId) {
-						const sessionRoot = await bootstrapSessionRoot(activeSessionKey)
-						if (sessionRoot) {
-							await syncSessionDerivedState(sessionRoot)
-						}
-					}
 					if (message.requestId) {
 						transport.send({ type: DKT_MSG.RUNTIME_READY, requestId: message.requestId, rootNodeId: null })
 					}
-					return
-				case DKT_MSG.DISPATCH_COMMAND: {
-					const result = await dispatchCommand(message.command as Command)
-					const sessionRoot = await bootstrapSessionRoot(activeSessionKey)
-					if (sessionRoot) {
-						await syncSessionDerivedState(sessionRoot)
-					}
-					transport.send({ type: DKT_MSG.DISPATCH_RESULT, requestId: message.requestId, result })
-					transport.send({ type: DKT_MSG.PATCHES, envelope: result.envelope })
-					return
-				}
-				case DKT_MSG.GET_SNAPSHOT:
-					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistryState() })
-					return
-				case DKT_MSG.REPLACE_SNAPSHOT:
-					await replaceRegistryState(message.snapshot as ProjectRegistry)
-					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistryState() })
 					return
 				case DKT_MSG.SYNC_UPDATE_STRUCTURE_USAGE: {
 					const app = await bootstrapApp()
@@ -1259,9 +1184,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		bootstrapSessionRoot,
 		dispatchAction,
 		dispatchSessionAction,
-		getRegistryState,
-		replaceRegistryState,
-		dispatchCommand,
 		ensureClipSeed,
 		dispatchProjectAction,
 		dispatchTrackAction,
