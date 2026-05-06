@@ -48,17 +48,17 @@ const createEnv = (overrides?: { playbackDuration?: number; registryProjectId?: 
 	const actions = createSessionRootActions(
 		env,
 		{ playbackDuration$: { get: () => overrides?.playbackDuration ?? 10 } as never, resourceChunkSize: 1024 },
-		() => undefined,
 	)
 
 	return { actions, env, setActiveProject, selectEntity, setCursor, setPlaying, setTimelineZoom, dispatchSessionAction }
 }
 
 describe('createSessionRootActions', () => {
-	it('ignores invalid project ids when setting active project', () => {
-		const { actions, setActiveProject } = createEnv()
+	it('routes active project changes through DKT/session state without registry validation fallback', () => {
+		const { actions, setActiveProject, dispatchSessionAction } = createEnv()
 		actions.setActiveProject('project:missing')
-		expect(setActiveProject).not.toHaveBeenCalled()
+		expect(setActiveProject).toHaveBeenCalledWith('project:missing')
+		expect(dispatchSessionAction).toHaveBeenCalledWith('setActiveProject', 'project:missing')
 	})
 
 	it('clamps and ignores non-finite cursor updates', () => {

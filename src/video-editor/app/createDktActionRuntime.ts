@@ -1,14 +1,9 @@
-import { buildEditorActionCommand } from '../domain/actionCommandBuilders'
-import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
-import type { EditorActionScope } from '../domain/actionScope'
 import type { EffectAttrs, TextAttrs } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import { createSessionRootActions } from './sessionRootActions'
 import { createExportActions } from './exportActions'
 import { createMediaImportActions } from './mediaImportActions'
-import { getActionActiveProjectId } from './actionRuntimeSelectors'
-import { executeActionBuildResult, type ExecuteActionTransactionOptions } from './actionTransactionExecutor'
 import type { DktClipActionName, DktTimelineClipActionName } from '../models/Clip/actions'
 import type { DktEffectActionName } from '../models/Effect/actions'
 import type { DktTextActionName } from '../models/Text/actions'
@@ -25,21 +20,6 @@ export const createDktActionRuntime = (
 	env: EditorActionEnvironment,
 	options: CreateDktActionRuntimeOptions,
 ): VideoEditorHarnessActions => {
-	const dispatchModelAction = <Name extends EditorActionName>(
-		scope: EditorActionScope,
-		name: Name,
-		payload: EditorActionPayload<Name>,
-		contextOverrides: Partial<Parameters<typeof buildEditorActionCommand>[1]> = {},
-		executionOptions: ExecuteActionTransactionOptions = {},
-	): void => {
-		const result = buildEditorActionCommand({ scope, name, payload }, {
-			registry: env.stores.getRegistry(),
-			activeProjectId: name === 'createProject' ? null : getActionActiveProjectId(env),
-			selectedEntityId: env.session.get().selectedEntityId,
-			...contextOverrides,
-		})
-		void executeActionBuildResult(env, result, { applySessionPatch, ...executionOptions })
-	}
 	const dispatchDktClipAction = (clipId: string, actionName: DktClipActionName | DktTimelineClipActionName, payload: unknown): void => {
 		const dispatch = env.dkt?.dispatchClipAction
 		if (!dispatch) {
@@ -87,12 +67,7 @@ export const createDktActionRuntime = (
 
 		void Promise.all(dktActions.map(([actionName, payload]) => dispatch(effectSeed, actionName, payload))).catch(() => undefined)
 	}
-	const applySessionPatch = (patch: Record<string, unknown>): void => {
-		if ('selectedEntityId' in patch) {
-			env.session.selectEntity((patch.selectedEntityId as string | null | undefined) ?? null)
-		}
-	}
-	const sessionRootActions = createSessionRootActions(env, options, dispatchModelAction)
+	const sessionRootActions = createSessionRootActions(env, options)
 	const exportActions = createExportActions(env)
 	const mediaImportActions = createMediaImportActions(env, options, () => actions)
 

@@ -1,11 +1,6 @@
-import type { EditorActionName, EditorActionPayload } from '../domain/actionRequests'
-import type { EditorActionCommandBuilderContext } from '../domain/actionCommandBuilders'
-import type { EditorActionScope } from '../domain/actionScope'
-import { ROOT_ACTION_SCOPE } from '../domain/actionScope'
 import type { EditorSessionState } from '../domain/types'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
-import type { ExecuteActionTransactionOptions } from './actionTransactionExecutor'
 import {
 	type DktSessionActionName,
 	reduceSessionSelectEntityAction,
@@ -15,13 +10,10 @@ import {
 	reduceSessionZoomTimelineAction,
 } from '../models/SessionRoot/actions'
 
-export type ScopedCommandDispatcher = <Name extends EditorActionName>(
-	scope: EditorActionScope,
-	name: Name,
-	payload: EditorActionPayload<Name>,
-	contextOverrides?: Partial<EditorActionCommandBuilderContext>,
-	executionOptions?: ExecuteActionTransactionOptions,
-) => void
+let projectCreationSequence = 0
+let trackCreationSequence = 0
+
+const createDktSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`
 
 const dispatchDktSessionAction = (
 	env: EditorActionEnvironment,
@@ -83,7 +75,6 @@ const dispatchAndApplySessionPatch = (
 export const createSessionRootActions = (
 	env: EditorActionEnvironment,
 	options: CreateDktActionRuntimeOptions,
-	dispatchBuiltCommand: ScopedCommandDispatcher,
 ): Pick<VideoEditorHarnessActions,
 	| 'createProject'
 	| 'setActiveProject'
@@ -96,23 +87,30 @@ export const createSessionRootActions = (
 	| 'zoomTimeline'
 > => ({
 	createProject(title?: string): void {
-		dispatchBuiltCommand(ROOT_ACTION_SCOPE, 'createProject', title, {}, {
-			applySessionPatch: (patch) => applySessionRootPatch(env, patch, { syncDkt: true }),
-		})
+		projectCreationSequence += 1
+		const projectId = createDktSourceId(`project:${projectCreationSequence}`)
+		const projectTitle = typeof title === 'string' && title ? title : 'Untitled project'
+		void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId, title: projectTitle }, 'renameProject', { title: projectTitle })).catch(() => undefined)
+		applySessionRootPatch(env, { activeProjectId: projectId, selectedEntityId: null, cursor: 0 }, { syncDkt: true })
 	},
 
 	setActiveProject(projectId: string): void {
-		const projectNode = env.stores.getRegistry().entitiesById[projectId]
-		if (!projectNode || projectNode.type !== 'project') {
-			return
-		}
-
-		env.stores.projects$.activeProjectId.set(projectId)
 		dispatchAndApplySessionPatch(env, 'setActiveProject', reduceSessionSetActiveProjectAction(projectId), projectId)
 	},
 
 	addTrack(kind: 'video' | 'audio'): void {
-		dispatchBuiltCommand(ROOT_ACTION_SCOPE, 'addTrack', { kind })
+		const projectId = env.session.get().activeProjectId
+		if (typeof projectId !== 'string' || !projectId) {
+			return
+		}
+
+		trackCreationSequence += 1
+		void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId }, 'addTrack', {
+			sourceTrackId: createDktSourceId(`track:${trackCreationSequence}`),
+			kind,
+			name: kind === 'audio' ? 'Audio Track' : 'Video Track',
+			height: kind === 'audio' ? 72 : 84,
+		})).catch(() => undefined)
 	},
 
 	selectEntity(entityId: string | null): void {
