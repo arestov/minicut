@@ -280,35 +280,37 @@ export const Project = model({
 				return { resources: Array.isArray(resources) ? resources : [] }
 			},
 		},
-		addResourceToTimeline: {
-			when: [
-				[] as const,
-				(payload: unknown) => typeof (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId === 'string',
-			],
-			to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
-			fn: [
-				['<< @all:resources'] as const,
-				(payload: unknown, resources: unknown[]) => {
-					const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
-					if (typeof sourceResourceId !== 'string') {
-						return '$noop'
-					}
-					const resource = findResourceBySourceId(Array.isArray(resources) ? resources : [], sourceResourceId)
-					if (!resource) {
-						return '$noop'
-					}
-					return {
-						sourceClipId: createClipIdFromResourceId(sourceResourceId),
-						sourceResourceId,
-						name: typeof resource.name === 'string' ? resource.name : 'Clip',
-						mediaKind: typeof resource.kind === 'string' ? resource.kind : 'video',
-						start: 0,
-						in: 0,
-						duration: typeof resource.duration === 'number' ? resource.duration : 0,
-					}
-				},
-			],
-		},
+		addResourceToTimeline: [
+			{
+				when: [
+					[] as const,
+					(payload: unknown) => typeof (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId === 'string',
+				],
+				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
+				fn: [
+					['<< @all:resources'] as const,
+					(payload: unknown, resources: unknown[]) => {
+						const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
+						if (typeof sourceResourceId !== 'string') {
+							return '$noop'
+						}
+						const resource = findResourceBySourceId(Array.isArray(resources) ? resources : [], sourceResourceId)
+						if (!resource) {
+							return '$noop'
+						}
+						return {
+							sourceClipId: createClipIdFromResourceId(sourceResourceId),
+							sourceResourceId,
+							name: typeof resource.name === 'string' ? resource.name : 'Clip',
+							mediaKind: typeof resource.kind === 'string' ? resource.kind : 'video',
+							start: 0,
+							in: 0,
+							duration: typeof resource.duration === 'number' ? resource.duration : 0,
+						}
+					},
+				],
+			},
+		],
 		addTextClipToVideoTrack: [
 			{
 				to: ['<< primaryVideoTrack', { action: 'addTextClip', inline_subwalker: true }],

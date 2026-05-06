@@ -222,11 +222,75 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		},
 
 		openDktTransport() {
-			if (!activeClient || typeof activeClient.openDktTransport !== 'function') {
-				throw new Error('Active P2P authority cannot open DKT transport: no active client or transport unavailable')
+			// Create a proxy transport that waits for activeClient to be ready
+			const pendingMessages: MiniCutDktTransportMessage[] = []
+			const transportListeners = new Set<(message: MiniCutDktTransportMessage) => void>()
+			let realTransport: DomSyncTransportLike<MiniCutDktTransportMessage> | null = null
+			let realUnlisten: (() => void) | null = null
+			let isDestroyed = false
+
+			const activateRealTransport = (): void => {
+				if (isDestroyed) {
+					return
+				}
+
+				if (!activeClient || typeof activeClient.openDktTransport !== 'function') {
+					return
+				}
+
+				if (realTransport) {
+					return
+				}
+
+				realTransport = activeClient.openDktTransport()
+				realUnlisten = realTransport.listen((message) => {
+					for (const listener of transportListeners) {
+						listener(message)
+					}
+				})
+
+				// Send any pending messages
+				while (pendingMessages.length > 0) {
+					const message = pendingMessages.shift()
+					if (message) {
+						realTransport.send(message)
+					}
+				}
 			}
 
-			return activeClient.openDktTransport()
+			// Try to activate immediately if activeClient is already ready
+			activateRealTransport()
+
+			// Also set up a listener for when activeClient becomes available
+			const checkInterval = setInterval(() => {
+				activateRealTransport()
+			}, 100)
+
+			return {
+				send(message) {
+					if (realTransport) {
+						realTransport.send(message)
+					} else {
+						pendingMessages.push(message)
+					}
+				},
+				listen(listener) {
+					transportListeners.add(listener)
+					return () => {
+						transportListeners.delete(listener)
+					}
+				},
+				destroy() {
+					isDestroyed = true
+					clearInterval(checkInterval)
+					if (realTransport) {
+						realUnlisten?.()
+						realTransport.destroy()
+					}
+					transportListeners.clear()
+					pendingMessages.length = 0
+				},
+			}
 		},
 
 		destroy() {

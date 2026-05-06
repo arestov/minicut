@@ -198,6 +198,16 @@ export const VideoEditorHarnessApp = ({
 				availability: transfer.availability,
 				lastError: transfer.lastError,
 			})),
+			getProjectCount: () => {
+				const runtime = ownedHarness.pageRuntime
+				const rootScope = runtime?.getRootScope()
+				const pioneerScope = rootScope ? runtime?.readOne(rootScope, 'pioneer') : null
+				if (!runtime || !pioneerScope) {
+					return 0
+				}
+
+				return runtime.readMany(pioneerScope, 'project').length
+			},
 			getProjectTitles: () => {
 				const runtime = ownedHarness.pageRuntime
 				const rootScope = runtime?.getRootScope()

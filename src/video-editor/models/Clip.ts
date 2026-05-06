@@ -380,16 +380,18 @@ export const Clip = model({
 				},
 			],
 		},
-		removeSelf: {
-			to: ['^', { action: 'removeClipBySourceId', sub_flow: true }],
-			fn: [
-				['sourceClipId'] as const,
-				(_payload: unknown, sourceClipId: unknown) => {
-					if (typeof sourceClipId !== 'string') return '$noop'
-					return { sourceClipId }
-				},
-			],
-		},
+		removeSelf: [
+			{
+				to: ['<< track', { action: 'removeClipBySourceId', sub_flow: true }],
+				fn: [
+					['sourceClipId'] as const,
+					(_payload: unknown, sourceClipId: unknown) => {
+						if (typeof sourceClipId !== 'string') return '$noop'
+						return { sourceClipId }
+					},
+				],
+			},
+		],
 		splitSelfAt: [
 			{
 				to: {
@@ -410,7 +412,7 @@ export const Clip = model({
 				],
 			},
 			{
-				to: ['^', { action: 'splitClipAt', sub_flow: true }],
+				to: ['<< track', { action: 'splitClipAt', sub_flow: true }],
 				fn: [
 					['start', 'in', 'duration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
 					(payload: unknown, start: unknown, inPoint: unknown, duration: unknown,
