@@ -471,3 +471,4 @@ playwright test --grep @smoke
 - `248465e` - step6 follow-up: skip authority parity and happy-path suites still bound to registry/session mirrors.
 - `419ba87` - step2 partial: remove command-builder modules and obsolete domain tests; move action request types to render-sync.
 - `55cbd55` - step5 partial: drop obsolete app action-runtime helper tests/files.
+- `3f71661` - step2 hard cut: purge remaining legacy domain command modules; keep only `domain/types.ts`, `domain/resourceData.ts`, `domain/id.ts`.
