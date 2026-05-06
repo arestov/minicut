@@ -26,7 +26,6 @@ import type {
 } from '../../domain/types'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { MiniCutAppRoot } from '../../models/AppRoot'
-import { createPreviewFrameFromRegistry, createSelectedClipSummaryFromRegistry, createSelectedClipTrackPositionFromRegistry } from './previewModelFromRegistry'
 
 type RuntimeModelLike = {
 	_node_id?: string | null
@@ -603,46 +602,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClip })
 	}
 
-	const syncSessionPreviewAttrs = async (sessionRoot: RuntimeModelLike): Promise<void> => {
-		const app = await bootstrapApp()
-		const snapshot = app?.appModel.states?.registrySnapshot as ProjectRegistry | undefined
-		if (!snapshot) {
-			await sessionRoot.dispatch('syncPreviewModel', null)
-			return
-		}
-
-		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
-			? sessionRoot.states.activeProjectId
-			: null
-		const cursor = Number(sessionRoot.states?.cursor ?? 0)
-		const { structure, frame } = createPreviewFrameFromRegistry(snapshot, activeProjectId, Number.isFinite(cursor) ? cursor : 0)
-		await sessionRoot.dispatch('syncPreviewModel', { structure, frame })
-	}
-
-	const syncSessionSelectedClipTrackPosition = async (sessionRoot: RuntimeModelLike): Promise<void> => {
-		const app = await bootstrapApp()
-		const snapshot = app?.appModel.states?.registrySnapshot as ProjectRegistry | undefined
-		if (!snapshot) {
-			await sessionRoot.dispatch('syncSelectedClipTrackPosition', null)
-			return
-		}
-
-		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
-			? sessionRoot.states.activeProjectId
-			: null
-		const selectedEntityId = typeof sessionRoot.states?.selectedEntityId === 'string'
-			? sessionRoot.states.selectedEntityId
-			: null
-		const position = createSelectedClipTrackPositionFromRegistry(snapshot, activeProjectId, selectedEntityId)
-		await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position })
-		const summary = createSelectedClipSummaryFromRegistry(snapshot, activeProjectId, selectedEntityId)
-		await sessionRoot.dispatch('syncSelectedClipSummary', { summary })
-	}
-
 	const syncSessionDerivedState = async (sessionRoot: RuntimeModelLike): Promise<void> => {
 		await syncSessionSelectionRels(sessionRoot)
-		await syncSessionPreviewAttrs(sessionRoot)
-		await syncSessionSelectedClipTrackPosition(sessionRoot)
 	}
 
 	const dispatchProjectAction = async (project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> => {
