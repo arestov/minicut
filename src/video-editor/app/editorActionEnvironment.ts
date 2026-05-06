@@ -49,13 +49,10 @@ export interface EditorRuntimeTaskPort {
 	completeTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
 }
 
-/** DKT scope dispatch port: dispatch actions directly on DKT model scopes. */
+/** DKT dispatch port used by harness actions. */
 export interface EditorDktScopePort {
 	getRootScope(): ReactSyncScopeHandle | null
 	dispatch(actionName: string, payload?: unknown, scope?: ReactSyncScopeHandle | null): void
-	readAttrs(scope: ReactSyncScopeHandle, attrNames: readonly string[]): Record<string, unknown>
-	readOne(scope: ReactSyncScopeHandle, relName: string): ReactSyncScopeHandle | null
-	readMany(scope: ReactSyncScopeHandle, relName: string): readonly ReactSyncScopeHandle[]
 }
 
 export interface EditorActionEnvironment {

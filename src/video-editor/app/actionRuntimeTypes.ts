@@ -1,5 +1,4 @@
-import type { Observable } from '@legendapp/state'
-import type { ClipAttrs, EffectAttrs, EditorSessionState, TextAttrs } from '../domain/types'
+import type { EffectAttrs, TextAttrs } from '../domain/types'
 import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRenderer'
 
 export interface VideoEditorHarnessActions {
@@ -12,7 +11,7 @@ export interface VideoEditorHarnessActions {
 	updateSelectedText(attrs: Partial<TextAttrs>): void
 	addTrack(kind: 'video' | 'audio'): void
 	selectEntity(entityId: string | null): void
-	setActiveInspectorTab(tab: EditorSessionState['activeInspectorTab']): void
+	setActiveInspectorTab(tab: 'edit' | 'color' | 'audio' | 'export'): void
 	renameClipById(clipId: string, name: string): void
 	renameSelectedClip(name: string): void
 	colorClipById(clipId: string, color: string): void
@@ -52,8 +51,5 @@ export interface VideoEditorHarnessActions {
 }
 
 export interface CreateDktActionRuntimeOptions {
-	playbackDuration$?: Observable<number>
 	resourceChunkSize: number
 }
-
-export type ClipResizeAttrs = Pick<ClipAttrs, 'start' | 'in' | 'duration'> | Pick<ClipAttrs, 'duration'>

@@ -118,9 +118,6 @@ export const createVideoEditorHarness = (
 		? {
 			getRootScope: () => pageRuntime.getRootScope(),
 			dispatch: (actionName, payload, scope) => pageRuntime.dispatch(actionName, payload, scope ?? null),
-			readAttrs: (scope, attrNames) => pageRuntime.readAttrs(scope, attrNames),
-			readOne: (scope, relName) => pageRuntime.readOne(scope, relName),
-			readMany: (scope, relName) => pageRuntime.readMany(scope, relName),
 		}
 		: null
 
