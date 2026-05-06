@@ -9,7 +9,6 @@ import type {
 	EditorSessionState,
 	ProjectRegistry,
 } from '../domain/types'
-import { createProjectCreationCommand } from '../domain/actionCommandBuilders'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportRenderer } from '../render/exportRenderer'
 import { createDktEditorRenderRuntime } from '../render-sync/createDktEditorRenderRuntime'
@@ -26,6 +25,13 @@ import {
 
 const SNAPSHOT_BOOTSTRAP_RETRY_MS = 250
 const EMPTY_CLEANUP = () => {}
+
+let bootstrapProjectSequence = 0
+
+const createBootstrapProjectId = (): string => {
+	bootstrapProjectSequence += 1
+	return `project:bootstrap:${Date.now().toString(36)}:${bootstrapProjectSequence}`
+}
 
 type SubscribableNode = {
 	onChange(listener: () => void): () => void
@@ -251,12 +257,12 @@ export const createVideoEditorHarness = (
 		}
 
 		projectBootstrapInFlight = true
-		Promise.resolve(authorityClient.dispatch(createProjectCreationCommand())).then((result) => {
+		const projectId = createBootstrapProjectId()
+		getDktRuntime().then((runtime) => runtime.dispatchProjectAction({ sourceProjectId: projectId, title: 'Untitled project' }, 'renameProject', { title: 'Untitled project' })).then(() => {
 			if (isDestroyed) {
 				return
 			}
 
-			const projectId = String(result.createdIds?.projectId)
 			session$.activeProjectId.set(projectId)
 			session$.selectedEntityId.set(null)
 			session$.cursor.set(0)
