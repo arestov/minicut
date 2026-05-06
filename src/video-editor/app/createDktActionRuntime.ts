@@ -1,6 +1,4 @@
-﻿import type { EffectAttrs } from '../models/Effect/types'
-import type { TextAttrs } from '../models/Text/types'
-import { createProjectRenderExportEffectData, PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
+﻿import { createProjectRenderExportEffectData, PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
@@ -52,31 +50,6 @@ if (!projectScope) {
 return
 }
 env.dkt?.dispatch(actionName, payload, projectScope)
-}
-
-// Reading a direct rel on root — not traversal
-const getSelectedTextScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => {
-const rootScope = getRootScope(env)
-if (!rootScope || !env.pageRuntime) {
-return null
-}
-return env.pageRuntime.readOne(rootScope, 'selectedText')
-}
-
-const dispatchTextAttrs = (env: EditorActionEnvironment, attrs: Partial<{ content: string; style: object; box: object }>): void => {
-const textScope = getSelectedTextScope(env)
-if (!textScope) {
-return
-}
-if (typeof attrs.content === 'string') {
-env.dkt?.dispatch('setTextContent', { content: attrs.content }, textScope)
-}
-if (attrs.style && typeof attrs.style === 'object') {
-env.dkt?.dispatch('setTextStyle', { style: attrs.style }, textScope)
-}
-if (attrs.box && typeof attrs.box === 'object') {
-env.dkt?.dispatch('setTextBox', { box: attrs.box }, textScope)
-}
 }
 
 const dispatchSelectedClipAction = (env: EditorActionEnvironment, actionName: string, payload?: unknown): void => {
@@ -214,9 +187,6 @@ content: typeof content === 'string' && content ? content : 'Text',
 },
 })
 },
-updateSelectedText(attrs: Partial<TextAttrs>): void {
-dispatchTextAttrs(env, attrs)
-},
 addTrack(kind: 'video' | 'audio'): void {
 dispatchProject(env, 'addTrack', { kind })
 },
@@ -282,37 +252,6 @@ dispatchClipActionById(env, clipId, 'addEffect', { kind: 'color-correction', nam
 },
 addColorCorrectionToSelectedClip(): void {
 dispatchSelectedClipAction(env, 'addEffect', { kind: 'color-correction', name: 'Color correction' })
-},
-updateTextById(_textId: string, attrs: Partial<TextAttrs>): void {
-dispatchTextAttrs(env, attrs)
-},
-updateEffectAttrs(_effectId: string, attrs: Partial<EffectAttrs>): void {
-const rootScope = getRootScope(env)
-if (!rootScope || !env.pageRuntime) {
-return
-}
-const effectScope = env.pageRuntime.readOne(rootScope, 'selectedEffect')
-if (!effectScope) {
-return
-}
-if (typeof attrs.name === 'string') {
-env.dkt?.dispatch('setEffectName', { name: attrs.name }, effectScope)
-}
-if (typeof attrs.kind === 'string') {
-env.dkt?.dispatch('setEffectKind', { kind: attrs.kind }, effectScope)
-}
-if (typeof attrs.enabled === 'boolean') {
-env.dkt?.dispatch('setEffectEnabled', { enabled: attrs.enabled }, effectScope)
-}
-if (typeof attrs.amount === 'number') {
-env.dkt?.dispatch('setEffectAmount', { amount: attrs.amount }, effectScope)
-}
-if (attrs.params && typeof attrs.params === 'object') {
-env.dkt?.dispatch('setEffectParams', { params: attrs.params }, effectScope)
-}
-if (attrs.color && typeof attrs.color === 'object') {
-env.dkt?.dispatch('setEffectColor', { color: attrs.color }, effectScope)
-}
 },
 deleteClipById(_clipId: string): void {
 dispatchRoot(env, 'deleteSelectedClip')

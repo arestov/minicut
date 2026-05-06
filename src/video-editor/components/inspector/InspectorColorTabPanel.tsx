@@ -1,6 +1,7 @@
 ﻿import { Palette, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
+import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useVideoEditor } from '../../app/VideoEditorContext'
@@ -20,7 +21,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 	const [isComparePressed, setIsComparePressed] = useState(false)
 	const [lookThumbnails, setLookThumbnails] = useState<Record<string, string>>({})
 	const compareRestoreEnabledRef = useRef<boolean | null>(null)
-	const { actions } = useVideoEditor()
+	const dispatch = useActions()
 	const colorCorrectionAttrs = useAttrs(['sourceEffectId', 'enabled', 'params']) as unknown as EffectAttrs & { sourceEffectId?: unknown }
 	const effectId = typeof colorCorrectionAttrs.sourceEffectId === 'string' ? colorCorrectionAttrs.sourceEffectId : null
 	const colorParams = (colorCorrectionAttrs.params ?? {}) as Partial<ColorCorrectionAttrs>
@@ -41,7 +42,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 		for (const [key, value] of Object.entries(params)) {
 			nextParams[key] = typeof value === 'number' ? { value } : value
 		}
-		actions.updateEffectAttrs(effectId, { params: { ...nextParams } })
+		dispatch('setEffectParams', { params: { ...nextParams } })
 	}
 
 	const updateParam = (key: PrimaryColorParam, value: number): void => {
@@ -66,7 +67,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 
 	const toggleBypass = (): void => {
 		if (effectId) {
-			actions.updateEffectAttrs(effectId, { enabled: !isColorCorrectionEnabled })
+			dispatch('setEffectEnabled', { enabled: !isColorCorrectionEnabled })
 		}
 	}
 	const resetGrade = (): void => {
@@ -89,7 +90,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 		}
 		compareRestoreEnabledRef.current = isColorCorrectionEnabled
 		setIsComparePressed(true)
-		actions.updateEffectAttrs(effectId, { enabled: false })
+		dispatch('setEffectEnabled', { enabled: false })
 	}
 
 	const handleCompareEnd = (): void => {
@@ -99,7 +100,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 		const shouldRestoreEnabled = compareRestoreEnabledRef.current
 		compareRestoreEnabledRef.current = null
 		setIsComparePressed(false)
-		actions.updateEffectAttrs(effectId, { enabled: shouldRestoreEnabled !== false })
+		dispatch('setEffectEnabled', { enabled: shouldRestoreEnabled !== false })
 	}
 
 	useEffect(() => {

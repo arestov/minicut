@@ -1,6 +1,7 @@
 ﻿import { Gauge, Move, Scissors, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
+import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useOne } from '../../../dkt-react-sync/hooks/useOne'
@@ -44,18 +45,17 @@ const TransformFields = ({ transform, onChange }: {
 )
 
 const TextEditorSection = ({ clipColor, mediaElementRegistry }: { clipColor: string; mediaElementRegistry?: PreviewMediaElementRegistry }) => {
-	const { actions } = useVideoEditor()
+	const dispatch = useActions()
 	const [paletteStatus, setPaletteStatus] = useState<FramePaletteStatus>('idle')
 	const textAttrs = useAttrs(['sourceTextId', 'content', 'style', 'box']) as TextRenderAttrs & { sourceTextId?: unknown }
-	const sourceTextId = typeof textAttrs.sourceTextId === 'string' ? textAttrs.sourceTextId : null
 	const text = getTextAttrs(textAttrs)
 
-	if (!text || !sourceTextId) {
+	if (!text) {
 		return null
 	}
 
 	const updateTextStyle = (style: Partial<TextAttrs['style']>): void => {
-		actions.updateTextById(sourceTextId, { style: { ...text.style, ...style } })
+		dispatch('setTextStyle', { style: { ...text.style, ...style } })
 	}
 	const applyFramePalette = (): void => {
 		const topmostVideo = mediaElementRegistry?.getTopmostVideo()
@@ -75,7 +75,7 @@ const TextEditorSection = ({ clipColor, mediaElementRegistry }: { clipColor: str
 			<TextAppearancePanel
 				text={text}
 				paletteStatus={paletteStatus}
-				onContentChange={(content) => actions.updateTextById(sourceTextId, { content })}
+				onContentChange={(content) => dispatch('setTextContent', { content })}
 				onStyleChange={updateTextStyle}
 				onGenerateFramePalette={applyFramePalette}
 			/>

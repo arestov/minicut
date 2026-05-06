@@ -1,5 +1,4 @@
 import type { EffectAttrs } from '../models/Effect/types'
-import type { TextAttrs } from '../models/Text/types'
 import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRenderer'
 
 export interface VideoEditorHarnessActions {
@@ -9,7 +8,6 @@ export interface VideoEditorHarnessActions {
 	importFiles(files: FileList | File[]): void
 	addResourceToTimeline(resourceId: string): void
 	addTextClip(content?: string): void
-	updateSelectedText(attrs: Partial<TextAttrs>): void
 	addTrack(kind: 'video' | 'audio'): void
 	selectEntity(entityId: string | null): void
 	setActiveInspectorTab(tab: 'edit' | 'color' | 'audio' | 'export'): void
@@ -32,8 +30,6 @@ export interface VideoEditorHarnessActions {
 	addEffectToSelectedClip(kind: 'blur' | 'sharpen' | 'tint'): void
 	addColorCorrectionToClip(clipId: string): void
 	addColorCorrectionToSelectedClip(): void
-	updateTextById(textId: string, attrs: Partial<TextAttrs>): void
-	updateEffectAttrs(effectId: string, attrs: Partial<EffectAttrs>): void
 	deleteClipById(clipId: string): void
 	deleteSelectedClip(): void
 	splitSelectedClip(): void
