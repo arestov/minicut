@@ -466,3 +466,8 @@ playwright test --grep @smoke
 - `660b46d` - step3: delete `dkt/state` Legend stores and move session zoom constants into model-owned module.
 - `299dc36` - step1 follow-up: delete unused render registry projection (`projectRegistryFromPageRuntime`).
 - `cdd7c2b` - step6: skip legacy registry-oriented runtime/worker suites and delete removed compatibility helper test.
+- `ec9642c` - docs: add implementation commit log to this plan.
+- `9911ca6` - step6 follow-up: skip legacy app and render-sync compatibility suites.
+- `248465e` - step6 follow-up: skip authority parity and happy-path suites still bound to registry/session mirrors.
+- `419ba87` - step2 partial: remove command-builder modules and obsolete domain tests; move action request types to render-sync.
+- `55cbd55` - step5 partial: drop obsolete app action-runtime helper tests/files.
