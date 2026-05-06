@@ -12,6 +12,16 @@ const findModel = (state: Awaited<ReturnType<ReturnType<typeof createMiniCutDktR
 	return matches[0] ?? null
 }
 
+const findModelByAttr = (
+	state: Awaited<ReturnType<ReturnType<typeof createMiniCutDktRuntime>['debugDumpAppState']>>,
+	modelName: string,
+	attrName: string,
+	expectedValue: unknown,
+) => [
+	...(state?.runtimeModels ?? []),
+	...(state?.lined ?? []),
+].find((model) => model.modelName === modelName && attrEquals(model.attrs[attrName], expectedValue)) ?? null
+
 const attrEquals = (value: unknown, expectedValue: unknown): boolean =>
 	Object.is(value, expectedValue) || JSON.stringify(value) === JSON.stringify(expectedValue)
 
@@ -23,14 +33,14 @@ const waitForModelAttr = async (
 ) => {
 	for (let attempt = 0; attempt < 20; attempt++) {
 		const state = await runtime.debugDumpAppState()
-		const model = findModel(state, modelName)
-		if (attrEquals(model?.attrs[attrName], expectedValue)) {
+		const model = findModelByAttr(state, modelName, attrName, expectedValue)
+		if (model) {
 			return model
 		}
 		await new Promise((resolve) => setTimeout(resolve, 0))
 	}
 	const state = await runtime.debugDumpAppState()
-	return findModel(state, modelName)
+	return findModelByAttr(state, modelName, attrName, expectedValue)
 }
 
 const waitForModelRel = async (
@@ -57,14 +67,33 @@ const waitForRegistryProject = async (
 	projectId: string,
 ) => {
 	for (let attempt = 0; attempt < 20; attempt++) {
-		const snapshot = await runtime.getRegistrySnapshot()
+		const snapshot = await runtime.getRegistryState()
 		if (snapshot.projects[projectId]) {
 			return snapshot
 		}
 		await new Promise((resolve) => setTimeout(resolve, 0))
 	}
 
-	return runtime.getRegistrySnapshot()
+	return runtime.getRegistryState()
+}
+
+const waitForRegistryProjectTrackCount = async (
+	runtime: ReturnType<typeof createMiniCutDktRuntime>,
+	projectId: string,
+	count: number,
+) => {
+	for (let attempt = 0; attempt < 40; attempt++) {
+		const snapshot = await runtime.getRegistryState()
+		const project = snapshot.projects[projectId]
+		const projectEntity = project ? snapshot.entitiesById[project.rootEntityId] : null
+		const timeline = projectEntity ? snapshot.entitiesById[String(projectEntity.rels.activeTimeline)] : null
+		if (Array.isArray(timeline?.rels.tracks) && timeline.rels.tracks.length === count) {
+			return snapshot
+		}
+		await new Promise((resolve) => setTimeout(resolve, 0))
+	}
+
+	return runtime.getRegistryState()
 }
 
 const createMemoryTransport = () => {
@@ -139,6 +168,22 @@ describe('createMiniCutDktRuntime', () => {
 
 		expect(model?.attrs.cursor).toBe(4.13)
 		expect(model?.attrs.selectedEntityId).toBe('clip:session')
+	})
+
+	it('creates an active project with default tracks from the session root action', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+
+		await runtime.dispatchSessionAction('createProject', {
+			sourceProjectId: 'project:session-create',
+			title: 'Session Project',
+		})
+
+		const registry = await waitForRegistryProjectTrackCount(runtime, 'project:session-create', 2)
+		const project = registry.projects['project:session-create']
+		expect(project).toBeTruthy()
+		const projectEntity = registry.entitiesById[project.rootEntityId]
+		const timeline = registry.entitiesById[String(projectEntity.rels.activeTimeline)]
+		expect(timeline.rels.tracks).toHaveLength(2)
 	})
 
 	it('creates a DKT clip seed and dispatches scoped clip actions', async () => {
@@ -336,7 +381,7 @@ describe('createMiniCutDktRuntime', () => {
 			registry.entitiesById[entity.id] = entity
 		}
 
-		await runtime.replaceRegistrySnapshot(registry)
+		await runtime.replaceRegistryState(registry)
 
 		const projectModel = await waitForModelRel(runtime, 'minicut_project', 'sourceProjectId', created.project.id, 'tracks')
 		const firstTrack = created.entities.find((entity) => entity.type === 'track')

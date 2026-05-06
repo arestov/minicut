@@ -6,7 +6,11 @@ export const getActionActiveProjectId = (env: EditorActionEnvironment): string =
 	const registry = env.stores.getRegistry()
 	const session = env.session.get()
 	const sessionProjectId = session.activeProjectId
-	if (sessionProjectId && registry.projects[sessionProjectId]) {
+	if (
+		typeof sessionProjectId === 'string'
+		&& sessionProjectId
+		&& (registry.projects[sessionProjectId] || Object.keys(registry.projects).length === 0)
+	) {
 		return sessionProjectId
 	}
 

@@ -247,16 +247,16 @@ export const createDktEditorRenderRuntime = ({
 	actions,
 }: CreateDktEditorRenderRuntimeOptions): EditorRenderRuntime => {
 	const readOne = (scope: EditorScope, relName: string): EditorScope | null => {
-		const registrySnapshot = registry.getSnapshot()
+		const registryState = registry.getSnapshot()
 		const sessionSnapshot = session.getSnapshot()
 		if (scope.type === 'root' && relName === 'activeProject') {
-			return getActiveProjectScope(registrySnapshot, sessionSnapshot)
+			return getActiveProjectScope(registryState, sessionSnapshot)
 		}
 		if (scope.type === 'session' && relName === 'selectedEntity') {
-			return getEntityScope(registrySnapshot, sessionSnapshot.selectedEntityId)
+			return getEntityScope(registryState, sessionSnapshot.selectedEntityId)
 		}
 
-		return getRelScope(registrySnapshot, scope, relName)
+		return getRelScope(registryState, scope, relName)
 	}
 
 	const runtime: EditorRenderRuntime = {
@@ -299,15 +299,15 @@ export const createDktEditorRenderRuntime = ({
 		},
 
 		readMany(scope, relName) {
-			const registrySnapshot = registry.getSnapshot()
+			const registryState = registry.getSnapshot()
 			if (scope.type === 'root' && relName === 'projects') {
-				return Object.values(registrySnapshot.projects).flatMap((project) => {
-					const projectScope = getEntityScope(registrySnapshot, project.rootEntityId)
+				return Object.values(registryState.projects).flatMap((project) => {
+					const projectScope = getEntityScope(registryState, project.rootEntityId)
 					return projectScope ? [projectScope] : []
 				})
 			}
 
-			return getManyRelScopes(registrySnapshot, scope, relName)
+			return getManyRelScopes(registryState, scope, relName)
 		},
 
 		subscribeMany(scope, relName, listener) {
@@ -315,36 +315,36 @@ export const createDktEditorRenderRuntime = ({
 		},
 
 		readComp(scope, compName) {
-			const registrySnapshot = registry.getSnapshot()
+			const registryState = registry.getSnapshot()
 			const sessionSnapshot = session.getSnapshot()
 			if (scope.type === 'project' && compName === 'projectVersion') {
-				const project = Object.values(registrySnapshot.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)
+				const project = Object.values(registryState.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)
 				return project?.version ?? 0
 			}
 			if (scope.type === 'project' && compName === 'resourceCount') {
-				const resources = registrySnapshot.entitiesById[scope.nodeId]?.rels.resources
+				const resources = registryState.entitiesById[scope.nodeId]?.rels.resources
 				return Array.isArray(resources) ? resources.length : 0
 			}
 			if (scope.type === 'project' && compName === 'projectId') {
-				return Object.values(registrySnapshot.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)?.id ?? null
+				return Object.values(registryState.projects).find((candidate) => candidate.rootEntityId === scope.nodeId)?.id ?? null
 			}
 			if (scope.type === 'resource' && compName === 'resourceTransfer') {
 				return resourceTransfers.getSnapshot()[scope.nodeId] ?? null
 			}
 			if (scope.type === 'track' && compName === 'trackEnd') {
-				return getTrackEnd(registrySnapshot, scope.nodeId)
+				return getTrackEnd(registryState, scope.nodeId)
 			}
 			if (scope.type === 'clip' && compName === 'timelineEditBounds') {
-				return getClipTimelineEditBounds(registrySnapshot, scope.nodeId)
+				return getClipTimelineEditBounds(registryState, scope.nodeId)
 			}
 			if (scope.type === 'clip' && compName === 'hasActiveColorGrade') {
-				return hasActiveColorGrade(registrySnapshot, scope.nodeId)
+				return hasActiveColorGrade(registryState, scope.nodeId)
 			}
 			if (scope.type === 'clip' && compName === 'trackPosition') {
-				return getClipTrackPositionSummary(registrySnapshot, scope.nodeId)
+				return getClipTrackPositionSummary(registryState, scope.nodeId)
 			}
 			if (scope.type === 'session' && compName === 'selectedClipSummary') {
-				return getSelectedClipSummary(registrySnapshot, sessionSnapshot)
+				return getSelectedClipSummary(registryState, sessionSnapshot)
 			}
 
 			return null

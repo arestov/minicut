@@ -1,7 +1,8 @@
 import { createPlaybackDuration$ } from '../read-model/previewReadModel'
-import { applyPatchEnvelope, applySnapshot, createProjectsStore } from '../dkt/state/projectStore'
+import { createProjectsStore } from '../dkt/state/projectStore'
 import { createSessionStore } from '../dkt/state/sessionStore'
 import { createMiniCutPageSyncRuntime } from '../dkt/runtime/createMiniCutPageSyncRuntime'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import type {
 	Command,
@@ -12,6 +13,7 @@ import type {
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportRenderer } from '../render/exportRenderer'
 import { createDktPageEditorRenderRuntime } from '../render-sync/createDktPageEditorRenderRuntime'
+import { createProjectRegistryFromPageRuntime } from '../render-sync/projectRegistryFromPageRuntime'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createDktActionRuntime } from './createDktActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
@@ -25,6 +27,7 @@ const SNAPSHOT_BOOTSTRAP_RETRY_MS = 250
 const EMPTY_CLEANUP = () => {}
 
 let bootstrapProjectSequence = 0
+let harnessSessionSequence = 0
 
 const createBootstrapProjectId = (): string => {
 	bootstrapProjectSequence += 1
@@ -136,13 +139,16 @@ export const createVideoEditorHarness = (
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
 	const pageRuntime = createMiniCutPageRuntime(authorityClient)
+	if (pageRuntime) {
+		harnessSessionSequence += 1
+		pageRuntime.bootstrap({ sessionKey: `harness:${Date.now().toString(36)}:${harnessSessionSequence}` })
+	}
 	const playbackDuration$ = createPlaybackDuration$(projects$, session$)
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
 	let initialBootstrapChecked = false
 	let projectBootstrapInFlight = false
 	let isDestroyed = false
-	let snapshotBootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
 	let initialProjectRetryTimer: ReturnType<typeof setTimeout> | null = null
 	const runtimeTasks = createRuntimeTaskFacade()
 	type MiniCutDktRuntime = ReturnType<typeof import('../dkt/runtime/createMiniCutDktRuntime')['createMiniCutDktRuntime']>
@@ -154,6 +160,132 @@ export const createVideoEditorHarness = (
 		}
 
 		return dktRuntime
+	}
+
+	const readDktRegistryView = (): ProjectRegistry => {
+		const registry = createProjectRegistryFromPageRuntime(pageRuntime)
+		resourceTransferManager.syncRegistry(registry)
+		return registry
+	}
+
+	const getPagePioneerScope = (): ReactSyncScopeHandle | null => {
+		const rootScope = pageRuntime?.getRootScope() ?? null
+		return rootScope ? pageRuntime?.readOne(rootScope, 'pioneer') ?? null : null
+	}
+
+	const scopeSourceId = (scope: ReactSyncScopeHandle, attrName: string): string | null => {
+		const value = pageRuntime?.readAttrs(scope, [attrName])[attrName]
+		return typeof value === 'string' && value ? value : null
+	}
+
+	const findProjectScope = (projectId: string): ReactSyncScopeHandle | null => {
+		const pioneer = getPagePioneerScope()
+		if (!pioneer || !pageRuntime) {
+			return null
+		}
+
+		const projects = pageRuntime.readMany(pioneer, 'project')
+		const matched = projects.find((scope) => scopeSourceId(scope, 'sourceProjectId') === projectId)
+		if (matched) {
+			return matched
+		}
+
+		return session$.activeProjectId.get() === projectId
+			? projects[projects.length - 1] ?? projects[0] ?? null
+			: null
+	}
+
+	const findTrackScope = (trackId: string): ReactSyncScopeHandle | null => {
+		if (!pageRuntime) {
+			return null
+		}
+		const pioneer = getPagePioneerScope()
+		const projects = pioneer ? pageRuntime.readMany(pioneer, 'project') : []
+		for (const project of projects) {
+			const track = pageRuntime.readMany(project, 'tracks')
+				.find((scope) => scopeSourceId(scope, 'sourceTrackId') === trackId)
+			if (track) {
+				return track
+			}
+		}
+		return null
+	}
+
+	const findResourceScope = (resourceId: string): ReactSyncScopeHandle | null => {
+		if (!pageRuntime) {
+			return null
+		}
+		const pioneer = getPagePioneerScope()
+		const projects = pioneer ? pageRuntime.readMany(pioneer, 'project') : []
+		for (const project of projects) {
+			const resource = pageRuntime.readMany(project, 'resources')
+				.find((scope) => scopeSourceId(scope, 'sourceResourceId') === resourceId)
+			if (resource) {
+				return resource
+			}
+		}
+		return null
+	}
+
+	const findClipScope = (clipId: string): ReactSyncScopeHandle | null => {
+		if (!pageRuntime) {
+			return null
+		}
+		const pioneer = getPagePioneerScope()
+		const projects = pioneer ? pageRuntime.readMany(pioneer, 'project') : []
+		for (const project of projects) {
+			for (const track of pageRuntime.readMany(project, 'tracks')) {
+				const clip = pageRuntime.readMany(track, 'clips')
+					.find((scope) => scopeSourceId(scope, 'sourceClipId') === clipId)
+				if (clip) {
+					return clip
+				}
+			}
+		}
+		return null
+	}
+
+	const findTextScope = (textId: string): ReactSyncScopeHandle | null => {
+		if (!pageRuntime) {
+			return null
+		}
+		const clip = findClipScope(textId)
+		if (clip) {
+			return clip
+		}
+		const pioneer = getPagePioneerScope()
+		const projects = pioneer ? pageRuntime.readMany(pioneer, 'project') : []
+		for (const project of projects) {
+			for (const track of pageRuntime.readMany(project, 'tracks')) {
+				for (const clipScope of pageRuntime.readMany(track, 'clips')) {
+					const text = pageRuntime.readOne(clipScope, 'text')
+					if (text && scopeSourceId(text, 'sourceTextId') === textId) {
+						return text
+					}
+				}
+			}
+		}
+		return null
+	}
+
+	const findEffectScope = (effectId: string): ReactSyncScopeHandle | null => {
+		if (!pageRuntime) {
+			return null
+		}
+		const pioneer = getPagePioneerScope()
+		const projects = pioneer ? pageRuntime.readMany(pioneer, 'project') : []
+		for (const project of projects) {
+			for (const track of pageRuntime.readMany(project, 'tracks')) {
+				for (const clip of pageRuntime.readMany(track, 'clips')) {
+					const effect = pageRuntime.readMany(clip, 'effects')
+						.find((scope) => scopeSourceId(scope, 'sourceEffectId') === effectId)
+					if (effect) {
+						return effect
+					}
+				}
+			}
+		}
+		return null
 	}
 
 	const getAuthorityRole = (): 'server' | 'client' | 'undecided' | null => {
@@ -184,7 +316,7 @@ export const createVideoEditorHarness = (
 	}
 
 	const syncActiveProjectSelection = (): void => {
-		const registry = projects$.get()
+		const registry = readDktRegistryView()
 		const resolvedProjectId = resolveActiveProjectId(registry, session$.get())
 		if (!resolvedProjectId) {
 			return
@@ -223,7 +355,7 @@ export const createVideoEditorHarness = (
 		initialBootstrapChecked = true
 		clearInitialProjectRetry()
 
-		const registry = projects$.get()
+		const registry = readDktRegistryView()
 		if (Object.keys(registry.projects).length > 0 || projectBootstrapInFlight) {
 			syncActiveProjectSelection()
 			return
@@ -231,7 +363,12 @@ export const createVideoEditorHarness = (
 
 		projectBootstrapInFlight = true
 		const projectId = createBootstrapProjectId()
-		getDktRuntime().then((runtime) => runtime.dispatchProjectAction({ sourceProjectId: projectId, title: 'Untitled project' }, 'renameProject', { title: 'Untitled project' })).then(() => {
+		getDktRuntime().then(async (runtime) => {
+			await runtime.dispatchSessionAction('createProject', {
+				sourceProjectId: projectId,
+				title: 'Untitled project',
+			})
+		}).then(() => {
 			if (isDestroyed) {
 				return
 			}
@@ -244,41 +381,15 @@ export const createVideoEditorHarness = (
 		})
 	}
 
-	const bootstrapSnapshot = (): void => {
-		Promise.resolve(authorityClient.getSnapshot()).then((snapshot) => {
-			if (isDestroyed) {
-				return
-			}
-
-			if (snapshotBootstrapRetryTimer) {
-				platform.clearTimeout(snapshotBootstrapRetryTimer)
-				snapshotBootstrapRetryTimer = null
-			}
-
-			applySnapshot(projects$, snapshot)
-			resourceTransferManager.syncRegistry(snapshot)
-			syncActiveProjectSelection()
-			ensureInitialProject()
-		}).catch(() => {
-			if (isDestroyed) {
-				return
-			}
-
-			snapshotBootstrapRetryTimer = platform.setTimeout(() => {
-				snapshotBootstrapRetryTimer = null
-				bootstrapSnapshot()
-			}, SNAPSHOT_BOOTSTRAP_RETRY_MS)
-		})
-	}
-
-	bootstrapSnapshot()
-
-	const unsubscribe = authorityClient.subscribe((envelope) => {
-		applyPatchEnvelope(projects$, envelope)
-		const registry = projects$.get()
-		resourceTransferManager.syncRegistry(registry)
+	const unsubscribe = pageRuntime?.subscribe(() => {
+		if (isDestroyed) {
+			return
+		}
+		readDktRegistryView()
 		syncActiveProjectSelection()
-	})
+	}) ?? EMPTY_CLEANUP
+
+	ensureInitialProject()
 
 	const dispatch = (command: Command): Promise<DispatchResult> =>
 		Promise.resolve(authorityClient.dispatch(command))
@@ -286,9 +397,9 @@ export const createVideoEditorHarness = (
 	const actionEnvironment: EditorActionEnvironment = {
 		stores: {
 			projects$,
-			getRegistry: () => projects$.get(),
-			applySnapshot: (snapshot) => applySnapshot(projects$, snapshot),
-			applyPatchEnvelope: (envelope) => applyPatchEnvelope(projects$, envelope),
+			getRegistry: readDktRegistryView,
+			applySnapshot: () => {},
+			applyPatchEnvelope: () => {},
 		},
 		authority: {
 			client: authorityClient,
@@ -301,27 +412,27 @@ export const createVideoEditorHarness = (
 			get: () => session$.get(),
 			setActiveProject: (projectId) => {
 				session$.activeProjectId.set(projectId)
-				pageRuntime?.dispatchAction('setActiveProject', projectId, null)
+					pageRuntime?.dispatchAction('setActiveProject', projectId, pageRuntime.getRootScope())
 			},
 			selectEntity: (entityId) => {
 				session$.selectedEntityId.set(entityId)
-				pageRuntime?.dispatchAction('selectEntity', entityId, null)
+					pageRuntime?.dispatchAction('selectEntity', entityId, pageRuntime.getRootScope())
 			},
 			setCursor: (value) => {
 				session$.cursor.set(value)
-				pageRuntime?.dispatchAction('setCursor', value, null)
+					pageRuntime?.dispatchAction('setCursor', value, pageRuntime.getRootScope())
 			},
 			setPlaying: (value) => {
 				session$.isPlaying.set(value)
-				pageRuntime?.dispatchAction('setPlaying', value, null)
+					pageRuntime?.dispatchAction('setPlaying', value, pageRuntime.getRootScope())
 			},
 			setTimelineZoom: (value) => {
 				session$.timelineZoom.set(value)
-				pageRuntime?.dispatchAction('setTimelineZoom', value, null)
+					pageRuntime?.dispatchAction('setTimelineZoom', value, pageRuntime.getRootScope())
 			},
 			setActiveInspectorTab: (tab) => {
 				session$.activeInspectorTab.set(tab)
-				pageRuntime?.dispatchAction('setActiveInspectorTab', tab, null)
+					pageRuntime?.dispatchAction('setActiveInspectorTab', tab, pageRuntime.getRootScope())
 			},
 		},
 		media: {
@@ -365,7 +476,7 @@ export const createVideoEditorHarness = (
 		dkt: {
 			dispatchSessionAction: async (actionName, payload) => {
 				if (pageRuntime) {
-					pageRuntime.dispatchAction(actionName, payload, null)
+					pageRuntime.dispatchAction(actionName, payload, pageRuntime.getRootScope())
 					return
 				}
 
@@ -373,26 +484,74 @@ export const createVideoEditorHarness = (
 				await runtime.dispatchSessionAction(actionName, payload)
 			},
 			dispatchProjectAction: async (project, actionName, payload) => {
+				if (pageRuntime) {
+					const scope = findProjectScope(project.sourceProjectId)
+					if (scope) {
+						pageRuntime.dispatchAction(actionName, payload, scope)
+						return
+					}
+				}
+
 				const runtime = await getDktRuntime()
 				await runtime.dispatchProjectAction(project, actionName, payload)
 			},
 			dispatchTrackAction: async (track, actionName, payload) => {
+				if (pageRuntime) {
+					const scope = findTrackScope(track.sourceTrackId)
+					if (scope) {
+						pageRuntime.dispatchAction(actionName, payload, scope)
+						return
+					}
+				}
+
 				const runtime = await getDktRuntime()
 				await runtime.dispatchTrackAction(track, actionName, payload)
 			},
 			dispatchResourceAction: async (resource, actionName, payload) => {
+				if (pageRuntime) {
+					const scope = findResourceScope(resource.sourceResourceId)
+					if (scope) {
+						pageRuntime.dispatchAction(actionName, payload, scope)
+						return
+					}
+				}
+
 				const runtime = await getDktRuntime()
 				await runtime.dispatchResourceAction(resource, actionName, payload)
 			},
 			dispatchClipAction: async (clip, actionName, payload) => {
+				if (pageRuntime) {
+					const scope = findClipScope(clip.sourceClipId)
+					if (scope) {
+						pageRuntime.dispatchAction(actionName, payload, scope)
+						return
+					}
+				}
+
 				const runtime = await getDktRuntime()
 				await runtime.dispatchClipAction(clip, actionName, payload)
 			},
 			dispatchTextAction: async (text, actionName, payload) => {
+				if (pageRuntime) {
+					const scope = findTextScope(text.sourceTextId)
+					if (scope) {
+						pageRuntime.dispatchAction(actionName, payload, scope)
+						return
+					}
+				}
+
 				const runtime = await getDktRuntime()
 				await runtime.dispatchTextAction(text, actionName, payload)
 			},
 			dispatchEffectAction: async (effect, actionName, payload) => {
+				if (pageRuntime) {
+					const scope = findEffectScope(effect.sourceEffectId)
+					if (scope) {
+						pageRuntime.dispatchAction(actionName, payload, scope)
+						return
+					}
+				}
+
 				const runtime = await getDktRuntime()
 				await runtime.dispatchEffectAction(effect, actionName, payload)
 			},
@@ -431,10 +590,6 @@ export const createVideoEditorHarness = (
 			isDestroyed = true
 			runtimeTasks.clear()
 			clearInitialProjectRetry()
-			if (snapshotBootstrapRetryTimer) {
-				platform.clearTimeout(snapshotBootstrapRetryTimer)
-				snapshotBootstrapRetryTimer = null
-			}
 			unsubscribe()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)

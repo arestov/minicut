@@ -56,14 +56,30 @@ export const Track = model({
 			},
 		},
 		addClip: {
-			to: ['<< clip << #', {
-				method: 'at_end',
-				can_create: true,
-				creation_shape: CLIP_CREATION_SHAPE,
-			}],
+			when: [
+				[] as const,
+				(payload: unknown) => typeof (payload as { sourceClipId?: unknown } | null)?.sourceClipId === 'string',
+			],
+			to: {
+				clip: ['<< clip << #', {
+					method: 'at_end',
+					can_create: true,
+					can_hold_refs: true,
+					creation_shape: CLIP_CREATION_SHAPE,
+				}],
+				clips: ['<< clips', {
+					method: 'at_end',
+					can_use_refs: true,
+				}],
+			},
 			fn: (payload: unknown) => {
 				const attrs = normalizeClipCreationAttrs(payload)
-				return attrs ? { attrs } : '$noop'
+				return attrs
+					? {
+						clip: { attrs, hold_ref_id: 'newClip' },
+						clips: { use_ref_id: 'newClip' },
+					}
+					: '$noop'
 			},
 		},
 		addTextClip: {
@@ -71,12 +87,18 @@ export const Track = model({
 				clip: ['<< clip << #', {
 					method: 'at_end',
 					can_create: true,
+					can_hold_refs: true,
 					creation_shape: CLIP_CREATION_SHAPE,
 				}],
 				text: ['<< text << #', {
 					method: 'at_end',
 					can_create: true,
+					can_hold_refs: true,
 					creation_shape: TEXT_CREATION_SHAPE,
+				}],
+				clips: ['<< clips', {
+					method: 'at_end',
+					can_use_refs: true,
 				}],
 			},
 			fn: (payload: unknown) => {
@@ -84,19 +106,35 @@ export const Track = model({
 				const clipAttrs = normalizeClipCreationAttrs(payload)
 				const textAttrs = normalizeTextCreationAttrs(value?.text)
 				return clipAttrs && textAttrs
-					? { clip: { attrs: clipAttrs }, text: { attrs: textAttrs } }
+					? {
+						clip: { attrs: clipAttrs, hold_ref_id: 'newTextClip' },
+						text: { attrs: textAttrs, hold_ref_id: 'newTextNode' },
+						clips: { use_ref_id: 'newTextClip' },
+					}
 					: '$noop'
 			},
 		},
 		splitClipAt: {
-			to: ['<< clip << #', {
-				method: 'at_end',
-				can_create: true,
-				creation_shape: CLIP_CREATION_SHAPE,
-			}],
+			to: {
+				clip: ['<< clip << #', {
+					method: 'at_end',
+					can_create: true,
+					can_hold_refs: true,
+					creation_shape: CLIP_CREATION_SHAPE,
+				}],
+				clips: ['<< clips', {
+					method: 'at_end',
+					can_use_refs: true,
+				}],
+			},
 			fn: (payload: unknown) => {
 				const attrs = normalizeRightSplitClipAttrs(payload)
-				return attrs ? { attrs } : '$noop'
+				return attrs
+					? {
+						clip: { attrs, hold_ref_id: 'rightSplitClip' },
+						clips: { use_ref_id: 'rightSplitClip' },
+					}
+					: '$noop'
 			},
 		},
 		setClips: {

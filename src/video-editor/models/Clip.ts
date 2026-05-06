@@ -227,14 +227,26 @@ export const Clip = model({
 			],
 		},
 		addEffect: {
-			to: ['<< effect << #', {
-				method: 'at_end',
-				can_create: true,
-				creation_shape: EFFECT_CREATION_SHAPE,
-			}],
+			to: {
+				effect: ['<< effect << #', {
+					method: 'at_end',
+					can_create: true,
+					can_hold_refs: true,
+					creation_shape: EFFECT_CREATION_SHAPE,
+				}],
+				effects: ['<< effects', {
+					method: 'at_end',
+					can_use_refs: true,
+				}],
+			},
 			fn: (payload: unknown) => {
 				const attrs = normalizeEffectCreationAttrs(payload)
-				return attrs ? { attrs } : '$noop'
+				return attrs
+					? {
+						effect: { attrs, hold_ref_id: 'newEffect' },
+						effects: { use_ref_id: 'newEffect' },
+					}
+					: '$noop'
 			},
 		},
 		setResource: {

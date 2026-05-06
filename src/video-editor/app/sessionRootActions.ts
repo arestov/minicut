@@ -11,7 +11,6 @@ import {
 } from '../models/SessionRoot/actions'
 
 let projectCreationSequence = 0
-let trackCreationSequence = 0
 
 const createDktSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`
 
@@ -90,8 +89,11 @@ export const createSessionRootActions = (
 		projectCreationSequence += 1
 		const projectId = createDktSourceId(`project:${projectCreationSequence}`)
 		const projectTitle = typeof title === 'string' && title ? title : 'Untitled project'
-		void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId, title: projectTitle }, 'renameProject', { title: projectTitle })).catch(() => undefined)
-		applySessionRootPatch(env, { activeProjectId: projectId, selectedEntityId: null, cursor: 0 }, { syncDkt: true })
+		dispatchDktSessionAction(env, 'createProject', {
+			sourceProjectId: projectId,
+			title: projectTitle,
+		})
+		applySessionRootPatch(env, { activeProjectId: projectId, selectedEntityId: null, cursor: 0 })
 	},
 
 	setActiveProject(projectId: string): void {
@@ -104,9 +106,8 @@ export const createSessionRootActions = (
 			return
 		}
 
-		trackCreationSequence += 1
 		void Promise.resolve(env.dkt?.dispatchProjectAction({ sourceProjectId: projectId }, 'addTrack', {
-			sourceTrackId: createDktSourceId(`track:${trackCreationSequence}`),
+			sourceTrackId: createDktSourceId(`track:${projectCreationSequence}`),
 			kind,
 			name: kind === 'audio' ? 'Audio Track' : 'Video Track',
 			height: kind === 'audio' ? 72 : 84,

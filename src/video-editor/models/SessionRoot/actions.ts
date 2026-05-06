@@ -1,6 +1,20 @@
 import type { EditorSessionState } from '../../domain/types'
+import { PROJECT_CREATION_SHAPE } from '../Project'
+
+type CreateProjectPayload = {
+	sourceProjectId?: unknown
+	title?: unknown
+	fps?: unknown
+	width?: unknown
+	height?: unknown
+	duration?: unknown
+	createdAt?: unknown
+	updatedAt?: unknown
+	tracks?: unknown
+}
 
 export type DktSessionActionName =
+	| 'createProject'
 	| 'selectEntity'
 	| 'setActiveProject'
 	| 'syncActiveProjectRel'
@@ -32,12 +46,88 @@ type DktActionDescriptor = {
 		| ((payload: unknown) => Record<string, unknown> | '$noop')
 }
 
+type DktActionDefinition = DktActionDescriptor | readonly DktActionDescriptor[]
+
 export const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
 export const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
 const finiteNumber = (payload: unknown): number | null => {
 	const value = typeof payload === 'number' ? payload : Number(payload)
 	return Number.isFinite(value) ? value : null
+}
+
+const asObject = (value: unknown): Record<string, unknown> | null =>
+	value && typeof value === 'object' ? value as Record<string, unknown> : null
+
+const asString = (value: unknown): string | null => typeof value === 'string' && value ? value : null
+const asNumber = (value: unknown, fallback: number): number => typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+const normalizeInitialTrack = (value: unknown) => {
+	const track = asObject(value)
+	const sourceTrackId = asString(track?.sourceTrackId)
+	if (!sourceTrackId) {
+		return null
+	}
+
+	const kind = track?.kind === 'audio' ? 'audio' : 'video'
+	return {
+		sourceTrackId,
+		kind,
+		name: asString(track?.name) ?? (kind === 'audio' ? 'A1' : 'V1'),
+		muted: typeof track?.muted === 'boolean' ? track.muted : false,
+		locked: typeof track?.locked === 'boolean' ? track.locked : false,
+		height: asNumber(track?.height, kind === 'audio' ? 64 : 72),
+	}
+}
+
+const createDefaultTracks = (projectId: string) => [
+	{
+		sourceTrackId: `${projectId}:track:video`,
+		kind: 'video',
+		name: 'V1',
+		muted: false,
+		locked: false,
+		height: 72,
+	},
+	{
+		sourceTrackId: `${projectId}:track:audio`,
+		kind: 'audio',
+		name: 'A1',
+		muted: false,
+		locked: false,
+		height: 64,
+	},
+]
+
+const createProjectCreationResult = (payload: unknown) => {
+	const value = asObject(payload) as CreateProjectPayload | null
+	const projectId = asString(value?.sourceProjectId)
+	if (!projectId) {
+		return '$noop' as const
+	}
+
+	const now = Date.now()
+
+	return {
+		activeProjectId: projectId,
+		selectedEntityId: null,
+		cursor: 0,
+		createdProject: {
+			attrs: {
+				sourceProjectId: projectId,
+				title: asString(value?.title) ?? 'Untitled project',
+				fps: asNumber(value?.fps, 30),
+				width: asNumber(value?.width, 1920),
+				height: asNumber(value?.height, 1080),
+				duration: asNumber(value?.duration, 0),
+				createdAt: asNumber(value?.createdAt, now),
+				updatedAt: asNumber(value?.updatedAt, now),
+				autoCreateDefaultTracks: true,
+			},
+			hold_ref_id: 'createdProject',
+		},
+		activeProject: { use_ref_id: 'createdProject' },
+	}
 }
 
 export const reduceSessionSelectEntityAction = (payload: unknown): Pick<EditorSessionState, 'selectedEntityId'> => ({
@@ -103,6 +193,25 @@ export const sessionSelectEntityAction = {
 	fn: reduceSessionSelectEntityAction,
 } as const satisfies DktActionDescriptor
 
+export const sessionCreateProjectAction = {
+	to: {
+		activeProjectId: ['activeProjectId'],
+		selectedEntityId: ['selectedEntityId'],
+		cursor: ['cursor'],
+		createdProject: ['<< $root.project << #', {
+			method: 'at_end',
+			can_create: true,
+			can_hold_refs: true,
+			creation_shape: PROJECT_CREATION_SHAPE,
+		}],
+		activeProject: ['<< activeProject', {
+			method: 'set_one',
+			can_use_refs: true,
+		}],
+	},
+	fn: createProjectCreationResult,
+} as const satisfies DktActionDescriptor
+
 export const sessionSetActiveProjectAction = {
 	to: {
 		activeProjectId: ['activeProjectId'],
@@ -133,11 +242,9 @@ export const sessionSyncSelectedClipRelAction = {
 export const sessionSyncPreviewModelAction = {
 	to: {
 		previewStructure: ['previewStructure'],
-		previewFrame: ['previewFrame'],
 	},
 	fn: (payload: unknown) => ({
 		previewStructure: (payload as { structure?: unknown } | null)?.structure ?? { clipSources: [] },
-		previewFrame: (payload as { frame?: unknown } | null)?.frame ?? { cursor: 0, renderedClips: [], visualRenderedClips: [], audioRenderedClips: [], activeClipNames: [] },
 	}),
 } as const satisfies DktActionDescriptor
 
@@ -224,6 +331,7 @@ export const sessionZoomTimelineAction = {
 } as const satisfies DktActionDescriptor
 
 export const dktSessionActions = {
+	createProject: sessionCreateProjectAction,
 	selectEntity: sessionSelectEntityAction,
 	setActiveProject: sessionSetActiveProjectAction,
 	syncActiveProjectRel: sessionSyncActiveProjectRelAction,
@@ -238,4 +346,4 @@ export const dktSessionActions = {
 	tickPlayback: sessionTickPlaybackAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
-} as const satisfies Record<DktSessionActionName, DktActionDescriptor>
+} as const satisfies Record<DktSessionActionName, DktActionDefinition>

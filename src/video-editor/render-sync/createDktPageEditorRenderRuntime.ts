@@ -531,7 +531,9 @@ export const createDktPageEditorRenderRuntime = ({
 			return []
 		}
 		const dktRelName = toDktRelName(relName)
-		return pageRuntime.readMany(dktScope, dktRelName).map((item) => toEditorScope(item, TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root')).filter((item): item is EditorScope => item != null)
+		return pageRuntime.readMany(dktScope, dktRelName)
+			.map((item) => toEditorScope(item, TYPE_BY_REL[relName] ?? TYPE_BY_REL[dktRelName] ?? 'root'))
+			.filter((item): item is EditorScope => item != null)
 	},
 	subscribeMany(scope, relName, listener) {
 		if (!pageRuntime) {

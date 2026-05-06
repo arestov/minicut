@@ -15,7 +15,38 @@ const flushMicrotasks = async () => {
 
 const settleHarness = async () => {
 	await flushMicrotasks()
+	await new Promise((resolve) => setTimeout(resolve, 0))
 	await flushMicrotasks()
+}
+
+const waitForRenderActiveProject = async (harness: ReturnType<typeof createVideoEditorHarness>) => {
+	const rootScope = harness.renderRuntime.getRootScope()
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		const project = harness.renderRuntime.readOne(rootScope, 'activeProject')
+		if (project && harness.renderRuntime.readMany(project, 'tracks').length > 0) {
+			return project
+		}
+		await settleHarness()
+	}
+
+	return harness.renderRuntime.readOne(rootScope, 'activeProject')
+}
+
+const waitForRenderManyCount = async (
+	harness: ReturnType<typeof createVideoEditorHarness>,
+	scope: NonNullable<ReturnType<ReturnType<typeof createVideoEditorHarness>['renderRuntime']['readOne']>>,
+	relName: string,
+	count: number,
+) => {
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		const items = harness.renderRuntime.readMany(scope, relName)
+		if (items.length === count) {
+			return items
+		}
+		await settleHarness()
+	}
+
+	return harness.renderRuntime.readMany(scope, relName)
 }
 
 const mockMediaElementDuration = (options: { duration?: number, fail?: boolean }) => {
@@ -256,23 +287,23 @@ describe('createVideoEditorHarness actions', () => {
 			harness.actions.importSampleResource()
 			await settleHarness()
 
-			let registry = harness.projects$.get()
-			let project = getActiveProject(registry, harness.session$.get())
+			let project = await waitForRenderActiveProject(harness)
 			expect(project).not.toBeNull()
-			let videoTrack = getVideoTrack(registry, project!)
+			let tracks = harness.renderRuntime.readMany(project!, 'tracks')
+			let videoTrack = tracks.find((track) => harness.renderRuntime.readAttrs(track, ['kind']).kind === 'video') ?? tracks[0] ?? null
 			expect(videoTrack).not.toBeNull()
-			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
+			expect(await waitForRenderManyCount(harness, videoTrack!, 'clips', 1)).toHaveLength(1)
 
 			harness.actions.importSampleResource()
 			await settleHarness()
 
-			registry = harness.projects$.get()
-			project = getActiveProject(registry, harness.session$.get())
+			project = await waitForRenderActiveProject(harness)
 			expect(project).not.toBeNull()
-			videoTrack = getVideoTrack(registry, project!)
+			tracks = harness.renderRuntime.readMany(project!, 'tracks')
+			videoTrack = tracks.find((track) => harness.renderRuntime.readAttrs(track, ['kind']).kind === 'video') ?? tracks[0] ?? null
 			expect(videoTrack).not.toBeNull()
-			expect(getResourceEntities(registry, project!)).toHaveLength(2)
-			expect(getClipIdsForTrack(registry, String(videoTrack?.id))).toHaveLength(1)
+			expect(await waitForRenderManyCount(harness, project!, 'resources', 2)).toHaveLength(2)
+			expect(await waitForRenderManyCount(harness, videoTrack!, 'clips', 1)).toHaveLength(1)
 		} finally {
 			harness.destroy()
 		}

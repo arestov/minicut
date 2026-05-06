@@ -114,7 +114,7 @@ export class MemoryWorkerAuthority implements EditorAuthorityClient {
 	#queueDktSnapshotSync(): Promise<void> {
 		const snapshot = structuredClone(this.#registry)
 		this.#dktSyncQueue = this.#dktSyncQueue
-			.then(() => this.#dktRuntime.replaceRegistrySnapshot(snapshot))
+			.then(() => this.#dktRuntime.replaceRegistryState(snapshot))
 			.then(() => undefined)
 
 		return this.#dktSyncQueue

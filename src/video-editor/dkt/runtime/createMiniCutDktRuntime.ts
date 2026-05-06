@@ -6,6 +6,7 @@ import { SYNCR_TYPES } from 'dkt-all/libs/provoda/SyncR_TYPES.js'
 import { getModelById } from 'dkt-all/libs/provoda/utils/getModelById.js'
 import { buildDispatchResult } from '../../domain/applyCommand'
 import { applyPatchEnvelopeToRegistry } from '../../domain/applyPatch'
+import { createEmptyRegistry } from '../../domain/createProject'
 import {
 	getClipEntitiesForTrack,
 	getProjectEntity,
@@ -16,6 +17,7 @@ import type {
 	ClipAttrs,
 	Command,
 	DispatchResult,
+	Entity,
 	EffectAttrs,
 	ProjectAttrs,
 	ProjectGraph,
@@ -24,6 +26,7 @@ import type {
 	TextAttrs,
 	TrackAttrs,
 } from '../../domain/types'
+import { createPreviewStructureFromRegistry } from './previewModelFromRegistry'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { MiniCutAppRoot } from '../../models/AppRoot'
 
@@ -79,6 +82,8 @@ export type MiniCutDktProjectSeed = {
 	duration?: number
 	createdAt?: number
 	updatedAt?: number
+	tracks?: MiniCutDktTrackSeed[]
+	autoCreateDefaultTracks?: boolean
 }
 
 export type MiniCutDktTrackSeed = {
@@ -92,6 +97,7 @@ export type MiniCutDktTrackSeed = {
 
 export type MiniCutDktResourceSeed = {
 	sourceResourceId: string
+	sourceProjectId?: string | null
 	name?: string
 	kind?: string
 	url?: string
@@ -256,6 +262,278 @@ const asResourceAttrs = (attrs: Record<string, unknown>): ResourceAttrs => attrs
 const asClipAttrs = (attrs: Record<string, unknown>): ClipAttrs => attrs as unknown as ClipAttrs
 const asTextAttrs = (attrs: Record<string, unknown>): TextAttrs => attrs as unknown as TextAttrs
 const asEffectAttrs = (attrs: Record<string, unknown>): EffectAttrs => attrs as unknown as EffectAttrs
+
+const asStringState = (model: RuntimeModelLike, key: string): string | null => {
+	const value = model.states?.[key]
+	return typeof value === 'string' && value ? value : null
+}
+
+const asNumberState = (model: RuntimeModelLike, key: string, fallback: number): number => {
+	const value = model.states?.[key]
+	return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+const asBooleanState = (model: RuntimeModelLike, key: string, fallback: boolean): boolean => {
+	const value = model.states?.[key]
+	return typeof value === 'boolean' ? value : fallback
+}
+
+const cloneState = <Value = unknown>(value: unknown): Value => {
+	if (!value || typeof value !== 'object') {
+		return value as Value
+	}
+
+	return structuredClone(value) as Value
+}
+
+const setEntity = (registry: ProjectRegistry, entity: Entity): void => {
+	registry.entitiesById[entity.id] = entity
+}
+
+const projectTimelineId = (projectId: string): string => `timeline:${projectId}`
+
+const createResourceEntityFromModel = (model: RuntimeModelLike): Entity | null => {
+	const id = asStringState(model, 'sourceResourceId')
+	if (!id) {
+		return null
+	}
+
+	return {
+		id,
+		type: 'resource',
+		attrs: {
+			name: asStringState(model, 'name') ?? 'Resource',
+			kind: asStringState(model, 'kind') ?? 'video',
+			url: asStringState(model, 'url') ?? '',
+			mime: asStringState(model, 'mime') ?? 'application/octet-stream',
+			duration: asNumberState(model, 'duration', 0),
+			width: cloneState(model.states?.width),
+			height: cloneState(model.states?.height),
+			size: cloneState(model.states?.size),
+			source: cloneState(model.states?.source) ?? { kind: 'local' },
+			status: asStringState(model, 'status') ?? 'missing',
+			data: cloneState(model.states?.data),
+		},
+		rels: {},
+	}
+}
+
+const createTextEntityFromModel = (model: RuntimeModelLike): Entity | null => {
+	const id = asStringState(model, 'sourceTextId')
+	if (!id) {
+		return null
+	}
+
+	return {
+		id,
+		type: 'text',
+		attrs: {
+			content: asStringState(model, 'content') ?? 'Text',
+			style: cloneState(model.states?.style),
+			box: cloneState(model.states?.box),
+		},
+		rels: {},
+	}
+}
+
+const createEffectEntityFromModel = (model: RuntimeModelLike, clipId: string | null): Entity | null => {
+	const id = asStringState(model, 'sourceEffectId')
+	if (!id) {
+		return null
+	}
+
+	return {
+		id,
+		type: 'effect',
+		attrs: {
+			name: asStringState(model, 'name') ?? 'Effect',
+			kind: asStringState(model, 'kind') ?? 'tint',
+			enabled: asBooleanState(model, 'enabled', true),
+			amount: cloneState(model.states?.amount),
+			params: cloneState(model.states?.params),
+			color: cloneState(model.states?.color),
+		},
+		rels: {
+			clip: clipId,
+		},
+	}
+}
+
+const createClipEntityFromModel = async (registry: ProjectRegistry, model: RuntimeModelLike): Promise<Entity | null> => {
+	const id = asStringState(model, 'sourceClipId')
+	if (!id) {
+		return null
+	}
+
+	const textModels = await queryModelRel(model, 'text')
+	for (const textModel of textModels) {
+		const textEntity = createTextEntityFromModel(textModel)
+		if (textEntity) {
+			setEntity(registry, textEntity)
+		}
+	}
+
+	const effectIds: string[] = []
+	for (const effectModel of await queryModelRel(model, 'effects')) {
+		const effectEntity = createEffectEntityFromModel(effectModel, id)
+		if (effectEntity) {
+			setEntity(registry, effectEntity)
+			effectIds.push(effectEntity.id)
+		}
+	}
+
+	const resourceModels = await queryModelRel(model, 'resource')
+	const resourceId = asStringState(model, 'sourceResourceId')
+		?? resourceModels.map((resourceModel) => asStringState(resourceModel, 'sourceResourceId')).find((value): value is string => Boolean(value))
+		?? null
+	const textId = asStringState(model, 'sourceTextId')
+		?? textModels.map((textModel) => asStringState(textModel, 'sourceTextId')).find((value): value is string => Boolean(value))
+		?? null
+
+	return {
+		id,
+		type: 'clip',
+		attrs: {
+			name: asStringState(model, 'name') ?? 'Clip',
+			color: asStringState(model, 'color') ?? '#2563eb',
+			mediaKind: cloneState(model.states?.mediaKind),
+			start: asNumberState(model, 'start', 0),
+			in: asNumberState(model, 'in', 0),
+			duration: asNumberState(model, 'duration', 0),
+			fadeIn: asNumberState(model, 'fadeIn', 0),
+			fadeOut: asNumberState(model, 'fadeOut', 0),
+			audio: cloneState(model.states?.audio) ?? { gain: 1, pan: 0 },
+			opacity: cloneState(model.states?.opacity) ?? { value: 1 },
+			transform: cloneState(model.states?.transform) ?? {
+				x: { value: 0 },
+				y: { value: 0 },
+				scale: { value: 1 },
+				rotation: { value: 0 },
+			},
+		},
+		rels: {
+			resource: resourceId,
+			text: textId,
+			effects: effectIds,
+		},
+	}
+}
+
+const createTrackEntityFromModel = async (registry: ProjectRegistry, model: RuntimeModelLike): Promise<Entity | null> => {
+	const id = asStringState(model, 'sourceTrackId')
+	if (!id) {
+		return null
+	}
+
+	for (const textModel of await queryModelRel(model, 'text')) {
+		const textEntity = createTextEntityFromModel(textModel)
+		if (textEntity) {
+			setEntity(registry, textEntity)
+		}
+	}
+
+	const clipIds: string[] = []
+	for (const clipModel of await queryModelRel(model, 'clips')) {
+		const clipEntity = await createClipEntityFromModel(registry, clipModel)
+		if (clipEntity) {
+			setEntity(registry, clipEntity)
+			clipIds.push(clipEntity.id)
+		}
+	}
+
+	return {
+		id,
+		type: 'track',
+		attrs: {
+			kind: asStringState(model, 'kind') === 'audio' ? 'audio' : 'video',
+			name: asStringState(model, 'name') ?? 'Track',
+			muted: asBooleanState(model, 'muted', false),
+			locked: asBooleanState(model, 'locked', false),
+			height: asNumberState(model, 'height', 84),
+		},
+		rels: {
+			clips: clipIds,
+		},
+	}
+}
+
+const createRegistryFromModelTree = async (
+	appModel: RuntimeModelLike,
+	activeProjectIdHint: string | null,
+): Promise<ProjectRegistry> =>
+	readInModelInput(appModel, async () => {
+		const registry = createEmptyRegistry()
+
+		for (const projectModel of await queryModelRel(appModel, 'project')) {
+			const projectId = asStringState(projectModel, 'sourceProjectId')
+			if (!projectId) {
+				continue
+			}
+
+			const resourceIds: string[] = []
+			for (const resourceModel of await queryModelRel(projectModel, 'resources')) {
+				const resourceEntity = createResourceEntityFromModel(resourceModel)
+				if (resourceEntity) {
+					setEntity(registry, resourceEntity)
+					resourceIds.push(resourceEntity.id)
+				}
+			}
+
+			const trackIds: string[] = []
+			for (const trackModel of await queryModelRel(projectModel, 'tracks')) {
+				const trackEntity = await createTrackEntityFromModel(registry, trackModel)
+				if (trackEntity) {
+					setEntity(registry, trackEntity)
+					trackIds.push(trackEntity.id)
+				}
+			}
+
+			const timelineId = projectTimelineId(projectId)
+			setEntity(registry, {
+				id: projectId,
+				type: 'project',
+				attrs: {
+					title: asStringState(projectModel, 'title') ?? 'Untitled project',
+					fps: asNumberState(projectModel, 'fps', 30),
+					width: asNumberState(projectModel, 'width', 1920),
+					height: asNumberState(projectModel, 'height', 1080),
+					duration: asNumberState(projectModel, 'duration', 0),
+					createdAt: asNumberState(projectModel, 'createdAt', 0),
+					updatedAt: asNumberState(projectModel, 'updatedAt', 0),
+				},
+				rels: {
+					resources: resourceIds,
+					timelines: [timelineId],
+					activeTimeline: timelineId,
+				},
+			})
+			setEntity(registry, {
+				id: timelineId,
+				type: 'timeline',
+				attrs: {
+					name: 'Main timeline',
+					duration: 0,
+				},
+				rels: {
+					tracks: trackIds,
+				},
+			})
+
+			registry.projects[projectId] = {
+				id: projectId,
+				version: 0,
+				rootEntityId: projectId,
+			}
+		}
+
+		if (activeProjectIdHint && registry.projects[activeProjectIdHint]) {
+			registry.activeProjectId = activeProjectIdHint
+		} else {
+			registry.activeProjectId = Object.keys(registry.projects)[0] ?? null
+		}
+
+		return registry
+	})
 
 const toProjectSeed = (snapshot: ProjectRegistry, project: ProjectGraph): MiniCutDktProjectSeed => {
 	const projectEntity = getProjectEntity(snapshot, project)
@@ -477,17 +755,20 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await syncSessionDerivedState(sessionRoot)
 	}
 
-	const getRegistrySnapshot = async (): Promise<ProjectRegistry> => {
+	const getRegistryState = async (): Promise<ProjectRegistry> => {
 		const app = await bootstrapApp()
 		if (!app) {
 			throw new Error('MiniCut DKT runtime is disabled')
 		}
 
-		return structuredClone(app.appModel.states?.registrySnapshot as ProjectRegistry)
+		const sessionRoot = await bootstrapSessionRoot()
+		const activeProjectId = sessionRoot && typeof sessionRoot.states?.activeProjectId === 'string'
+			? sessionRoot.states.activeProjectId
+			: null
+		return createRegistryFromModelTree(app.appModel, activeProjectId)
 	}
 
-	const replaceRegistrySnapshot = async (snapshot: ProjectRegistry): Promise<void> => {
-		await dispatchAction('replaceRegistrySnapshot', snapshot)
+	const replaceRegistryState = async (snapshot: ProjectRegistry): Promise<void> => {
 		await materializeRegistryHierarchy(snapshot)
 		const sessionRoot = await bootstrapSessionRoot()
 		if (sessionRoot) {
@@ -501,12 +782,14 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			throw new Error('MiniCut DKT runtime is disabled')
 		}
 
-		const registry = structuredClone(app.appModel.states?.registrySnapshot as ProjectRegistry)
+		const sessionRoot = await bootstrapSessionRoot()
+		const activeProjectId = sessionRoot && typeof sessionRoot.states?.activeProjectId === 'string'
+			? sessionRoot.states.activeProjectId
+			: null
+		const registry = await createRegistryFromModelTree(app.appModel, activeProjectId)
 		const result = buildDispatchResult(registry, command)
 		const nextSnapshot = applyPatchEnvelopeToRegistry(registry, result.envelope)
-		await app.appModel.dispatch('replaceRegistrySnapshot', nextSnapshot)
 		await materializeRegistryHierarchy(nextSnapshot)
-		const sessionRoot = await bootstrapSessionRoot()
 		if (sessionRoot) {
 			await syncSessionDerivedState(sessionRoot)
 		}
@@ -604,6 +887,17 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 	const syncSessionDerivedState = async (sessionRoot: RuntimeModelLike): Promise<void> => {
 		await syncSessionSelectionRels(sessionRoot)
+		const app = await bootstrapApp()
+		if (!app) {
+			return
+		}
+
+		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
+			? sessionRoot.states.activeProjectId
+			: null
+		const snapshot = await createRegistryFromModelTree(app.appModel, activeProjectId)
+		const structure = createPreviewStructureFromRegistry(snapshot, activeProjectId)
+		await sessionRoot.dispatch('syncPreviewModel', { structure })
 	}
 
 	const dispatchProjectAction = async (project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> => {
@@ -912,11 +1206,11 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					return
 				}
 				case DKT_MSG.GET_SNAPSHOT:
-					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistrySnapshot() })
+					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistryState() })
 					return
 				case DKT_MSG.REPLACE_SNAPSHOT:
-					await replaceRegistrySnapshot(message.snapshot as ProjectRegistry)
-					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistrySnapshot() })
+					await replaceRegistryState(message.snapshot as ProjectRegistry)
+					transport.send({ type: DKT_MSG.SNAPSHOT, requestId: message.requestId, snapshot: await getRegistryState() })
 					return
 				case DKT_MSG.SYNC_UPDATE_STRUCTURE_USAGE: {
 					const app = await bootstrapApp()
@@ -965,8 +1259,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		bootstrapSessionRoot,
 		dispatchAction,
 		dispatchSessionAction,
-		getRegistrySnapshot,
-		replaceRegistrySnapshot,
+		getRegistryState,
+		replaceRegistryState,
 		dispatchCommand,
 		ensureClipSeed,
 		dispatchProjectAction,

@@ -1,10 +1,8 @@
-import { SYNCR_TYPES } from 'dkt-all/libs/provoda/SyncR_TYPES.js'
 import { describe, expect, it, vi } from 'vitest'
 import { defineShape } from '../../dkt-react-sync/shape/defineShape'
 import { createVideoEditorHarness } from '../app/createVideoEditorHarness'
 import { createEmptyRegistry } from '../domain/createProject'
 import { getActiveProject, getClipIdsForTrack, getTracks } from '../domain/selectors'
-import { DKT_MSG } from '../dkt/shared/messageTypes'
 import { MemoryWorkerAuthority } from '../worker/memoryWorker'
 import { createDktRegistryRenderStore } from './DktRegistryRenderStore'
 import type { EditorScope } from './EditorScope'
@@ -98,19 +96,13 @@ const waitForClipSourceId = async (harness: ReturnType<typeof createVideoEditorH
 }
 
 describe('createDktEditorRenderRuntime', () => {
-	it('updates the render registry from DKT sync root attrs', () => {
+	it('updates the render registry from explicit snapshot updates', () => {
 		const store = createDktRegistryRenderStore()
 		const remoteSnapshot = createEmptyRegistry()
 		const listener = vi.fn()
 		const unsubscribe = store.subscribe(listener)
 
-		store.handleDktSyncMessage({ type: DKT_MSG.SYNC_HANDLE, syncType: SYNCR_TYPES.SET_DICT, payload: ['registrySnapshot'] })
-		store.handleDktSyncMessage({ type: DKT_MSG.SYNC_HANDLE, syncType: SYNCR_TYPES.TREE_ROOT, payload: { node_id: 'root' } })
-		store.handleDktSyncMessage({
-			type: DKT_MSG.SYNC_HANDLE,
-			syncType: SYNCR_TYPES.UPDATE,
-			payload: [4, 'root', [0, remoteSnapshot]],
-		})
+		store.setSnapshot(remoteSnapshot)
 
 		expect(store.getSnapshot()).toEqual(remoteSnapshot)
 		expect(listener).toHaveBeenCalledTimes(1)

@@ -77,6 +77,38 @@ describe('createMiniCutPageSyncRuntime', () => {
     expect(runtime.readMany(runtime.getRootScope()!, 'tracks').map((scope) => scope._nodeId)).toEqual(['track-1'])
   })
 
+  it('notifies many subscribers when an initially empty rel is updated later', () => {
+    const memory = createMemoryTransport()
+    const runtime = createMiniCutPageSyncRuntime({ transport: memory.transport })
+
+    memory.emit({ type: DKT_MSG.RUNTIME_READY, sessionKey: 'session:1', rootNodeId: 'root' })
+    memory.emit({ type: DKT_MSG.SYNC_HANDLE, syncType: SYNCR_TYPES.SET_DICT, payload: [undefined, 'tracks'] })
+    memory.emit({
+      type: DKT_MSG.SYNC_HANDLE,
+      syncType: SYNCR_TYPES.TREE_ROOT,
+      payload: { node_id: 'root', data: [null, null, null] },
+    })
+
+    const rootScope = runtime.getRootScope()!
+    const notifications: string[][] = []
+    const stop = runtime.subscribeMany(rootScope, 'tracks', () => {
+      notifications.push(runtime.readMany(rootScope, 'tracks').map((scope) => scope._nodeId))
+    })
+
+    expect(runtime.readMany(rootScope, 'tracks')).toEqual([])
+
+    memory.emit({
+      type: DKT_MSG.SYNC_HANDLE,
+      syncType: SYNCR_TYPES.UPDATE,
+      payload: [1, 'root', 1, ['track-1']],
+    })
+
+    expect(notifications).toEqual([['track-1']])
+    expect(runtime.readMany(rootScope, 'tracks').map((scope) => scope._nodeId)).toEqual(['track-1'])
+
+    stop()
+  })
+
   it('emits scoped dispatch and shape transport messages', () => {
     const memory = createMemoryTransport()
     const runtime = createMiniCutPageSyncRuntime({ transport: memory.transport })

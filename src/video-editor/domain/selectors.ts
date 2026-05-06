@@ -32,7 +32,18 @@ export const getProjectEntity = (registry: ProjectRegistry, project: ProjectGrap
 export const getActiveProjectId = (
 	registry: ProjectRegistry,
 	session?: Pick<EditorSessionState, 'activeProjectId'>,
-): string | null => session?.activeProjectId ?? registry.activeProjectId
+): string | null => {
+	const sessionProjectId = session?.activeProjectId
+	if (sessionProjectId && registry.projects[sessionProjectId]) {
+		return sessionProjectId
+	}
+
+	if (registry.activeProjectId && registry.projects[registry.activeProjectId]) {
+		return registry.activeProjectId
+	}
+
+	return Object.keys(registry.projects)[0] ?? null
+}
 
 export const getActiveProject = (
 	registry: ProjectRegistry,

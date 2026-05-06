@@ -1,7 +1,10 @@
 import { model } from 'dkt/model.js'
 import { SessionRoot as BaseSessionRoot } from 'dkt-all/libs/provoda/bwlev/SessionRoot.js'
 import { TIMELINE_ZOOM_DEFAULT } from '../dkt/state/sessionStore'
+import { createPreviewFrame, type PreviewFrame, type PreviewStructure } from '../read-model/previewComps'
 import { dktSessionActions } from './SessionRoot/actions'
+
+const DEFAULT_PREVIEW_STRUCTURE: PreviewStructure = { clipSources: [] }
 
 export const EditorSessionRoot = model({
 	extends: BaseSessionRoot,
@@ -20,8 +23,13 @@ export const EditorSessionRoot = model({
 		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
 		timelineTool: ['input', 'select'],
 		snappingEnabled: ['input', true],
-		previewStructure: ['input', { clipSources: [] }],
-		previewFrame: ['input', { cursor: 0, renderedClips: [], visualRenderedClips: [], audioRenderedClips: [], activeClipNames: [] }],
+		previewStructure: ['input', DEFAULT_PREVIEW_STRUCTURE],
+		previewFrame: ['comp', ['previewStructure', 'cursor'], (previewStructure: unknown, cursor: unknown): PreviewFrame => createPreviewFrame(
+			previewStructure && typeof previewStructure === 'object' && Array.isArray((previewStructure as { clipSources?: unknown }).clipSources)
+				? previewStructure as PreviewStructure
+				: DEFAULT_PREVIEW_STRUCTURE,
+			typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0,
+		)],
 		selectedClipTrackPosition: ['input', null],
 		selectedClipSummary: ['input', null],
 	},

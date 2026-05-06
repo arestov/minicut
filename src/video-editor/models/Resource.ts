@@ -1,13 +1,14 @@
 import { model } from 'dkt/model.js'
 
 export const RESOURCE_CREATION_SHAPE = {
-	attrs: ['sourceResourceId', 'name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data'],
+	attrs: ['sourceResourceId', 'sourceProjectId', 'name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data'],
 } as const
 
 export const Resource = model({
 	model_name: 'minicut_resource',
 	attrs: {
 		sourceResourceId: ['input', ''],
+		sourceProjectId: ['input', null],
 		name: ['input', 'Resource'],
 		kind: ['input', 'video'],
 		url: ['input', ''],
@@ -50,6 +51,7 @@ export const Resource = model({
 		setResourceAttrs: {
 			to: {
 				sourceResourceId: ['sourceResourceId'],
+				sourceProjectId: ['sourceProjectId'],
 				name: ['name'],
 				kind: ['kind'],
 				url: ['url'],
@@ -70,6 +72,7 @@ export const Resource = model({
 
 				return {
 					sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : '',
+					sourceProjectId: typeof value.sourceProjectId === 'string' ? value.sourceProjectId : null,
 					name: typeof value.name === 'string' ? value.name : 'Resource',
 					kind: typeof value.kind === 'string' ? value.kind : 'video',
 					url: typeof value.url === 'string' ? value.url : '',

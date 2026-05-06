@@ -35,6 +35,7 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 
 	return {
 		sourceResourceId,
+		sourceProjectId: asString((payload as { sourceProjectId?: unknown } | null)?.sourceProjectId),
 		name: asString(value?.name) ?? 'Resource',
 		kind: asString(value?.kind) ?? 'video',
 		url: asString(value?.url) ?? '',

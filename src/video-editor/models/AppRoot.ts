@@ -1,7 +1,5 @@
 import { appRoot } from 'dkt/appRoot.js'
 import { merge as mergeDcl } from 'dkt/dcl/merge.js'
-import { createEmptyRegistry } from '../domain/createProject'
-import type { ProjectRegistry } from '../domain/types'
 import { Clip, CLIP_CREATION_SHAPE } from './Clip'
 import { Effect, EFFECT_CREATION_SHAPE } from './Effect'
 import { EditorSessionRoot } from './SessionRoot'
@@ -31,21 +29,9 @@ const appProps = mergeDcl({
 	attrs: {
 		activeProjectHint: ['input', null],
 		projectMetaList: ['input', []],
-		registrySnapshot: ['input', createEmptyRegistry()],
 		hasProjects: ['comp', ['projectMetaList'], (projectMetaList: unknown) => Array.isArray(projectMetaList) && projectMetaList.length > 0],
 	},
 	actions: {
-		replaceRegistrySnapshot: {
-			to: {
-				registrySnapshot: ['registrySnapshot'],
-			},
-			fn: (payload: unknown) => {
-				const registry = payload as ProjectRegistry | null
-				return registry && typeof registry === 'object' && 'projects' in registry && 'entitiesById' in registry
-					? { registrySnapshot: structuredClone(registry) }
-					: '$noop'
-			},
-		},
 		createProjectModel: {
 			to: ['<< project << #', {
 				method: 'at_end',
@@ -62,10 +48,30 @@ const appProps = mergeDcl({
 					duration?: unknown
 					createdAt?: unknown
 					updatedAt?: unknown
+					tracks?: unknown
+					autoCreateDefaultTracks?: unknown
 				} | null
 				if (typeof value?.sourceProjectId !== 'string' || !value.sourceProjectId) {
 					return '$noop'
 				}
+
+				const tracks = Array.isArray(value.tracks)
+					? value.tracks.map((track) => {
+						const item = track as { sourceTrackId?: unknown; kind?: unknown; name?: unknown; muted?: unknown; locked?: unknown; height?: unknown } | null
+						return typeof item?.sourceTrackId === 'string' && item.sourceTrackId
+							? {
+								attrs: {
+									sourceTrackId: item.sourceTrackId,
+									kind: item.kind === 'audio' ? 'audio' : 'video',
+									name: typeof item.name === 'string' ? item.name : 'Track',
+									muted: typeof item.muted === 'boolean' ? item.muted : false,
+									locked: typeof item.locked === 'boolean' ? item.locked : false,
+									height: typeof item.height === 'number' ? item.height : 84,
+								},
+							}
+							: null
+					}).filter((track): track is { attrs: { sourceTrackId: string; kind: 'audio' | 'video'; name: string; muted: boolean; locked: boolean; height: number } } => Boolean(track))
+					: []
 
 				return {
 					attrs: {
@@ -77,7 +83,9 @@ const appProps = mergeDcl({
 						duration: typeof value.duration === 'number' ? value.duration : 0,
 						createdAt: typeof value.createdAt === 'number' ? value.createdAt : 0,
 						updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : 0,
+						autoCreateDefaultTracks: value.autoCreateDefaultTracks === true,
 					},
+					rels: tracks.length > 0 ? { tracks } : undefined,
 				}
 			},
 		},
