@@ -1,6 +1,6 @@
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import { createProjectImportFilesEffectPayload, PROJECT_IMPORT_FILES_FX } from '../models/Project/effects'
-import { createTextAddCommand } from '../domain/actionCommandBuilders'
+import { getTracks } from '../domain/selectors'
 import { getActionActiveProjectId } from './actionRuntimeSelectors'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
@@ -132,12 +132,43 @@ export const createMediaImportActions = (
 
 		addTextClip(content = 'Title'): void {
 			const projectId = getActionActiveProjectId(env)
-			env.authority.dispatch(createTextAddCommand({ projectId, content })).then((result) => {
-				const clipId = result.createdIds?.clipId
-				if (clipId) {
-					env.session.selectEntity(String(clipId))
+			const registry = env.stores.getRegistry()
+			const project = registry.projects[projectId]
+			if (!project) {
+				return
+			}
+
+			const tracks = getTracks(registry, project)
+			const targetTrack = tracks.find((track) => track.attrs.kind === 'video') ?? tracks[0]
+			if (!targetTrack) {
+				return
+			}
+
+			const clipId = createDktResourceSourceId('text-clip')
+			const textId = createDktResourceSourceId('text-node')
+			const cursor = Number(env.session.get().cursor ?? 0)
+			const duration = 4
+			void Promise.resolve(env.dkt?.dispatchTrackAction(
+				{ sourceTrackId: targetTrack.id },
+				'addTextClip',
+				{
+					sourceClipId: clipId,
+					sourceTextId: textId,
+					name: content,
+					mediaKind: 'video',
+					start: Number.isFinite(cursor) ? cursor : 0,
+					in: 0,
+					duration,
+					text: {
+						sourceTextId: textId,
+						content,
+					},
+				},
+			)).then(() => {
+				if (!env.lifecycle.isDestroyed()) {
+					env.session.selectEntity(clipId)
 				}
-			})
+			}).catch(() => undefined)
 		},
 	}
 }

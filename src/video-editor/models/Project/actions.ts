@@ -3,40 +3,48 @@ import type { MiniCutDktResourceSeed, MiniCutDktTrackSeed } from '../../dkt/runt
 export type ProjectAddTrackPayload = MiniCutDktTrackSeed
 export type ProjectImportResourcePayload = MiniCutDktResourceSeed
 
+const asString = (value: unknown): string | null => typeof value === 'string' ? value : null
+const asNumber = (value: unknown): number | null => typeof value === 'number' ? value : null
+const asBoolean = (value: unknown): boolean | null => typeof value === 'boolean' ? value : null
+const asObject = <Value extends object>(value: unknown): Value | null =>
+	value && typeof value === 'object' ? value as Value : null
+
 export const normalizeTrackCreationAttrs = (payload: unknown) => {
 	const value = payload as ProjectAddTrackPayload | null
-	if (typeof value?.sourceTrackId !== 'string' || !value.sourceTrackId) {
+	const sourceTrackId = asString(value?.sourceTrackId)
+	if (!sourceTrackId) {
 		return null
 	}
 
 	return {
-		sourceTrackId: value.sourceTrackId,
+		sourceTrackId,
 		kind: value.kind === 'audio' ? 'audio' : 'video',
-		name: typeof value.name === 'string' ? value.name : 'Track',
-		muted: typeof value.muted === 'boolean' ? value.muted : false,
-		locked: typeof value.locked === 'boolean' ? value.locked : false,
-		height: typeof value.height === 'number' ? value.height : 84,
+		name: asString(value?.name) ?? 'Track',
+		muted: asBoolean(value?.muted) ?? false,
+		locked: asBoolean(value?.locked) ?? false,
+		height: asNumber(value?.height) ?? 84,
 	}
 }
 
 export const normalizeResourceCreationAttrs = (payload: unknown) => {
 	const value = payload as ProjectImportResourcePayload | null
-	if (typeof value?.sourceResourceId !== 'string' || !value.sourceResourceId) {
+	const sourceResourceId = asString(value?.sourceResourceId)
+	if (!sourceResourceId) {
 		return null
 	}
 
 	return {
-		sourceResourceId: value.sourceResourceId,
-		name: typeof value.name === 'string' ? value.name : 'Resource',
-		kind: typeof value.kind === 'string' ? value.kind : 'video',
-		url: typeof value.url === 'string' ? value.url : '',
-		mime: typeof value.mime === 'string' ? value.mime : 'application/octet-stream',
-		duration: typeof value.duration === 'number' ? value.duration : 0,
-		width: typeof value.width === 'number' ? value.width : null,
-		height: typeof value.height === 'number' ? value.height : null,
-		size: typeof value.size === 'number' ? value.size : null,
-		source: value.source && typeof value.source === 'object' ? value.source : { kind: 'local' },
-		status: typeof value.status === 'string' ? value.status : 'missing',
-		data: value.data && typeof value.data === 'object' ? value.data : null,
+		sourceResourceId,
+		name: asString(value?.name) ?? 'Resource',
+		kind: asString(value?.kind) ?? 'video',
+		url: asString(value?.url) ?? '',
+		mime: asString(value?.mime) ?? 'application/octet-stream',
+		duration: asNumber(value?.duration) ?? 0,
+		width: asNumber(value?.width),
+		height: asNumber(value?.height),
+		size: asNumber(value?.size),
+		source: asObject(value?.source) ?? { kind: 'local' },
+		status: asString(value?.status) ?? 'missing',
+		data: asObject(value?.data),
 	}
 }

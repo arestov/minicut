@@ -409,6 +409,10 @@ export const createVideoEditorHarness = (
 				const runtime = await getDktRuntime()
 				await runtime.dispatchProjectAction(project, actionName, payload)
 			},
+			dispatchTrackAction: async (track, actionName, payload) => {
+				const runtime = await getDktRuntime()
+				await runtime.dispatchTrackAction(track, actionName, payload)
+			},
 			dispatchResourceAction: async (resource, actionName, payload) => {
 				const runtime = await getDktRuntime()
 				await runtime.dispatchResourceAction(resource, actionName, payload)

@@ -10,41 +10,48 @@ export type TrackAddTextClipPayload = MiniCutDktClipSeed & {
 	text?: MiniCutDktTextSeed
 }
 
+const asString = (value: unknown): string | null => typeof value === 'string' ? value : null
+const asNumber = (value: unknown): number | null => typeof value === 'number' ? value : null
+const asObject = <Value extends object>(value: unknown): Value | null =>
+	value && typeof value === 'object' ? value as Value : null
+
 export const normalizeClipCreationAttrs = (payload: unknown) => {
 	const value = payload as TrackAddClipPayload | null
-	if (typeof value?.sourceClipId !== 'string' || !value.sourceClipId) {
+	const sourceClipId = asString(value?.sourceClipId)
+	if (!sourceClipId) {
 		return null
 	}
 
 	return {
-		sourceClipId: value.sourceClipId,
-		sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : null,
-		sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
-		name: typeof value.name === 'string' ? value.name : 'Clip',
-		color: typeof value.color === 'string' ? value.color : '#2563eb',
-		mediaKind: typeof value.mediaKind === 'string' ? value.mediaKind : null,
-		start: typeof value.start === 'number' ? value.start : 0,
-		in: typeof value.in === 'number' ? value.in : 0,
-		duration: typeof value.duration === 'number' ? value.duration : 0,
-		fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
-		fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,
-		audio: value.audio && typeof value.audio === 'object' ? value.audio : { gain: 1, pan: 0 },
-		opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
-		transform: value.transform && typeof value.transform === 'object' ? value.transform : defaultClipTransform,
+		sourceClipId,
+		sourceResourceId: asString(value?.sourceResourceId),
+		sourceTextId: asString(value?.sourceTextId),
+		name: asString(value?.name) ?? 'Clip',
+		color: asString(value?.color) ?? '#2563eb',
+		mediaKind: asString(value?.mediaKind),
+		start: asNumber(value?.start) ?? 0,
+		in: asNumber(value?.in) ?? 0,
+		duration: asNumber(value?.duration) ?? 0,
+		fadeIn: asNumber(value?.fadeIn) ?? 0,
+		fadeOut: asNumber(value?.fadeOut) ?? 0,
+		audio: asObject(value?.audio) ?? { gain: 1, pan: 0 },
+		opacity: asObject(value?.opacity) ?? { value: 1 },
+		transform: asObject(value?.transform) ?? defaultClipTransform,
 	}
 }
 
 export const normalizeTextCreationAttrs = (payload: unknown) => {
 	const value = payload as MiniCutDktTextSeed | null
-	if (typeof value?.sourceTextId !== 'string' || !value.sourceTextId) {
+	const sourceTextId = asString(value?.sourceTextId)
+	if (!sourceTextId) {
 		return null
 	}
 
 	return {
-		sourceTextId: value.sourceTextId,
-		content: typeof value.content === 'string' ? value.content : 'Text',
-		style: value.style && typeof value.style === 'object' ? value.style : defaultTextStyle,
-		box: value.box && typeof value.box === 'object' ? value.box : defaultTextBox,
+		sourceTextId,
+		content: asString(value?.content) ?? 'Text',
+		style: asObject(value?.style) ?? defaultTextStyle,
+		box: asObject(value?.box) ?? defaultTextBox,
 	}
 }
 
@@ -69,9 +76,9 @@ export const normalizeRightSplitClipAttrs = (payload: unknown) => {
 		: typeof (payload as { time?: unknown } | null)?.time === 'number'
 			? (payload as { time: number }).time
 			: null
-	const sourceStart = typeof source?.start === 'number' ? source.start : typeof value?.start === 'number' ? value.start : null
-	const sourceIn = typeof source?.in === 'number' ? source.in : typeof value?.in === 'number' ? value.in : 0
-	const sourceDuration = typeof source?.duration === 'number' ? source.duration : typeof value?.duration === 'number' ? value.duration : null
+	const sourceStart = asNumber(source?.start) ?? asNumber(value?.start)
+	const sourceIn = asNumber(source?.in) ?? asNumber(value?.in) ?? 0
+	const sourceDuration = asNumber(source?.duration) ?? asNumber(value?.duration)
 	if (splitTime === null || sourceStart === null || sourceDuration === null) {
 		return null
 	}
