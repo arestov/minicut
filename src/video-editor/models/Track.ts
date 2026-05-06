@@ -15,7 +15,15 @@ export const Track = model({
 		name: ['input', 'Track'],
 		muted: ['input', false],
 		locked: ['input', false],
+		isVisible: ['input', true],
 		height: ['input', 84],
+		trackDuration: ['input', 0],
+		clipCount: ['input', 0],
+		laneRenderState: ['comp', ['muted', 'locked', 'isVisible'], (muted: unknown, locked: unknown, isVisible: unknown) => ({
+			muted: muted === true,
+			locked: locked === true,
+			isVisible: isVisible !== false,
+		})],
 	},
 	rels: {
 		clips: ['input', { many: true, linking: '<< clip << #' }],

@@ -32,12 +32,27 @@ export const Clip = model({
 		mediaKind: ['input', null],
 		start: ['input', 0],
 		in: ['input', 0],
+		trimStart: ['input', 0],
+		trimEnd: ['input', 0],
 		duration: ['input', 0],
+		playbackRate: ['input', 1],
 		fadeIn: ['input', 0],
 		fadeOut: ['input', 0],
 		audio: ['input', { gain: 1, pan: 0 }],
 		opacity: ['input', { value: 1 }],
 		transform: ['input', defaultClipTransform],
+		crop: ['input', null],
+		colorAdjustments: ['input', null],
+		renderInterval: ['comp', ['start', 'duration'], (start: unknown, duration: unknown) => {
+			const s = typeof start === 'number' && Number.isFinite(start) ? start : 0
+			const d = typeof duration === 'number' && Number.isFinite(duration) ? Math.max(0, duration) : 0
+			return { start: s, end: s + d, duration: d }
+		}],
+		renderBox: ['comp', ['transform', 'crop'], (transform: unknown, crop: unknown) => ({
+			transform: transform && typeof transform === 'object' ? transform : defaultClipTransform,
+			crop: crop && typeof crop === 'object' ? crop : null,
+		})],
+		effectStackSummary: ['input', null],
 	},
 	rels: {
 		effects: ['input', { many: true, linking: '<< effect << #' }],

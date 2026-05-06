@@ -22,6 +22,7 @@ export const EditorSessionRoot = model({
 		isPlaying: ['input', false],
 		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
 		timelineTool: ['input', 'select'],
+		activeTool: ['comp', ['timelineTool'], (timelineTool: unknown) => typeof timelineTool === 'string' ? timelineTool : 'select'],
 		snappingEnabled: ['input', true],
 		previewStructure: ['input', DEFAULT_PREVIEW_STRUCTURE],
 		previewFrame: ['comp', ['previewStructure', 'cursor'], (previewStructure: unknown, cursor: unknown): PreviewFrame => createPreviewFrame(
@@ -30,12 +31,43 @@ export const EditorSessionRoot = model({
 				: DEFAULT_PREVIEW_STRUCTURE,
 			typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0,
 		)],
+		selectionKind: ['comp', ['selectedEntityId'], (selectedEntityId: unknown) => {
+			if (typeof selectedEntityId !== 'string' || !selectedEntityId) {
+				return 'none'
+			}
+
+			if (selectedEntityId.includes(':clip')) {
+				return 'clip'
+			}
+			if (selectedEntityId.includes(':track')) {
+				return 'track'
+			}
+			if (selectedEntityId.includes(':resource')) {
+				return 'resource'
+			}
+			if (selectedEntityId.includes(':text')) {
+				return 'text'
+			}
+			if (selectedEntityId.includes(':effect')) {
+				return 'effect'
+			}
+
+			return 'entity'
+		}],
+		selectedEntitySummary: ['comp', ['selectedEntityId', 'selectionKind'], (selectedEntityId: unknown, selectionKind: unknown) => ({
+			id: typeof selectedEntityId === 'string' ? selectedEntityId : null,
+			kind: typeof selectionKind === 'string' ? selectionKind : 'none',
+		})],
 		selectedClipTrackPosition: ['input', null],
 		selectedClipSummary: ['input', null],
 	},
 	rels: {
 		activeProject: ['input', { linking: '<< project << #' }],
+		selectedTrack: ['input', { linking: '<< track << #' }],
 		selectedClip: ['input', { linking: '<< clip << #' }],
+		selectedResource: ['input', { linking: '<< resource << #' }],
+		selectedText: ['input', { linking: '<< text << #' }],
+		selectedEffect: ['input', { linking: '<< effect << #' }],
 	},
 	actions: dktSessionActions,
 })

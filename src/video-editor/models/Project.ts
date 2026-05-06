@@ -22,6 +22,18 @@ export const Project = model({
 		width: ['input', 1920],
 		height: ['input', 1080],
 		duration: ['input', 0],
+		timelineDuration: ['comp', ['duration'], (duration: unknown) => asNumber(duration, 0)],
+		resourceCount: ['input', 0],
+		trackCount: ['input', 0],
+		previewFrame: ['input', null],
+		exportPlanStatus: ['input', 'idle'],
+		timelineSummary: ['comp', ['timelineDuration', 'trackCount'], (timelineDuration: unknown, trackCount: unknown) => ({
+			duration: asNumber(timelineDuration, 0),
+			trackCount: asNumber(trackCount, 0),
+		})],
+		resourceSummary: ['comp', ['resourceCount'], (resourceCount: unknown) => ({
+			count: asNumber(resourceCount, 0),
+		})],
 		createdAt: ['input', 0],
 		updatedAt: ['input', 0],
 		autoCreateDefaultTracks: ['input', false],
