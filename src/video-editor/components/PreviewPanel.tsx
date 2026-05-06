@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useVideoEditor } from '../app/VideoEditorContext'
+import { usePreviewReadModels } from '../render-sync/previewReadModels'
 import type {
 	RenderedClip,
 	PreviewFrame,
@@ -138,14 +139,11 @@ const PreviewTransport = ({
 export const PreviewPanel = ({ mediaElementRegistry }: { mediaElementRegistry: PreviewMediaElementRegistry }) => {
 	const { resolveResourceUrl, requestResourcePlayheadWindow, noteResourcePreviewError } = useVideoEditor()
 	const sessionDispatch = useActions()
-	const attrs = useAttrs(['activeInspectorTab', 'isPlaying', 'previewFrame', 'previewStructure']) as {
+	const attrs = useAttrs(['activeInspectorTab', 'isPlaying']) as {
 		activeInspectorTab?: unknown
 		isPlaying?: unknown
-		previewFrame?: PreviewFrame
-		previewStructure?: PreviewStructure
 	}
-	const frame = attrs.previewFrame ?? { cursor: 0, renderedClips: [], visualRenderedClips: [], audioRenderedClips: [], activeClipNames: [] }
-	const structure = attrs.previewStructure ?? { clipSources: [] }
+	const { frame, structure } = usePreviewReadModels()
 	const [compareMode, setCompareMode] = useState<'off' | 'split'>('off')
 	const [scopeMode, setScopeMode] = useState<ScopeMode>('waveform')
 	const showColorScopes = attrs.activeInspectorTab === 'color'

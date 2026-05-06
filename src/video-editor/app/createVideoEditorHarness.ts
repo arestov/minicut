@@ -11,9 +11,7 @@ import type {
 } from '../domain/types'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportRenderer } from '../render/exportRenderer'
-import { createDktEditorRenderRuntime } from '../render-sync/createDktEditorRenderRuntime'
 import { createDktPageEditorRenderRuntime } from '../render-sync/createDktPageEditorRenderRuntime'
-import { createDktRegistryRenderStore } from '../render-sync/DktRegistryRenderStore'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createDktActionRuntime } from './createDktActionRuntime'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
@@ -31,30 +29,6 @@ let bootstrapProjectSequence = 0
 const createBootstrapProjectId = (): string => {
 	bootstrapProjectSequence += 1
 	return `project:bootstrap:${Date.now().toString(36)}:${bootstrapProjectSequence}`
-}
-
-type SubscribableNode = {
-	onChange(listener: () => void): () => void
-}
-
-const subscribeNode = (node: unknown, listener: () => void): (() => void) => {
-	const subscribable = node as Partial<SubscribableNode>
-	return typeof subscribable?.onChange === 'function'
-		? subscribable.onChange(listener)
-		: EMPTY_CLEANUP
-}
-
-const combineCleanups = (cleanups: Array<() => void>): (() => void) => {
-	let active = true
-	return () => {
-		if (!active) {
-			return
-		}
-		active = false
-		for (let index = cleanups.length - 1; index >= 0; index -= 1) {
-			cleanups[index]()
-		}
-	}
 }
 
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
@@ -161,7 +135,6 @@ export const createVideoEditorHarness = (
 	const exportRenderer = options.exportRenderer ?? platform.createExportRenderer()
 	const projects$ = createProjectsStore()
 	const session$ = createSessionStore()
-	const renderRegistry = createDktRegistryRenderStore()
 	const pageRuntime = createMiniCutPageRuntime(authorityClient)
 	const playbackDuration$ = createPlaybackDuration$(projects$, session$)
 	const importedObjectUrls = new Set<string>()
@@ -283,7 +256,6 @@ export const createVideoEditorHarness = (
 			}
 
 			applySnapshot(projects$, snapshot)
-			renderRegistry.setSnapshot(snapshot)
 			resourceTransferManager.syncRegistry(snapshot)
 			syncActiveProjectSelection()
 			ensureInitialProject()
@@ -301,14 +273,9 @@ export const createVideoEditorHarness = (
 
 	bootstrapSnapshot()
 
-	const unsubscribeDktSync = authorityClient.subscribeDktSync?.((message) => {
-		renderRegistry.handleDktSyncMessage(message)
-	}) ?? EMPTY_CLEANUP
-
 	const unsubscribe = authorityClient.subscribe((envelope) => {
 		applyPatchEnvelope(projects$, envelope)
 		const registry = projects$.get()
-		renderRegistry.setSnapshot(registry)
 		resourceTransferManager.syncRegistry(registry)
 		syncActiveProjectSelection()
 	})
@@ -437,25 +404,8 @@ export const createVideoEditorHarness = (
 		playbackDuration$,
 		resourceChunkSize,
 	})
-	const legacyRenderRuntime = createDktEditorRenderRuntime({
-		registry: renderRegistry,
-		session: {
-			getSnapshot: () => session$.get(),
-			subscribe: (listener) => subscribeNode(session$, listener),
-			subscribeFields: (fields, listener) => combineCleanups(fields.map((field) => {
-				const sessionNode = session$ as unknown as Record<string, unknown>
-				return subscribeNode(sessionNode[field], listener)
-			})),
-		},
-		resourceTransfers: {
-			getSnapshot: () => resourceTransferManager.transfers$.get(),
-			subscribe: (listener) => subscribeNode(resourceTransferManager.transfers$, listener),
-		},
-		actions,
-	})
 	const renderRuntime = createDktPageEditorRenderRuntime({
 		pageRuntime,
-		legacyRuntime: legacyRenderRuntime,
 		actions,
 	})
 
@@ -486,7 +436,6 @@ export const createVideoEditorHarness = (
 				snapshotBootstrapRetryTimer = null
 			}
 			unsubscribe()
-			unsubscribeDktSync()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)
 			}

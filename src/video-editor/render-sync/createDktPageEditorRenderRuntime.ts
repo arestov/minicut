@@ -42,7 +42,6 @@ type HarnessActions = {
 
 export interface CreateDktPageEditorRenderRuntimeOptions {
 	pageRuntime: PageSyncRuntime | null
-	legacyRuntime: EditorRenderRuntime
 	actions: HarnessActions
 }
 
@@ -296,12 +295,10 @@ const dispatchSessionDktAction = (
 
 const createScopedDispatch = (
 	runtime: PageSyncRuntime | null,
-	legacyRuntime: EditorRenderRuntime,
 	actions: HarnessActions,
 	scope: EditorScope | null,
 ): EditorScopedDispatch => ((actionName, payload) => {
 	if (!runtime) {
-		legacyRuntime.getDispatch(scope)(actionName, payload as never)
 		return
 	}
 
@@ -441,14 +438,13 @@ const createScopedDispatch = (
 
 export const createDktPageEditorRenderRuntime = ({
 	pageRuntime,
-	legacyRuntime,
 	actions,
 }: CreateDktPageEditorRenderRuntimeOptions): EditorRenderRuntime => ({
 	getRootScope: () => ROOT_SCOPE,
 	getSessionScope: () => SESSION_SCOPE,
 	readAttrs(scope, fields) {
 		if (!pageRuntime) {
-			return legacyRuntime.readAttrs(scope, fields)
+			return Object.fromEntries(fields.map((field) => [field, undefined]))
 		}
 		if (scope === ROOT_SCOPE || scope.type === 'root') {
 			return normalizeRootAttrs(pageRuntime, fields)
@@ -462,7 +458,7 @@ export const createDktPageEditorRenderRuntime = ({
 	},
 	subscribeAttrs(scope, fields, listener) {
 		if (!pageRuntime) {
-			return legacyRuntime.subscribeAttrs(scope, fields, listener)
+			return EMPTY_CLEANUP
 		}
 		if (scope === ROOT_SCOPE || scope.type === 'root') {
 			return combineCleanups([
@@ -479,7 +475,7 @@ export const createDktPageEditorRenderRuntime = ({
 	},
 	readOne(scope, relName) {
 		if (!pageRuntime) {
-			return legacyRuntime.readOne(scope, relName)
+			return null
 		}
 		if (scope.type === 'project' && relName === 'activeTimeline' && toDktScope(scope)) {
 			return scope
@@ -500,7 +496,7 @@ export const createDktPageEditorRenderRuntime = ({
 	},
 	subscribeOne(scope, relName, listener) {
 		if (!pageRuntime) {
-			return legacyRuntime.subscribeOne(scope, relName, listener)
+			return EMPTY_CLEANUP
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && relName === 'activeProject') {
 			return subscribeActiveProject(pageRuntime, listener)
@@ -524,7 +520,7 @@ export const createDktPageEditorRenderRuntime = ({
 	},
 	readMany(scope, relName) {
 		if (!pageRuntime) {
-			return legacyRuntime.readMany(scope, relName)
+			return []
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && (relName === 'projects' || relName === 'project')) {
 			return readProjectScopes(pageRuntime).map((projectScope) => toEditorScope(projectScope, 'project')).filter((item): item is EditorScope => item != null)
@@ -539,7 +535,7 @@ export const createDktPageEditorRenderRuntime = ({
 	},
 	subscribeMany(scope, relName, listener) {
 		if (!pageRuntime) {
-			return legacyRuntime.subscribeMany(scope, relName, listener)
+			return EMPTY_CLEANUP
 		}
 		if ((scope === ROOT_SCOPE || scope.type === 'root') && (relName === 'projects' || relName === 'project')) {
 			return subscribeActiveProject(pageRuntime, listener)
@@ -553,14 +549,14 @@ export const createDktPageEditorRenderRuntime = ({
 	},
 	readComp(scope, compName) {
 		if (!pageRuntime) {
-			return legacyRuntime.readComp(scope, compName)
+			return null
 		}
 		return null
 	},
 	subscribeComp(scope, compName, listener) {
-		return pageRuntime ? EMPTY_CLEANUP : legacyRuntime.subscribeComp(scope, compName, listener)
+		return EMPTY_CLEANUP
 	},
 	getDispatch(scope = ROOT_SCOPE) {
-		return createScopedDispatch(pageRuntime, legacyRuntime, actions, scope)
+		return createScopedDispatch(pageRuntime, actions, scope)
 	},
 })
