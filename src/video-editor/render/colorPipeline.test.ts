@@ -1,5 +1,5 @@
 import { getEffectInstructionFilter, mergeEffectFilters, toEffectRenderInstruction } from './colorPipeline'
-import type { EffectAttrs } from '../domain/types'
+import type { EffectAttrs } from '../models/Effect/types'
 
 describe('color pipeline', () => {
 	it('normalizes effect attrs into render instructions', () => {

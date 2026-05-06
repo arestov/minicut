@@ -1,4 +1,5 @@
-﻿import type { EffectAttrs, TextAttrs } from '../domain/types'
+﻿import type { EffectAttrs } from '../models/Effect/types'
+import type { TextAttrs } from '../models/Text/types'
 import { createProjectImportFilesEffectPayload, PROJECT_IMPORT_FILES_FX, createProjectRenderExportEffectData, PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateDktActionRuntimeOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'

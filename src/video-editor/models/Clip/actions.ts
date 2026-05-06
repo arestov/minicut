@@ -1,4 +1,5 @@
-import { type AnimatedScalar, type ClipAttrs, type TransformAttrs } from '../../domain/types'
+import type { AnimatedScalar } from '../../render/registryTypes'
+import type { ClipAttrs, TransformAttrs } from './types'
 import { defaultEffectAttrs } from '../Effect/defaults'
 import type { MiniCutDktEffectSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
 

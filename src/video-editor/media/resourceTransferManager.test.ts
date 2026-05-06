@@ -1,5 +1,5 @@
 import { waitFor } from '@testing-library/react'
-import type { Entity, ProjectRegistry, ResourceAttrs } from '../domain/types'
+import type { Entity, ProjectRegistry, ResourceAttrs } from '../render/registryTypes'
 import { createMissingResourceData } from '../domain/resourceData'
 import { createResourceTransferManager, type RequestMessage } from './resourceTransferManager'
 import type { P2PRawTransportLike } from '../p2p/PageP2PManager'

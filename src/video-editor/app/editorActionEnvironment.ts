@@ -1,4 +1,4 @@
-import type { ResourceKind } from '../domain/types'
+import type { ResourceKind } from '../render/registryTypes'
 import type { ResourceTransferManager } from '../media/resourceTransferManager'
 import type { ExportProgressEvent, ExportRenderer, ExportRenderRequest, ExportRenderResult } from '../render/exportRenderer'
 import type { VideoEditorHarnessPlatform } from './platform'

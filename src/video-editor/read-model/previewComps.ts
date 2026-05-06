@@ -1,4 +1,5 @@
-import type { EntityId, ResourceAttrs, TextAttrs } from '../domain/types'
+import type { EntityId, ResourceAttrs } from '../render/registryTypes'
+import type { TextAttrs } from '../models/Text/types'
 import type { EffectRenderInstruction } from '../render/colorPipeline'
 import type { ScalarKeyframe } from '../render/timing'
 import { evaluateFadeOpacity, evaluateKeyframedScalar } from '../render/timing'

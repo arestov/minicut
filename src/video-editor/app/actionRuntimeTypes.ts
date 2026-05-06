@@ -1,4 +1,5 @@
-import type { EffectAttrs, TextAttrs } from '../domain/types'
+import type { EffectAttrs } from '../models/Effect/types'
+import type { TextAttrs } from '../models/Text/types'
 import type { ExportProgressEvent, ExportRenderResult } from '../render/exportRenderer'
 
 export interface VideoEditorHarnessActions {

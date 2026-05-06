@@ -1,4 +1,4 @@
-import type { EffectAttrs } from '../../domain/types'
+import type { EffectAttrs } from './types'
 
 export const defaultEffectAttrs: EffectAttrs = {
 	name: 'Effect',

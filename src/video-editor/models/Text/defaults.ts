@@ -1,4 +1,4 @@
-import type { TextAttrs } from '../../domain/types'
+import type { TextAttrs } from './types'
 
 export const defaultTextStyle: TextAttrs['style'] = {
 	fontFamily: 'Inter, Segoe UI, sans-serif',

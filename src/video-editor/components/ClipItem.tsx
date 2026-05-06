@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react'
+﻿import { useRef, useState } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import type { AnimatedScalar } from '../domain/types'
+import type { AnimatedScalar } from '../render/registryTypes'
 import { formatPercent, formatSeconds } from './format'
 
 const MIN_CLIP_DURATION = 0.5
@@ -207,7 +207,7 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 				))}
 			</div>
 			<small>
-				{name} · {formatSeconds(start)} / {formatSeconds(duration)} · opacity {formatPercent(opacity)}
+						{name} | {formatSeconds(start)} / {formatSeconds(duration)} | opacity {formatPercent(opacity)}
 			</small>
 			<span
 				className="ve-clip__resize-handle ve-clip__resize-handle--end"
@@ -227,3 +227,4 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 		</button>
 	)
 }
+

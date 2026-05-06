@@ -1,4 +1,4 @@
-import type { AnimatedScalar, ClipAttrs, Entity, ProjectGraph, ProjectRegistry, ResourceAttrs, TransformAttrs } from '../domain/types'
+import type { AnimatedScalar, ClipAttrs, Entity, ProjectGraph, ProjectRegistry, ResourceAttrs, TransformAttrs } from './registryTypes'
 import { getDebugFramePixelSignature, renderFrameDebug, type DrawCall } from './debugRenderer'
 
 interface ClipSpec {

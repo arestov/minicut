@@ -1,4 +1,4 @@
-import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
+﻿import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
@@ -7,7 +7,7 @@ import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useScope } from '../../dkt-react-sync/hooks/useScope'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { useVideoEditor } from '../app/VideoEditorContext'
-import type { ResourceAttrs } from '../domain/types'
+import type { ResourceAttrs } from '../render/registryTypes'
 import { Button, IconButton } from './ControlPrimitives'
 
 const isPreviewableUrl = (url: string): boolean =>
@@ -71,7 +71,7 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 			<div className="ve-resource-row__content">
 				<strong>{name}</strong>
 				<div className="ve-resource-row__meta">
-					<small>{kind} · {mime} · {duration.toFixed(1)}s</small>
+								<small>{kind} | {mime} | {duration.toFixed(1)}s</small>
 					{statusLabel ? <small>{statusLabel}</small> : null}
 					<div className="ve-resource-row__action-line">
 						<IconButton
@@ -402,3 +402,4 @@ export const MediaBin = () => {
 		/>
 	)
 }
+

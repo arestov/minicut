@@ -1,8 +1,13 @@
-import type { ColorCorrectionAttrs, EditorSessionState, ResourceAttrs, TextAttrs, TransformAttrs, AnimatedScalar } from '../../domain/types'
+import type { AnimatedScalar } from '../../render/registryTypes'
+import type { ColorCorrectionAttrs } from '../../models/Effect/types'
+import type { TextAttrs } from '../../models/Text/types'
+import type { TransformAttrs } from '../../models/Clip/types'
 import type { ExportProgressEvent, ExportRenderResult } from '../../render/exportRenderer'
 import type { LookParam } from '../../color/looks'
 
-export type InspectorTab = EditorSessionState['activeInspectorTab']
+export type InspectorTab = 'edit' | 'color' | 'audio' | 'export'
+
+type ResourceKind = 'video' | 'audio' | 'image' | 'text'
 
 export type ExportStatus =
 	| { state: 'idle' }
@@ -57,11 +62,11 @@ export interface ClipRenderAttrs {
 	opacity?: AnimatedScalar
 	transform?: TransformAttrs
 	audio?: { gain: number; pan: number }
-	mediaKind?: ResourceAttrs['kind']
+	mediaKind?: ResourceKind
 }
 
 export interface ResourceRenderAttrs {
-	kind?: ResourceAttrs['kind']
+	kind?: ResourceKind
 	url?: unknown
 	name?: unknown
 }

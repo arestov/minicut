@@ -1,4 +1,4 @@
-import type { TextAttrs } from '../domain/types'
+﻿import type { TextAttrs } from '../models/Text/types'
 import { getContrastResult, suggestReadableTextColor } from '../color/oklch'
 import { Button } from './ControlPrimitives'
 import { FramePaletteAction, type FramePaletteStatus } from './FramePaletteAction'
@@ -54,3 +54,4 @@ export const TextAppearancePanel = ({
 		</>
 	)
 }
+

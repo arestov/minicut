@@ -1,6 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Command } from '../domain/types'
 import { createVideoEditorHarness } from '../app/createVideoEditorHarness'
 import { createNodeHarnessPlatform } from '../app/platform/nodePlatform'
 
@@ -36,7 +35,7 @@ export type HeadlessOperation =
 | HeadlessOperationTimelineAddClip
 
 export interface HeadlessScenario {
-commands?: Command[]
+commands?: unknown[]
 operations?: HeadlessOperation[]
 export?:
 | { type: 'project' }

@@ -1,4 +1,4 @@
-import type { EffectAttrs } from '../../domain/types'
+import type { EffectAttrs } from './types'
 
 export type DktEffectActionName = 'setEffectName' | 'setEffectKind' | 'setEffectEnabled' | 'setEffectAmount' | 'setEffectParams' | 'setEffectColor'
 export type DktEffectActionPatch = Partial<EffectAttrs>

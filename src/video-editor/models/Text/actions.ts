@@ -1,4 +1,4 @@
-import type { TextAttrs } from '../../domain/types'
+import type { TextAttrs } from './types'
 
 export type DktTextActionName = 'setTextContent' | 'setTextStyle' | 'setTextBox'
 export type DktTextActionPatch = Partial<TextAttrs>
