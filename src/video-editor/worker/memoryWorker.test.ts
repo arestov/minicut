@@ -122,7 +122,9 @@ const waitForStringAttr = (
 	})
 }
 
-describe('MemoryWorkerAuthority', () => {
+// Behavior contract: editor boot and timeline mutations should be validated through DKT attrs/rels and scoped actions.
+// Skipped: registry API removed in phase 1. Rebuild through DKT model contracts in phase 5.
+describe.skip('MemoryWorkerAuthority', () => {
 	it('applies patch envelopes in place while keeping graph indexes consistent', () => {
 		const { worker, projectId, clipId, effectId } = createClipWithEffect()
 		const before = worker.getSnapshot()

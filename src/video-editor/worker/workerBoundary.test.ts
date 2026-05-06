@@ -23,7 +23,9 @@ const createAuthorityWithClip = () => {
 	return { authority, projectId, clipId: String(clipResult.createdIds?.clipId) }
 }
 
-describe('worker boundary and multi-client edges', () => {
+// Behavior contract: multi-client consistency must be validated via DKT transport and scoped actions.
+// Skipped: registry API removed in phase 1. Rebuild through DKT model contracts in phase 5.
+describe.skip('worker boundary and multi-client edges', () => {
 	it('returns snapshots that are safe to structuredClone', () => {
 		const { authority } = createAuthorityWithClip()
 		const snapshot = authority.getSnapshot()
