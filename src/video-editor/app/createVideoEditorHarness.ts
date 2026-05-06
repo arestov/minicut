@@ -61,7 +61,7 @@ interface CreateVideoEditorHarnessOptions {
 
 /**
  * Phase 1 hard rewrite: DKT-only harness.
- * No ProjectRegistry, projects$, session$, registry reads, or source-id lookups.
+ * No legacy registry stores, state mirrors, registry reads, or source-id lookups.
  * Only DKT page runtime, platform boundary, and task ports.
  */
 export const createVideoEditorHarness = (
@@ -112,7 +112,7 @@ export const createVideoEditorHarness = (
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
 
-	// Cleanup: no registry subscription, no projects$/session$ stores
+	// Cleanup: no legacy registry-state subscriptions
 	const unsubscribe = EMPTY_CLEANUP
 
 	const dktPort: EditorDktScopePort | null = pageRuntime
