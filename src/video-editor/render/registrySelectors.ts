@@ -1,6 +1,5 @@
 /**
  * Selector functions for the render pipeline's registry-shaped data.
- * These are isolated from domain/selectors.ts which is being removed.
  */
 
 import type { ClipAttrs, Entity, EntityId, ProjectGraph, ProjectRegistry, RelValue, ResourceAttrs } from './registryTypes'
