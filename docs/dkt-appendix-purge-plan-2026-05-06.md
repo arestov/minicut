@@ -453,3 +453,16 @@ playwright test --grep @smoke
 - No `then(async () => dispatch(...))` chains for multi-step workflows. Use DKT inline saga or effect.
 - Every new DKT model action that creates a child model writes the owner rel in the same action step using `hold_ref_id` + `use_ref_id` or `set_many`.
 - `runtimeTaskFacade.ts` is the only place that holds non-serializable browser objects. No other module stores File, Blob, or object URL as app state.
+
+---
+
+## 10. Implementation log (commits)
+
+- `e41d305` - step0: add DKT appendix purge plan document.
+- `de19433` - step1: isolate render pipeline types into local render modules.
+- `56c897d` - step2: strip registry materialization from DKT runtime.
+- `910c4bd` - chore: separate commit for incidental P2P test header cleanup.
+- `1a23db7` - step4: remove legacy SharedWorker snapshot/command protocol files and DKT-only worker path in P2P manager.
+- `660b46d` - step3: delete `dkt/state` Legend stores and move session zoom constants into model-owned module.
+- `299dc36` - step1 follow-up: delete unused render registry projection (`projectRegistryFromPageRuntime`).
+- `cdd7c2b` - step6: skip legacy registry-oriented runtime/worker suites and delete removed compatibility helper test.
