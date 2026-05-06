@@ -678,12 +678,7 @@ export const createPageP2PManager = (
 					type: 'module',
 					name: sharedWorkerName,
 				})
-				: config.workerProtocol === 'dkt'
-					? new SharedWorker(new URL('../worker/dktSharedWorker.ts', import.meta.url), {
-						type: 'module',
-						name: sharedWorkerName,
-					})
-				: new SharedWorker(new URL('../worker/sharedWorker.ts', import.meta.url), {
+				: new SharedWorker(new URL('../worker/dktSharedWorker.ts', import.meta.url), {
 					type: 'module',
 					name: sharedWorkerName,
 				})
