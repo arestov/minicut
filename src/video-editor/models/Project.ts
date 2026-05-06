@@ -213,7 +213,7 @@ export const Project = model({
 				to: ['<< @one:tracks', { action: 'addClip', inline_subwalker: true }],
 				fn: (payload: unknown) => {
 					const value = payload as { resource?: Record<string, unknown>; shouldAddToTimeline?: unknown } | null
-					const resource = value?.resource
+					const resource = value?.resource ?? {}
 					const sourceResourceId = typeof resource?.sourceResourceId === 'string' ? resource.sourceResourceId : null
 					if (!sourceResourceId || value?.shouldAddToTimeline !== true) {
 						return '$noop'

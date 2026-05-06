@@ -99,12 +99,12 @@ const createDefaultTracks = (projectId: string) => [
 	},
 ]
 
+let createdProjectSequence = 0
+
 const createProjectCreationResult = (payload: unknown) => {
 	const value = asObject(payload) as CreateProjectPayload | null
-	const projectId = asString(value?.sourceProjectId)
-	if (!projectId) {
-		return '$noop' as const
-	}
+	createdProjectSequence += 1
+	const projectId = asString(value?.sourceProjectId) ?? `project:${Date.now().toString(36)}:${createdProjectSequence}`
 
 	const now = Date.now()
 
@@ -193,24 +193,30 @@ export const sessionSelectEntityAction = {
 	fn: reduceSessionSelectEntityAction,
 } as const satisfies DktActionDescriptor
 
-export const sessionCreateProjectAction = {
-	to: {
-		activeProjectId: ['activeProjectId'],
-		selectedEntityId: ['selectedEntityId'],
-		cursor: ['cursor'],
-		createdProject: ['<< $root.project << #', {
-			method: 'at_end',
-			can_create: true,
-			can_hold_refs: true,
-			creation_shape: PROJECT_CREATION_SHAPE,
-		}],
-		activeProject: ['<< activeProject', {
-			method: 'set_one',
-			can_use_refs: true,
-		}],
+export const sessionCreateProjectAction = [
+	{
+		to: {
+			activeProjectId: ['activeProjectId'],
+			selectedEntityId: ['selectedEntityId'],
+			cursor: ['cursor'],
+			createdProject: ['<< $root.project << #', {
+				method: 'at_end',
+				can_create: true,
+				can_hold_refs: true,
+				creation_shape: PROJECT_CREATION_SHAPE,
+			}],
+			activeProject: ['<< activeProject', {
+				method: 'set_one',
+				can_use_refs: true,
+			}],
+		},
+		fn: createProjectCreationResult,
 	},
-	fn: createProjectCreationResult,
-} as const satisfies DktActionDescriptor
+	{
+		to: ['<< activeProject', { action: 'handleInit', inline_subwalker: true }],
+		fn: () => ({}),
+	},
+] as const satisfies DktActionDefinition
 
 export const sessionSetActiveProjectAction = {
 	to: {

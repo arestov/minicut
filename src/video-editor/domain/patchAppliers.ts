@@ -1,5 +1,5 @@
 import { withEnvelopeVersion } from './selectors'
-import { PATCH, type Patch, type PatchEnvelope, type Project, type ProjectRegistry, type RelValue } from './types'
+import { PATCH, type Patch, type PatchEnvelope, type ProjectGraph, type ProjectRegistry, type RelValue } from './types'
 
 const cloneRelValue = (value: RelValue): RelValue => {
 	if (Array.isArray(value)) {
@@ -36,7 +36,7 @@ const setNestedAttrValue = (
 export interface RegistryPatchApplyState {
 	registry: ProjectRegistry
 	envelope: PatchEnvelope
-	project?: Project
+	project?: ProjectGraph
 	didSetRegistry: boolean
 }
 
@@ -45,7 +45,7 @@ export type RegistryPatchApplier<PatchType extends Patch = Patch> = (
 	patch: PatchType,
 ) => void
 
-const requireProject = (state: RegistryPatchApplyState, patchName: string): Project => {
+const requireProject = (state: RegistryPatchApplyState, patchName: string): ProjectGraph => {
 	if (!state.project) {
 		throw new Error(`Missing project ${state.envelope.projectId} for ${patchName}`)
 	}
@@ -56,59 +56,67 @@ const requireProject = (state: RegistryPatchApplyState, patchName: string): Proj
 type PatchByCode<Code extends Patch['c']> = Extract<Patch, { c: Code }>
 
 export const registryPatchAppliers: Partial<Record<Patch['c'], RegistryPatchApplier>> = {
-	[PATCH.REGISTRY_SET]: (state, patch: PatchByCode<typeof PATCH.REGISTRY_SET>) => {
-		state.registry.activeProjectId = patch.p.registry.activeProjectId
-		state.registry.projects = structuredClone(patch.p.registry.projects)
-		state.registry.entitiesById = structuredClone(patch.p.registry.entitiesById)
+	[PATCH.REGISTRY_SET]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.REGISTRY_SET>
+		state.registry.activeProjectId = typedPatch.p.registry.activeProjectId
+		state.registry.projects = structuredClone(typedPatch.p.registry.projects)
+		state.registry.entitiesById = structuredClone(typedPatch.p.registry.entitiesById)
 		state.project = state.envelope.projectId ? state.registry.projects[state.envelope.projectId] : undefined
 		state.didSetRegistry = true
 	},
-	[PATCH.PROJECT_SET]: (state, patch: PatchByCode<typeof PATCH.PROJECT_SET>) => {
-		state.project = withEnvelopeVersion(patch.p.project, state.envelope)
-		state.registry.projects[patch.p.project.id] = state.project
+	[PATCH.PROJECT_SET]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.PROJECT_SET>
+		state.project = withEnvelopeVersion(typedPatch.p.project, state.envelope)
+		state.registry.projects[typedPatch.p.project.id] = state.project
 	},
-	[PATCH.ENTITY_SET]: (state, patch: PatchByCode<typeof PATCH.ENTITY_SET>) => {
+	[PATCH.ENTITY_SET]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.ENTITY_SET>
 		requireProject(state, 'ENTITY_SET')
-		state.registry.entitiesById[patch.p.entity.id] = patch.p.entity
+		state.registry.entitiesById[typedPatch.p.entity.id] = typedPatch.p.entity
 	},
-	[PATCH.ENTITY_DELETE]: (state, patch: PatchByCode<typeof PATCH.ENTITY_DELETE>) => {
+	[PATCH.ENTITY_DELETE]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.ENTITY_DELETE>
 		requireProject(state, 'ENTITY_DELETE')
-		delete state.registry.entitiesById[patch.p.id]
+		delete state.registry.entitiesById[typedPatch.p.id]
 	},
-	[PATCH.ATTRS_MERGE]: (state, patch: PatchByCode<typeof PATCH.ATTRS_MERGE>) => {
+	[PATCH.ATTRS_MERGE]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.ATTRS_MERGE>
 		requireProject(state, 'ATTRS_MERGE')
-		const current = state.registry.entitiesById[patch.p.id]
-		state.registry.entitiesById[patch.p.id] = {
+		const current = state.registry.entitiesById[typedPatch.p.id]
+		state.registry.entitiesById[typedPatch.p.id] = {
 			...current,
 			attrs: {
 				...current.attrs,
-				...patch.p.attrs,
+				...typedPatch.p.attrs,
 			},
 		}
 	},
-	[PATCH.SCALAR_SET]: (state, patch: PatchByCode<typeof PATCH.SCALAR_SET>) => {
+	[PATCH.SCALAR_SET]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.SCALAR_SET>
 		requireProject(state, 'SCALAR_SET')
-		const current = state.registry.entitiesById[patch.p.id]
-		state.registry.entitiesById[patch.p.id] = {
+		const current = state.registry.entitiesById[typedPatch.p.id]
+		state.registry.entitiesById[typedPatch.p.id] = {
 			...current,
-			attrs: setNestedAttrValue(current.attrs, patch.p.path, patch.p.value),
+			attrs: setNestedAttrValue(current.attrs, typedPatch.p.path, typedPatch.p.value),
 		}
 	},
-	[PATCH.REL_SPLICE]: (state, patch: PatchByCode<typeof PATCH.REL_SPLICE>) => {
+	[PATCH.REL_SPLICE]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.REL_SPLICE>
 		requireProject(state, 'REL_SPLICE')
-		const current = state.registry.entitiesById[patch.p.id]
-		const relValue = cloneRelValue(current.rels[patch.p.rel])
+		const current = state.registry.entitiesById[typedPatch.p.id]
+		const relValue = cloneRelValue(current.rels[typedPatch.p.rel])
 		const relArray = Array.isArray(relValue) ? relValue : []
-		relArray.splice(patch.p.index, patch.p.deleteCount, ...patch.p.insert)
-		state.registry.entitiesById[patch.p.id] = {
+		relArray.splice(typedPatch.p.index, typedPatch.p.deleteCount, ...typedPatch.p.insert)
+		state.registry.entitiesById[typedPatch.p.id] = {
 			...current,
 			rels: {
 				...current.rels,
-				[patch.p.rel]: relArray,
+				[typedPatch.p.rel]: relArray,
 			},
 		}
 	},
-	[PATCH.WORKSPACE_ACTIVE_PROJECT_SET]: (state, patch: PatchByCode<typeof PATCH.WORKSPACE_ACTIVE_PROJECT_SET>) => {
-		state.registry.activeProjectId = patch.p.projectId
+	[PATCH.WORKSPACE_ACTIVE_PROJECT_SET]: (state, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.WORKSPACE_ACTIVE_PROJECT_SET>
+		state.registry.activeProjectId = typedPatch.p.projectId
 	},
 }

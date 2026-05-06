@@ -10,8 +10,9 @@ import { Track, TRACK_CREATION_SHAPE } from './Track'
 import { defaultTextBox, defaultTextStyle } from './Text/defaults'
 
 const appProps = mergeDcl({
-	init: (target: { start_page?: unknown }) => {
-		target.start_page = target
+	init: (target: unknown) => {
+		const typedTarget = target as { start_page?: unknown }
+		typedTarget.start_page = typedTarget
 	},
 	model_name: 'minicut_app_root',
 	rels: {

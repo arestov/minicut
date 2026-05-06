@@ -17,7 +17,7 @@ import { CMD } from './types'
 import { commandStep, createdIdRef, type EditorActionBuildResult } from './actionTransactions'
 
 export interface ResourceImportCommandInput {
-	projectId: string | null
+	projectId: string
 	name: string
 	kind: 'video' | 'audio' | 'image'
 	duration: number
@@ -27,7 +27,7 @@ export interface ResourceImportCommandInput {
 	height?: number
 	size?: number
 	source?: { kind: 'local' } | { kind: 'p2p'; ownerPeerId?: string | null }
-	dataStatus?: 'missing' | 'partial' | 'ready' | 'loading' | 'error'
+	dataStatus?: 'missing' | 'partial' | 'ready'
 	chunkSize?: number
 }
 
@@ -38,11 +38,21 @@ export const createProjectCreationCommand = (title?: string): Command => ({
 
 export const createResourceImportCommand = (input: ResourceImportCommandInput): Command => ({
 	c: CMD.RESOURCE_IMPORT,
-	p: input,
+	p: {
+		...input,
+		source: input.source
+			? {
+				kind: input.source.kind,
+				...(input.source.kind === 'p2p' && typeof input.source.ownerPeerId === 'string'
+					? { ownerPeerId: input.source.ownerPeerId }
+					: {}),
+			}
+			: undefined,
+	},
 })
 
 export const createTimelineAddClipCommand = (input: {
-	projectId: string | null
+	projectId: string
 	resourceId: string
 	trackId: string
 	includeLinkedAudio?: boolean
@@ -51,7 +61,7 @@ export const createTimelineAddClipCommand = (input: {
 	p: input,
 })
 
-export const createTextAddCommand = (input: { projectId: string | null; content?: string }): Command => ({
+export const createTextAddCommand = (input: { projectId: string; content?: string }): Command => ({
 	c: CMD.TEXT_ADD,
 	p: input,
 })
@@ -175,6 +185,12 @@ export const buildEditorActionCommand = (
 	const clipAttrs = asClipAttrs(clip.attrs)
 	if (name === 'deleteClip') {
 		const step = clipActionCommandBuilders.deleteClip?.(payload, clipAttrs, scope.nodeId) ?? noAction()
+		if (step.type === 'none') {
+			return step
+		}
+		if (step.type === 'transaction') {
+			return step
+		}
 		return context.selectedEntityId === scope.nodeId
 			? {
 					type: 'transaction',

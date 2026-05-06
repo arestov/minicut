@@ -127,8 +127,10 @@ export const createResourceImportPatches = (registry: ProjectRegistry, projectEn
 		chunkSize?: number
 	}
 }): { resource: Entity; patches: Patch[] } => {
+	type ResourceDataLike = { status?: 'missing' | 'partial' | 'ready' }
 	const resourceId = createEntityId()
-	const dataStatus = command.p.dataStatus ?? command.p.data?.status ?? 'ready'
+	const commandData = (command.p.data ?? null) as ResourceDataLike | null
+	const dataStatus = command.p.dataStatus ?? commandData?.status ?? 'ready'
 	const data = command.p.data ?? (dataStatus === 'ready'
 		? createReadyResourceData({ size: command.p.size, chunkSize: command.p.chunkSize })
 		: createMissingResourceData(command.p.chunkSize))
@@ -139,7 +141,7 @@ export const createResourceImportPatches = (registry: ProjectRegistry, projectEn
 		attrs: {
 			name: command.p.name,
 			kind: command.p.kind,
-			url: command.p.url ?? (data.status === 'missing' ? '' : `sample://${resourceId}`),
+			url: command.p.url ?? ((data as ResourceDataLike).status === 'missing' ? '' : `sample://${resourceId}`),
 			mime: command.p.mime ?? `${command.p.kind}/sample`,
 			duration: command.p.duration,
 			width: command.p.width,
@@ -147,7 +149,7 @@ export const createResourceImportPatches = (registry: ProjectRegistry, projectEn
 			size: command.p.size,
 			source,
 			data,
-			status: data.status,
+			status: (data as ResourceDataLike).status,
 		},
 		rels: {},
 	}

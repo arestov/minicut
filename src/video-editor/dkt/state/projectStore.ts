@@ -26,28 +26,34 @@ type ObservablePatchApplier<PatchType extends Patch = Patch> = (
 ) => void
 
 const observablePatchAppliers: Partial<Record<Patch['c'], ObservablePatchApplier>> = {
-	[PATCH.REGISTRY_SET]: (context, patch: PatchByCode<typeof PATCH.REGISTRY_SET>) => {
-		context.projects$.set(patch.p.registry)
+	[PATCH.REGISTRY_SET]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.REGISTRY_SET>
+		context.projects$.set(typedPatch.p.registry)
 		context.didSetRegistry = true
 	},
-	[PATCH.PROJECT_SET]: (context, patch: PatchByCode<typeof PATCH.PROJECT_SET>) => {
-		mergeIntoObservable(context.projects$.projects[patch.p.project.id], {
-			...patch.p.project,
+	[PATCH.PROJECT_SET]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.PROJECT_SET>
+		mergeIntoObservable(context.projects$.projects[typedPatch.p.project.id], {
+			...typedPatch.p.project,
 			version: context.envelope.version,
 		})
 	},
-	[PATCH.ENTITY_SET]: (context, patch: PatchByCode<typeof PATCH.ENTITY_SET>) => {
-		context.projects$.entitiesById[patch.p.entity.id].set(patch.p.entity)
+	[PATCH.ENTITY_SET]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.ENTITY_SET>
+		context.projects$.entitiesById[typedPatch.p.entity.id].set(typedPatch.p.entity)
 	},
-	[PATCH.ENTITY_DELETE]: (context, patch: PatchByCode<typeof PATCH.ENTITY_DELETE>) => {
-		context.projects$.entitiesById[patch.p.id].delete()
+	[PATCH.ENTITY_DELETE]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.ENTITY_DELETE>
+		context.projects$.entitiesById[typedPatch.p.id].delete()
 	},
-	[PATCH.ATTRS_MERGE]: (context, patch: PatchByCode<typeof PATCH.ATTRS_MERGE>) => {
-		context.projects$.entitiesById[patch.p.id].attrs.assign(patch.p.attrs)
+	[PATCH.ATTRS_MERGE]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.ATTRS_MERGE>
+		context.projects$.entitiesById[typedPatch.p.id].attrs.assign(typedPatch.p.attrs)
 	},
-	[PATCH.SCALAR_SET]: (context, patch: PatchByCode<typeof PATCH.SCALAR_SET>) => {
-		const path = patch.p.path.split('.')
-		let node = context.projects$.entitiesById[patch.p.id].attrs as unknown as Record<string, Observable<unknown>>
+	[PATCH.SCALAR_SET]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.SCALAR_SET>
+		const path = typedPatch.p.path.split('.')
+		let node = context.projects$.entitiesById[typedPatch.p.id].attrs as unknown as Record<string, Observable<unknown>>
 		let leaf: Observable<unknown> | undefined
 		for (const key of path) {
 			const next = node[key]
@@ -60,22 +66,24 @@ const observablePatchAppliers: Partial<Record<Patch['c'], ObservablePatchApplier
 			node = next as unknown as Record<string, Observable<unknown>>
 		}
 
-		leaf?.set(patch.p.value)
+		leaf?.set(typedPatch.p.value)
 	},
-	[PATCH.REL_SPLICE]: (context, patch: PatchByCode<typeof PATCH.REL_SPLICE>) => {
-		const rel$ = context.projects$.entitiesById[patch.p.id].rels[patch.p.rel] as unknown as Observable<string[]>
+	[PATCH.REL_SPLICE]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.REL_SPLICE>
+		const rel$ = context.projects$.entitiesById[typedPatch.p.id].rels[typedPatch.p.rel] as unknown as Observable<string[]>
 		if (!Array.isArray(rel$.get())) {
 			rel$.set([])
 		}
 
 		rel$.set((previous) => {
 			const next = Array.isArray(previous) ? [...previous] : []
-			next.splice(patch.p.index, patch.p.deleteCount, ...patch.p.insert)
+			next.splice(typedPatch.p.index, typedPatch.p.deleteCount, ...typedPatch.p.insert)
 			return next
 		})
 	},
-	[PATCH.WORKSPACE_ACTIVE_PROJECT_SET]: (context, patch: PatchByCode<typeof PATCH.WORKSPACE_ACTIVE_PROJECT_SET>) => {
-		context.projects$.activeProjectId.set(patch.p.projectId)
+	[PATCH.WORKSPACE_ACTIVE_PROJECT_SET]: (context, patch) => {
+		const typedPatch = patch as PatchByCode<typeof PATCH.WORKSPACE_ACTIVE_PROJECT_SET>
+		context.projects$.activeProjectId.set(typedPatch.p.projectId)
 	},
 }
 
