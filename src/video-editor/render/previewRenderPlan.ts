@@ -1,5 +1,5 @@
 import type { PreviewFrame, RenderedClip } from '../read-model/previewReadModel'
-import type { ResourceKind, TextAttrs } from '../domain/types'
+import type { ResourceKind, TextAttrs } from './registryTypes'
 import { compileEffectColorProgram, type ColorProgram } from './colorProgram'
 
 export interface PreviewLayerOperation {

@@ -1,5 +1,5 @@
 import type { ArrayBufferTarget, Muxer } from 'webm-muxer'
-import type { ProjectRegistry } from '../domain/types'
+import type { ProjectRegistry } from './registryTypes'
 import { getRangeClips, type ResolvedExportRange } from './exportRange'
 
 interface AudioExportMixer {

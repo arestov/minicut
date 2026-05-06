@@ -1,5 +1,5 @@
-import type { ClipAttrs, EffectAttrs, Entity, ProjectRegistry, ResourceAttrs, ResourceKind, TextAttrs } from '../domain/types'
-import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
+import type { ClipAttrs, EffectAttrs, Entity, ProjectRegistry, ResourceAttrs, ResourceKind, TextAttrs } from './registryTypes'
+import { getClipEntitiesForTrack, getTracks } from './registrySelectors'
 import { evaluateAnimatedScalar, evaluateFadeOpacity } from './timing'
 import { toEffectRenderInstruction, type EffectRenderInstruction } from './colorPipeline'
 

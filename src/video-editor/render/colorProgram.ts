@@ -1,4 +1,4 @@
-import type { ColorCorrectionAttrs } from '../domain/types'
+import type { ColorCorrectionAttrs } from './registryTypes'
 import type { EffectRenderInstruction } from './colorPipeline'
 
 export type ColorProgramOperation =

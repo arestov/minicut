@@ -1,5 +1,5 @@
-import { getClipEntitiesForTrack, getTracks } from '../domain/selectors'
-import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs, ResourceKind, TextAttrs } from '../domain/types'
+import { getClipEntitiesForTrack, getTracks } from './registrySelectors'
+import type { ClipAttrs, Entity, ProjectRegistry, ResourceAttrs, ResourceKind, TextAttrs } from './registryTypes'
 import type { EffectRenderInstruction } from './colorPipeline'
 import { compileClipFrameOperation, type EvaluatedTransformAttrs } from './renderPlan'
 

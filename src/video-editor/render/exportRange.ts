@@ -1,5 +1,5 @@
-import { getProjectEntity, getTrackEnd, getTracks } from '../domain/selectors'
-import type { ClipAttrs, Entity, ProjectRegistry } from '../domain/types'
+import { getProjectEntity, getTrackEnd, getTracks } from './registrySelectors'
+import type { ClipAttrs, Entity, ProjectRegistry } from './registryTypes'
 import type { ExportBackend, ExportDiagnostics, ExportRange } from './exportTypes'
 import { compileEditframeClips, type ClipFrameOperation, type EditframeClip } from './renderPlan'
 

@@ -1,4 +1,4 @@
-import type { AnimatedScalar, EntityId, KeyframeAttrs, ProjectRegistry } from '../domain/types'
+import type { AnimatedScalar, EntityId, KeyframeAttrs, ProjectRegistry } from './registryTypes'
 
 export interface ScalarKeyframe extends KeyframeAttrs {
 	time: number

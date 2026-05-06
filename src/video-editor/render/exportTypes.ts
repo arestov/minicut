@@ -1,4 +1,4 @@
-import type { ProjectRegistry } from '../domain/types'
+import type { ProjectRegistry } from './registryTypes'
 import type { ClipFrameOperation, EditframeClip } from './renderPlan'
 
 export type ExportFormat = 'json-manifest' | 'video-webm'

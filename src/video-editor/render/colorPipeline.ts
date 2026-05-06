@@ -1,4 +1,4 @@
-import type { EffectAttrs } from '../domain/types'
+import type { EffectAttrs } from './registryTypes'
 import { colorProgramToCssFilter, compileEffectColorProgram, mergeColorProgramCssFilters } from './colorProgram'
 
 export interface EffectRenderInstruction {

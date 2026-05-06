@@ -1,4 +1,4 @@
-import type { ResourceAttrs, TextAttrs } from '../domain/types'
+import type { ResourceAttrs, TextAttrs } from './registryTypes'
 import { getEffectInstructionFilter, type EffectRenderInstruction } from './colorPipeline'
 import type { ClipFrameOperation } from './renderPlan'
 
