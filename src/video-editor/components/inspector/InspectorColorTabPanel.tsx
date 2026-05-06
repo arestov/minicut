@@ -4,7 +4,6 @@ import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../../dkt-react-sync/hooks/useMany'
-import { useVideoEditor } from '../../app/VideoEditorContext'
 import { readVideoFrameImageData } from '../../color/framePalette'
 import { buildLookColorCorrectionParams, getLookPreset, lookPresets } from '../../color/looks'
 import type { AnimatedScalar } from '../../render/registryTypes'
@@ -181,11 +180,10 @@ const ColorCorrectionEffectSlot = ({
 }
 
 export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
-	const { actions } = useVideoEditor()
-	const clipAttrs = useAttrs(['sourceClipId', 'color']) as ClipRenderAttrs & { sourceClipId?: unknown }
+	const clipDispatch = useActions()
+	const clipAttrs = useAttrs(['color']) as ClipRenderAttrs
 	const effectScopes = useMany('effects')
 	const [colorCorrectionEffectIds, setColorCorrectionEffectIds] = useState<ReadonlySet<string>>(() => new Set())
-	const sourceClipId = typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null
 	const color = String(clipAttrs.color ?? '#2563eb')
 	const hasColorCorrectionEffect = colorCorrectionEffectIds.size > 0
 	const handleColorCorrectionPresence = useCallback((effectNodeId: string, present: boolean) => {
@@ -203,9 +201,9 @@ export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementR
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Color inspector">
 			<InspectorSection title="Label color" icon={Palette}>
-				<label className="ve-color-field"><span>Clip label</span><input type="color" aria-label="Color" value={color} onChange={(event) => sourceClipId ? actions.colorClipById(sourceClipId, event.currentTarget.value) : undefined} /></label>
+				<label className="ve-color-field"><span>Clip label</span><input type="color" aria-label="Color" value={color} onChange={(event) => clipDispatch('color', { color: event.currentTarget.value })} /></label>
 				<div className="ve-swatch-grid" aria-label="Color presets">
-					{['#2563eb', '#16a34a', '#dc2626', '#ca8a04', '#7c3aed', '#0891b2'].map((swatch) => (<button key={swatch} type="button" aria-label={`Set color ${swatch}`} style={{ background: swatch }} onClick={() => sourceClipId ? actions.colorClipById(sourceClipId, swatch) : undefined} />))}
+					{['#2563eb', '#16a34a', '#dc2626', '#ca8a04', '#7c3aed', '#0891b2'].map((swatch) => (<button key={swatch} type="button" aria-label={`Set color ${swatch}`} style={{ background: swatch }} onClick={() => clipDispatch('color', { color: swatch })} />))}
 				</div>
 			</InspectorSection>
 			<InspectorSection title="Primary correction" icon={SlidersHorizontal} ariaLabel="Primary color correction">
@@ -218,9 +216,7 @@ export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementR
 						/>
 					</ScopeContext.Provider>
 				))}
-				{!hasColorCorrectionEffect ? (
-					<Button type="button" variant="secondary" onClick={() => sourceClipId ? actions.addColorCorrectionToClip(sourceClipId) : undefined}>Add primary correction</Button>
-				) : null}
+				{!hasColorCorrectionEffect ? <Button type="button" variant="secondary" onClick={() => clipDispatch('addEffect', { kind: 'color-correction', name: 'Color correction' })}>Add primary correction</Button> : null}
 			</InspectorSection>
 		</div>
 	)

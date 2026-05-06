@@ -1,8 +1,9 @@
 ﻿import { useRef, useState } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
-import { useVideoEditor } from '../app/VideoEditorContext'
+import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
 import type { AnimatedScalar } from '../render/registryTypes'
 import { formatPercent, formatSeconds } from './format'
 
@@ -44,7 +45,8 @@ const ClipGradeBadge = () => {
 export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipItemProps) => {
 	const dragState = useRef<ClipPointerDragState | null>(null)
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0)
-	const { actions } = useVideoEditor()
+	const dispatch = useActions()
+	const sessionDispatch = useRootDispatch()
 	const clipAttrs = useAttrs(['sourceClipId', 'name', 'start', 'duration', 'in', 'opacity', 'color']) as ClipRenderAttrs
 	const effectScopes = useMany('effects')
 	const clipId = typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null
@@ -59,18 +61,13 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx)
 	const selectClip = (): void => {
 		if (clipId) {
-			actions.selectEntity(clipId)
-		}
-	}
-	const updateClip = (fn: (clipId: string) => void): void => {
-		if (clipId) {
-			fn(clipId)
+			sessionDispatch('selectEntity', clipId)
 		}
 	}
 	const splitAtPointer = (clientX: number, element: HTMLElement): void => {
 		const rect = element.getBoundingClientRect()
 		const localTime = Math.max(0, (clientX - rect.left) / timelineZoom)
-		updateClip((id) => actions.splitClipByIdAt(id, start + localTime))
+		dispatch('splitSelfAt', { time: start + localTime })
 	}
 	const getMovePreviewDeltaPx = (deltaPx: number): number => {
 		const requestedStart = start + deltaPx / timelineZoom
@@ -99,7 +96,7 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 		}
 
 		selectClip()
-		updateClip((id) => actions.resizeClipById(id, edge, deltaSeconds))
+		dispatch('resize', { edge, delta: deltaSeconds })
 		dragState.current = { ...state, lastClientX: state.lastClientX + deltaSeconds * timelineZoom }
 	}
 	const finishPointerDrag = (clientX: number): void => {
@@ -122,14 +119,14 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 
 		selectClip()
 		if (state.kind === 'move' && activeTool === 'select') {
-			updateClip((id) => actions.moveClipById(id, deltaSeconds))
+			dispatch('moveBy', { delta: deltaSeconds })
 			return
 		}
 		if (state.kind === 'move') {
 			return
 		}
 
-		updateClip((id) => actions.resizeClipById(id, state.kind === 'resize-start' ? 'start' : 'end', deltaSeconds))
+		dispatch('resize', { edge: state.kind === 'resize-start' ? 'start' : 'end', delta: deltaSeconds })
 	}
 
 	return (

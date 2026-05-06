@@ -24,16 +24,17 @@ import {
 } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useActions } from '../../dkt-react-sync/hooks/useActions'
+import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRuntime'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
 import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
+import { useRootOne } from '../../dkt-react-sync/hooks/useRootOne'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,
 	TIMELINE_ZOOM_STEP,
 } from '../models/sessionZoom'
-import { useVideoEditor } from '../app/VideoEditorContext'
 import { IconButton } from './ControlPrimitives'
 import { TrackLabel, TrackLane } from './TrackRow'
 
@@ -269,8 +270,6 @@ export const TimelineView = () => {
 	const [snappingEnabled, setSnappingEnabled] = useState(true)
 	const panState = useRef<{ x: number; scrollLeft: number } | null>(null)
 	const playheadDragPointerId = useRef<number | null>(null)
-	// session-level actions that don't have model actions yet (multi-step runtime ops)
-	const { actions } = useVideoEditor()
 	// session-scope attrs read via root hooks (we're inside ActiveProjectScope)
 	const rootAttrs = useRootAttrs(['activeProjectId', 'timelineZoom', 'selectedEntityId', 'cursor', 'selectedClipSummary']) as { activeProjectId?: unknown; timelineZoom?: unknown; selectedEntityId?: unknown; cursor?: unknown; selectedClipSummary?: SelectedClipSummary | null }
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
@@ -282,6 +281,9 @@ export const TimelineView = () => {
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 	// session dispatch for simple session actions
 	const sessionDispatch = useRootDispatch()
+	const runtime = useReactScopeRuntime()
+	const selectedClipScope = useRootOne('selectedClip')
+	const selectedClipDispatch = selectedClipScope ? runtime.getDispatch(selectedClipScope) : null
 	// project dispatch for addTrack — scope = activeProject via ActiveProjectScope
 	const projectDispatch = useActions()
 
@@ -359,9 +361,9 @@ export const TimelineView = () => {
 			activeTool={activeTool}
 			canZoomIn={canZoomIn}
 			canZoomOut={canZoomOut}
-			onDeleteSelected={() => actions.deleteSelectedClip()}
-			onNudgeSelected={(delta) => actions.nudgeSelectedClip(delta)}
-			onSplitSelected={() => actions.splitSelectedClip()}
+			onDeleteSelected={() => sessionDispatch('deleteSelectedClip')}
+			onNudgeSelected={(delta) => selectedClipDispatch?.('moveBy', { delta })}
+			onSplitSelected={() => sessionDispatch('splitSelectedClip')}
 			onZoom={(delta) => sessionDispatch('zoomTimeline', delta)}
 			selectedClipSummary={selectedClipSummary}
 			snappingEnabled={snappingEnabled}

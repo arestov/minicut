@@ -5,7 +5,6 @@ import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useOne } from '../../../dkt-react-sync/hooks/useOne'
-import { useVideoEditor } from '../../app/VideoEditorContext'
 import { createPaletteFromHex, sampleVideoFramePalette } from '../../color/framePalette'
 import type { TextAttrs } from '../../models/Text/types'
 import type { TransformAttrs } from '../../models/Clip/types'
@@ -85,11 +84,10 @@ const TextEditorSection = ({ clipColor, mediaElementRegistry }: { clipColor: str
 
 export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
-	const { actions } = useVideoEditor()
+	const clipDispatch = useActions()
 	const attrs = useAttrs(['sourceClipId', 'opacity', 'in', 'fadeIn', 'fadeOut', 'duration', 'start', 'transform', 'color']) as ClipRenderAttrs & { sourceClipId?: unknown }
 	const textScope = useOne('text')
 	const effectScopes = useMany('effects')
-	const sourceClipId = typeof attrs.sourceClipId === 'string' ? attrs.sourceClipId : null
 	const opacity = Number(attrs.opacity?.value ?? 1)
 	const opacityPercent = Math.round(opacity * 100)
 	const inPoint = Number(attrs.in)
@@ -99,11 +97,6 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 	const start = Number(attrs.start)
 	const color = String(attrs.color ?? '#2563eb')
 	const transform = attrs.transform ?? { x: { value: 0 }, y: { value: 0 }, scale: { value: 1 }, rotation: { value: 0 } }
-	const updateClip = (fn: (clipId: string) => void): void => {
-		if (sourceClipId) {
-			fn(sourceClipId)
-		}
-	}
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Edit inspector">
@@ -115,7 +108,7 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 			<InspectorSection title="Opacity" icon={Gauge}>
 				<label className="ve-slider-field">
 					<span>Opacity</span>
-					<input type="range" min="0" max="100" step="10" value={opacityPercent} onChange={(event) => updateClip((clipId) => actions.updateClipOpacityById(clipId, Number(event.currentTarget.value)))} />
+					<input type="range" min="0" max="100" step="10" value={opacityPercent} onChange={(event) => clipDispatch('updateOpacity', { opacityPercent: Number(event.currentTarget.value) })} />
 				</label>
 				<small>Opacity {formatPercent(opacity)}</small>
 			</InspectorSection>
@@ -125,29 +118,29 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 					<div><dt>Fade out</dt><dd>{formatSeconds(fadeOut)}</dd></div>
 				</dl>
 				<div className="ve-button-grid">
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.updateClipFadeById(clipId, 'in', 0.5))}>Fade in +0.5s</Button>
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.updateClipFadeById(clipId, 'in', -0.5))} disabled={fadeIn <= 0}>Fade in -0.5s</Button>
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.updateClipFadeById(clipId, 'out', 0.5))}>Fade out +0.5s</Button>
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.updateClipFadeById(clipId, 'out', -0.5))} disabled={fadeOut <= 0}>Fade out -0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('setFade', { edge: 'in', delta: 0.5 })}>Fade in +0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('setFade', { edge: 'in', delta: -0.5 })} disabled={fadeIn <= 0}>Fade in -0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('setFade', { edge: 'out', delta: 0.5 })}>Fade out +0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('setFade', { edge: 'out', delta: -0.5 })} disabled={fadeOut <= 0}>Fade out -0.5s</Button>
 				</div>
 			</InspectorSection>
 			<InspectorSection title="Trim" icon={Scissors} ariaLabel="Trim controls">
 				<div className="ve-button-grid">
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.trimClipById(clipId, 'start', 0.5))}>Start +0.5s</Button>
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.trimClipById(clipId, 'start', -0.5))} disabled={start <= 0}>Start -0.5s</Button>
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.trimClipById(clipId, 'end', -0.5))} disabled={duration <= 0.5}>End -0.5s</Button>
-					<Button type="button" variant="secondary" onClick={() => updateClip((clipId) => actions.trimClipById(clipId, 'end', 0.5))}>End +0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('trim', { edge: 'start', delta: 0.5 })}>Start +0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('trim', { edge: 'start', delta: -0.5 })} disabled={start <= 0}>Start -0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('trim', { edge: 'end', delta: -0.5 })} disabled={duration <= 0.5}>End -0.5s</Button>
+					<Button type="button" variant="secondary" onClick={() => clipDispatch('trim', { edge: 'end', delta: 0.5 })}>End +0.5s</Button>
 				</div>
 				<small>In {formatSeconds(inPoint)}</small>
 			</InspectorSection>
 			<InspectorSection title="Transform" icon={Move} ariaLabel="Transform controls">
-				<TransformFields transform={transform} onChange={(patch) => updateClip((clipId) => actions.updateClipTransformById(clipId, patch))} />
+				<TransformFields transform={transform} onChange={(patch) => clipDispatch('setTransform', patch)} />
 			</InspectorSection>
 			<InspectorSection title="Effects" icon={Sparkles} ariaLabel="Effects editor">
 				<div className="ve-button-grid">
-					<IconButton type="button" icon={Wand2} label="Blur" variant="secondary" onClick={() => updateClip((clipId) => actions.addEffectToClip(clipId, 'blur'))}>Blur</IconButton>
-					<IconButton type="button" icon={Wand2} label="Sharpen" variant="secondary" onClick={() => updateClip((clipId) => actions.addEffectToClip(clipId, 'sharpen'))}>Sharpen</IconButton>
-					<IconButton type="button" icon={Wand2} label="Tint" variant="secondary" onClick={() => updateClip((clipId) => actions.addEffectToClip(clipId, 'tint'))}>Tint</IconButton>
+					<IconButton type="button" icon={Wand2} label="Blur" variant="secondary" onClick={() => clipDispatch('addEffect', { kind: 'blur' })}>Blur</IconButton>
+					<IconButton type="button" icon={Wand2} label="Sharpen" variant="secondary" onClick={() => clipDispatch('addEffect', { kind: 'sharpen' })}>Sharpen</IconButton>
+					<IconButton type="button" icon={Wand2} label="Tint" variant="secondary" onClick={() => clipDispatch('addEffect', { kind: 'tint' })}>Tint</IconButton>
 				</div>
 				<div className="ve-effects-toolbar">
 					<small>{effectScopes.length} effects</small>
@@ -159,7 +152,7 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 									{effectScopes.map((effectScope) => (
 										<ScopeContext.Provider key={effectScope._nodeId} value={effectScope}>
 											<EffectEntry onRemove={(effectId) => {
-												updateClip((clipId) => actions.removeEffectFromClip(clipId, effectId))
+												clipDispatch('removeEffect', { effectId })
 												if (effectScopes.length <= 1) {
 													setIsEffectsMenuOpen(false)
 												}
