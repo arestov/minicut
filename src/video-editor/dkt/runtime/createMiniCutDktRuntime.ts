@@ -220,6 +220,11 @@ const asString = (value: unknown, fallback: string): string =>
 const asNullableString = (value: unknown): string | null =>
 	typeof value === 'string' ? value : null
 
+const toModelRef = (model: RuntimeModelLike): { _node_id: string } | null =>
+	typeof model._node_id === 'string' && model._node_id
+		? { _node_id: model._node_id }
+		: null
+
 
 const queryModelRel = async (model: RuntimeModelLike, relName: string): Promise<RuntimeModelLike[]> => {
 	const queried = await model.queryRel?.(relName)
@@ -348,6 +353,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			throw new Error('MiniCut DKT runtime is disabled')
 		}
 
+		await syncSessionSelectionRels(sessionRoot)
+
 		let target = sessionRoot
 		if (typeof scopeNodeId === 'string' && scopeNodeId) {
 			const scopedTarget = getModelById(sessionRoot, scopeNodeId) as RuntimeModelLike | null
@@ -367,6 +374,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		if (!sessionRoot) {
 			throw new Error('MiniCut DKT runtime is disabled')
 		}
+
+		await syncSessionSelectionRels(sessionRoot)
 
 		await sessionRoot.dispatch(actionName, payload)
 		await syncSessionSelectionRels(sessionRoot)
@@ -451,6 +460,84 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return nodeId ? getSeededModelByNodeId(nodeId) : null
 	}
 
+	const syncOwnershipRels = async (activeProjectModel: RuntimeModelLike): Promise<void> => {
+		const projectRef = toModelRef(activeProjectModel)
+		if (!projectRef) {
+			return
+		}
+		const resources = await queryModelRel(activeProjectModel, 'resources')
+		const resourcesBySourceId = new Map<string, RuntimeModelLike>()
+		const resourceToClips = new Map<string, RuntimeModelLike[]>()
+
+		for (const resourceModel of resources) {
+			const sourceResourceId = asNullableString(resourceModel.states?.sourceResourceId)
+			if (sourceResourceId) {
+				resourcesBySourceId.set(sourceResourceId, resourceModel)
+				resourceToClips.set(sourceResourceId, [])
+			}
+			await resourceModel.dispatch('setProject', { project: projectRef })
+		}
+
+		const tracks = await queryModelRel(activeProjectModel, 'tracks')
+		for (const trackModel of tracks) {
+			const trackRef = toModelRef(trackModel)
+			if (!trackRef) {
+				continue
+			}
+			const clipModels = await queryModelRel(trackModel, 'clips')
+			for (const clipModel of clipModels) {
+				const clipRef = toModelRef(clipModel)
+				if (!clipRef) {
+					continue
+				}
+				await clipModel.dispatch('setTrack', { track: trackRef })
+				await clipModel.dispatch('setProject', { project: projectRef })
+
+				const sourceResourceId = asNullableString(clipModel.states?.sourceResourceId)
+				if (sourceResourceId) {
+					const resourceModel = resourcesBySourceId.get(sourceResourceId) ?? null
+					if (resourceModel) {
+						const resourceRef = toModelRef(resourceModel)
+						if (resourceRef) {
+							await clipModel.dispatch('setResource', { resource: resourceRef })
+						}
+						const clips = resourceToClips.get(sourceResourceId)
+						if (clips) {
+							clips.push(clipModel)
+						}
+					}
+				}
+
+				const sourceTextId = asNullableString(clipModel.states?.sourceTextId)
+				if (sourceTextId) {
+					const textModel = await findSeededModelBySourceId('minicut_text', 'sourceTextId', sourceTextId)
+					if (isRuntimeModelLike(textModel)) {
+						const textRef = toModelRef(textModel)
+						if (textRef) {
+							await clipModel.dispatch('setText', { text: textRef })
+						}
+						await textModel.dispatch('setClip', { clip: clipRef })
+					}
+				}
+
+				const effectModels = await queryModelRel(clipModel, 'effects')
+				for (const effectModel of effectModels) {
+					await effectModel.dispatch('setEffectClip', { clip: clipRef })
+					await effectModel.dispatch('setEffectProject', { project: projectRef })
+				}
+			}
+		}
+
+		for (const [sourceResourceId, resourceModel] of resourcesBySourceId.entries()) {
+			const clipRefs = (resourceToClips.get(sourceResourceId) ?? [])
+				.map(toModelRef)
+				.filter((item): item is { _node_id: string } => Boolean(item))
+			await resourceModel.dispatch('setClips', {
+				clips: clipRefs,
+			})
+		}
+	}
+
 	// Phase 1: Removed syncSessionDerivedState - registry materialization belongs in Phase 2 DKT rebuild
 	const syncSessionSelectionRels = async (sessionRoot: RuntimeModelLike): Promise<void> => {
 		const activeProjectId = typeof sessionRoot.states?.activeProjectId === 'string'
@@ -486,6 +573,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position: null })
 			return
 		}
+
+		await syncOwnershipRels(activeProjectModel)
 
 		// Find selected clip — minimal traversal (tracks → clips only, breaks early on match)
 		// previewStructure is now a DKT comp attr; no clipSources building needed here
