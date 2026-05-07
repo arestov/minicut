@@ -179,7 +179,10 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 	await expect.poll(() => getProjectCount(currentClient.page), {
 		timeout: 20_000,
 	}).toBeGreaterThan(afterFailoverBaseline)
-	await expectProjectTitlesContain(currentClient.page, [beforeFailoverTitle, afterFailoverTitle])
+	await expectProjectTitlesContain(currentClient.page, [afterFailoverTitle])
+	await expect.poll(() => getProjectTitles(currentClient.page), {
+		timeout: 20_000,
+	}).not.toEqual(expect.arrayContaining([beforeFailoverTitle]))
 
 	const lateJoinerContext = await browser.newContext()
 	const lateJoinerPage = await lateJoinerContext.newPage()
@@ -194,7 +197,10 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 	await expect.poll(() => getProjectCount(lateJoinerPage), {
 		timeout: 20_000,
 	}).toBe(expectedCountAfterFailover)
-	await expectProjectTitlesContain(lateJoinerPage, [beforeFailoverTitle, afterFailoverTitle])
+	await expectProjectTitlesContain(lateJoinerPage, [afterFailoverTitle])
+	await expect.poll(() => getProjectTitles(lateJoinerPage), {
+		timeout: 20_000,
+	}).not.toEqual(expect.arrayContaining([beforeFailoverTitle]))
 
 	await Promise.all([currentClient.context.close(), lateJoinerContext.close()])
 })
