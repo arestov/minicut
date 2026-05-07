@@ -16,6 +16,7 @@ export const EditorSessionRoot = model({
 		isCommonRoot: ['input', false],
 		tabId: ['input', null],
 		activeProjectId: ['input', null],
+		pendingProjectInit: ['input', null],
 		selectedEntityId: ['input', null],
 		activeInspectorTab: ['input', 'edit'],
 		cursor: ['input', 0],

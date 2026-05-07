@@ -4,6 +4,7 @@ import { buildPreviewBuffer, type PreviewBuffer, type PreviewStructure } from '.
 /** Inline session state patch type – replaces legacy EditorSessionState from domain/types. */
 type SessionStateFields = {
 	activeProjectId: string | null
+	pendingProjectInit: Record<string, unknown> | null
 	selectedEntityId: string | null
 	cursor: number
 	isPlaying: boolean
@@ -25,6 +26,7 @@ type CreateProjectPayload = {
 }
 
 export type DktSessionActionName =
+	| 'handleInit'
 	| 'createProject'
 	| 'selectEntity'
 	| 'setActiveProject'
@@ -57,6 +59,8 @@ export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 
 type DktActionDescriptor = {
 	to: unknown
+	when_deps?: readonly string[]
+	when_fn?: (...args: unknown[]) => boolean
 	fn: ((payload: unknown) => DktSessionActionPatch | '$noop')
 		| readonly [readonly string[], (payload: unknown, ...deps: unknown[]) => DktSessionActionPatch | Record<string, unknown> | '$noop']
 		| ((payload: unknown) => Record<string, unknown> | '$noop')
@@ -117,29 +121,37 @@ const createDefaultTracks = (projectId: string) => [
 
 let createdProjectSequence = 0
 
-const createProjectCreationResult = (payload: unknown) => {
+const createProjectSeedPayload = (payload: unknown, forcedProjectId?: string) => {
 	const value = asObject(payload) as CreateProjectPayload | null
-	createdProjectSequence += 1
-	const projectId = asString(value?.sourceProjectId) ?? `project:${Date.now().toString(36)}:${createdProjectSequence}:${Math.random().toString(36).slice(2, 7)}`
+	const nextSequence = forcedProjectId ? createdProjectSequence || 1 : createdProjectSequence + 1
+	if (!forcedProjectId) {
+		createdProjectSequence = nextSequence
+	}
+	const projectId = forcedProjectId ?? asString(value?.sourceProjectId) ?? `project:${Date.now().toString(36)}:${nextSequence}:${Math.random().toString(36).slice(2, 7)}`
 
 	const now = Date.now()
+	return {
+		sourceProjectId: projectId,
+		title: asString(value?.title) ?? `Project ${nextSequence}`,
+		fps: asNumber(value?.fps, 30),
+		width: asNumber(value?.width, 1920),
+		height: asNumber(value?.height, 1080),
+		duration: asNumber(value?.duration, 0),
+		createdAt: asNumber(value?.createdAt, now),
+		updatedAt: asNumber(value?.updatedAt, now),
+		autoCreateDefaultTracks: true,
+	}
+}
+
+	const createProjectCreationResult = (payload: unknown) => {
+	const seed = createProjectSeedPayload(payload)
 
 	return {
-		activeProjectId: projectId,
+		activeProjectId: seed.sourceProjectId,
 		selectedEntityId: null,
 		cursor: 0,
 		createdProject: {
-			attrs: {
-				sourceProjectId: projectId,
-				title: asString(value?.title) ?? `Project ${createdProjectSequence}`,
-				fps: asNumber(value?.fps, 30),
-				width: asNumber(value?.width, 1920),
-				height: asNumber(value?.height, 1080),
-				duration: asNumber(value?.duration, 0),
-				createdAt: asNumber(value?.createdAt, now),
-				updatedAt: asNumber(value?.updatedAt, now),
-				autoCreateDefaultTracks: true,
-			},
+			attrs: seed,
 			hold_ref_id: 'createdProject',
 		},
 		activeProject: { use_ref_id: 'createdProject' },
@@ -231,6 +243,69 @@ export const sessionCreateProjectAction = [
 	{
 		to: ['<< activeProject', { action: 'handleInit', inline_subwalker: true }],
 		fn: () => ({}),
+	},
+] as const satisfies DktActionDefinition
+
+export const sessionHandleInitAction = [
+	{
+		to: {
+			activeProjectId: ['activeProjectId'],
+			pendingProjectInit: ['pendingProjectInit'],
+			selectedEntityId: ['selectedEntityId'],
+			cursor: ['cursor'],
+		},
+		fn: [
+			['activeProjectId'] as const,
+			(payload: unknown, activeProjectId: unknown) => {
+				if (typeof activeProjectId === 'string' && activeProjectId) {
+					return { pendingProjectInit: null }
+				}
+
+				const pendingProjectInit = createProjectSeedPayload(payload)
+				return {
+					activeProjectId: pendingProjectInit.sourceProjectId,
+					pendingProjectInit,
+					selectedEntityId: null,
+					cursor: 0,
+				}
+			},
+		],
+	},
+	{
+		to: ['<< pioneer', { action: 'createProjectModel', inline_subwalker: true }],
+		when_deps: ['pendingProjectInit'] as const,
+		when_fn: (_payload: unknown, pendingProjectInit: unknown) => Boolean(pendingProjectInit && typeof pendingProjectInit === 'object'),
+		fn: [
+			['pendingProjectInit'] as const,
+			(_payload: unknown, pendingProjectInit: unknown) => pendingProjectInit as Record<string, unknown>,
+		],
+	},
+	{
+		to: {
+			activeProject: ['<< activeProject', { method: 'set_one' }],
+		},
+		fn: [
+			['<< @all:pioneer.project', '< @all:sourceProjectId < pioneer.project', 'activeProjectId'] as const,
+			(_payload: unknown, projects: unknown, sourceProjectIds: unknown, activeProjectId: unknown) => {
+				if (typeof activeProjectId !== 'string' || !activeProjectId) return { activeProject: null }
+				const modelList = Array.isArray(projects) ? projects : []
+				const idList = Array.isArray(sourceProjectIds) ? sourceProjectIds : []
+				const index = idList.indexOf(activeProjectId)
+				return { activeProject: (index !== -1 && modelList[index]) || null }
+			},
+		],
+	},
+	{
+		to: ['<< activeProject', { action: 'handleInit', inline_subwalker: true }],
+		when_deps: ['pendingProjectInit'] as const,
+		when_fn: (_payload: unknown, pendingProjectInit: unknown) => Boolean(pendingProjectInit && typeof pendingProjectInit === 'object'),
+		fn: () => ({}),
+	},
+	{
+		to: {
+			pendingProjectInit: ['pendingProjectInit'],
+		},
+		fn: () => ({ pendingProjectInit: null }),
 	},
 ] as const satisfies DktActionDefinition
 
@@ -399,6 +474,7 @@ export const sessionSplitSelectedClipAction = [
 ] as const satisfies DktActionDefinition
 
 export const dktSessionActions = {
+	handleInit: sessionHandleInitAction,
 	createProject: sessionCreateProjectAction,
 	selectEntity: sessionSelectEntityAction,
 		addTextClipToTimeline: [

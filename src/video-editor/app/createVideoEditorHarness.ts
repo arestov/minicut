@@ -252,63 +252,6 @@ export const createVideoEditorHarness = (
 
 	const actions = createEditorHarnessAdapter(env, { resourceChunkSize })
 
-	// P2P server lifecycle management:
-	// When this peer is server and the current runtime root has no projects, seed one initial project.
-	if (pageRuntime) {
-		let seededRootNodeId: string | null = null
-
-		const readProjectCount = (): number => {
-			const rootScope = pageRuntime.getRootScope()
-			if (!rootScope) {
-				return -1
-			}
-			const pioneerScope = pageRuntime.readOne(rootScope, 'pioneer')
-			if (!pioneerScope) {
-				return -1
-			}
-			return pageRuntime.readMany(pioneerScope, 'project').length
-		}
-
-		const pollServerState = () => {
-			if (isDestroyed) {
-				return
-			}
-
-			const role = (authorityClientRef as Partial<{ role: unknown }> | null)?.role as string | null | undefined
-			const snapshot = pageRuntime.getSnapshot()
-
-			if (!snapshot.ready) {
-				return
-			}
-
-			if (role === 'client' || role === 'undecided') {
-				return
-			}
-
-			const rootNodeId = snapshot.rootNodeId ?? null
-			if (!rootNodeId) {
-				return
-			}
-
-			const projectCount = readProjectCount()
-			if (projectCount === 0 && seededRootNodeId !== rootNodeId) {
-				seededRootNodeId = rootNodeId
-				actions.createProject()
-			}
-		}
-
-		const initIntervalId = setInterval(pollServerState, 150)
-		const unsubscribeRuntime = pageRuntime.subscribe(pollServerState)
-		pollServerState()
-
-		// Wire cleanup into the harness destroy below
-		const stopPolling = () => {
-			clearInterval(initIntervalId)
-			unsubscribeRuntime()
-		}
-		;(pageRuntime as unknown as Record<string, unknown>).__stopP2PPolling = stopPolling
-	}
-
 	return {
 		// Only essential public API
 		worker: authorityClient,
@@ -332,10 +275,6 @@ export const createVideoEditorHarness = (
 			isDestroyed = true
 			runtimeTasks.clear()
 			unsubscribe()
-			const stopPolling = pageRuntime
-				? (pageRuntime as unknown as Record<string, unknown>).__stopP2PPolling as (() => void) | undefined
-				: undefined
-			stopPolling?.()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)
 			}
