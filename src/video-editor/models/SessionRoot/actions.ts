@@ -396,12 +396,6 @@ export const sessionSplitSelectedClipAction = [
 			},
 		],
 	},
-	{
-		to: {
-			selectedEntityId: ['selectedEntityId'],
-		},
-		fn: () => ({ selectedEntityId: null }),
-	},
 ] as const satisfies DktActionDefinition
 
 export const dktSessionActions = {

@@ -61,10 +61,43 @@ return
 env.dkt?.dispatch(actionName, payload, clipScope)
 }
 
-// For byId clip methods: dispatches to selectedClip scope.
-// In real UI, components dispatch from their own scope. In harness, select the clip first.
-const dispatchClipActionById = (env: EditorActionEnvironment, _clipId: string, actionName: string, payload?: unknown): void => {
-dispatchSelectedClipAction(env, actionName, payload)
+const findClipScopeById = (
+	env: EditorActionEnvironment,
+	clipId: string,
+): ReactSyncScopeHandle | null => {
+	if (!env.pageRuntime || !clipId) {
+		return null
+	}
+
+	const projectScope = getActiveProjectScope(env)
+	if (!projectScope) {
+		return null
+	}
+
+	const trackScopes = env.pageRuntime.readMany(projectScope, 'tracks')
+	for (const trackScope of trackScopes) {
+		const clipScopes = env.pageRuntime.readMany(trackScope, 'clips')
+		for (const clipScope of clipScopes) {
+			if (clipScope._nodeId === clipId) {
+				return clipScope
+			}
+			const attrs = env.pageRuntime.readAttrs(clipScope, ['sourceClipId']) as { sourceClipId?: unknown }
+			if (attrs.sourceClipId === clipId) {
+				return clipScope
+			}
+		}
+	}
+
+	return null
+}
+
+const dispatchClipActionById = (env: EditorActionEnvironment, clipId: string, actionName: string, payload?: unknown): void => {
+	const clipScope = findClipScopeById(env, clipId)
+	if (clipScope) {
+		env.dkt?.dispatch(actionName, payload, clipScope)
+		return
+	}
+	dispatchSelectedClipAction(env, actionName, payload)
 }
 
 const _resourceChunkSizeRef = new WeakMap<EditorActionEnvironment, number>()
@@ -383,8 +416,8 @@ dispatchClipActionById(env, clipId, 'addEffect', { kind: 'color-correction', nam
 addColorCorrectionToSelectedClip(): void {
 dispatchSelectedClipAction(env, 'addEffect', { kind: 'color-correction', name: 'Color correction' })
 },
-deleteClipById(_clipId: string): void {
-dispatchRoot(env, 'deleteSelectedClip')
+deleteClipById(clipId: string): void {
+dispatchClipActionById(env, clipId, 'removeSelf')
 },
 deleteSelectedClip(): void {
 dispatchRoot(env, 'deleteSelectedClip')
@@ -392,11 +425,11 @@ dispatchRoot(env, 'deleteSelectedClip')
 splitSelectedClip(): void {
 dispatchRoot(env, 'splitSelectedClip')
 },
-splitClipByIdAt(_clipId: string, time: number): void {
-dispatchSelectedClipAction(env, 'splitSelfAt', { time: roundToHundredths(time) })
+splitClipByIdAt(clipId: string, time: number): void {
+dispatchClipActionById(env, clipId, 'splitSelfAt', { time: roundToHundredths(time) })
 },
-removeEffectFromClip(_clipId: string, effectId: string): void {
-dispatchSelectedClipAction(env, 'removeEffect', { effectId })
+removeEffectFromClip(clipId: string, effectId: string): void {
+dispatchClipActionById(env, clipId, 'removeEffect', { effectId })
 },
 removeEffectFromSelectedClip(effectId: string): void {
 dispatchSelectedClipAction(env, 'removeEffect', { effectId })
@@ -419,8 +452,8 @@ queueProjectExport(onProgress?: (event: ExportProgressEvent) => void): Promise<E
 nudgeSelectedClip(delta: number): void {
 dispatchSelectedClipAction(env, 'moveBy', { delta })
 },
-moveClipById(_clipId: string, delta: number): void {
-dispatchSelectedClipAction(env, 'moveBy', { delta })
+moveClipById(clipId: string, delta: number): void {
+dispatchClipActionById(env, clipId, 'moveBy', { delta })
 },
 togglePlayback(): void {
 dispatchRoot(env, 'togglePlayback')

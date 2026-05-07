@@ -28,7 +28,12 @@ test('shared worker synchronizes project patches across browser pages', async ({
 		secondPage.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' }),
 	).toBeVisible()
 
-	await expect(secondPage.getByRole('button', { name: /fixture-video.webm · 0.0s/i })).toBeVisible()
+	await expect(
+		secondPage
+			.getByRole('region', { name: 'Timeline' })
+			.getByRole('button', { name: /fixture-video\.webm.*0\.0+s\s*\/\s*1\.0+s/i })
+			.first(),
+	).toBeVisible()
 
 	await firstPage.close()
 	await secondPage.close()

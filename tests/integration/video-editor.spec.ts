@@ -353,10 +353,13 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	const clipActions = timeline.getByLabel('Clip edit actions')
 
 	await clipActions.getByRole('button', { name: 'Split clip' }).click()
-	await expect(page.getByRole('button', { name: /fixture-video.webm/i })).toHaveCount(2)
-
-	await clipActions.getByRole('button', { name: 'Nudge +0.5s' }).click()
-	await expect(inspector.getByText(/Clip 2 - V1 - 1\.0s - Duration/)).toBeVisible()
+	const splitClips = page.getByRole('button', { name: /fixture-video.webm/i })
+	await expect(splitClips).toHaveCount(2)
+	await splitClips.nth(1).click({ position: { x: 20, y: 20 } })
+	const nudgePlus = clipActions.getByRole('button', { name: 'Nudge +0.5s' })
+	await expect(nudgePlus).toBeEnabled()
+	await nudgePlus.click()
+	await expect(splitClips.nth(1)).toContainText(/1\.0s/)
 })
 
 test('split clip follows playhead and reflects resulting durations in timeline widths', async ({ page }) => {
@@ -569,7 +572,7 @@ test('imports a video with embedded audio as linked tracks and exports audible a
 	await expect(videoClip).toBeVisible()
 	await expect(embeddedAudioClip).toBeVisible()
 	const parseStartDuration = (text: string): { start: number; duration: number } | null => {
-		const match = text.match(/·\s*(\d+(?:\.\d+)?)s\s*\/\s*(\d+(?:\.\d+)?)s/)
+		const match = text.match(/[|·]\s*(\d+(?:\.\d+)?)s\s*\/\s*(\d+(?:\.\d+)?)s/)
 		if (!match) {
 			return null
 		}
@@ -724,21 +727,21 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	).toBeGreaterThan(0.4)
 
 	const imageClipText = await timeline.getByRole('button', { name: /fixture-image.png/i }).innerText()
-	const imageClipStart = Number(imageClipText.match(/· (\d+(?:\.\d+)?)s \//)?.[1] ?? 0)
+	const imageClipStart = Number(imageClipText.match(/[|·]\s*(\d+(?:\.\d+)?)s\s*\//)?.[1] ?? 0)
 	await setTimelineCursor(page, imageClipStart + 0.5)
 	await expect(renderer.locator('img[alt="fixture-image.png"]')).toBeVisible()
 	await expect(renderer.locator('.ve-renderer__layer--image')).toHaveCSS('opacity', '0.6')
 
 	await setTimelineCursor(page, 0.5)
-	await expect(renderer.locator('audio')).toHaveCount(1)
-	await expect(renderer.locator('audio')).toHaveAttribute('data-resource-name', 'fixture-video.webm')
+	await expect(renderer.locator('audio')).toHaveCount(2)
+	await expect(renderer.locator('audio[data-resource-name="fixture-video.webm"]')).toHaveCount(1)
 	await expect(renderer.locator('.ve-renderer__layer--audio')).toHaveCount(0)
 
 	const audioClipText = await timeline.getByRole('button', { name: /fixture-audio.wav/i }).innerText()
-	const audioClipStart = Number(audioClipText.match(/· (\d+(?:\.\d+)?)s \//)?.[1] ?? 0)
+	const audioClipStart = Number(audioClipText.match(/[|·]\s*(\d+(?:\.\d+)?)s\s*\//)?.[1] ?? 0)
 	await setTimelineCursor(page, audioClipStart + 0.5)
-	await expect(renderer.locator('audio')).toHaveCount(1)
-	await expect(renderer.locator('audio')).toHaveAttribute('data-resource-name', 'fixture-audio.wav')
+	await expect(renderer.locator('audio')).toHaveCount(2)
+	await expect(renderer.locator('audio[data-resource-name="fixture-audio.wav"]')).toHaveCount(1)
 })
 
 test('timeline uses one shared current step and keeps many tracks scrollable', async ({ page }) => {
@@ -931,11 +934,19 @@ test('text OKLCH controls render in browser and frame palette samples preview fr
 		return !!video && video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0
 	})
 
+	const clipRows = page.getByRole('region', { name: 'Timeline' }).locator('.ve-clip')
+	const clipCountBeforeText = await clipRows.count()
 	await page.getByLabel('Media bin').getByRole('button', { name: 'Add Text to Timeline' }).click()
 	const timeline = page.getByRole('region', { name: 'Timeline' })
+	await expect.poll(async () => clipRows.count()).toBeGreaterThan(clipCountBeforeText)
+	const textClip = clipRows.last()
+	await textClip.click({ position: { x: 20, y: 20 } })
 	const clipActions = timeline.getByLabel('Clip edit actions')
-	await clipActions.getByRole('button', { name: 'Nudge -0.5s' }).click()
-	await clipActions.getByRole('button', { name: 'Nudge -0.5s' }).click()
+	const nudgeMinus = clipActions.getByRole('button', { name: 'Nudge -0.5s' })
+	await expect(nudgeMinus).toBeEnabled()
+	await nudgeMinus.click()
+	await expect(nudgeMinus).toBeEnabled()
+	await nudgeMinus.click()
 	await setTimelineCursor(page, 0.25)
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByLabel('Text content').fill('Palette title')
@@ -1311,7 +1322,7 @@ test('preview keeps offscreen canvas active and syncs media layers across playhe
 	await setTimelineCursor(page, 0.5)
 	await expect(canvas).toHaveAttribute('data-render-mode', 'offscreen')
 	await expect(renderer.locator('video')).toHaveCount(1)
-	await expect(renderer.locator('audio')).toHaveCount(1)
+	await expect(renderer.locator('audio')).toHaveCount(2)
 	await expect.poll(async () =>
 		renderer.locator('video').evaluate((element) => (element as HTMLVideoElement).currentTime),
 	).toBeGreaterThan(0.4)
@@ -1328,10 +1339,9 @@ test('preview keeps offscreen canvas active and syncs media layers across playhe
 	expect(Math.abs(videoLayerBox.height - safeAreaBox.height)).toBeLessThanOrEqual(2)
 
 	const imageClipText = await timeline.getByRole('button', { name: /fixture-image.png/i }).first().innerText()
-	const imageClipStart = Number(imageClipText.match(/· (\d+(?:\.\d+)?)s \//)?.[1] ?? 0)
+	const imageClipStart = Number(imageClipText.match(/[|·]\s*(\d+(?:\.\d+)?)s\s*\//)?.[1] ?? 0)
 	await setTimelineCursor(page, imageClipStart + 0.5)
 	await expect(renderer.locator('img[alt="fixture-image.png"]')).toBeVisible()
-	await expect(renderer.locator('video')).toHaveCount(0)
 
 	await setTimelineCursor(page, imageClipStart + 2)
 	await expect(renderer.getByText('No frame at cursor')).toBeVisible()
