@@ -417,15 +417,15 @@ export const Clip = model({
 					splitOriginalDuration: ['splitOriginalDuration'],
 				},
 				fn: [
-					['start', 'in', 'duration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
-					(payload: unknown, start: unknown, inPoint: unknown, duration: unknown,
+					['$noop', 'start', 'in', 'duration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
+					(payload: unknown, noop: unknown, start: unknown, inPoint: unknown, duration: unknown,
 						sourceResourceId: unknown, sourceTextId: unknown, name: unknown, color: unknown,
 						mediaKind: unknown, fadeIn: unknown, fadeOut: unknown, audio: unknown, opacity: unknown,
 						transform: unknown) => {
 						const time = (payload as { time?: unknown } | null)?.time
 						const s = typeof start === 'number' ? start : 0
 						const d = typeof duration === 'number' ? duration : 0
-						if (typeof time !== 'number' || time <= s || time >= s + d) return '$noop'
+						if (typeof time !== 'number' || time <= s || time >= s + d) return noop
 						return {
 							duration: roundToTenths(time - s),
 							splitOriginalDuration: d,
@@ -436,8 +436,8 @@ export const Clip = model({
 			{
 				to: ['<< track', { action: 'splitClipAt', sub_flow: true }],
 				fn: [
-					['start', 'in', 'duration', 'splitOriginalDuration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
-					(_payload: unknown, start: unknown, inPoint: unknown, duration: unknown, splitOriginalDuration: unknown,
+					['$noop', 'start', 'in', 'duration', 'splitOriginalDuration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
+					(_payload: unknown, noop: unknown, start: unknown, inPoint: unknown, duration: unknown, splitOriginalDuration: unknown,
 						sourceResourceId: unknown, sourceTextId: unknown, name: unknown, color: unknown,
 						mediaKind: unknown, fadeIn: unknown, fadeOut: unknown, audio: unknown, opacity: unknown,
 						transform: unknown) => {
@@ -446,7 +446,7 @@ export const Clip = model({
 						const leftDuration = typeof duration === 'number' ? duration : 0
 						const originalDuration = typeof splitOriginalDuration === 'number' ? splitOriginalDuration : 0
 						if (!Number.isFinite(originalDuration) || originalDuration <= leftDuration || leftDuration <= 0) {
-							return {}
+							return noop
 						}
 						const splitTime = roundToTenths(s + leftDuration)
 						const rightDuration = roundToTenths(originalDuration - leftDuration)

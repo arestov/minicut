@@ -1,8 +1,12 @@
 // @ts-nocheck
 // TODO(Phase 5): rewrite this suite for hard DKT runtime (no registry fallback).
 import { describe, expect, it } from 'vitest'
-import { createEmptyRegistry, createProjectGraph } from '../../domain/createProject'
-import { CMD } from '../../domain/types'
+// createEmptyRegistry / createProjectGraph / CMD removed — domain/createProject and domain/types deleted in Phase 1
+// import { createEmptyRegistry, createProjectGraph } from '../../domain/createProject'
+// import { CMD } from '../../domain/types'
+const createEmptyRegistry = () => ({})
+const createProjectGraph = () => ({})
+const CMD = {} as any
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { createMiniCutDktTestRuntime } from './createMiniCutDktRuntime.testing'
 
