@@ -39,9 +39,10 @@ export const queryRel = async (model: AnyModel, relName: string): Promise<AnyMod
 
 /**
  * Read a reactive attr from a model.
+ * Missing attrs are normalized to null to match DKT default-state reads.
  */
 export const getAttr = (model: AnyModel, attrName: string): unknown =>
-	model.states?.[attrName] ?? undefined
+	model.states?.[attrName] ?? null
 
 /**
  * Find a model in a flat root rel by a named attr value.

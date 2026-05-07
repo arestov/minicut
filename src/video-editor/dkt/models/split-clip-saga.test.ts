@@ -158,13 +158,17 @@ describe('SessionRoot.splitSelectedClip E2E', () => {
 			})
 		})
 
-		// Select clip and set cursor to split point
+		const clip = (await ctx.queryRel(videoTrack, 'clips')).find((c) => ctx.getAttr(c, 'sourceClipId') === 'clip:e2e-split-target')
+		if (!clip) throw new Error('Target clip not found')
+
+		// In pure DKT tests there is no runtime traversal that mirrors selection into rels,
+		// so keep the selectedClip rel in sync explicitly before dispatching splitSelectedClip.
 		await ctx.lockToRead(async () => {
 			await ctx.sessionRoot.dispatch('selectEntity', 'clip:e2e-split-target')
+			await ctx.sessionRoot.dispatch('syncSelectedClipRel', { clip })
 			await ctx.sessionRoot.dispatch('setCursor', 2)
 		})
 
-		// Dispatch splitSelectedClip
 		await ctx.lockToRead(async () => {
 			await ctx.sessionRoot.dispatch('splitSelectedClip')
 		})
