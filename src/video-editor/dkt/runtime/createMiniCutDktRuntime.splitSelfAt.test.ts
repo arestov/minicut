@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createMiniCutDktRuntime, type MiniCutDktDebugState } from './createMiniCutDktRuntime'
+import { createMiniCutDktTestRuntime, type MiniCutDktDebugState } from './createMiniCutDktRuntime.testing'
 
 type SerializedModel = NonNullable<MiniCutDktDebugState>['runtimeModels'][number]
 
@@ -40,7 +40,7 @@ const waitFor = async (predicate: () => Promise<boolean>, timeoutMs = 2000): Pro
 
 describe('createMiniCutDktRuntime splitSelfAt data flow', () => {
 	it('keeps left split on clip action and creates right split via track action', async () => {
-		const runtime = createMiniCutDktRuntime({ enabled: true })
+	const runtime = createMiniCutDktTestRuntime({ enabled: true })
 		const dispatchAction = async (kind: 'session' | 'track' | 'clip', actionName: string, payload?: unknown) => {
 			if (kind === 'session') {
 				await runtime.dispatchSessionAction(actionName, payload)
@@ -100,7 +100,7 @@ describe('createMiniCutDktRuntime splitSelfAt data flow', () => {
 	})
 
 	it('splitSelectedClip creates both clips via single session dispatch (no manual track step)', async () => {
-		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const runtime = createMiniCutDktTestRuntime({ enabled: true })
 
 		await runtime.dispatchSessionAction('createProject', { sourceProjectId: projectId, title: 'E2E split test' })
 		await runtime.dispatchTrackAction({ sourceTrackId: videoTrackId }, 'addClip', {
