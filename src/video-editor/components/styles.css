@@ -1385,6 +1385,11 @@ button:disabled {
 	max-width: 100%;
 }
 
+.ve-clip__title,
+.ve-clip__title * {
+	pointer-events: none;
+}
+
 .ve-clip__badge {
 	display: inline-flex;
 	align-items: center;
@@ -1412,6 +1417,10 @@ button:disabled {
 
 .ve-clip[data-tool='hand'] {
 	cursor: grab;
+}
+
+.ve-clip small {
+	pointer-events: none;
 }
 
 .ve-clip__resize-handle {
