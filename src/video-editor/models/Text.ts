@@ -17,6 +17,9 @@ export const Text = model({
 		style: ['input', defaultTextStyle],
 		box: ['input', defaultTextBox],
 	},
+	rels: {
+		clip: ['input', { linking: '<< clip << #' }],
+	},
 	actions: {
 		setTextContent: {
 			to: {
@@ -48,6 +51,14 @@ export const Text = model({
 					box: box && typeof box === 'object' ? box as typeof defaultTextBox : defaultTextBox,
 				}) ?? '$noop',
 			],
+		},
+		setClip: {
+			to: {
+				clip: ['<< clip', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				clip: (payload as { clip?: unknown } | null)?.clip ?? null,
+			}),
 		},
 	},
 })

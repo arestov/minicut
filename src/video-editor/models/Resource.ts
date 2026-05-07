@@ -38,6 +38,10 @@ export const Resource = model({
 				duration: typeof duration === 'number' && Number.isFinite(duration) ? duration : 0,
 			})],
 	},
+	rels: {
+		project: ['input', { linking: '<< project << #' }],
+		clips: ['input', { many: true, linking: '<< clip << #' }],
+	},
 	actions: {
 		renameResource: {
 			to: {
@@ -113,6 +117,24 @@ export const Resource = model({
 						: null,
 					requestedAt: Date.now(),
 				},
+			}),
+		},
+		setProject: {
+			to: {
+				project: ['<< project', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				project: (payload as { project?: unknown } | null)?.project ?? null,
+			}),
+		},
+		setClips: {
+			to: {
+				clips: ['<< clips', { method: 'set_many' }],
+			},
+			fn: (payload: unknown) => ({
+				clips: Array.isArray((payload as { clips?: unknown } | null)?.clips)
+					? (payload as { clips: unknown[] }).clips
+					: [],
 			}),
 		},
 	},

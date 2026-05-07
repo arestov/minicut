@@ -38,6 +38,7 @@ export const Effect = model({
 	},
 	rels: {
 		clip: ['input', { linking: '<< clip << #' }],
+		project: ['input', { linking: '<< project << #' }],
 	},
 	actions: {
 		setEffectName: {
@@ -75,6 +76,22 @@ export const Effect = model({
 				color: ['color'],
 			},
 			fn: (payload: unknown) => reduceEffectColorAction(payload) ?? '$noop',
+		},
+		setEffectClip: {
+			to: {
+				clip: ['<< clip', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				clip: (payload as { clip?: unknown } | null)?.clip ?? null,
+			}),
+		},
+		setEffectProject: {
+			to: {
+				project: ['<< project', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				project: (payload as { project?: unknown } | null)?.project ?? null,
+			}),
 		},
 	},
 })

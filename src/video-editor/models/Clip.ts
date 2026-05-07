@@ -46,6 +46,7 @@ export const Clip = model({
 		audio: ['input', { gain: 1, pan: 0 }],
 		opacity: ['input', { value: 1 }],
 		transform: ['input', defaultClipTransform],
+		splitOriginalDuration: ['input', null],
 		crop: ['input', null],
 		colorAdjustments: ['input', null],
 		renderInterval: ['comp', ['start', 'duration'], (start: unknown, duration: unknown) => {
@@ -346,6 +347,22 @@ export const Clip = model({
 				text: (payload as { text?: unknown } | null)?.text ?? null,
 			}),
 		},
+		setTrack: {
+			to: {
+				track: ['<< track', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				track: (payload as { track?: unknown } | null)?.track ?? null,
+			}),
+		},
+		setProject: {
+			to: {
+				project: ['<< project', { method: 'set_one' }],
+			},
+			fn: (payload: unknown) => ({
+				project: (payload as { project?: unknown } | null)?.project ?? null,
+			}),
+		},
 		setEffects: {
 			to: {
 				effects: ['<< effects', { method: 'set_many' }],
@@ -397,6 +414,7 @@ export const Clip = model({
 			{
 				to: {
 					duration: ['duration'],
+					splitOriginalDuration: ['splitOriginalDuration'],
 				},
 				fn: [
 					['start', 'in', 'duration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
@@ -408,23 +426,30 @@ export const Clip = model({
 						const s = typeof start === 'number' ? start : 0
 						const d = typeof duration === 'number' ? duration : 0
 						if (typeof time !== 'number' || time <= s || time >= s + d) return '$noop'
-						return { duration: roundToTenths(time - s) }
+						return {
+							duration: roundToTenths(time - s),
+							splitOriginalDuration: d,
+						}
 					},
 				],
 			},
 			{
 				to: ['<< track', { action: 'splitClipAt', sub_flow: true }],
 				fn: [
-					['start', 'in', 'duration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
-					(payload: unknown, start: unknown, inPoint: unknown, duration: unknown,
+					['start', 'in', 'duration', 'splitOriginalDuration', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'] as const,
+					(_payload: unknown, start: unknown, inPoint: unknown, duration: unknown, splitOriginalDuration: unknown,
 						sourceResourceId: unknown, sourceTextId: unknown, name: unknown, color: unknown,
 						mediaKind: unknown, fadeIn: unknown, fadeOut: unknown, audio: unknown, opacity: unknown,
 						transform: unknown) => {
-						const time = (payload as { time?: unknown } | null)?.time
 						const s = typeof start === 'number' ? start : 0
 						const ip = typeof inPoint === 'number' ? inPoint : 0
-						const d = typeof duration === 'number' ? duration : 0
-						if (typeof time !== 'number' || time <= s || time >= s + d) return '$noop'
+						const leftDuration = typeof duration === 'number' ? duration : 0
+						const originalDuration = typeof splitOriginalDuration === 'number' ? splitOriginalDuration : 0
+						if (!Number.isFinite(originalDuration) || originalDuration <= leftDuration || leftDuration <= 0) {
+							return {}
+						}
+						const splitTime = roundToTenths(s + leftDuration)
+						const rightDuration = roundToTenths(originalDuration - leftDuration)
 						const seq = ++splitClipSequence
 						return {
 							sourceClipId: `clip:split-right:${seq}`,
@@ -433,19 +458,25 @@ export const Clip = model({
 							name: typeof name === 'string' ? name : 'Clip',
 							color: typeof color === 'string' ? color : '#2563eb',
 							mediaKind: typeof mediaKind === 'string' ? mediaKind : 'video',
-							start: time,
-							in: ip + (time - s),
-							duration: roundToTenths(s + d - time),
+							start: splitTime,
+							in: roundToTenths(ip + leftDuration),
+							duration: rightDuration,
 							fadeIn: 0,
 							fadeOut: typeof fadeOut === 'number' ? fadeOut : 0,
 							audio: audio && typeof audio === 'object' ? audio : { gain: 1, pan: 0 },
 							opacity: opacity && typeof opacity === 'object' ? opacity : { value: 1 },
 							transform: transform && typeof transform === 'object' ? transform : defaultClipTransform,
-							splitTime: time,
-							sourceClip: { start: s, in: ip, duration: d },
+							splitTime,
+							sourceClip: { start: s, in: ip, duration: originalDuration },
 						}
 					},
 				],
+			},
+			{
+				to: {
+					splitOriginalDuration: ['splitOriginalDuration'],
+				},
+				fn: () => ({ splitOriginalDuration: null }),
 			},
 		],
 	},
