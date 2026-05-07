@@ -26,6 +26,49 @@ const findResourceBySourceId = (resources: unknown[], sourceResourceId: string):
 
 const createClipIdFromResourceId = (resourceId: string): string => `${resourceId}:clip`
 
+const createTimelineClipPayload = (
+	resource: Record<string, unknown>,
+	overrides: Partial<{
+		sourceClipId: string
+		name: string
+		mediaKind: string
+	}> = {},
+	sourceResourceName?: string | null,
+) => {
+	const sourceResourceId = typeof resource.sourceResourceId === 'string' ? resource.sourceResourceId : null
+	if (!sourceResourceId) {
+		return '$noop'
+	}
+
+	return {
+		sourceClipId: overrides.sourceClipId ?? createClipIdFromResourceId(sourceResourceId),
+		sourceResourceId,
+		name: overrides.name ?? (typeof resource.name === 'string' ? resource.name : 'Clip'),
+		mediaKind: overrides.mediaKind ?? (typeof resource.kind === 'string' ? resource.kind : 'video'),
+				sourceResourceName: sourceResourceName !== undefined ? sourceResourceName : null,
+		start: 0,
+		in: 0,
+		duration: typeof resource.duration === 'number' ? resource.duration : 0,
+	}
+}
+
+const createEmbeddedAudioClipPayload = (resource: Record<string, unknown>) => {
+	if (resource.kind !== 'video') {
+		return '$noop'
+	}
+
+	const sourceResourceId = typeof resource.sourceResourceId === 'string' ? resource.sourceResourceId : null
+	if (!sourceResourceId) {
+		return '$noop'
+	}
+
+	return createTimelineClipPayload(resource, {
+		sourceClipId: `${sourceResourceId}:audio-clip`,
+		name: 'Embedded audio',
+		mediaKind: 'audio',
+	}, typeof resource.name === 'string' ? resource.name : null)
+}
+
 export const Project = model({
 	model_name: 'minicut_project',
 	attrs: {
@@ -45,13 +88,9 @@ export const Project = model({
 			(allTrackClipData: unknown): PreviewStructure => {
 				const sources: PreviewClipSource[] = []
 				if (Array.isArray(allTrackClipData)) {
-					for (const trackClips of allTrackClipData) {
-						if (Array.isArray(trackClips)) {
-							for (const clipData of trackClips) {
-								if (clipData && typeof clipData === 'object' && 'id' in clipData) {
-									sources.push(clipData as PreviewClipSource)
-								}
-							}
+					for (const clipData of allTrackClipData) {
+						if (clipData && typeof clipData === 'object' && 'id' in clipData) {
+							sources.push(clipData as PreviewClipSource)
 						}
 					}
 				}
@@ -62,6 +101,7 @@ export const Project = model({
 		tracks: ['input', { many: true, linking: '<< track << #' }],
 		resources: ['input', { many: true, linking: '<< resource << #' }],
 		primaryVideoTrack: ['input', { linking: '<< track << #' }],
+		primaryAudioTrack: ['input', { linking: '<< track << #' }],
 	},
 	actions: {
 		handleInit: {
@@ -87,6 +127,10 @@ export const Project = model({
 					can_use_refs: true,
 				}],
 				primaryVideoTrack: ['<< primaryVideoTrack', {
+					method: 'set_one',
+					can_use_refs: true,
+				}],
+				primaryAudioTrack: ['<< primaryAudioTrack', {
 					method: 'set_one',
 					can_use_refs: true,
 				}],
@@ -125,7 +169,8 @@ export const Project = model({
 							{ use_ref_id: 'defaultVideoTrack' },
 							{ use_ref_id: 'defaultAudioTrack' },
 						],
-					primaryVideoTrack: { use_ref_id: 'defaultVideoTrack' },
+						primaryVideoTrack: { use_ref_id: 'defaultVideoTrack' },
+						primaryAudioTrack: { use_ref_id: 'defaultAudioTrack' },
 					}
 				},
 			],
@@ -245,20 +290,30 @@ export const Project = model({
 				fn: (payload: unknown) => {
 					const value = payload as { resource?: Record<string, unknown>; shouldAddToTimeline?: unknown } | null
 					const resource = value?.resource ?? {}
-					const sourceResourceId = typeof resource.sourceResourceId === 'string' ? resource.sourceResourceId : null
-					if (!sourceResourceId || value?.shouldAddToTimeline !== true) {
+					if (value?.shouldAddToTimeline !== true || resource.kind === 'audio') {
 						return '$noop'
 					}
 
-					return {
-						sourceClipId: `${sourceResourceId}:clip`,
-						sourceResourceId,
-						name: typeof resource.name === 'string' ? resource.name : 'Clip',
-						mediaKind: typeof resource.kind === 'string' ? resource.kind : 'video',
-						start: 0,
-						in: 0,
-						duration: typeof resource.duration === 'number' ? resource.duration : 0,
+					return createTimelineClipPayload(resource)
+				},
+			},
+			{
+				when: [
+					[] as const,
+					(payload: unknown) => {
+						const value = payload as { shouldAddToTimeline?: unknown; resource?: { kind?: unknown } } | null
+						return value?.shouldAddToTimeline === true && value?.resource?.kind === 'audio'
+					},
+				],
+				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+				fn: (payload: unknown) => {
+					const value = payload as { resource?: Record<string, unknown>; shouldAddToTimeline?: unknown } | null
+					const resource = value?.resource ?? {}
+					if (value?.shouldAddToTimeline !== true) {
+						return '$noop'
 					}
+
+					return createTimelineClipPayload(resource)
 				},
 			},
 		],
@@ -288,7 +343,7 @@ export const Project = model({
 				],
 				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
 				fn: [
-					['<< @all:resources'] as const,
+					['< @all:timelineClipSource < resources'] as const,
 					(payload: unknown, resources: unknown[]) => {
 						const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
 						if (typeof sourceResourceId !== 'string') {
@@ -298,15 +353,54 @@ export const Project = model({
 						if (!resource) {
 							return '$noop'
 						}
-						return {
-							sourceClipId: createClipIdFromResourceId(sourceResourceId),
-							sourceResourceId,
-							name: typeof resource.name === 'string' ? resource.name : 'Clip',
-							mediaKind: typeof resource.kind === 'string' ? resource.kind : 'video',
-							start: 0,
-							in: 0,
-							duration: typeof resource.duration === 'number' ? resource.duration : 0,
+						if (resource.kind === 'audio') {
+							return '$noop'
 						}
+						return createTimelineClipPayload(resource)
+					},
+				],
+			},
+			{
+				when: [
+					[] as const,
+					(payload: unknown) => typeof (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId === 'string',
+				],
+				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+				fn: [
+					['< @all:timelineClipSource < resources'] as const,
+					(payload: unknown, resources: unknown[]) => {
+						const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
+						if (typeof sourceResourceId !== 'string') {
+							return '$noop'
+						}
+						const resource = findResourceBySourceId(Array.isArray(resources) ? resources : [], sourceResourceId)
+						if (!resource || resource.kind !== 'audio') {
+							return '$noop'
+						}
+						return createTimelineClipPayload(resource)
+					},
+				],
+			},
+		],
+		addEmbeddedAudioToTimeline: [
+			{
+				when: [
+					[] as const,
+					(payload: unknown) => typeof (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId === 'string',
+				],
+				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+				fn: [
+					['< @all:timelineClipSource < resources'] as const,
+					(payload: unknown, resources: unknown[]) => {
+						const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
+						if (typeof sourceResourceId !== 'string') {
+							return '$noop'
+						}
+						const resource = findResourceBySourceId(Array.isArray(resources) ? resources : [], sourceResourceId)
+						if (!resource) {
+							return '$noop'
+						}
+						return createEmbeddedAudioClipPayload(resource)
 					},
 				],
 			},

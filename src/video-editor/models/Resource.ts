@@ -22,6 +22,13 @@ export const Resource = model({
 		data: ['input', null],
 		timelineAddRequest: ['input', null],
 		isReady: ['comp', ['status'], (status: unknown) => status === 'ready'],
+		timelineClipSource: ['comp', ['sourceResourceId', 'name', 'kind', 'duration'] as const,
+			(sourceResourceId: unknown, name: unknown, kind: unknown, duration: unknown) => ({
+				sourceResourceId: typeof sourceResourceId === 'string' ? sourceResourceId : '',
+				name: typeof name === 'string' ? name : 'Resource',
+				kind: typeof kind === 'string' ? kind : 'video',
+				duration: typeof duration === 'number' && Number.isFinite(duration) ? duration : 0,
+			})],
 		renderSummary: ['comp', ['name', 'kind', 'url', 'mime', 'duration'] as const,
 			(name: unknown, kind: unknown, url: unknown, mime: unknown, duration: unknown) => ({
 				name: typeof name === 'string' ? name : 'Resource',
