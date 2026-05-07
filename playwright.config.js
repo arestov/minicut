@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
 	testDir: './tests/integration',
+	fullyParallel: true,
 	timeout: 30_000,
 	use: {
 		baseURL: 'http://127.0.0.1:4174',
