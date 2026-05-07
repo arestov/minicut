@@ -117,10 +117,6 @@ export const Project = model({
 	},
 	actions: {
 		handleInit: {
-			when: [
-				['autoCreateDefaultTracks'] as const,
-				(_payload: unknown, autoCreateDefaultTracks: unknown) => autoCreateDefaultTracks === true,
-			],
 			to: {
 				videoTrack: ['<< track << #', {
 					method: 'at_end',
