@@ -34,6 +34,7 @@ export const Clip = model({
 		sourceResourceId: ['input', null],
 		sourceTextId: ['input', null],
 		name: ['input', 'Clip'],
+		sourceResourceName: ['input', null],
 		color: ['input', '#2563eb'],
 		mediaKind: ['input', null],
 		start: ['input', 0],
@@ -58,14 +59,14 @@ export const Clip = model({
 		})],
 		effectStackSummary: ['input', null],
 		clipRenderData: ['comp', [
-			'sourceClipId', 'sourceResourceId', 'mediaKind', 'name', 'color',
+			'sourceClipId', 'sourceResourceId', 'sourceResourceName', 'mediaKind', 'name', 'color',
 			'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'opacity', 'transform', 'audio',
 			'< @all:renderInstruction < effects',
 			'< @one:renderAttrs < text',
 			'< @one:renderSummary < resource',
 		] as const,
 		(
-			sourceClipId: unknown, sourceResourceId: unknown, mediaKind: unknown, name: unknown, color: unknown,
+			sourceClipId: unknown, sourceResourceId: unknown, sourceResourceName: unknown, mediaKind: unknown, name: unknown, color: unknown,
 			start: unknown, inPoint: unknown, duration: unknown, fadeIn: unknown, fadeOut: unknown,
 			opacity: unknown, transform: unknown, audio: unknown,
 			effectInstructions: unknown,
@@ -99,7 +100,7 @@ export const Clip = model({
 				resourceId: typeof sourceResourceId === 'string' ? sourceResourceId : null,
 				name: asStr(name, 'Clip'),
 				color: asStr(color, '#2563eb'),
-				resourceName: res?.name ?? asStr(name, 'Clip'),
+				resourceName: res?.name ?? asStr(sourceResourceName ?? name, 'Clip'),
 				resourceKind: asStr(res?.kind ?? mediaKind, 'video') as PreviewClipSource['resourceKind'],
 				resourceUrl: res?.url ?? '',
 				mime: res?.mime ?? 'application/octet-stream',
@@ -451,5 +452,5 @@ export const Clip = model({
 })
 
 export const CLIP_CREATION_SHAPE = {
-	attrs: ['sourceClipId', 'sourceResourceId', 'sourceTextId', 'name', 'color', 'mediaKind', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
+	attrs: ['sourceClipId', 'sourceResourceId', 'sourceResourceName', 'sourceTextId', 'name', 'color', 'mediaKind', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
 } as const

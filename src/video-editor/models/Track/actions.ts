@@ -25,6 +25,7 @@ export const normalizeClipCreationAttrs = (payload: unknown) => {
 	return {
 		sourceClipId,
 		sourceResourceId: asString(value?.sourceResourceId),
+				sourceResourceName: asString(value?.sourceResourceName),
 		sourceTextId: asString(value?.sourceTextId),
 		name: asString(value?.name) ?? 'Clip',
 		color: asString(value?.color) ?? '#2563eb',

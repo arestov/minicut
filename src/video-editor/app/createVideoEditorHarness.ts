@@ -281,7 +281,7 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			if (role !== 'server') {
+			if (role === 'client' || role === 'undecided') {
 				return
 			}
 

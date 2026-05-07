@@ -180,6 +180,16 @@ export const VideoEditorHarnessApp = ({
 			return
 		}
 
+		const getActiveProjectScope = () => {
+			const runtime = ownedHarness.pageRuntime
+			const rootScope = runtime?.getRootScope()
+			if (!runtime || !rootScope) {
+				return null
+			}
+
+			return runtime.readOne(rootScope, 'activeProject')
+		}
+
 		const debug = {
 			getResourceTransfers: () => Object.values(ownedHarness.resourceTransfers$.get()).map((transfer) => ({
 				resourceId: transfer.resourceId,
@@ -222,6 +232,92 @@ export const VideoEditorHarnessApp = ({
 					}
 					return typeof attrs.title === 'string' ? attrs.title : 'Project'
 				})
+			},
+			getActiveProjectTracks: () => {
+				const runtime = ownedHarness.pageRuntime
+				const projectScope = getActiveProjectScope()
+				if (!runtime || !projectScope) {
+					return []
+				}
+
+				return runtime.readMany(projectScope, 'tracks').map((trackScope) => {
+					const trackAttrs = runtime.readAttrs(trackScope, ['name', 'kind']) as {
+						name?: unknown
+						kind?: unknown
+					}
+					const clipSummaries = runtime.readMany(trackScope, 'clips').map((clipScope) => {
+						const clipAttrs = runtime.readAttrs(clipScope, ['name', 'mediaKind', 'sourceClipId']) as {
+							name?: unknown
+							mediaKind?: unknown
+							sourceClipId?: unknown
+						}
+						return {
+							name: typeof clipAttrs.name === 'string' ? clipAttrs.name : 'Clip',
+							mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : null,
+							sourceClipId: typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null,
+						}
+					})
+					return {
+						name: typeof trackAttrs.name === 'string' ? trackAttrs.name : 'Track',
+						kind: typeof trackAttrs.kind === 'string' ? trackAttrs.kind : null,
+						clips: clipSummaries,
+					}
+				})
+			},
+			getActiveProjectPrimaryTracks: () => {
+				const runtime = ownedHarness.pageRuntime
+				const projectScope = getActiveProjectScope()
+				if (!runtime || !projectScope) {
+					return null
+				}
+
+				const videoTrack = runtime.readOne(projectScope, 'primaryVideoTrack')
+				const audioTrack = runtime.readOne(projectScope, 'primaryAudioTrack')
+				const readTrackName = (trackScope: ReturnType<typeof runtime.readOne>) => {
+					if (!trackScope) {
+						return null
+					}
+					const attrs = runtime.readAttrs(trackScope, ['name', 'kind']) as { name?: unknown; kind?: unknown }
+					return {
+						name: typeof attrs.name === 'string' ? attrs.name : 'Track',
+						kind: typeof attrs.kind === 'string' ? attrs.kind : null,
+					}
+				}
+
+				return {
+					video: readTrackName(videoTrack),
+					audio: readTrackName(audioTrack),
+				}
+			},
+			getSelectionState: () => {
+				const runtime = ownedHarness.pageRuntime
+				const rootScope = runtime?.getRootScope()
+				if (!runtime || !rootScope) {
+					return null
+				}
+				const attrs = runtime.readAttrs(rootScope, ['selectedEntityId', 'selectedClipSummary']) as {
+					selectedEntityId?: unknown
+					selectedClipSummary?: unknown
+				}
+				const selectedClip = runtime.readOne(rootScope, 'selectedClip')
+				const clipAttrs = selectedClip
+					? runtime.readAttrs(selectedClip, ['sourceClipId', 'name', 'mediaKind']) as {
+						sourceClipId?: unknown
+						name?: unknown
+						mediaKind?: unknown
+					  }
+					: null
+				return {
+					selectedEntityId: typeof attrs.selectedEntityId === 'string' ? attrs.selectedEntityId : null,
+					selectedClipSummary: attrs.selectedClipSummary ?? null,
+					selectedClip: clipAttrs
+						? {
+							sourceClipId: typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null,
+							name: typeof clipAttrs.name === 'string' ? clipAttrs.name : null,
+							mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : null,
+						}
+						: null,
+				}
 			},
 			getRuntimeMessages: () => ownedHarness.pageRuntime?.debugMessages?.() ?? [],
 			getRole: () => {

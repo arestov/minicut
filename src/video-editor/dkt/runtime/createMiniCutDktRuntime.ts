@@ -513,6 +513,18 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					}
 				}
 			}
+			if (!selectedClipModel) {
+				const fallbackClip = await findSeededModelBySourceId('minicut_clip', 'sourceClipId', selectedEntityId)
+				if (isRuntimeModelLike(fallbackClip)) {
+					const clipAttrs = fallbackClip.states ?? {}
+					selectedClipModel = fallbackClip
+					selectedClipSummary = {
+						color: asString(clipAttrs.color, '#2563eb'),
+						resourceName: asString(clipAttrs.name, 'Clip'),
+						trackName: 'Track',
+					}
+				}
+			}
 		}
 
 		await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClipModel })

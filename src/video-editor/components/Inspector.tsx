@@ -2,6 +2,7 @@ import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
 import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
 import { useRootOne } from '../../dkt-react-sync/hooks/useRootOne'
+import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRuntime'
 import type { PreviewMediaElementRegistry } from './mediaElementRegistry'
 import { InspectorAudioTabPanel } from './inspector/InspectorAudioTabPanel'
 import { InspectorClipHeader } from './inspector/InspectorClipHeader'
@@ -38,6 +39,7 @@ const SelectedClipPanels = ({ activeTab, mediaElementRegistry, onChangeTab, trac
 
 export const Inspector = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const sessionDispatch = useRootDispatch()
+	const runtime = useReactScopeRuntime()
 	const rootAttrs = useRootAttrs(['activeProjectId', 'activeInspectorTab', 'selectedEntityId', 'selectedClipTrackPosition']) as { activeProjectId?: unknown; activeInspectorTab?: InspectorTab; selectedEntityId?: unknown; selectedClipTrackPosition?: SelectedClipTrackPosition | null }
 	const trackPosition = rootAttrs.selectedClipTrackPosition ?? null
 	const activeTab = rootAttrs.activeInspectorTab ?? 'edit'
@@ -47,13 +49,33 @@ export const Inspector = ({ mediaElementRegistry }: { mediaElementRegistry?: Pre
 
 	// Read selectedClip rel from session scope (it lives on SessionRoot, not Project)
 	const selectedClipScope = useRootOne('selectedClip')
+	const activeProjectScope = useRootOne('activeProject')
+	const fallbackSelectedClipScope = (() => {
+		if (selectedClipScope || !selectedEntityId || !activeProjectScope) {
+			return null
+		}
 
-	if (!activeProjectId || !selectedEntityId || !selectedClipScope) {
+		const trackScopes = runtime.readMany(activeProjectScope, 'tracks')
+		for (const trackScope of trackScopes) {
+			const clipScopes = runtime.readMany(trackScope, 'clips')
+			for (const clipScope of clipScopes) {
+				const attrs = runtime.readAttrs(clipScope, ['sourceClipId']) as { sourceClipId?: unknown }
+				if (attrs.sourceClipId === selectedEntityId) {
+					return clipScope
+				}
+			}
+		}
+
+		return null
+	})()
+	const resolvedClipScope = selectedClipScope ?? fallbackSelectedClipScope
+
+	if (!activeProjectId || !selectedEntityId || !resolvedClipScope) {
 		return <EmptyInspector activeTab={activeTab} onChange={setActiveTab} />
 	}
 
 	return (
-		<ScopeContext.Provider value={selectedClipScope}>
+		<ScopeContext.Provider value={resolvedClipScope}>
 			<SelectedClipPanels activeTab={activeTab} mediaElementRegistry={mediaElementRegistry} onChangeTab={setActiveTab} trackPosition={trackPosition} />
 		</ScopeContext.Provider>
 	)
