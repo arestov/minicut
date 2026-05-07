@@ -48,5 +48,6 @@ export const createMiniCutDktWorkerModelRuntime = () => {
 		destroy,
 		getActiveSessionKeys: () => [...activeSessionKeys],
 		getConnectionCount: () => activeConnections.size,
+		getRuntimeSnapshot: () => runtime.debugDumpState(),
 	}
 }

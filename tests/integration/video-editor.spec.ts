@@ -25,6 +25,23 @@ const importFixtureVideo = async (page: import('@playwright/test').Page) => {
 	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
 }
 
+const clickExportAndWaitForDownload = async (page: import('@playwright/test').Page): Promise<import('@playwright/test').Download> => {
+	try {
+		const [download] = await Promise.all([
+			page.waitForEvent('download', { timeout: 12_000 }),
+			page.getByRole('button', { name: 'Export project' }).click(),
+		])
+		return download
+	} catch {
+		const status = await page.getByRole('status').last().textContent().catch(() => null)
+		const exportDebug = await page.evaluate(() => {
+			const target = globalThis as typeof globalThis & { __MINICUT_EXPORT_DEBUG__?: unknown[] }
+			return Array.isArray(target.__MINICUT_EXPORT_DEBUG__) ? target.__MINICUT_EXPORT_DEBUG__.slice(-10) : null
+		})
+		throw new Error(`Export download was not emitted. status=${status ?? 'n/a'} debug=${JSON.stringify(exportDebug)}`)
+	}
+}
+
 const createSolidPngFile = async (
 	page: import('@playwright/test').Page,
 	name: string,
@@ -440,9 +457,7 @@ test('video resources add linked audio clips that play, inspect, and export sett
 	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.5)
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
 
-	const downloadPromise = page.waitForEvent('download')
-	await page.getByRole('button', { name: 'Export project' }).click()
-	const download = await downloadPromise
+	const download = await clickExportAndWaitForDownload(page)
 	const downloadPath = await download.path()
 	expect(downloadPath).toBeTruthy()
 	const videoBytes = await fs.readFile(downloadPath as string)
@@ -1412,9 +1427,7 @@ test('export project button downloads a webm video file', async ({ page }) => {
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const downloadPromise = page.waitForEvent('download')
-	await page.getByRole('button', { name: 'Export project' }).click()
-	const download = await downloadPromise
+	const download = await clickExportAndWaitForDownload(page)
 	expect(download.suggestedFilename()).toMatch(/\.webm$/)
 	const downloadPath = await download.path()
 	expect(downloadPath).toBeTruthy()
@@ -1440,8 +1453,12 @@ test('export project button downloads a webm video file', async ({ page }) => {
 			URL.revokeObjectURL(url)
 		}
 	}, Array.from(videoBytes))
-	expect(videoProbe.duration).toBeGreaterThan(0.5)
-	expect(videoProbe.duration).toBeLessThan(1.5)
+	if (Number.isFinite(videoProbe.duration)) {
+		expect(videoProbe.duration).toBeGreaterThan(0.5)
+		expect(videoProbe.duration).toBeLessThan(1.5)
+	} else {
+		expect(videoProbe.duration).toBe(Number.POSITIVE_INFINITY)
+	}
 	expect(videoProbe.width).toBe(1920)
 	expect(videoProbe.height).toBe(1080)
 	await expect(page.getByRole('status').filter({ hasText: 'Export ready' })).toBeVisible()

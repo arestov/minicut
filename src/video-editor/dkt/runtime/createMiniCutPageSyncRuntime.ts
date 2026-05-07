@@ -226,7 +226,12 @@ export const createMiniCutPageSyncRuntime = ({
         return
       }
       case DKT_MSG.RUNTIME_LOG:
+      {
+        console.info('[minicut:dkt-runtime]', message.message)
+        return
+      }
       case DKT_MSG.RUNTIME_ERROR: {
+        console.error('[minicut:dkt-runtime:error]', message.message)
         return
       }
       case DKT_MSG.SYNC_HANDLE: {

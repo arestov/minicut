@@ -15,6 +15,33 @@ sharedWorkerScope.onconnect = (event: MessageEvent) => {
 	}
 
 	const transport = createPortTransport<MiniCutDktTransportMessage>(port)
+	const sendWorkerLog = (message: string, extra?: unknown) => {
+		const suffix = extra === undefined
+			? ''
+			: ` ${typeof extra === 'string' ? extra : JSON.stringify(extra)}`
+		transport.send({ type: DKT_MSG.RUNTIME_LOG, message: `[worker] ${message}${suffix}` })
+	}
+
+	const unlistenDebug = transport.listen((message) => {
+		if (message.type !== DKT_MSG.BOOTSTRAP && message.type !== DKT_MSG.DISPATCH_ACTION) {
+			return
+		}
+		if (message.type === DKT_MSG.DISPATCH_ACTION && message.actionName !== 'setActiveInspectorTab') {
+			sendWorkerLog('message', {
+				type: message.type,
+				actionName: message.actionName,
+				scopeNodeId: message.scopeNodeId ?? null,
+				sessions: runtime.getActiveSessionKeys(),
+				connections: runtime.getConnectionCount(),
+			})
+			return
+		}
+		sendWorkerLog('message', {
+			type: message.type,
+			sessions: runtime.getActiveSessionKeys(),
+			connections: runtime.getConnectionCount(),
+		})
+	})
 	const connection = runtime.connect(transport)
 
 	port.onmessageerror = (error) => {
@@ -25,9 +52,21 @@ sharedWorkerScope.onconnect = (event: MessageEvent) => {
 	}
 
 	port.start()
-	transport.send({ type: DKT_MSG.RUNTIME_LOG, message: 'MiniCut DKT worker attached' })
+	sendWorkerLog('MiniCut DKT worker attached', {
+		sessions: runtime.getActiveSessionKeys(),
+		connections: runtime.getConnectionCount(),
+	})
+	void runtime.getRuntimeSnapshot().then((snapshot) => {
+		sendWorkerLog('runtime snapshot', snapshot)
+	}).catch((error) => {
+		transport.send({
+			type: DKT_MSG.RUNTIME_ERROR,
+			message: error instanceof Error ? error.stack || error.message : String(error),
+		})
+	})
 
 	const cleanup = () => {
+		unlistenDebug()
 		connection.destroy()
 	}
 

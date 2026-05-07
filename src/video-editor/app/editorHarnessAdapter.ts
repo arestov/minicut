@@ -5,6 +5,8 @@ import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 
 const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
+const asFiniteNumber = (value: unknown, fallback: number): number =>
+	typeof value === 'number' && Number.isFinite(value) ? value : fallback
 let projectSequence = 0
 let projectTitleSequence = 0
 
@@ -102,6 +104,23 @@ const dispatchClipActionById = (env: EditorActionEnvironment, clipId: string, ac
 
 const _resourceChunkSizeRef = new WeakMap<EditorActionEnvironment, number>()
 
+const pushExportDebug = (event: string, details: unknown): void => {
+	const payload = {
+		event,
+		timestamp: Date.now(),
+		details,
+	}
+	try {
+		const target = globalThis as typeof globalThis & { __MINICUT_EXPORT_DEBUG__?: unknown[] }
+		if (!Array.isArray(target.__MINICUT_EXPORT_DEBUG__)) {
+			target.__MINICUT_EXPORT_DEBUG__ = []
+		}
+		target.__MINICUT_EXPORT_DEBUG__.push(payload)
+	} catch {
+		// ignore debug storage failures
+	}
+}
+
 const getTrackScopeByKind = (
 	env: EditorActionEnvironment,
 	projectScope: ReactSyncScopeHandle,
@@ -143,6 +162,148 @@ const getResourceAttrsById = (
 		}
 	}
 	return null
+}
+
+const toResolvedScalar = (value: unknown, fallback: number): { value: number; keyframes?: unknown[] } => {
+	if (value && typeof value === 'object' && 'value' in value) {
+		const raw = value as { value?: unknown; keyframes?: unknown }
+		return {
+			value: asFiniteNumber(raw.value, fallback),
+			...(Array.isArray(raw.keyframes) ? { keyframes: raw.keyframes } : {}),
+		}
+	}
+	return { value: asFiniteNumber(value, fallback) }
+}
+
+const buildFallbackExportPlan = (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+	projectId: string,
+	projectAttrs: { fps?: unknown; width?: unknown; height?: unknown },
+): ExportPlan => {
+	if (!env.pageRuntime) {
+		return {
+			projectId,
+			fps: asFiniteNumber(projectAttrs.fps, 30),
+			width: asFiniteNumber(projectAttrs.width, 1920),
+			height: asFiniteNumber(projectAttrs.height, 1080),
+			duration: 0,
+			clipSources: [],
+		}
+	}
+
+	const resources = new Map<string, { name: string; kind: 'video' | 'audio' | 'image' | 'text'; url: string; mime: string }>()
+	for (const resourceScope of env.pageRuntime.readMany(projectScope, 'resources')) {
+		const attrs = env.pageRuntime.readAttrs(resourceScope, ['sourceResourceId', 'name', 'kind', 'url', 'mime']) as {
+			sourceResourceId?: unknown
+			name?: unknown
+			kind?: unknown
+			url?: unknown
+			mime?: unknown
+		}
+		if (typeof attrs.sourceResourceId !== 'string' || !attrs.sourceResourceId) {
+			continue
+		}
+		resources.set(attrs.sourceResourceId, {
+			name: typeof attrs.name === 'string' ? attrs.name : 'Resource',
+			kind: attrs.kind === 'audio' || attrs.kind === 'image' || attrs.kind === 'text' ? attrs.kind : 'video',
+			url: typeof attrs.url === 'string' ? attrs.url : '',
+			mime: typeof attrs.mime === 'string' ? attrs.mime : 'application/octet-stream',
+		})
+	}
+
+	const clipSources: ExportPlan['clipSources'] = []
+	let duration = 0
+	for (const trackScope of env.pageRuntime.readMany(projectScope, 'tracks')) {
+		for (const clipScope of env.pageRuntime.readMany(trackScope, 'clips')) {
+			const attrs = env.pageRuntime.readAttrs(clipScope, [
+				'sourceClipId',
+				'sourceResourceId',
+				'name',
+				'color',
+				'mediaKind',
+				'start',
+				'in',
+				'duration',
+				'fadeIn',
+				'fadeOut',
+				'audio',
+				'opacity',
+				'transform',
+			]) as {
+				sourceClipId?: unknown
+				sourceResourceId?: unknown
+				name?: unknown
+				color?: unknown
+				mediaKind?: unknown
+				start?: unknown
+				in?: unknown
+				duration?: unknown
+				fadeIn?: unknown
+				fadeOut?: unknown
+				audio?: unknown
+				opacity?: unknown
+				transform?: unknown
+			}
+			if (typeof attrs.sourceClipId !== 'string' || !attrs.sourceClipId) {
+				continue
+			}
+
+			const sourceResourceId = typeof attrs.sourceResourceId === 'string' ? attrs.sourceResourceId : attrs.sourceClipId
+			const resource = resources.get(sourceResourceId)
+			const start = Math.max(0, asFiniteNumber(attrs.start, 0))
+			const clipDuration = Math.max(0, asFiniteNumber(attrs.duration, 0))
+			duration = Math.max(duration, start + clipDuration)
+			const audio = attrs.audio && typeof attrs.audio === 'object'
+				? attrs.audio as { gain?: unknown; pan?: unknown }
+				: null
+			const transform = attrs.transform && typeof attrs.transform === 'object'
+				? attrs.transform as { x?: unknown; y?: unknown; scale?: unknown; rotation?: unknown }
+				: null
+
+			clipSources.push({
+				id: attrs.sourceClipId,
+				resourceId: sourceResourceId,
+				name: typeof attrs.name === 'string' ? attrs.name : (resource?.name ?? 'Clip'),
+				color: typeof attrs.color === 'string' ? attrs.color : '#2563eb',
+				resourceName: resource?.name ?? (typeof attrs.name === 'string' ? attrs.name : 'Resource'),
+				resourceKind:
+					attrs.mediaKind === 'audio' || attrs.mediaKind === 'image' || attrs.mediaKind === 'text'
+						? attrs.mediaKind
+						: (resource?.kind ?? 'video'),
+				resourceUrl: resource?.url ?? '',
+				mime: resource?.mime ?? 'application/octet-stream',
+				inPoint: Math.max(0, asFiniteNumber(attrs.in, 0)),
+				start,
+				duration: clipDuration,
+				fadeIn: Math.max(0, asFiniteNumber(attrs.fadeIn, 0)),
+				fadeOut: Math.max(0, asFiniteNumber(attrs.fadeOut, 0)),
+				opacity: toResolvedScalar(attrs.opacity, 1),
+				transform: {
+					x: toResolvedScalar(transform?.x, 0),
+					y: toResolvedScalar(transform?.y, 0),
+					scale: toResolvedScalar(transform?.scale, 1),
+					rotation: toResolvedScalar(transform?.rotation, 0),
+				},
+				audio: {
+					gain: Math.max(0, asFiniteNumber(audio?.gain, 1)),
+					pan: asFiniteNumber(audio?.pan, 0),
+				},
+				filters: [],
+				effects: [],
+				text: null,
+			})
+		}
+	}
+
+	return {
+		projectId,
+		fps: asFiniteNumber(projectAttrs.fps, 30),
+		width: asFiniteNumber(projectAttrs.width, 1920),
+		height: asFiniteNumber(projectAttrs.height, 1080),
+		duration,
+		clipSources,
+	}
 }
 
 const dispatchTrackClip = (
@@ -250,25 +411,103 @@ const queueExport = async (
 	onProgress?: (event: ExportProgressEvent) => void,
 ): Promise<ExportRenderResult | null> => {
 	const projectScope = getActiveProjectScope(env)
+	const runtimeSnapshot = env.pageRuntime?.getSnapshot() ?? null
 	if (!projectScope || !env.pageRuntime) {
+		pushExportDebug('missing-project-scope', {
+			range,
+			runtimeSnapshot,
+		})
+		console.warn('[minicut:adapter-export] missing active project scope', {
+			range,
+			runtimeSnapshot,
+		})
 		return null
 	}
 
-	const attrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan']) as { exportPlan?: ExportPlan }
-	const plan = attrs.exportPlan
+	const computedAttrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan']) as {
+		exportPlan?: ExportPlan
+	}
+	const projectAttrs = env.pageRuntime.readAttrs(projectScope, ['sourceProjectId', 'fps', 'width', 'height', 'duration']) as {
+		sourceProjectId?: unknown
+		fps?: unknown
+		width?: unknown
+		height?: unknown
+		duration?: unknown
+	}
+	const rootScope = getRootScope(env)
+	const rootAttrs = rootScope
+		? env.pageRuntime.readAttrs(rootScope, ['activeProjectId']) as {
+			activeProjectId?: unknown
+		}
+		: null
+	const fallbackProjectId =
+		typeof projectAttrs.sourceProjectId === 'string' && projectAttrs.sourceProjectId
+			? projectAttrs.sourceProjectId
+			: (typeof rootAttrs?.activeProjectId === 'string' ? rootAttrs.activeProjectId : '')
+	const plan = computedAttrs.exportPlan && computedAttrs.exportPlan.projectId
+		? computedAttrs.exportPlan
+		: buildFallbackExportPlan(env, projectScope, fallbackProjectId, projectAttrs)
 	if (!plan || !plan.projectId) {
+		pushExportDebug('missing-export-plan', {
+			range,
+			sourceProjectId: projectAttrs.sourceProjectId ?? null,
+			activeProjectId: rootAttrs?.activeProjectId ?? null,
+			runtimeSnapshot,
+			debugGraph: env.pageRuntime.debugDumpGraph(),
+			debugMessages: env.pageRuntime.debugMessages().slice(-30),
+		})
+		console.warn('[minicut:adapter-export] missing export plan or projectId', {
+			range,
+			sourceProjectId: projectAttrs.sourceProjectId ?? null,
+			activeProjectId: rootAttrs?.activeProjectId ?? null,
+			runtimeSnapshot,
+		})
 		return null
 	}
 
 	try {
+		pushExportDebug('render-start', {
+			range,
+			projectId: plan.projectId,
+			runtimeSnapshot,
+		})
+		console.info('[minicut:adapter-export] render start', {
+			range,
+			projectId: plan.projectId,
+		})
 		const result = await env.export.render({ plan, range, format: 'video-webm' }, onProgress)
 		const downloadUrl = env.media.createObjectUrl(result.blob)
 		if (downloadUrl) {
 			env.lifecycle.registerObjectUrl(downloadUrl, 'export')
 			result.downloadUrl = downloadUrl
 		}
+		pushExportDebug('render-done', {
+			range,
+			projectId: plan.projectId,
+			fileName: result.fileName,
+			size: result.size,
+			hasDownloadUrl: Boolean(result.downloadUrl),
+		})
+		console.info('[minicut:adapter-export] render done', {
+			range,
+			projectId: plan.projectId,
+			fileName: result.fileName,
+			hasDownloadUrl: Boolean(result.downloadUrl),
+		})
 		return result
-	} catch {
+	} catch (error) {
+		pushExportDebug('render-failed', {
+			range,
+			projectId: plan.projectId,
+			error: error instanceof Error ? error.stack || error.message : String(error),
+			runtimeSnapshot,
+			debugMessages: env.pageRuntime.debugMessages().slice(-30),
+		})
+		console.error('[minicut:adapter-export] render failed', {
+			range,
+			projectId: plan.projectId,
+			error: error instanceof Error ? error.stack || error.message : String(error),
+		})
 		return null
 	}
 }

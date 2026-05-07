@@ -244,7 +244,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			}
 		}
 
-		const unlisten = transport.listen((message) => {
+		const unlisten = transport.listen((message: MiniCutDktTransportMessage) => {
 			Promise.resolve(handleMessage(message)).catch((error) => sendError(error, 'requestId' in message ? message.requestId : undefined))
 		})
 
@@ -267,5 +267,25 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		return { destroy }
 	}
 
-	return { connect }
+	const debugDumpState = async () => {
+		const app = await bootstrapApp()
+		if (!app) {
+			return {
+				enabled,
+				booted: false,
+				sessions: [...sessionRootPromises.keys()],
+				modelsCount: 0,
+			}
+		}
+
+		return {
+			enabled,
+			booted: true,
+			sessions: [...sessionRootPromises.keys()],
+			modelsCount: Object.keys(app.runtime.models ?? {}).length,
+			rootNodeId: app.appModel._node_id ?? null,
+		}
+	}
+
+	return { connect, debugDumpState }
 }

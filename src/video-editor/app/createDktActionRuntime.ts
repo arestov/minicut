@@ -1,7 +1,8 @@
-﻿import { createProjectRenderExportEffectData, PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
-import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+﻿import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
+import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
+import type { ExportPlan } from '../render/renderPlan'
 
 const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
 let projectSequence = 0
@@ -101,6 +102,23 @@ const dispatchClipActionById = (env: EditorActionEnvironment, clipId: string, ac
 
 const _resourceChunkSizeRef = new WeakMap<EditorActionEnvironment, number>()
 
+const pushExportDebug = (event: string, details: unknown): void => {
+	const payload = {
+		event,
+		timestamp: Date.now(),
+		details,
+	}
+	try {
+		const target = globalThis as typeof globalThis & { __MINICUT_EXPORT_DEBUG__?: unknown[] }
+		if (!Array.isArray(target.__MINICUT_EXPORT_DEBUG__)) {
+			target.__MINICUT_EXPORT_DEBUG__ = []
+		}
+		target.__MINICUT_EXPORT_DEBUG__.push(payload)
+	} catch {
+		// ignore debug storage failures
+	}
+}
+
 const waitForActiveProjectScope = async (env: EditorActionEnvironment): Promise<ReactSyncScopeHandle | null> => {
 	for (let attempt = 0; attempt < 20; attempt += 1) {
 		const scope = getActiveProjectScope(env)
@@ -166,13 +184,97 @@ name: file.name,
 })().catch(() => undefined)
 }
 
-const queueExportTask = (env: EditorActionEnvironment, range: 'project' | 'clip'): void => {
-const task = env.tasks.dispatchTask(
-PROJECT_RENDER_EXPORT_FX,
-{ data: createProjectRenderExportEffectData({ projectId: '', range, format: 'video-webm' }) },
-{ queuePolicy: 'queue-all', intentKey: `${PROJECT_RENDER_EXPORT_FX}:${range}` },
-)
-env.tasks.completeTask(task)
+const queueExport = async (
+	env: EditorActionEnvironment,
+	range: ExportRange,
+	onProgress?: (event: ExportProgressEvent) => void,
+): Promise<ExportRenderResult | null> => {
+	const projectScope = getActiveProjectScope(env)
+	const runtimeSnapshot = env.pageRuntime?.getSnapshot() ?? null
+	if (!projectScope || !env.pageRuntime) {
+		pushExportDebug('missing-project-scope', {
+			range,
+			runtimeSnapshot,
+		})
+		console.warn('[minicut:dkt-export] missing active project scope', {
+			range,
+			runtimeSnapshot,
+		})
+		return null
+	}
+
+	const attrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan', 'sourceProjectId']) as {
+		exportPlan?: ExportPlan
+		sourceProjectId?: unknown
+	}
+	const plan = attrs.exportPlan
+	if (!plan || !plan.projectId) {
+		pushExportDebug('missing-export-plan', {
+			range,
+			sourceProjectId: attrs.sourceProjectId ?? null,
+			runtimeSnapshot,
+			debugGraph: env.pageRuntime.debugDumpGraph(),
+			debugMessages: env.pageRuntime.debugMessages().slice(-30),
+		})
+		console.warn('[minicut:dkt-export] missing export plan or projectId', {
+			range,
+			sourceProjectId: attrs.sourceProjectId ?? null,
+			runtimeSnapshot,
+			debugGraph: env.pageRuntime.debugDumpGraph(),
+			debugMessages: env.pageRuntime.debugMessages().slice(-30),
+		})
+		return null
+	}
+
+	try {
+		pushExportDebug('render-start', {
+			range,
+			projectId: plan.projectId,
+			runtimeSnapshot,
+		})
+		console.info('[minicut:dkt-export] render start', {
+			range,
+			projectId: plan.projectId,
+			runtimeSnapshot,
+		})
+		const result = await env.export.render({ plan, range, format: 'video-webm' }, onProgress)
+		const downloadUrl = env.media.createObjectUrl(result.blob)
+		if (downloadUrl) {
+			env.lifecycle.registerObjectUrl(downloadUrl, 'export')
+			result.downloadUrl = downloadUrl
+		}
+		pushExportDebug('render-done', {
+			range,
+			projectId: plan.projectId,
+			fileName: result.fileName,
+			size: result.size,
+			hasDownloadUrl: Boolean(result.downloadUrl),
+		})
+		console.info('[minicut:dkt-export] render done', {
+			range,
+			projectId: plan.projectId,
+			fileName: result.fileName,
+			size: result.size,
+			hasDownloadUrl: Boolean(result.downloadUrl),
+		})
+		return result
+	} catch (error) {
+		pushExportDebug('render-failed', {
+			range,
+			projectId: plan.projectId,
+			error: error instanceof Error ? error.stack || error.message : String(error),
+			runtimeSnapshot,
+			debugMessages: env.pageRuntime.debugMessages().slice(-30),
+		})
+		console.error('[minicut:dkt-export] render failed', {
+			range,
+			projectId: plan.projectId,
+			error: error instanceof Error ? error.stack || error.message : String(error),
+			runtimeSnapshot,
+			debugMessages: env.pageRuntime.debugMessages().slice(-30),
+		})
+		return null
+	}
 }
 
 export const createDktActionRuntime = (
@@ -304,17 +406,31 @@ dispatchClipActionById(env, clipId, 'removeEffect', { effectId })
 removeEffectFromSelectedClip(effectId: string): void {
 dispatchSelectedClipAction(env, 'removeEffect', { effectId })
 },
-queueClipExportById(_clipId: string): Promise<null> {
-queueExportTask(env, 'clip')
-return Promise.resolve(null)
+queueClipExportById(clipId: string, onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null> {
+	return queueExport(env, { type: 'clip', clipId }, onProgress)
 },
-queueSelectedClipExport(): Promise<null> {
-queueExportTask(env, 'clip')
-return Promise.resolve(null)
+queueSelectedClipExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null> {
+	const selectedClipScope = getSelectedClipScope(env)
+	if (!selectedClipScope || !env.pageRuntime) {
+		pushExportDebug('selected-clip-missing', null)
+		console.warn('[minicut:dkt-export] selected clip export requested with no selected clip')
+		return Promise.resolve(null)
+	}
+	const attrs = env.pageRuntime.readAttrs(selectedClipScope, ['sourceClipId']) as { sourceClipId?: unknown }
+	const clipId = typeof attrs.sourceClipId === 'string' && attrs.sourceClipId ? attrs.sourceClipId : selectedClipScope._nodeId
+	if (!clipId) {
+		pushExportDebug('selected-clip-id-missing', {
+			nodeId: selectedClipScope._nodeId ?? null,
+		})
+		console.warn('[minicut:dkt-export] selected clip export missing clip id', {
+			nodeId: selectedClipScope._nodeId ?? null,
+		})
+		return Promise.resolve(null)
+	}
+	return queueExport(env, { type: 'clip', clipId }, onProgress)
 },
-queueProjectExport(): Promise<null> {
-queueExportTask(env, 'project')
-return Promise.resolve(null)
+queueProjectExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null> {
+	return queueExport(env, { type: 'project' }, onProgress)
 },
 nudgeSelectedClip(delta: number): void {
 dispatchSelectedClipAction(env, 'moveBy', { delta })

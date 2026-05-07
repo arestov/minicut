@@ -393,6 +393,7 @@ export const createBrowserVideoExportRenderer = (
 
 			if (webCodecsAttempt.blob) {
 				onProgress?.({ stage: 'finalizing', progress: 1 })
+				const fixedWebCodecsBlob = await fixWebmDuration(webCodecsAttempt.blob, duration * 1000, { logger: false })
 				const diagnostics = createExportDiagnostics('webcodecs', request.plan, resolvedRange)
 				const manifest: ExportManifest = {
 					format,
@@ -411,8 +412,8 @@ export const createBrowserVideoExportRenderer = (
 					id: createExportId(),
 					fileName: buildFileName(rangeName, format),
 					mimeType: videoMimeType,
-					blob: webCodecsAttempt.blob,
-					size: webCodecsAttempt.blob.size,
+					blob: fixedWebCodecsBlob,
+					size: fixedWebCodecsBlob.size,
 					duration,
 					frameCount,
 					manifest,
