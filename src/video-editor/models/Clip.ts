@@ -484,4 +484,7 @@ export const Clip = model({
 
 export const CLIP_CREATION_SHAPE = {
 	attrs: ['sourceClipId', 'sourceResourceId', 'sourceResourceName', 'sourceTextId', 'name', 'color', 'mediaKind', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
+	rels: {
+		track: {},
+	},
 } as const

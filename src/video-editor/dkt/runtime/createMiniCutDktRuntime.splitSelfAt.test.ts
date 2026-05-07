@@ -98,4 +98,45 @@ describe('createMiniCutDktRuntime splitSelfAt data flow', () => {
 		expect(rightClip?.start).toBe(0.5)
 		expect(rightClip?.duration).toBe(0.5)
 	})
+
+	it('splitSelectedClip creates both clips via single session dispatch (no manual track step)', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+
+		await runtime.dispatchSessionAction('createProject', { sourceProjectId: projectId, title: 'E2E split test' })
+		await runtime.dispatchTrackAction({ sourceTrackId: videoTrackId }, 'addClip', {
+			sourceClipId: clipId,
+			name: 'fixture-video.webm',
+			mediaKind: 'video',
+			start: 0,
+			in: 0,
+			duration: 1,
+		})
+
+		await runtime.dispatchSessionAction('selectEntity', clipId)
+		await runtime.dispatchSessionAction('setCursor', 0.5)
+
+		await runtime.dispatchSessionAction('splitSelectedClip')
+
+		await waitFor(async () => {
+			const snapshot = await runtime.debugDumpAppState()
+			const clips = readClipStates(snapshot)
+			const left = clips.find((c) => c.sourceClipId === clipId)
+			return Boolean(left && left.duration === 0.5) || clips.length >= 2
+		})
+
+		const snapshot = await runtime.debugDumpAppState()
+		const clips = readClipStates(snapshot)
+
+		const left = clips.find((c) => c.sourceClipId === clipId)
+		expect(left, 'left clip must exist').toBeTruthy()
+		expect(left?.duration).toBe(0.5)
+		expect(left?.start).toBe(0)
+
+		const right = clips.find((c) => c.sourceClipId !== clipId && c.start === 0.5)
+		expect(right, 'right clip must be auto-created by saga chain').toBeTruthy()
+		expect(right?.duration).toBe(0.5)
+		expect(right?.start).toBe(0.5)
+
+		expect(clips.length).toBe(2)
+	})
 })

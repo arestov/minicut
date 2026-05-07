@@ -80,15 +80,15 @@ export const Track = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: (payload: unknown) => {
+			fn: [['<<<<'] as const, (payload: unknown, self: unknown) => {
 				const attrs = normalizeClipCreationAttrs(payload)
 				return attrs
 					? {
-						clip: { attrs, hold_ref_id: 'newClip' },
+						clip: { attrs, rels: { track: self }, hold_ref_id: 'newClip' },
 						clips: { use_ref_id: 'newClip' },
 					}
 					: '$noop'
-			},
+			}],
 		},
 		addTextClip: {
 			to: {
@@ -109,18 +109,18 @@ export const Track = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: (payload: unknown) => {
+			fn: [['<<<<'] as const, (payload: unknown, self: unknown) => {
 				const value = payload as { text?: unknown } | null
 				const clipAttrs = normalizeClipCreationAttrs(payload)
 				const textAttrs = normalizeTextCreationAttrs(value?.text)
 				return clipAttrs && textAttrs
 					? {
-						clip: { attrs: clipAttrs, hold_ref_id: 'newTextClip' },
+						clip: { attrs: clipAttrs, rels: { track: self }, hold_ref_id: 'newTextClip' },
 						text: { attrs: textAttrs, hold_ref_id: 'newTextNode' },
 						clips: { use_ref_id: 'newTextClip' },
 					}
 					: '$noop'
-			},
+			}],
 		},
 		splitClipAt: {
 			to: {
@@ -135,15 +135,15 @@ export const Track = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: (payload: unknown) => {
+			fn: [['<<<<'] as const, (payload: unknown, self: unknown) => {
 				const attrs = normalizeRightSplitClipAttrs(payload)
 				return attrs
 					? {
-						clip: { attrs, hold_ref_id: 'rightSplitClip' },
+						clip: { attrs, rels: { track: self }, hold_ref_id: 'rightSplitClip' },
 						clips: { use_ref_id: 'rightSplitClip' },
 					}
 					: '$noop'
-			},
+			}],
 		},
 		setClips: {
 			to: {
