@@ -246,11 +246,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>()
 	const clipNodeIdsBySourceId = new Map<string, string>()
-	const projectNodeIdsBySourceId = new Map<string, string>()
 	const trackNodeIdsBySourceId = new Map<string, string>()
-	const resourceNodeIdsBySourceId = new Map<string, string>()
-	const textNodeIdsBySourceId = new Map<string, string>()
-	const effectNodeIdsBySourceId = new Map<string, string>()
 	const enabled = options.enabled === true
 
 	const bootstrapApp = async () => {
@@ -531,18 +527,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position: selectedClipTrackPosition })
 	}
 
-	const dispatchProjectAction = async (project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureSeededModel(projectNodeIdsBySourceId, project, 'minicut_project', 'sourceProjectId', 'createProjectModel', project.sourceProjectId)
-		await dispatchAction(actionName, payload, nodeId)
-	}
-
 	const dispatchTrackAction = async (track: MiniCutDktTrackSeed, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureSeededModel(trackNodeIdsBySourceId, track, 'minicut_track', 'sourceTrackId', 'createTrackModel', track.sourceTrackId)
-		await dispatchAction(actionName, payload, nodeId)
-	}
-
-	const dispatchResourceAction = async (resource: MiniCutDktResourceSeed, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureSeededModel(resourceNodeIdsBySourceId, resource, 'minicut_resource', 'sourceResourceId', 'createResourceModel', resource.sourceResourceId)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
@@ -551,22 +537,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 
 	const dispatchClipAction = async (clip: MiniCutDktClipSeed, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureClipSeed(clip)
-		await dispatchAction(actionName, payload, nodeId)
-	}
-
-	const ensureTextSeed = async (text: MiniCutDktTextSeed): Promise<string> =>
-		ensureSeededModel(textNodeIdsBySourceId, text, 'minicut_text', 'sourceTextId', 'createTextModel', text.sourceTextId)
-
-	const dispatchTextAction = async (text: MiniCutDktTextSeed, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureTextSeed(text)
-		await dispatchAction(actionName, payload, nodeId)
-	}
-
-	const ensureEffectSeed = async (effect: MiniCutDktEffectSeed): Promise<string> =>
-		ensureSeededModel(effectNodeIdsBySourceId, effect, 'minicut_effect', 'sourceEffectId', 'createEffectModel', effect.sourceEffectId)
-
-	const dispatchEffectAction = async (effect: MiniCutDktEffectSeed, actionName: string, payload?: unknown): Promise<void> => {
-		const nodeId = await ensureEffectSeed(effect)
 		await dispatchAction(actionName, payload, nodeId)
 	}
 
@@ -695,14 +665,8 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		dispatchAction,
 		dispatchSessionAction,
 		ensureClipSeed,
-		dispatchProjectAction,
 		dispatchTrackAction,
-		dispatchResourceAction,
 		dispatchClipAction,
-		ensureTextSeed,
-		dispatchTextAction,
-		ensureEffectSeed,
-		dispatchEffectAction,
 		connect,
 		debugDumpAppState,
 	}
