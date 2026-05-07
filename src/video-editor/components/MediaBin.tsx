@@ -4,7 +4,6 @@ import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
-import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../render/registryTypes'
@@ -128,7 +127,7 @@ const ResourceListItem = ({
 }
 
 const TextTimelineActionRow = () => {
-	const sessionDispatch = useRootDispatch()
+	const { actions } = useVideoEditor()
 
 	return (
 		<li className="ve-resource-row ve-resource-row--text-action">
@@ -140,7 +139,7 @@ const TextTimelineActionRow = () => {
 					<Button
 						type="button"
 						variant="secondary"
-						onClick={() => sessionDispatch('addTextClipToTimeline')}
+						onClick={() => actions.addTextClip()}
 						aria-label="Add Text to Timeline"
 					>
 						Add Text to Timeline

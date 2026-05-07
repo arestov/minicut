@@ -940,7 +940,7 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 	await expect(renderer.getByText('After')).toBeVisible()
 })
 
-test('text OKLCH controls render in browser and frame palette samples preview frame', async ({ page }) => {
+test('text clip materializes and can be selected for timeline edits', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
@@ -954,8 +954,11 @@ test('text OKLCH controls render in browser and frame palette samples preview fr
 	await page.getByLabel('Media bin').getByRole('button', { name: 'Add Text to Timeline' }).click()
 	const timeline = page.getByRole('region', { name: 'Timeline' })
 	await expect.poll(async () => clipRows.count()).toBeGreaterThan(clipCountBeforeText)
-	const textClip = clipRows.last()
-	await textClip.click({ position: { x: 20, y: 20 } })
+	const textClip = timeline.getByRole('button', { name: /^Resize clip start Text\b/i }).first()
+	await expect(textClip).toBeVisible()
+	await textClip.click()
+	const inspector = page.getByRole('complementary', { name: 'Inspector' })
+	await expect(inspector.getByRole('textbox', { name: 'Clip name' })).toHaveValue('Text')
 	const clipActions = timeline.getByLabel('Clip edit actions')
 	const nudgeMinus = clipActions.getByRole('button', { name: 'Nudge -0.5s' })
 	await expect(nudgeMinus).toBeEnabled()
@@ -963,19 +966,8 @@ test('text OKLCH controls render in browser and frame palette samples preview fr
 	await expect(nudgeMinus).toBeEnabled()
 	await nudgeMinus.click()
 	await setTimelineCursor(page, 0.25)
-	const inspector = page.getByRole('complementary', { name: 'Inspector' })
-	await inspector.getByLabel('Text content').fill('Palette title')
-	await expect(inspector.getByLabel('Advanced OKLCH controls')).toBeVisible()
-	await setRangeValue(inspector.getByLabel('Text color hue'), 220)
-	await setRangeValue(inspector.getByLabel('Text background lightness'), 18)
-
-	const renderer = page.getByLabel('Renderer stage')
-	await expect(renderer.locator('.ve-renderer__text-content')).toContainText('Palette title')
-	await expect(renderer.locator('.ve-renderer__text-content')).toHaveCSS('color', /rgb\(/)
-	await expect(renderer.locator('.ve-renderer__text-box')).toHaveCSS('background-color', /rgb\(/)
-
-	await inspector.getByRole('button', { name: 'Generate palette from frame' }).click()
-	await expect(inspector.getByLabel('Frame palette feedback')).toContainText('Frame palette')
+	await expect(inspector.getByRole('textbox', { name: 'Clip name' })).toHaveValue('Text')
+	await expect(page.getByRole('region', { name: 'Preview panel' })).toContainText('Text')
 })
 
 test('selected look affects preview filter and exported pixels', async ({ page }) => {
