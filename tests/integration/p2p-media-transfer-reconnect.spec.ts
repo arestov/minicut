@@ -19,7 +19,12 @@ type DebugTransfer = {
 	loadedRanges: Array<[number, number]>
 	requestedRanges: Array<[number, number]>
 	requestedRangesLog: Array<[number, number]>
-	requestEvents: Array<{ reason: 'head' | 'tail' | 'window' | 'sequential' | 'replication'; ranges: Array<[number, number]> }>
+	requestEvents: Array<{
+		reason: 'head' | 'tail' | 'window' | 'sequential' | 'replication'
+		ranges: Array<[number, number]>
+		requestId?: string
+		phase?: 'request' | 'chunk-meta' | 'chunk-complete' | 'error'
+	}>
 	mode: 'local' | 'mirrored' | 'streaming'
 	availability: 'local' | 'remote'
 }
@@ -98,7 +103,12 @@ test('p2p media transfer resumes after the remote peer reconnects mid-transfer',
 
 	await expect.poll(async () => {
 		const transfers = await getTransfers(originalClient.page)
-		return transfers.some((transfer) => transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1)
+		return transfers.some((transfer) => {
+			const hasRequest = transfer.requestEvents.some((event) => event.phase === 'request' && typeof event.requestId === 'string')
+			const hasChunk = transfer.requestEvents.some((event) => event.phase === 'chunk-meta' && typeof event.requestId === 'string')
+			const hasVisiblePartial = transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1
+			return hasRequest && hasChunk && (hasVisiblePartial || transfer.loadedBytes > 0)
+		})
 	}, {
 		timeout: 20_000,
 	}).toBe(true)

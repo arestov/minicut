@@ -60,6 +60,7 @@ const sendChunk = (
 	transport: P2PRawTransportLike,
 	message: {
 		resourceId: string
+		requestId?: string
 		index: number
 		start: number
 		end: number
@@ -71,6 +72,7 @@ const sendChunk = (
 	transport.send(JSON.stringify({
 		type: 'resource-chunk-meta',
 		resourceId: message.resourceId,
+		requestId: message.requestId,
 		index: message.index,
 		start: message.start,
 		end: message.end,
@@ -282,6 +284,68 @@ describe('resource transfer manager', () => {
 
 		client.destroy()
 		server.destroy()
+	})
+
+	it('tracks request lifecycle diagnostics by requestId from request through completion', async () => {
+		const [serverTransport, clientTransport] = createTransportPair()
+		const requests = parseRequestMessages(serverTransport)
+		const client = createResourceTransferManager({
+			getRole: () => 'client',
+			getPeerId: () => 'peer-b',
+			chunkSize: 8,
+			headBytes: 8,
+		})
+
+		client.attachClientTransport(clientTransport)
+		syncResource(client, 'res-request-id', { size: 24, duration: 8, name: 'Request id clip' })
+
+		let headRequestId = ''
+		await waitFor(() => {
+			const headRequest = requests.find((message) =>
+				message.resourceId === 'res-request-id' && message.reason === 'head'
+			)
+			expect(headRequest?.requestId).toMatch(/^rq-\d+$/)
+			headRequestId = String(headRequest?.requestId)
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-request-id',
+			requestId: headRequestId,
+			index: 0,
+			start: 0,
+			end: 8,
+			totalSize: 24,
+			reason: 'head',
+		}, 'abcdefgh')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-request-id',
+			reason: 'head',
+			requestId: headRequestId,
+		}))
+
+		await waitFor(() => {
+			const transfer = client.getTransfer('res-request-id')
+			expect(transfer?.requestEvents).toEqual(expect.arrayContaining([
+				expect.objectContaining({
+					requestId: headRequestId,
+					phase: 'request',
+					reason: 'head',
+				}),
+				expect.objectContaining({
+					requestId: headRequestId,
+					phase: 'chunk-meta',
+					reason: 'head',
+				}),
+				expect.objectContaining({
+					requestId: headRequestId,
+					phase: 'chunk-complete',
+					reason: 'head',
+				}),
+			]))
+		})
+
+		client.destroy()
 	})
 
 	it('serializes concurrent requests over a single raw transport without corrupting bytes', async () => {

@@ -158,6 +158,7 @@ export const createVideoEditorHarness = (
 
 		let disposeProjectResources = EMPTY_CLEANUP
 		let disposeActiveProject = EMPTY_CLEANUP
+		let runtimeReadyTimeout: ReturnType<typeof window.setTimeout> | null = null
 
 		const syncActiveProjectResources = () => {
 			const rootScope = pageRuntime.getRootScope()
@@ -166,15 +167,36 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const projectScope = pageRuntime.readOne(rootScope, 'activeProject')
+			const pioneerScope = pageRuntime.readOne(rootScope, 'pioneer')
+			const projectScopes = pioneerScope
+				? pageRuntime.readMany(pioneerScope, 'project')
+				: []
+			const activeProjectScope = pageRuntime.readOne(rootScope, 'activeProject')
+			const projectScope = activeProjectScope ?? projectScopes[0] ?? null
 			disposeProjectResources()
 			if (!projectScope) {
 				resourceTransferManager.syncResources([])
+				// Retry in a moment if runtime is still initializing (bounded to 5 retries = 2.5s)
+				if (runtimeReadyTimeout === null) {
+					const retryKey = '__p2pResourceSyncRetries'
+					const retries = (window as any)[retryKey] ?? 0
+					if (retries < 5) {
+						(window as any)[retryKey] = retries + 1
+						runtimeReadyTimeout = window.setTimeout(() => {
+							runtimeReadyTimeout = null
+							syncActiveProjectResources()
+						}, 500)
+					}
+				}
 				return
 			}
 
+			// Runtime is ready, clear retry counter
+			(window as any).__p2pResourceSyncRetries = 0
+
 			const syncResources = () => {
-				const resourceScopes = pageRuntime.readMany(projectScope, 'resources')
+				const scopesToRead = projectScopes.length > 0 ? projectScopes : [projectScope]
+				const resourceScopes = scopesToRead.flatMap((scope) => pageRuntime.readMany(scope, 'resources'))
 				const resources = resourceScopes
 					.map((resourceScope) => {
 						const attrs = readResourceAttrs(pageRuntime, resourceScope)
@@ -198,6 +220,10 @@ export const createVideoEditorHarness = (
 		syncActiveProjectResources()
 
 		return () => {
+			if (runtimeReadyTimeout !== null) {
+				window.clearTimeout(runtimeReadyTimeout)
+				runtimeReadyTimeout = null
+			}
 			disposeProjectResources()
 			disposeActiveProject()
 		}

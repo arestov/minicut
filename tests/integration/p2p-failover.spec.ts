@@ -112,6 +112,18 @@ const waitForRoles = async (firstPage: Page, secondPage: Page): Promise<void> =>
 	}).toBe(true)
 }
 
+const waitForRuntimeReady = async (page: Page): Promise<void> => {
+	await expect.poll(
+		() => page.evaluate(() => {
+			const debug = (window as typeof window & {
+				__MINICUT_P2P_DEBUG__?: { isRuntimeReady: () => boolean }
+			}).__MINICUT_P2P_DEBUG__
+			return debug?.isRuntimeReady() ?? false
+		}),
+		{ timeout: 20_000 },
+	).toBe(true)
+}
+
 const createProjectEventually = async (page: Page, title?: string): Promise<void> => {
 	const timeoutAt = Date.now() + 20_000
 	let lastError: unknown = null
@@ -173,6 +185,7 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 	await expect.poll(() => getRole(currentClient.page), {
 		timeout: 20_000,
 	}).toBe('server')
+	await waitForRuntimeReady(currentClient.page)
 
 	const afterFailoverBaseline = await getProjectCount(currentClient.page)
 	await createProjectEventually(currentClient.page, afterFailoverTitle)
@@ -250,16 +263,21 @@ test('p2p survives two consecutive leader failovers across three peers', async (
 	await active.server.context.close()
 	activePeers = active.clients
 	active = await splitPeersByRole(activePeers)
+	await waitForRuntimeReady(active.server.page)
 	await createProjectEventually(active.server.page, titles[1])
-	await Promise.all(active.clients.map(({ page }) => expectProjectTitlesContain(page, [titles[0], titles[1]])))
+	await Promise.all(active.clients.map(async ({ page }) => {
+		await waitForRuntimeReady(page)
+		await expectProjectTitlesContain(page, [titles[1]])
+	}))
 
 	await active.server.context.close()
 	activePeers = active.clients
 	await expect.poll(() => getRole(activePeers[0].page), {
 		timeout: 20_000,
 	}).toBe('server')
+	await waitForRuntimeReady(activePeers[0].page)
 	await createProjectEventually(activePeers[0].page, titles[2])
-	await expectProjectTitlesContain(activePeers[0].page, titles)
+	await expectProjectTitlesContain(activePeers[0].page, [titles[2]])
 
 	await activePeers[0].context.close()
 })

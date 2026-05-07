@@ -324,6 +324,9 @@ export const VideoEditorHarnessApp = ({
 				const worker = ownedHarness.worker as { role?: string }
 				return typeof worker.role === 'string' ? worker.role : null
 			},
+			isRuntimeReady: () => {
+				return ownedHarness.pageRuntime?.getSnapshot().ready ?? false
+			},
 			getPeerId: () => {
 				const worker = ownedHarness.worker as { peerId?: string }
 				return typeof worker.peerId === 'string' ? worker.peerId : null
@@ -335,9 +338,22 @@ export const VideoEditorHarnessApp = ({
 				ownedHarness.actions.setCursor(cursor)
 			},
 			dispatchCreateProject: async (title?: string) => {
-				const snapshot = ownedHarness.pageRuntime?.getSnapshot()
-				if (!snapshot?.ready) {
+				const runtime = ownedHarness.pageRuntime
+				if (!runtime) {
 					throw new Error('Runtime not ready')
+				}
+				const TIMEOUT_MS = 15_000
+				const POLL_MS = 50
+				const deadline = Date.now() + TIMEOUT_MS
+				while (!runtime.getSnapshot().ready) {
+					if (Date.now() >= deadline) {
+						const snap = runtime.getSnapshot()
+						const role = (ownedHarness.worker as { role?: string }).role ?? null
+						throw new Error(
+							`Runtime not ready after ${TIMEOUT_MS}ms (role=${role} booted=${snap.booted} rootNodeId=${snap.rootNodeId})`,
+						)
+					}
+					await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS))
 				}
 				ownedHarness.actions.createProject(title)
 			},

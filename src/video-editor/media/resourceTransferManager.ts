@@ -16,6 +16,15 @@ import {
 type TransferRole = 'server' | 'client' | 'undecided' | null
 type TransferReason = 'head' | 'tail' | 'window' | 'sequential' | 'replication'
 
+type RequestPhase = 'request' | 'chunk-meta' | 'chunk-complete' | 'error'
+
+interface RequestEventEntry {
+	reason: TransferReason
+	ranges: ResourceByteRange[]
+	requestId: string
+	phase: RequestPhase
+}
+
 interface ResourceSnapshot {
 	resourceId: string
 	kind: ResourceAttrs['kind']
@@ -39,7 +48,8 @@ interface RemoteResourceState extends ResourceSnapshot {
 	loadedRanges: ResourceByteRange[]
 	requestedRanges: ResourceByteRange[]
 	requestedRangesLog: ResourceByteRange[]
-	requestEvents: Array<{ reason: TransferReason, ranges: ResourceByteRange[] }>
+	requestEvents: RequestEventEntry[]
+	pendingRequestIds: Set<string>
 	loadedBytes: number
 	lastTouchedAt: number
 	tailRequested: boolean
@@ -51,6 +61,7 @@ interface RemoteResourceState extends ResourceSnapshot {
 	lastError: string | null
 	errorRetryCount: number
 	retryTimeoutId: number | null
+	readyRecheckTimeoutId: number | null
 	status: 'missing' | 'partial' | 'ready' | 'error'
 }
 
@@ -67,7 +78,7 @@ export interface ResourceTransferView {
 	loadedRanges: ResourceByteRange[]
 	requestedRanges: ResourceByteRange[]
 	requestedRangesLog: ResourceByteRange[]
-	requestEvents: Array<{ reason: TransferReason, ranges: ResourceByteRange[] }>
+	requestEvents: RequestEventEntry[]
 	previewUrl: string
 	playbackUrl: string
 	canPreview: boolean
@@ -83,11 +94,13 @@ export interface RequestMessage {
 	resourceId: string
 	ranges: ResourceByteRange[]
 	reason: TransferReason
+	requestId: string
 }
 
 interface ChunkMetaMessage {
 	type: 'resource-chunk-meta'
 	resourceId: string
+	requestId?: string
 	index: number
 	start: number
 	end: number
@@ -107,12 +120,15 @@ interface ChunkCompleteMessage {
 	type: 'resource-chunk-complete'
 	resourceId: string
 	reason: TransferReason
+	requestId?: string
 }
 
 interface ErrorMessage {
 	type: 'resource-error'
 	resourceId: string
 	error: string
+	reason?: TransferReason
+	requestId?: string
 }
 
 type ControlMessage = RequestMessage | ChunkMetaMessage | ChunkCompleteMessage | ErrorMessage
@@ -183,6 +199,7 @@ export interface ResourceTransferManager {
 const SERVER_TRANSPORT_KEY = '__server__'
 const MAX_ERROR_RETRIES = 3
 const ERROR_RETRY_DELAY_MS = 250
+const READY_CONFIRM_DELAY_MS = 120
 const ZERO_FILL_BLOB_CHUNK_BYTES = 256 * 1024
 const MAX_SPARSE_PREVIEW_BLOB_BYTES = 64 * 1024 * 1024
 const ZERO_FILL_BLOB = new Blob([new Uint8Array(ZERO_FILL_BLOB_CHUNK_BYTES)])
@@ -197,9 +214,20 @@ const wait = async (ms: number): Promise<void> => {
 	})
 }
 
+let requestSequence = 0
+
+const nextRequestId = (): string => {
+	requestSequence += 1
+	return `rq-${requestSequence}`
+}
+
 const computeProgress = (loadedBytes: number, totalBytes: number, isReady: boolean): number => {
 	if (totalBytes > 0) {
-		return Math.max(0, Math.min(1, loadedBytes / totalBytes))
+		const normalized = Math.max(0, Math.min(1, loadedBytes / totalBytes))
+		if (!isReady && normalized >= 1) {
+			return 0.999
+		}
+		return normalized
 	}
 
 	return isReady ? 1 : 0
@@ -252,6 +280,7 @@ const createRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => (
 	requestedRanges: [],
 	requestedRangesLog: [],
 	requestEvents: [],
+	pendingRequestIds: new Set<string>(),
 	loadedBytes: 0,
 	lastTouchedAt: Date.now(),
 	tailRequested: false,
@@ -263,6 +292,7 @@ const createRemoteState = (snapshot: ResourceSnapshot): RemoteResourceState => (
 	lastError: null,
 	errorRetryCount: 0,
 	retryTimeoutId: null,
+	readyRecheckTimeoutId: null,
 	status: 'missing',
 })
 
@@ -291,6 +321,13 @@ export const createResourceTransferManager = (
 		}
 	}
 
+	const clearReadyRecheckTimeout = (state: RemoteResourceState): void => {
+		if (state.readyRecheckTimeoutId !== null) {
+			window.clearTimeout(state.readyRecheckTimeoutId)
+			state.readyRecheckTimeoutId = null
+		}
+	}
+
 	const revokeRemoteUrls = (state: RemoteResourceState): void => {
 		if (state.previewUrl) {
 			URL.revokeObjectURL(state.previewUrl)
@@ -307,12 +344,49 @@ export const createResourceTransferManager = (
 
 	const resetRemoteRequestState = (state: RemoteResourceState): void => {
 		clearRetryTimeout(state)
+		clearReadyRecheckTimeout(state)
 		state.requestedRanges = []
+		state.pendingRequestIds.clear()
 		state.lastError = null
 		state.errorRetryCount = 0
 		if (state.status !== 'ready') {
 			state.status = state.loadedBytes > 0 ? 'partial' : 'missing'
 		}
+	}
+
+	const appendRequestEvent = (
+		state: RemoteResourceState,
+		event: RequestEventEntry,
+	): void => {
+		state.requestEvents = [...state.requestEvents.slice(-39), event]
+	}
+
+	const recomputeRemoteStatus = (state: RemoteResourceState, resourceId: string): void => {
+		if (typeof state.size === 'number' && state.loadedBytes >= state.size && state.pendingRequestIds.size === 0) {
+			const elapsedSinceLastChunk = Math.max(0, Date.now() - state.lastTouchedAt)
+			if (elapsedSinceLastChunk >= READY_CONFIRM_DELAY_MS) {
+				clearReadyRecheckTimeout(state)
+				state.status = 'ready'
+				return
+			}
+
+			state.status = state.loadedBytes > 0 ? 'partial' : 'missing'
+			if (state.readyRecheckTimeoutId === null) {
+				state.readyRecheckTimeoutId = window.setTimeout(() => {
+					state.readyRecheckTimeoutId = null
+					if (destroyed || !remoteStates.has(resourceId)) {
+						return
+					}
+
+					recomputeRemoteStatus(state, resourceId)
+					updateTransferView(resourceId)
+				}, Math.max(1, READY_CONFIRM_DELAY_MS - elapsedSinceLastChunk))
+			}
+			return
+		}
+
+		clearReadyRecheckTimeout(state)
+		state.status = state.loadedBytes > 0 ? 'partial' : 'missing'
 	}
 
 	const resetRemoteRequestsForPeer = (peerKey: string): void => {
@@ -362,7 +436,7 @@ export const createResourceTransferManager = (
 		for (const { peerKey, request } of pending) {
 			enqueuePeerServe(peerKey, async () => {
 				try {
-					await serveLocalBlobRanges(peerKey, resource, request.ranges, request.reason)
+					await serveLocalBlobRanges(peerKey, resource, request.ranges, request.reason, request.requestId)
 				} catch (error) {
 					sendResourceError(peerKey, request.resourceId, error)
 				}
@@ -372,6 +446,7 @@ export const createResourceTransferManager = (
 
 	const evictRemoteState = (state: RemoteResourceState): void => {
 		clearRetryTimeout(state)
+		clearReadyRecheckTimeout(state)
 		revokeRemoteUrls(state)
 		state.chunks.clear()
 		state.loadedRanges = []
@@ -635,16 +710,24 @@ export const createResourceTransferManager = (
 		if (missingRanges.length === 0) {
 			return
 		}
+		const requestId = nextRequestId()
 
 		state.requestedRanges = mergeByteRanges([...state.requestedRanges, ...missingRanges])
 		state.requestedRangesLog = mergeByteRanges([...state.requestedRangesLog, ...missingRanges])
-		state.requestEvents = [...state.requestEvents.slice(-19), { reason, ranges: missingRanges }]
+		state.pendingRequestIds.add(requestId)
+		appendRequestEvent(state, {
+			reason,
+			ranges: missingRanges,
+			requestId,
+			phase: 'request',
+		})
 		updateTransferView(resourceId)
 		sendControl(peerKey, {
 			type: 'resource-request',
 			resourceId,
 			ranges: missingRanges,
 			reason,
+			requestId,
 		})
 	}
 
@@ -749,9 +832,15 @@ export const createResourceTransferManager = (
 		}
 		state.loadedRanges = mergeByteRanges([...state.loadedRanges, [meta.start, meta.end]])
 		state.requestedRanges = subtractByteRanges(state.requestedRanges, [[meta.start, meta.end]])
+		appendRequestEvent(state, {
+			reason: meta.reason,
+			ranges: [[meta.start, meta.end]],
+			requestId: meta.requestId ?? 'legacy',
+			phase: 'chunk-meta',
+		})
 		state.loadedBytes = Array.from(state.chunks.values()).reduce((sum, chunk) => sum + chunk.byteLength, 0)
 		state.lastTouchedAt = Date.now()
-		state.status = typeof state.size === 'number' && state.loadedBytes >= state.size ? 'ready' : 'partial'
+		recomputeRemoteStatus(state, resourceId)
 		state.lastError = null
 		clearRetryTimeout(state)
 		state.errorRetryCount = 0
@@ -767,6 +856,17 @@ export const createResourceTransferManager = (
 		}
 
 		clearRetryTimeout(state)
+		if (message.requestId) {
+			state.pendingRequestIds.delete(message.requestId)
+		} else {
+			state.pendingRequestIds.clear()
+		}
+		appendRequestEvent(state, {
+			reason: message.reason ?? 'sequential',
+			ranges: [],
+			requestId: message.requestId ?? 'legacy',
+			phase: 'error',
+		})
 		state.lastError = message.error
 		if (state.errorRetryCount >= MAX_ERROR_RETRIES) {
 			state.status = 'error'
@@ -775,7 +875,7 @@ export const createResourceTransferManager = (
 		}
 
 		state.errorRetryCount += 1
-		state.status = state.loadedBytes > 0 ? 'partial' : 'missing'
+		recomputeRemoteStatus(state, message.resourceId)
 		updateTransferView(message.resourceId)
 		state.retryTimeoutId = window.setTimeout(() => {
 			state.retryTimeoutId = null
@@ -794,6 +894,7 @@ export const createResourceTransferManager = (
 		resource: LocalResourceEntry,
 		ranges: ResourceByteRange[],
 		reason: TransferReason,
+		requestId: string,
 		generation?: number,
 	): Promise<void> => {
 		for (const range of mergeByteRanges(ranges)) {
@@ -812,6 +913,7 @@ export const createResourceTransferManager = (
 				await sendControl(peerKey, {
 					type: 'resource-chunk-meta',
 					resourceId: resource.resourceId,
+					requestId,
 					index,
 					start,
 					end,
@@ -837,6 +939,7 @@ export const createResourceTransferManager = (
 			type: 'resource-chunk-complete',
 			resourceId: resource.resourceId,
 			reason,
+			requestId,
 		}, generation)
 	}
 
@@ -845,6 +948,7 @@ export const createResourceTransferManager = (
 		state: RemoteResourceState,
 		ranges: ResourceByteRange[],
 		reason: TransferReason,
+		requestId: string,
 		generation?: number,
 	): Promise<void> => {
 		for (const range of mergeByteRanges(ranges)) {
@@ -861,6 +965,7 @@ export const createResourceTransferManager = (
 				await sendControl(peerKey, {
 					type: 'resource-chunk-meta',
 					resourceId: state.resourceId,
+					requestId,
 					index,
 					start,
 					end,
@@ -886,6 +991,7 @@ export const createResourceTransferManager = (
 			type: 'resource-chunk-complete',
 			resourceId: state.resourceId,
 			reason,
+			requestId,
 		}, generation)
 	}
 
@@ -895,16 +1001,22 @@ export const createResourceTransferManager = (
 		if (local) {
 			enqueuePeerServe(peerKey, async () => {
 				try {
-					await serveLocalBlobRanges(peerKey, local, message.ranges, message.reason, generation)
+					await serveLocalBlobRanges(peerKey, local, message.ranges, message.reason, message.requestId, generation)
 				} catch (error) {
-					sendResourceError(peerKey, message.resourceId, error)
+					await sendControl(peerKey, {
+						type: 'resource-error',
+						resourceId: message.resourceId,
+						error: error instanceof Error ? error.message : String(error),
+						reason: message.reason,
+						requestId: message.requestId,
+					}, generation)
 				}
 			})
 			return
 		}
 
 		const state = remoteStates.get(message.resourceId)
-		if (state && state.sourceKind === 'p2p' && state.ownerPeerId === options.getPeerId()) {
+		if (state && state.ownerPeerId === options.getPeerId()) {
 			queuePendingOwnerRequest(message.resourceId, peerKey, message)
 			return
 		}
@@ -916,9 +1028,15 @@ export const createResourceTransferManager = (
 
 		enqueuePeerServe(peerKey, async () => {
 			try {
-				await serveMirroredRanges(peerKey, state, message.ranges, message.reason, generation)
+				await serveMirroredRanges(peerKey, state, message.ranges, message.reason, message.requestId, generation)
 			} catch (error) {
-				sendResourceError(peerKey, message.resourceId, error)
+				await sendControl(peerKey, {
+					type: 'resource-error',
+					resourceId: message.resourceId,
+					error: error instanceof Error ? error.message : String(error),
+					reason: message.reason,
+					requestId: message.requestId,
+				}, generation)
 			}
 		})
 
@@ -944,7 +1062,19 @@ export const createResourceTransferManager = (
 				if (!state) {
 					return
 				}
+				if (message.requestId) {
+					state.pendingRequestIds.delete(message.requestId)
+				} else {
+					state.pendingRequestIds.clear()
+				}
+				appendRequestEvent(state, {
+					reason: message.reason,
+					ranges: [],
+					requestId: message.requestId ?? 'legacy',
+					phase: 'chunk-complete',
+				})
 				state.requestedRanges = []
+				recomputeRemoteStatus(state, message.resourceId)
 				updateTransferView(message.resourceId)
 				planNextRequest(message.resourceId)
 				return
@@ -1027,7 +1157,7 @@ export const createResourceTransferManager = (
 
 			ensureRemoteState(snapshot)
 			updateTransferView(snapshot.resourceId)
-			if (snapshot.sourceKind === 'p2p' && snapshot.ownerPeerId !== options.getPeerId()) {
+			if (snapshot.ownerPeerId && snapshot.ownerPeerId !== options.getPeerId()) {
 				planNextRequest(snapshot.resourceId)
 			}
 		}
@@ -1091,7 +1221,7 @@ export const createResourceTransferManager = (
 			attachTransport(SERVER_TRANSPORT_KEY, transport)
 			resetRemoteRequestsForPeer(SERVER_TRANSPORT_KEY)
 			for (const [resourceId, snapshot] of resourceSnapshots) {
-				if (snapshot.sourceKind === 'p2p' && snapshot.ownerPeerId !== options.getPeerId()) {
+				if (snapshot.ownerPeerId && snapshot.ownerPeerId !== options.getPeerId()) {
 					planNextRequest(resourceId)
 				}
 			}
@@ -1101,7 +1231,7 @@ export const createResourceTransferManager = (
 			attachTransport(remotePeerId, transport)
 			resetRemoteRequestsForPeer(remotePeerId)
 			for (const [resourceId, snapshot] of resourceSnapshots) {
-				if (snapshot.ownerPeerId === remotePeerId && snapshot.sourceKind === 'p2p') {
+				if (snapshot.ownerPeerId === remotePeerId) {
 					planNextRequest(resourceId)
 				}
 			}
@@ -1193,6 +1323,7 @@ export const createResourceTransferManager = (
 			}
 			for (const state of remoteStates.values()) {
 				clearRetryTimeout(state)
+				clearReadyRecheckTimeout(state)
 				revokeRemoteUrls(state)
 			}
 			localResources.clear()
