@@ -27,6 +27,7 @@ export type DktSessionActionName =
 	| 'selectEntity'
 	| 'setActiveProject'
 	| 'syncActiveProjectRel'
+	| 'syncPreviewModel'
 	| 'syncSelectedClipTrackPosition'
 	| 'syncSelectedClipSummary'
 	| 'setActiveInspectorTab'
@@ -229,14 +230,31 @@ export const sessionCreateProjectAction = [
 	},
 ] as const satisfies DktActionDefinition
 
-export const sessionSetActiveProjectAction = {
-	to: {
-		activeProjectId: ['activeProjectId'],
-		selectedEntityId: ['selectedEntityId'],
-		cursor: ['cursor'],
+export const sessionSetActiveProjectAction = [
+	{
+		to: {
+			activeProjectId: ['activeProjectId'],
+			selectedEntityId: ['selectedEntityId'],
+			cursor: ['cursor'],
+		},
+		fn: reduceSessionSetActiveProjectAction,
 	},
-	fn: reduceSessionSetActiveProjectAction,
-} as const satisfies DktActionDescriptor
+	{
+		to: {
+			activeProject: ['<< activeProject', { method: 'set_one' }],
+		},
+		fn: [
+			['<< @all:pioneer.project', '< @all:sourceProjectId < pioneer.project', 'activeProjectId'] as const,
+			(_payload: unknown, projects: unknown, sourceProjectIds: unknown, activeProjectId: unknown) => {
+				if (typeof activeProjectId !== 'string' || !activeProjectId) return { activeProject: null }
+				const modelList = Array.isArray(projects) ? projects : []
+				const idList = Array.isArray(sourceProjectIds) ? sourceProjectIds : []
+				const index = idList.indexOf(activeProjectId)
+				return { activeProject: (index !== -1 && modelList[index]) || null }
+			},
+		],
+	},
+] as const satisfies DktActionDefinition
 
 export const sessionSyncActiveProjectRelAction = {
 	to: {
@@ -253,6 +271,15 @@ export const sessionSyncSelectedClipRelAction = {
 	},
 	fn: (payload: unknown) => ({
 		selectedClip: (payload as { clip?: unknown } | null)?.clip ?? null,
+	}),
+} as const satisfies DktActionDescriptor
+
+export const sessionSyncPreviewModelAction = {
+	to: {
+		previewStructure: ['previewStructure'],
+	},
+	fn: (payload: unknown) => ({
+		previewStructure: (payload as { structure?: unknown } | null)?.structure ?? { clipSources: [] },
 	}),
 } as const satisfies DktActionDescriptor
 
@@ -346,11 +373,9 @@ export const sessionDeleteSelectedClipAction = [
 	{
 		to: {
 			selectedEntityId: ['selectedEntityId'],
-			selectedClip: ['<< selectedClip', { method: 'set_one' }],
 		},
 		fn: () => ({
 			selectedEntityId: null,
-			selectedClip: null,
 		}),
 	},
 ] as const satisfies DktActionDefinition
@@ -386,23 +411,21 @@ export const dktSessionActions = {
 			{
 				to: {
 					selectedEntityId: ['selectedEntityId'],
-					selectedClip: ['<< selectedClip', { method: 'set_one', can_use_refs: true }],
 				},
 				fn: (payload: unknown) => ({
 					selectedEntityId: (payload as { sourceClipId?: string } | null)?.sourceClipId ?? null,
-					selectedClip: { use_ref_id: 'newTextClip' },
 				}),
 			},
 		],
 	setActiveProject: sessionSetActiveProjectAction,
 	syncActiveProjectRel: sessionSyncActiveProjectRelAction,
+	syncPreviewModel: sessionSyncPreviewModelAction,
 	syncSelectedClipTrackPosition: sessionSyncSelectedClipTrackPositionAction,
 	syncSelectedClipSummary: sessionSyncSelectedClipSummaryAction,
 	setActiveInspectorTab: sessionSetActiveInspectorTabAction,
 	setCursor: sessionSetCursorAction,
 	setPlaying: sessionSetPlayingAction,
 	setTimelineZoom: sessionSetTimelineZoomAction,
-	syncSelectedClipRel: sessionSyncSelectedClipRelAction,
 	tickPlayback: sessionTickPlaybackAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,

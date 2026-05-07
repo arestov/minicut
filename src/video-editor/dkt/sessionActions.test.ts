@@ -4,7 +4,7 @@ import {
 	reduceSessionSetCursorAction,
 	reduceSessionTogglePlaybackAction,
 	reduceSessionZoomTimelineAction,
-} from '../models/SessionRoot/actions'
+} from './sessionActions'
 
 const sessionState = {
 	isPlaying: true,

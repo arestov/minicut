@@ -87,7 +87,7 @@ export const Track = model({
 						clip: { attrs, rels: { track: self }, hold_ref_id: 'newClip' },
 						clips: { use_ref_id: 'newClip' },
 					}
-					: {}
+					: '$noop'
 			}],
 		},
 		addTextClip: {
@@ -119,7 +119,7 @@ export const Track = model({
 						text: { attrs: textAttrs, hold_ref_id: 'newTextNode' },
 						clips: { use_ref_id: 'newTextClip' },
 					}
-					: {}
+					: '$noop'
 			}],
 		},
 		splitClipAt: {
@@ -142,7 +142,7 @@ export const Track = model({
 						clip: { attrs, rels: { track: self }, hold_ref_id: 'rightSplitClip' },
 						clips: { use_ref_id: 'rightSplitClip' },
 					}
-					: {}
+					: '$noop'
 			}],
 		},
 		setClips: {

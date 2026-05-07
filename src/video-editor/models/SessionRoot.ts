@@ -36,13 +36,51 @@ export const EditorSessionRoot = model({
 				: DEFAULT_PREVIEW_STRUCTURE,
 			typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0,
 		)],
-		selectedClipTrackPosition: ['input', null],
-		selectedClipSummary: ['input', null],
+		selectedClipSummary: ['comp', [
+			'< @one:sourceClipId < selectedClip',
+			'< @one:color < selectedClip',
+			'< @one:name < selectedClip',
+			'< @one:name < selectedClip.track',
+		] as const, (sourceClipId: unknown, color: unknown, clipName: unknown, trackName: unknown) => {
+			if (typeof sourceClipId !== 'string' || !sourceClipId) return null
+			return {
+				color: typeof color === 'string' && color ? color : '#2563eb',
+				resourceName: typeof clipName === 'string' && clipName ? clipName : 'Clip',
+				trackName: typeof trackName === 'string' && trackName ? trackName : 'Track',
+			}
+		}],
+		selectedClipTrackPosition: ['comp', [
+			'<< @all:activeProject.tracks',
+			'<< @one:selectedClip.track',
+			'< @one:name < selectedClip.track',
+		] as const, (tracks: unknown, selectedTrack: unknown, trackName: unknown) => {
+			if (!selectedTrack) return null
+			const trackList = Array.isArray(tracks) ? tracks : []
+			const index = trackList.indexOf(selectedTrack)
+			if (index === -1) return null
+			return {
+				trackName: typeof trackName === 'string' && trackName
+					? trackName
+					: `Track ${index + 1}`,
+				ordinal: index + 1,
+			}
+		}],
 	},
 	rels: {
 		activeProject: ['input', { linking: '<< project << #' }],
 		selectedTrack: ['input', { linking: '<< track << #' }],
-		selectedClip: ['input', { linking: '<< clip << #' }],
+		selectedClip: ['comp', [
+			'<< @all:activeProject.tracks.clips',
+			'< @all:sourceClipId < activeProject.tracks.clips',
+			'selectedEntityId',
+		] as const, (clips: unknown, sourceClipIds: unknown, selectedEntityId: unknown) => {
+			if (typeof selectedEntityId !== 'string' || !selectedEntityId) return null
+			const modelList = Array.isArray(clips) ? clips : []
+			const idList = Array.isArray(sourceClipIds) ? sourceClipIds : []
+			const index = idList.indexOf(selectedEntityId)
+			if (index === -1 || !modelList[index]) return null
+			return modelList[index]
+		}, { linking: '<< clip << #' }],
 		selectedResource: ['input', { linking: '<< resource << #' }],
 		selectedText: ['input', { linking: '<< text << #' }],
 		selectedEffect: ['input', { linking: '<< effect << #' }],
