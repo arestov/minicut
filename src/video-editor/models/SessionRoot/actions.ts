@@ -27,7 +27,6 @@ export type DktSessionActionName =
 	| 'selectEntity'
 	| 'setActiveProject'
 	| 'syncActiveProjectRel'
-	| 'syncPreviewModel'
 	| 'syncSelectedClipTrackPosition'
 	| 'syncSelectedClipSummary'
 	| 'setActiveInspectorTab'
@@ -257,15 +256,6 @@ export const sessionSyncSelectedClipRelAction = {
 	}),
 } as const satisfies DktActionDescriptor
 
-export const sessionSyncPreviewModelAction = {
-	to: {
-		previewStructure: ['previewStructure'],
-	},
-	fn: (payload: unknown) => ({
-		previewStructure: (payload as { structure?: unknown } | null)?.structure ?? { clipSources: [] },
-	}),
-} as const satisfies DktActionDescriptor
-
 export const sessionSyncSelectedClipTrackPositionAction = {
 	to: {
 		selectedClipTrackPosition: ['selectedClipTrackPosition'],
@@ -406,7 +396,6 @@ export const dktSessionActions = {
 		],
 	setActiveProject: sessionSetActiveProjectAction,
 	syncActiveProjectRel: sessionSyncActiveProjectRelAction,
-	syncPreviewModel: sessionSyncPreviewModelAction,
 	syncSelectedClipTrackPosition: sessionSyncSelectedClipTrackPositionAction,
 	syncSelectedClipSummary: sessionSyncSelectedClipSummaryAction,
 	setActiveInspectorTab: sessionSetActiveInspectorTabAction,
