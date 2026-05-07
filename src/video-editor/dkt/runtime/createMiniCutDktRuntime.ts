@@ -220,9 +220,9 @@ const asString = (value: unknown, fallback: string): string =>
 const asNullableString = (value: unknown): string | null =>
 	typeof value === 'string' ? value : null
 
-const toModelRef = (model: RuntimeModelLike): { _node_id: string } | null =>
+const toModelRef = (model: RuntimeModelLike): string | null =>
 	typeof model._node_id === 'string' && model._node_id
-		? { _node_id: model._node_id }
+		? model._node_id
 		: null
 
 
@@ -531,7 +531,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		for (const [sourceResourceId, resourceModel] of resourcesBySourceId.entries()) {
 			const clipRefs = (resourceToClips.get(sourceResourceId) ?? [])
 				.map(toModelRef)
-				.filter((item): item is { _node_id: string } => Boolean(item))
+				.filter((item): item is string => typeof item === 'string')
 			await resourceModel.dispatch('setClips', {
 				clips: clipRefs,
 			})
