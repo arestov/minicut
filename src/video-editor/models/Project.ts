@@ -3,6 +3,7 @@ import { RESOURCE_CREATION_SHAPE } from './Resource'
 import { TRACK_CREATION_SHAPE } from './Track'
 import { normalizeResourceCreationAttrs, normalizeTrackCreationAttrs } from './Project/actions'
 import type { PreviewClipSource, PreviewStructure } from '../read-model/previewComps'
+import type { ExportPlan } from '../render/renderPlan'
 
 export const PROJECT_CREATION_SHAPE = {
 	attrs: ['sourceProjectId', 'title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt', 'autoCreateDefaultTracks'],
@@ -96,6 +97,17 @@ export const Project = model({
 				}
 				return { clipSources: sources }
 			}],
+		exportPlan: ['comp', ['sourceProjectId', 'fps', 'width', 'height', 'duration', 'previewClipSources'] as const,
+			(sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, previewClipSources: unknown): ExportPlan => ({
+				projectId: typeof sourceProjectId === 'string' ? sourceProjectId : '',
+				fps: asNumber(fps, 30),
+				width: asNumber(width, 1920),
+				height: asNumber(height, 1080),
+				duration: asNumber(duration, 0),
+				clipSources: previewClipSources && typeof previewClipSources === 'object' && Array.isArray((previewClipSources as PreviewStructure).clipSources)
+					? (previewClipSources as PreviewStructure).clipSources
+					: [],
+			})],
 	},
 	rels: {
 		tracks: ['input', { many: true, linking: '<< track << #' }],

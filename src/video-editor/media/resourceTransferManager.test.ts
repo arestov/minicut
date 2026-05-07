@@ -1,5 +1,5 @@
 import { waitFor } from '@testing-library/react'
-import type { Entity, ProjectRegistry, ResourceAttrs } from '../render/registryTypes'
+import type { ResourceAttrs } from '../render/registryTypes'
 import { createMissingResourceData } from '../domain/resourceData'
 import { createResourceTransferManager, type RequestMessage } from './resourceTransferManager'
 import type { P2PRawTransportLike } from '../p2p/PageP2PManager'
@@ -88,44 +88,36 @@ const sendChunk = (
 	transport.send(new TextEncoder().encode(payload).buffer)
 }
 
-const createRegistryWithResource = (resourceId: string, attrs: Partial<ResourceAttrs> = {}): ProjectRegistry => {
-	const entity: Entity = {
-		id: resourceId,
-		type: 'resource',
-		attrs: {
-			name: 'Remote clip',
-			kind: 'video',
-			url: '',
-			mime: 'video/webm',
-			duration: 8,
-			size: 24,
-			source: { kind: 'p2p', ownerPeerId: 'peer-a' },
-			data: createMissingResourceData(8),
-			status: 'missing',
-			...attrs,
-		},
-		rels: {},
-	}
+const defaultResourceAttrs = (resourceId: string, attrs: Partial<ResourceAttrs> = {}): ResourceAttrs => ({
+	name: 'Remote clip',
+	kind: 'video',
+	url: '',
+	mime: 'video/webm',
+	duration: 8,
+	size: 24,
+	source: { kind: 'p2p', ownerPeerId: 'peer-a' },
+	data: createMissingResourceData(8),
+	status: 'missing',
+	...attrs,
+} as ResourceAttrs)
 
-	return {
-		activeProjectId: null,
-		projects: {},
-		entitiesById: {
-			[resourceId]: entity,
-		},
-	}
+const syncResource = (
+	manager: { syncResources: (r: Array<{ resourceId: string; attrs: ResourceAttrs }>) => void },
+	resourceId: string,
+	attrs: Partial<ResourceAttrs> = {},
+): void => {
+	manager.syncResources([{ resourceId, attrs: defaultResourceAttrs(resourceId, attrs) }])
 }
 
-const createRegistryWithResources = (
+const syncResources = (
+	manager: { syncResources: (r: Array<{ resourceId: string; attrs: ResourceAttrs }>) => void },
 	resources: Array<{ resourceId: string; attrs?: Partial<ResourceAttrs> }>,
-): ProjectRegistry => ({
-	activeProjectId: null,
-	projects: {},
-	entitiesById: Object.fromEntries(resources.map(({ resourceId, attrs }) => [
+): void => {
+	manager.syncResources(resources.map(({ resourceId, attrs }) => ({
 		resourceId,
-		createRegistryWithResource(resourceId, attrs).entitiesById[resourceId],
-	])),
-})
+		attrs: defaultResourceAttrs(resourceId, attrs),
+	})))
+}
 
 describe('resource transfer manager', () => {
 	const createObjectUrl = vi.fn<(blob: Blob) => string>()
@@ -207,7 +199,7 @@ describe('resource transfer manager', () => {
 			name: 'Remote clip',
 		})
 
-		client.syncRegistry(createRegistryWithResource('res-remote'))
+		syncResource(client, 'res-remote')
 
 		await waitFor(() => {
 			expect(client.getTransfer('res-remote')).toMatchObject({
@@ -264,7 +256,7 @@ describe('resource transfer manager', () => {
 			name: 'Progressive clip',
 		})
 
-		client.syncRegistry(createRegistryWithResource('res-progressive', { size: blob.size, duration: 8 }))
+		syncResource(client, 'res-progressive', { size: blob.size, duration: 8 })
 		client.requestPlayheadWindow('res-progressive', 4)
 		await waitFor(() => {
 			expect(client.getTransfer('res-progressive')?.requestEvents.some((event) =>
@@ -324,7 +316,7 @@ describe('resource transfer manager', () => {
 			name: 'Race clip',
 		})
 
-		client.syncRegistry(createRegistryWithResource('res-race', { size: blob.size, duration: 8, name: 'Race clip' }))
+		syncResource(client, 'res-race', { size: blob.size, duration: 8, name: 'Race clip' })
 		client.requestPlayheadWindow('res-race', 4)
 
 		await waitFor(() => {
@@ -376,7 +368,7 @@ describe('resource transfer manager', () => {
 			name: 'Reconnect clip',
 		})
 
-		client.syncRegistry(createRegistryWithResource('res-reconnect', { size: blob.size, duration: 8, name: 'Reconnect clip' }))
+		syncResource(client, 'res-reconnect', { size: blob.size, duration: 8, name: 'Reconnect clip' })
 
 		await waitFor(() => {
 			expect(client.getTransfer('res-reconnect')).toMatchObject({
@@ -418,14 +410,9 @@ describe('resource transfer manager', () => {
 		server.attachServerTransport('peer-b', serverTransport)
 		client.attachClientTransport(clientTransport)
 
-		const snapshot = createRegistryWithResource('res-client-owned', {
-			size: 24,
-			duration: 8,
-			name: 'Client owned clip',
-			source: { kind: 'p2p', ownerPeerId: 'peer-b' },
-		})
-		server.syncRegistry(snapshot)
-		client.syncRegistry(snapshot)
+		const clientOwnedAttrs = { size: 24, duration: 8, name: 'Client owned clip', source: { kind: 'p2p', ownerPeerId: 'peer-b' } } as const
+		syncResource(server, 'res-client-owned', clientOwnedAttrs)
+		syncResource(client, 'res-client-owned', clientOwnedAttrs)
 
 		await waitFor(() => {
 			expect(server.getTransfer('res-client-owned')).toMatchObject({
@@ -472,7 +459,7 @@ describe('resource transfer manager', () => {
 		})
 
 		client.attachClientTransport(clientTransport)
-		client.syncRegistry(createRegistryWithResource('res-gap', { size: 24, duration: 8, name: 'Gap clip' }))
+		syncResource(client, 'res-gap', { size: 24, duration: 8, name: 'Gap clip' })
 
 		await waitFor(() => {
 			expect(requests).toContainEqual(expect.objectContaining({
@@ -519,11 +506,7 @@ describe('resource transfer manager', () => {
 		})
 
 		client.attachClientTransport(clientTransport)
-		client.syncRegistry(createRegistryWithResource('res-window-priority', {
-			size: 40,
-			duration: 10,
-			name: 'Window priority clip',
-		}))
+		syncResource(client, 'res-window-priority', { size: 40, duration: 10, name: 'Window priority clip' })
 		client.requestPlayheadWindow('res-window-priority', 6)
 
 		await waitFor(() => {
@@ -609,11 +592,7 @@ describe('resource transfer manager', () => {
 		})
 
 		client.attachClientTransport(clientTransport)
-		client.syncRegistry(createRegistryWithResource('res-tail-preview', {
-			size: 32,
-			duration: 8,
-			name: 'Tail preview clip',
-		}))
+		syncResource(client, 'res-tail-preview', { size: 32, duration: 8, name: 'Tail preview clip' })
 
 		sendChunk(serverTransport, {
 			resourceId: 'res-tail-preview',
@@ -682,7 +661,7 @@ describe('resource transfer manager', () => {
 		})
 
 		client.attachClientTransport(clientTransport)
-		client.syncRegistry(createRegistryWithResource('res-invalid', { size: 24, duration: 8, name: 'Invalid clip' }))
+		syncResource(client, 'res-invalid', { size: 24, duration: 8, name: 'Invalid clip' })
 
 		sendChunk(serverTransport, {
 			resourceId: 'res-invalid',
@@ -723,11 +702,7 @@ describe('resource transfer manager', () => {
 		})
 
 		client.attachClientTransport(clientTransport)
-		client.syncRegistry(createRegistryWithResource('res-unknown-size', {
-			size: undefined,
-			duration: 8,
-			name: 'Unknown size clip',
-		}))
+		syncResource(client, 'res-unknown-size', { size: undefined, duration: 8, name: 'Unknown size clip' })
 
 		serverTransport.send(JSON.stringify({
 			type: 'resource-chunk-meta',
@@ -770,7 +745,7 @@ describe('resource transfer manager', () => {
 		})
 
 		client.attachClientTransport(clientTransport)
-		client.syncRegistry(createRegistryWithResource('res-retry', { size: 24, duration: 8, name: 'Retry clip' }))
+		syncResource(client, 'res-retry', { size: 24, duration: 8, name: 'Retry clip' })
 
 		await waitFor(() => {
 			expect(requests.length).toBeGreaterThanOrEqual(1)
@@ -892,7 +867,7 @@ describe('resource transfer manager', () => {
 			fallbackUrl: '',
 			name: 'Clip A',
 		})
-		client.syncRegistry(createRegistryWithResource('res-a', { size: firstBlob.size, duration: 8, name: 'Clip A' }))
+		syncResource(client, 'res-a', { size: firstBlob.size, duration: 8, name: 'Clip A' })
 
 		await waitFor(() => {
 			expect(client.getTransfer('res-a')).toMatchObject({
@@ -914,10 +889,10 @@ describe('resource transfer manager', () => {
 			fallbackUrl: '',
 			name: 'Clip B',
 		})
-		client.syncRegistry(createRegistryWithResources([
+		syncResources(client, [
 			{ resourceId: 'res-a', attrs: { size: firstBlob.size, duration: 8, name: 'Clip A' } },
 			{ resourceId: 'res-b', attrs: { size: secondBlob.size, duration: 8, name: 'Clip B' } },
-		]))
+		])
 
 		await waitFor(() => {
 			expect(client.getTransfer('res-b')).toMatchObject({

@@ -1,12 +1,10 @@
 import fixWebmDuration from 'fix-webm-duration'
 import { ArrayBufferTarget, Muxer } from 'webm-muxer'
-import { getProjectEntity } from './registrySelectors'
-import type { ProjectAttrs, ProjectRegistry } from './registryTypes'
 import { createAudioExportMixer, encodeMixedAudioTrack, getWebCodecsAudioConfig, mixWebCodecsAudioTrack } from './audioExportMixer'
 import type { ExportBackend, ExportDiagnostics, ExportFormat, ExportFrameSample, ExportManifest, ExportProgressEvent, ExportRenderer, ExportRenderResult } from './exportTypes'
 import { createExportDiagnostics, filterClipsForRange, getRangeClips, getRangeName, resolveExportRange, type ResolvedExportRange } from './exportRange'
-import { createResourceCache, drawPreparedFrameOperations, prepareFrameOperations } from './frameRenderer'
-import { compileFrameOperations } from './renderPlan'
+import { createResourceCacheFromPlan, drawPreparedFrameOperations, prepareFrameOperations } from './frameRenderer'
+import { compileFrameOperationsFromPlan, type ExportPlan } from './renderPlan'
 
 export type { ExportBackend, ExportDiagnostics, ExportFormat, ExportFrameSample, ExportManifest, ExportProgressEvent, ExportRange, ExportRenderer, ExportRenderRequest, ExportRenderResult } from './exportTypes'
 export { shouldSeekRealtimeVideoFrame } from './frameRenderer'
@@ -59,19 +57,11 @@ const addDiagnosticsToResult = (
 const getFrameCount = (duration: number, fps: number): number =>
 	Math.max(1, Math.ceil(duration * fps))
 
-const getProjectExportDefaults = (registry: ProjectRegistry, projectId: string): Pick<ProjectAttrs, 'fps' | 'width' | 'height'> => {
-	const project = registry.projects[projectId]
-	if (!project) {
-		return { fps: 30, width: defaultExportWidth, height: defaultExportHeight }
-	}
-
-	const attrs = getProjectEntity(registry, project).attrs as unknown as Partial<ProjectAttrs>
-	return {
-		fps: Number.isFinite(attrs.fps) && Number(attrs.fps) > 0 ? Number(attrs.fps) : 30,
-		width: Number.isFinite(attrs.width) && Number(attrs.width) > 0 ? Number(attrs.width) : defaultExportWidth,
-		height: Number.isFinite(attrs.height) && Number(attrs.height) > 0 ? Number(attrs.height) : defaultExportHeight,
-	}
-}
+const getPlanExportDefaults = (plan: ExportPlan): { fps: number; width: number; height: number } => ({
+	fps: Number.isFinite(plan.fps) && plan.fps > 0 ? plan.fps : 30,
+	width: Number.isFinite(plan.width) && plan.width > 0 ? plan.width : defaultExportWidth,
+	height: Number.isFinite(plan.height) && plan.height > 0 ? plan.height : defaultExportHeight,
+})
 
 const getWebmMimeType = (): string | null => {
 	if (typeof MediaRecorder === 'undefined') {
@@ -150,8 +140,7 @@ export const getFramePacingDelayMs = (recordingStartedAt: number, frameIndex: nu
 }
 
 const renderWebCodecsVideoBlob = async ({
-	registry,
-	projectId,
+	plan,
 	resolvedRange,
 	start,
 	fps,
@@ -163,8 +152,7 @@ const renderWebCodecsVideoBlob = async ({
 	onProgress,
 	onFrame,
 }: {
-	registry: ProjectRegistry
-	projectId: string
+	plan: ExportPlan
 	resolvedRange: ResolvedExportRange
 	start: number
 	fps: number
@@ -180,7 +168,7 @@ const renderWebCodecsVideoBlob = async ({
 	if (!config) {
 		return { blob: null, fallbackReason: 'webcodecs-video-unsupported' }
 	}
-	const audioClipCount = getRangeClips(registry, projectId, resolvedRange).filter((clip) => clip.type === 'ef-audio').length
+	const audioClipCount = getRangeClips(plan, resolvedRange).filter((clip) => clip.type === 'ef-audio').length
 	const audioConfig = audioClipCount > 0
 		? await getWebCodecsAudioConfig(2, 128_000)
 		: null
@@ -189,8 +177,7 @@ const renderWebCodecsVideoBlob = async ({
 	}
 	const mixedAudioTrack = audioConfig
 		? await mixWebCodecsAudioTrack(
-			registry,
-			projectId,
+			plan,
 			resolvedRange,
 			start,
 			frameCount / fps,
@@ -238,12 +225,12 @@ const renderWebCodecsVideoBlob = async ({
 	})
 	encoder.configure(config.encoderConfig)
 
-	const resourceCache = createResourceCache(registry.entitiesById)
+	const resourceCache = createResourceCacheFromPlan(plan)
 	try {
 		for (let index = 0; index < frameCount; index += 1) {
 			const time = start + index / fps
 			const operations = filterClipsForRange(
-				compileFrameOperations(registry, projectId, time),
+				compileFrameOperationsFromPlan(plan, time),
 				resolvedRange,
 			)
 			const preparedOperations = await prepareFrameOperations(operations, resourceCache, width, height)
@@ -299,18 +286,14 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 			throw new Error(`Unsupported export format ${format}`)
 		}
 
-		const projectDefaults = getProjectExportDefaults(request.registry, request.projectId)
+		const projectDefaults = getPlanExportDefaults(request.plan)
 		const fps = request.fps ?? projectDefaults.fps
 		if (!Number.isFinite(fps) || fps <= 0) {
 			throw new Error('Export fps must be positive')
 		}
 
-		if (!request.registry.projects[request.projectId]) {
-			throw new Error(`Unknown project ${request.projectId}`)
-		}
-
 		onProgress?.({ stage: 'queued', progress: 0 })
-		const resolvedRange = resolveExportRange(request.registry, request.projectId, request.range)
+		const resolvedRange = resolveExportRange(request.plan, request.range)
 		const { start, duration } = resolvedRange
 		const frameCount = getFrameCount(duration, fps)
 		const frames: ExportFrameSample[] = []
@@ -321,7 +304,7 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 				index,
 				time,
 				operations: filterClipsForRange(
-					compileFrameOperations(request.registry, request.projectId, time),
+					compileFrameOperationsFromPlan(request.plan, time),
 					resolvedRange,
 				),
 			})
@@ -331,19 +314,19 @@ export const createManifestExportRenderer = (): ExportRenderer => ({
 		onProgress?.({ stage: 'finalizing', progress: 1 })
 		const manifest: ExportManifest = {
 			format,
-			projectId: request.projectId,
+			projectId: request.plan.projectId,
 			range: request.range,
 			start,
 			duration,
 			fps,
 			frameCount,
-			clips: getRangeClips(request.registry, request.projectId, resolvedRange),
+			clips: getRangeClips(request.plan, resolvedRange),
 			frames,
 		}
-		const diagnostics = createExportDiagnostics('manifest', request.registry, request.projectId, resolvedRange)
+		const diagnostics = createExportDiagnostics('manifest', request.plan, resolvedRange)
 		manifest.diagnostics = diagnostics
 		const blob = renderManifestBlob(manifest)
-		const rangeName = getRangeName(request.registry, request.projectId, request.range)
+		const rangeName = getRangeName(request.plan, request.range)
 		const result: ExportRenderResult = {
 			id: createExportId(),
 			fileName: buildFileName(rangeName, format),
@@ -378,18 +361,14 @@ export const createBrowserVideoExportRenderer = (
 				throw new Error(`Unsupported export format ${format}`)
 			}
 
-			const projectDefaults = getProjectExportDefaults(request.registry, request.projectId)
+			const projectDefaults = getPlanExportDefaults(request.plan)
 			const fps = request.fps ?? projectDefaults.fps
 			if (!Number.isFinite(fps) || fps <= 0) {
 				throw new Error('Export fps must be positive')
 			}
 
-			if (!request.registry.projects[request.projectId]) {
-				throw new Error(`Unknown project ${request.projectId}`)
-			}
-
 			onProgress?.({ stage: 'queued', progress: 0 })
-			const resolvedRange = resolveExportRange(request.registry, request.projectId, request.range)
+			const resolvedRange = resolveExportRange(request.plan, request.range)
 			const { start, duration } = resolvedRange
 			const frameCount = getFrameCount(duration, fps)
 			const width = options.width ?? projectDefaults.width
@@ -399,8 +378,7 @@ export const createBrowserVideoExportRenderer = (
 			const frames: ExportFrameSample[] = []
 
 			const webCodecsAttempt = await renderWebCodecsVideoBlob({
-				registry: request.registry,
-				projectId: request.projectId,
+				plan: request.plan,
 				resolvedRange,
 				start,
 				fps,
@@ -415,20 +393,20 @@ export const createBrowserVideoExportRenderer = (
 
 			if (webCodecsAttempt.blob) {
 				onProgress?.({ stage: 'finalizing', progress: 1 })
-				const diagnostics = createExportDiagnostics('webcodecs', request.registry, request.projectId, resolvedRange)
+				const diagnostics = createExportDiagnostics('webcodecs', request.plan, resolvedRange)
 				const manifest: ExportManifest = {
 					format,
-					projectId: request.projectId,
+					projectId: request.plan.projectId,
 					range: request.range,
 					start,
 					duration,
 					fps,
 					frameCount,
-					clips: getRangeClips(request.registry, request.projectId, resolvedRange),
+					clips: getRangeClips(request.plan, resolvedRange),
 					frames,
 					diagnostics,
 				}
-				const rangeName = getRangeName(request.registry, request.projectId, request.range)
+				const rangeName = getRangeName(request.plan, request.range)
 				const result: ExportRenderResult = {
 					id: createExportId(),
 					fileName: buildFileName(rangeName, format),
@@ -450,7 +428,7 @@ export const createBrowserVideoExportRenderer = (
 					const result = await fallbackRenderer.render({ ...request, format: 'json-manifest' }, onProgress)
 					return addDiagnosticsToResult(
 						result,
-						createExportDiagnostics('manifest', request.registry, request.projectId, resolvedRange, webCodecsAttempt.fallbackReason),
+						createExportDiagnostics('manifest', request.plan, resolvedRange, webCodecsAttempt.fallbackReason),
 					)
 				}
 
@@ -465,7 +443,7 @@ export const createBrowserVideoExportRenderer = (
 				throw new Error('Unable to acquire export canvas context')
 			}
 
-			const audioMixer = await createAudioExportMixer(request.registry, request.projectId, resolvedRange, start, duration)
+				const audioMixer = await createAudioExportMixer(request.plan, resolvedRange, start, duration)
 			let stream = canvas.captureStream(0)
 			let videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
 			if (typeof videoTrack?.requestFrame !== 'function') {
@@ -496,7 +474,7 @@ export const createBrowserVideoExportRenderer = (
 				recorder.addEventListener('error', () => reject(new Error('Export recorder error')))
 			})
 
-			const resourceCache = createResourceCache(request.registry.entitiesById)
+				const resourceCache = createResourceCacheFromPlan(request.plan)
 			recorder.start(Math.max(100, Math.round(1000 / fps)))
 			await audioMixer.start()
 			const recordingStartedAt = performance.now()
@@ -505,7 +483,7 @@ export const createBrowserVideoExportRenderer = (
 				for (let index = 0; index < frameCount; index += 1) {
 					const time = start + index / fps
 					const operations = filterClipsForRange(
-						compileFrameOperations(request.registry, request.projectId, time),
+						compileFrameOperationsFromPlan(request.plan, time),
 						resolvedRange,
 					)
 					const preparedOperations = await prepareFrameOperations(
@@ -545,26 +523,25 @@ export const createBrowserVideoExportRenderer = (
 
 			const manifest: ExportManifest = {
 				format,
-				projectId: request.projectId,
+				projectId: request.plan.projectId,
 				range: request.range,
 				start,
 				duration,
 				fps,
 				frameCount,
-				clips: getRangeClips(request.registry, request.projectId, resolvedRange),
+				clips: getRangeClips(request.plan, resolvedRange),
 				frames,
 			}
 			const diagnostics = createExportDiagnostics(
 				'media-recorder',
-				request.registry,
-				request.projectId,
+				request.plan,
 				resolvedRange,
 				webCodecsAttempt.fallbackReason,
 			)
 			manifest.diagnostics = diagnostics
 			const recordedBlob = new Blob(chunks, { type: mimeType })
 			const blob = await fixWebmDuration(recordedBlob, duration * 1000, { logger: false })
-			const rangeName = getRangeName(request.registry, request.projectId, request.range)
+			const rangeName = getRangeName(request.plan, request.range)
 			const result: ExportRenderResult = {
 				id: createExportId(),
 				fileName: buildFileName(rangeName, format),

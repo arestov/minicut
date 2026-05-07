@@ -1,5 +1,6 @@
 ﻿import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
+import type { ExportPlan } from '../render/renderPlan'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 
@@ -210,215 +211,24 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 	})().catch(() => undefined)
 }
 
-type ExportEntity = {
-	id: string
-	type: 'project' | 'timeline' | 'track' | 'resource' | 'clip' | 'effect' | 'text'
-	attrs: Record<string, unknown>
-	rels: Record<string, string | string[] | null>
-}
-
-type ExportGraph = {
-	activeProjectId: string | null
-	projects: Record<string, { id: string; version: number; rootEntityId: string }>
-	entitiesById: Record<string, ExportEntity>
-}
-
-const asEntityId = (scope: ReactSyncScopeHandle, sourceId: unknown, fallbackPrefix: string): string =>
-	typeof sourceId === 'string' && sourceId ? sourceId : `${fallbackPrefix}:${scope._nodeId}`
-
-const createExportGraph = (env: EditorActionEnvironment, projectScope: ReactSyncScopeHandle): ExportGraph | null => {
-	if (!env.pageRuntime) {
-		return null
-	}
-
-	const projectAttrs = env.pageRuntime.readAttrs(projectScope, ['sourceProjectId', 'title', 'fps', 'width', 'height', 'duration']) as {
-		sourceProjectId?: unknown
-		title?: unknown
-		fps?: unknown
-		width?: unknown
-		height?: unknown
-		duration?: unknown
-	}
-	const projectId = asEntityId(projectScope, projectAttrs.sourceProjectId, 'project')
-	const timelineId = `${projectId}:timeline`
-	const entitiesById: Record<string, ExportEntity> = {}
-
-	const trackScopes = env.pageRuntime.readMany(projectScope, 'tracks')
-	const resourceScopes = env.pageRuntime.readMany(projectScope, 'resources')
-	const resourceIdsBySourceId = new Map<string, string>()
-
-	const resourceIds: string[] = []
-	for (const resourceScope of resourceScopes) {
-		const attrs = env.pageRuntime.readAttrs(resourceScope, [
-			'sourceResourceId', 'name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data',
-		]) as Record<string, unknown>
-		const resourceId = asEntityId(resourceScope, attrs.sourceResourceId, 'resource')
-		if (typeof attrs.sourceResourceId === 'string' && attrs.sourceResourceId) {
-			resourceIdsBySourceId.set(attrs.sourceResourceId, resourceId)
-		}
-		resourceIds.push(resourceId)
-		entitiesById[resourceId] = {
-			id: resourceId,
-			type: 'resource',
-			attrs,
-			rels: {},
-		}
-	}
-
-	const clipsByResource = new Map<string, Array<{ id: string; mediaKind: string }>>()
-	const trackIds: string[] = []
-	for (const trackScope of trackScopes) {
-		const trackAttrs = env.pageRuntime.readAttrs(trackScope, ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height']) as Record<string, unknown>
-		const trackId = asEntityId(trackScope, trackAttrs.sourceTrackId, 'track')
-		trackIds.push(trackId)
-
-		const clipIds: string[] = []
-		const clipScopes = env.pageRuntime.readMany(trackScope, 'clips')
-		for (const clipScope of clipScopes) {
-			const clipAttrs = env.pageRuntime.readAttrs(clipScope, [
-				'sourceClipId', 'sourceResourceId', 'sourceTextId', 'name', 'mediaKind', 'start', 'in', 'duration',
-				'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform',
-			]) as Record<string, unknown>
-			const clipId = asEntityId(clipScope, clipAttrs.sourceClipId, 'clip')
-			clipIds.push(clipId)
-
-			const rels: Record<string, string | string[] | null> = {}
-			const sourceResourceId = typeof clipAttrs.sourceResourceId === 'string' ? clipAttrs.sourceResourceId : null
-			if (sourceResourceId) {
-				const resourceId = resourceIdsBySourceId.get(sourceResourceId) ?? sourceResourceId
-				rels.resource = resourceId
-			}
-
-			const textScope = env.pageRuntime.readOne(clipScope, 'text')
-			if (textScope) {
-				const textAttrs = env.pageRuntime.readAttrs(textScope, ['sourceTextId', 'content', 'style', 'box']) as Record<string, unknown>
-				const textId = asEntityId(textScope, textAttrs.sourceTextId, 'text')
-				rels.text = textId
-				if (!entitiesById[textId]) {
-					entitiesById[textId] = {
-						id: textId,
-						type: 'text',
-						attrs: textAttrs,
-						rels: {},
-					}
-				}
-			}
-
-			const effectScopes = env.pageRuntime.readMany(clipScope, 'effects')
-			const effectIds: string[] = []
-			for (const effectScope of effectScopes) {
-				const effectAttrs = env.pageRuntime.readAttrs(effectScope, ['sourceEffectId', 'name', 'kind', 'enabled', 'amount', 'params', 'color']) as Record<string, unknown>
-				const effectId = asEntityId(effectScope, effectAttrs.sourceEffectId, 'effect')
-				effectIds.push(effectId)
-				entitiesById[effectId] = {
-					id: effectId,
-					type: 'effect',
-					attrs: effectAttrs,
-					rels: { clip: clipId },
-				}
-			}
-			rels.effects = effectIds
-
-			entitiesById[clipId] = {
-				id: clipId,
-				type: 'clip',
-				attrs: clipAttrs,
-				rels,
-			}
-
-			if (sourceResourceId) {
-				const mediaKind = typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : ''
-				const entries = clipsByResource.get(sourceResourceId) ?? []
-				entries.push({ id: clipId, mediaKind })
-				clipsByResource.set(sourceResourceId, entries)
-			}
-		}
-
-		entitiesById[trackId] = {
-			id: trackId,
-			type: 'track',
-			attrs: trackAttrs,
-			rels: { clips: clipIds },
-		}
-	}
-
-	for (const entries of clipsByResource.values()) {
-		const videoClip = entries.find((entry) => entry.mediaKind === 'video')
-		const audioClip = entries.find((entry) => entry.mediaKind === 'audio')
-		if (!videoClip || !audioClip) {
-			continue
-		}
-		const videoEntity = entitiesById[videoClip.id]
-		const audioEntity = entitiesById[audioClip.id]
-		if (videoEntity?.type === 'clip') {
-			videoEntity.rels.linkedAudioClip = audioClip.id
-		}
-		if (audioEntity?.type === 'clip') {
-			audioEntity.rels.linkedVideoClip = videoClip.id
-		}
-	}
-
-	entitiesById[timelineId] = {
-		id: timelineId,
-		type: 'timeline',
-		attrs: {
-			name: 'Timeline',
-			duration: typeof projectAttrs.duration === 'number' ? projectAttrs.duration : 0,
-		},
-		rels: { tracks: trackIds },
-	}
-
-	entitiesById[projectId] = {
-		id: projectId,
-		type: 'project',
-		attrs: {
-			title: typeof projectAttrs.title === 'string' ? projectAttrs.title : 'Project',
-			fps: typeof projectAttrs.fps === 'number' ? projectAttrs.fps : 30,
-			width: typeof projectAttrs.width === 'number' ? projectAttrs.width : 1280,
-			height: typeof projectAttrs.height === 'number' ? projectAttrs.height : 720,
-			duration: typeof projectAttrs.duration === 'number' ? projectAttrs.duration : 0,
-		},
-		rels: {
-			activeTimeline: timelineId,
-			resources: resourceIds,
-		},
-	}
-
-	return {
-		activeProjectId: projectId,
-		projects: {
-			[projectId]: {
-				id: projectId,
-				version: 1,
-				rootEntityId: projectId,
-			},
-		},
-		entitiesById,
-	}
-}
-
 const queueExport = async (
 	env: EditorActionEnvironment,
 	range: ExportRange,
 	onProgress?: (event: ExportProgressEvent) => void,
 ): Promise<ExportRenderResult | null> => {
 	const projectScope = getActiveProjectScope(env)
-	if (!projectScope) {
+	if (!projectScope || !env.pageRuntime) {
 		return null
 	}
 
-	const graph = createExportGraph(env, projectScope)
-	if (!graph || !graph.activeProjectId) {
+	const attrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan']) as { exportPlan?: ExportPlan }
+	const plan = attrs.exportPlan
+	if (!plan || !plan.projectId) {
 		return null
 	}
 
 	try {
-		const result = await env.export.render({
-			registry: graph as unknown as Parameters<EditorActionEnvironment['export']['render']>[0]['registry'],
-			projectId: graph.activeProjectId,
-			range,
-			format: 'video-webm',
-		}, onProgress)
+		const result = await env.export.render({ plan, range, format: 'video-webm' }, onProgress)
 		const downloadUrl = env.media.createObjectUrl(result.blob)
 		if (downloadUrl) {
 			env.lifecycle.registerObjectUrl(downloadUrl, 'export')

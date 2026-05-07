@@ -1,7 +1,8 @@
 import type { ClipAttrs, EffectAttrs, Entity, ProjectRegistry, ResourceAttrs, ResourceKind, TextAttrs } from './registryTypes'
 import { getClipEntitiesForTrack, getTracks } from './registrySelectors'
-import { evaluateAnimatedScalar, evaluateFadeOpacity } from './timing'
+import { evaluateAnimatedScalar, evaluateFadeOpacity, evaluateKeyframedScalar } from './timing'
 import { toEffectRenderInstruction, type EffectRenderInstruction } from './colorPipeline'
+import type { PreviewClipSource } from '../read-model/previewComps'
 
 export interface ClipFrameOperation {
 	clipId: string
@@ -134,3 +135,74 @@ export const compileEditframeClips = (registry: ProjectRegistry, projectId: stri
 			}
 		})
 }
+
+// ---------------------------------------------------------------------------
+// Plan-based render functions (no registry)
+// ---------------------------------------------------------------------------
+
+export interface ExportPlan {
+	projectId: string
+	fps: number
+	width: number
+	height: number
+	duration: number
+	clipSources: PreviewClipSource[]
+}
+
+export const compileClipFrameOperationFromSource = (
+	source: PreviewClipSource,
+	time: number,
+): ClipFrameOperation => {
+	const localTime = Math.max(0, time - source.start)
+	const baseOpacity = evaluateKeyframedScalar(source.opacity, localTime)
+	const opacity = evaluateFadeOpacity(time, source.start, source.duration, baseOpacity, source.fadeIn, source.fadeOut)
+	const transform: EvaluatedTransformAttrs = {
+		x: evaluateKeyframedScalar(source.transform.x, localTime),
+		y: evaluateKeyframedScalar(source.transform.y, localTime),
+		scale: evaluateKeyframedScalar(source.transform.scale, localTime),
+		rotation: evaluateKeyframedScalar(source.transform.rotation, localTime),
+	}
+	return {
+		clipId: source.id,
+		resourceId: source.resourceId ?? source.id,
+		resourceKind: source.resourceKind,
+		start: source.start,
+		duration: source.duration,
+		localTime,
+		sourceTime: source.inPoint + localTime,
+		operations: [
+			{ type: 'transform', value: transform },
+			...(source.text ? [{ type: 'text' as const, value: source.text }] : []),
+			...source.effects.map((effect) => ({ type: 'effect' as const, value: effect })),
+			{ type: 'opacity', value: opacity },
+			...(source.resourceKind === 'audio' ? [{ type: 'audio' as const, value: source.audio }] : []),
+		],
+	}
+}
+
+export const compileFrameOperationsFromPlan = (
+	plan: ExportPlan,
+	time: number,
+): ClipFrameOperation[] =>
+	plan.clipSources
+		.filter((s) => time >= s.start && time < s.start + s.duration)
+		.map((s) => compileClipFrameOperationFromSource(s, time))
+
+const getEditframeTypeFromKind = (kind: ResourceAttrs['kind']): EditframeClip['type'] => {
+	if (kind === 'video') return 'ef-video'
+	if (kind === 'audio') return 'ef-audio'
+	return 'ef-image'
+}
+
+export const compileEditframeClipsFromPlan = (plan: ExportPlan): EditframeClip[] =>
+	plan.clipSources
+		.filter((s) => s.resourceKind !== 'text')
+		.map((s) => ({
+			type: getEditframeTypeFromKind(s.resourceKind),
+			id: s.id,
+			source: s.resourceUrl,
+			start: s.start,
+			duration: s.duration,
+			trimStart: s.inPoint,
+			...(s.resourceKind === 'audio' ? { gain: s.audio.gain, pan: s.audio.pan } : {}),
+		}))

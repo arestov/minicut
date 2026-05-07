@@ -1,4 +1,4 @@
-import type { ProjectRegistry } from './registryTypes'
+import type { ExportPlan } from './renderPlan'
 import type { ClipFrameOperation, EditframeClip } from './renderPlan'
 
 export type ExportFormat = 'json-manifest' | 'video-webm'
@@ -8,8 +8,7 @@ export type ExportRange =
 	| { type: 'clip'; clipId: string }
 
 export interface ExportRenderRequest {
-	registry: ProjectRegistry
-	projectId: string
+	plan: ExportPlan
 	range: ExportRange
 	format?: ExportFormat
 	fps?: number

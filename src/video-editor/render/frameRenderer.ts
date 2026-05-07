@@ -1,6 +1,6 @@
 import type { ResourceAttrs, TextAttrs } from './registryTypes'
 import { getEffectInstructionFilter, type EffectRenderInstruction } from './colorPipeline'
-import type { ClipFrameOperation } from './renderPlan'
+import type { ClipFrameOperation, ExportPlan } from './renderPlan'
 
 interface RenderableResource {
 	attrs: ResourceAttrs
@@ -143,6 +143,27 @@ export const createResourceCache = (registryEntities: Record<string, { type: str
 		})
 	}
 
+	return cache
+}
+
+export const createResourceCacheFromPlan = (plan: ExportPlan): Map<string, RenderableResource> => {
+	const cache = new Map<string, RenderableResource>()
+	for (const source of plan.clipSources) {
+		if (!source.resourceId || source.resourceKind === 'text') {
+			continue
+		}
+		if (!cache.has(source.resourceId)) {
+			cache.set(source.resourceId, {
+				attrs: {
+					name: source.resourceName,
+					kind: source.resourceKind as ResourceAttrs['kind'],
+					url: source.resourceUrl,
+					mime: source.mime,
+					duration: source.duration,
+				},
+			})
+		}
+	}
 	return cache
 }
 

@@ -1,6 +1,6 @@
 import type { ArrayBufferTarget, Muxer } from 'webm-muxer'
-import type { ProjectRegistry } from './registryTypes'
 import { getRangeClips, type ResolvedExportRange } from './exportRange'
+import type { ExportPlan } from './renderPlan'
 
 interface AudioExportMixer {
 	stream: MediaStream | null
@@ -117,15 +117,14 @@ const getStereoPanGains = (gain: number, pan: number): [number, number] => {
 }
 
 export const mixWebCodecsAudioTrack = async (
-	registry: ProjectRegistry,
-	projectId: string,
+	plan: ExportPlan,
 	resolvedRange: ResolvedExportRange,
 	exportStart: number,
 	exportDuration: number,
 	sampleRate: number,
 	numberOfChannels: number,
 ): Promise<MixedAudioTrack | null> => {
-	const audioClips = getRangeClips(registry, projectId, resolvedRange).filter((clip) => clip.type === 'ef-audio')
+	const audioClips = getRangeClips(plan, resolvedRange).filter((clip) => clip.type === 'ef-audio')
 	if (audioClips.length === 0) {
 		return null
 	}
@@ -266,13 +265,12 @@ export const encodeMixedAudioTrack = async (
 }
 
 export const createAudioExportMixer = async (
-	registry: ProjectRegistry,
-	projectId: string,
+	plan: ExportPlan,
 	resolvedRange: ResolvedExportRange,
 	exportStart: number,
 	exportDuration: number,
 ): Promise<AudioExportMixer> => {
-	const audioClips = getRangeClips(registry, projectId, resolvedRange).filter((clip) => clip.type === 'ef-audio')
+	const audioClips = getRangeClips(plan, resolvedRange).filter((clip) => clip.type === 'ef-audio')
 	const AudioContextConstructor = getAudioContextConstructor()
 	if (audioClips.length === 0 || !AudioContextConstructor) {
 		return { stream: null, start: async () => undefined, stop: async () => undefined }

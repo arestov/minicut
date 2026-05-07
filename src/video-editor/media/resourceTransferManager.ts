@@ -1,5 +1,5 @@
 import { DEFAULT_RESOURCE_CHUNK_SIZE, mergeByteRanges } from '../domain/resourceData'
-import type { ProjectRegistry, ResourceAttrs } from '../render/registryTypes'
+import type { ResourceAttrs } from '../render/registryTypes'
 import type { ResourceByteRange, ResourceSourceKind } from '../domain/types'
 import type { P2PRawTransportLike } from '../p2p/PageP2PManager'
 import {
@@ -168,7 +168,6 @@ export interface CreateResourceTransferManagerOptions {
 
 export interface ResourceTransferManager {
 	readonly transfers$: ResourceTransferStore
-	syncRegistry(registry: ProjectRegistry): void
 	syncResources(resources: Array<{ resourceId: string; attrs: ResourceAttrs }>): void
 	registerLocalResource(resourceId: string, file: File | Blob, snapshot: Omit<ResourceSnapshot, 'resourceId'> & { objectUrl: string }): void
 	attachClientTransport(transport: P2PRawTransportLike): void
@@ -1051,18 +1050,6 @@ export const createResourceTransferManager = (
 
 	return {
 		transfers$,
-
-		syncRegistry(registry) {
-			const snapshots: ResourceSnapshot[] = []
-			for (const [resourceId, entity] of Object.entries(registry.entitiesById)) {
-				if (entity.type !== 'resource') {
-					continue
-				}
-				snapshots.push(toSnapshot(resourceId, entity.attrs as unknown as ResourceAttrs, defaultChunkSize))
-			}
-
-			syncSnapshots(snapshots)
-		},
 
 		syncResources(resources) {
 			syncSnapshots(resources.map((resource) => toSnapshot(resource.resourceId, resource.attrs, defaultChunkSize)))
