@@ -217,14 +217,10 @@ export const VideoEditorHarnessApp = ({
 				}
 
 				return runtime.readMany(pioneerScope, 'project').map((scope) => {
-					const attrs = runtime.readAttrs(scope, ['sourceProjectId', 'title']) as {
-						sourceProjectId?: unknown
+					const attrs = runtime.readAttrs(scope, ['title']) as {
 						title?: unknown
 					}
-					return {
-						id: typeof attrs.sourceProjectId === 'string' ? attrs.sourceProjectId : null,
-						title: typeof attrs.title === 'string' ? attrs.title : 'Project',
-					}
+					return typeof attrs.title === 'string' ? attrs.title : 'Project'
 				})
 			},
 			getRuntimeMessages: () => ownedHarness.pageRuntime?.debugMessages?.() ?? [],
@@ -236,14 +232,18 @@ export const VideoEditorHarnessApp = ({
 				const worker = ownedHarness.worker as { peerId?: string }
 				return typeof worker.peerId === 'string' ? worker.peerId : null
 			},
-			createProject: () => {
-				ownedHarness.actions.createProject()
+			createProject: (title?: string) => {
+				ownedHarness.actions.createProject(title)
 			},
 			setCursor: (cursor: number) => {
 				ownedHarness.actions.setCursor(cursor)
 			},
-			dispatchCreateProject: async (_title?: string) => {
-				ownedHarness.actions.createProject()
+			dispatchCreateProject: async (title?: string) => {
+				const snapshot = ownedHarness.pageRuntime?.getSnapshot()
+				if (!snapshot?.ready) {
+					throw new Error('Runtime not ready')
+				}
+				ownedHarness.actions.createProject(title)
 			},
 		}
 

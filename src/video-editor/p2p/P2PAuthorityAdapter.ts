@@ -222,12 +222,28 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 		},
 
 		openDktTransport() {
-			// Create a proxy transport that waits for activeClient to be ready
+			// Create a proxy transport that can switch its underlying transport on failover.
+			// The proxy buffers messages until an activeClient is ready, then forwards them.
+			// When activeClient changes (e.g. failover from client → server), the old transport
+			// is destroyed and a new one opened, preserving all page-side listeners.
+			// The last BOOTSTRAP message is cached so a new transport can be bootstrapped on reconnect.
 			const pendingMessages: MiniCutDktTransportMessage[] = []
 			const transportListeners = new Set<(message: MiniCutDktTransportMessage) => void>()
 			let realTransport: DomSyncTransportLike<MiniCutDktTransportMessage> | null = null
 			let realUnlisten: (() => void) | null = null
+			let realTransportClient: EditorAuthorityClient | null = null
+			let lastBootstrapMessage: Extract<MiniCutDktTransportMessage, { type: typeof DKT_MSG.BOOTSTRAP }> | null = null
 			let isDestroyed = false
+
+			const teardownRealTransport = (): void => {
+				if (realTransport) {
+					realUnlisten?.()
+					realTransport.destroy()
+					realTransport = null
+					realUnlisten = null
+					realTransportClient = null
+				}
+			}
 
 			const activateRealTransport = (): void => {
 				if (isDestroyed) {
@@ -238,16 +254,40 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 					return
 				}
 
+				// If activeClient changed (e.g. failover), tear down the old transport and reconnect.
+				// Notify page transports that P2P session was lost so they reset sync state and
+				// re-bootstrap against the new server authority.
+				const isFailover = realTransportClient !== null && realTransportClient !== activeClient
+				if (isFailover) {
+					teardownRealTransport()
+					const sessionLostMessage: MiniCutDktTransportMessage = {
+						type: DKT_MSG.P2P_SESSION_LOST,
+						reason: 'failover',
+					}
+					for (const listener of transportListeners) {
+						listener(sessionLostMessage)
+					}
+				} else if (realTransportClient !== activeClient) {
+					teardownRealTransport()
+				}
+
 				if (realTransport) {
 					return
 				}
 
+				realTransportClient = activeClient
 				realTransport = activeClient.openDktTransport()
 				realUnlisten = realTransport.listen((message) => {
 					for (const listener of transportListeners) {
 						listener(message)
 					}
 				})
+
+				// On reconnect, send the cached BOOTSTRAP first so the new authority worker
+				// initialises the session before processing other messages.
+				if (lastBootstrapMessage) {
+					realTransport.send(lastBootstrapMessage)
+				}
 
 				// Send any pending messages
 				while (pendingMessages.length > 0) {
@@ -261,13 +301,17 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			// Try to activate immediately if activeClient is already ready
 			activateRealTransport()
 
-			// Also set up a listener for when activeClient becomes available
+			// Also set up a listener for when activeClient becomes available or changes
 			const checkInterval = setInterval(() => {
 				activateRealTransport()
 			}, 100)
 
 			return {
 				send(message) {
+					// Cache the most recent BOOTSTRAP so we can replay it on transport reconnect
+					if (message.type === DKT_MSG.BOOTSTRAP) {
+						lastBootstrapMessage = message as Extract<MiniCutDktTransportMessage, { type: typeof DKT_MSG.BOOTSTRAP }>
+					}
 					if (realTransport) {
 						realTransport.send(message)
 					} else {
@@ -283,10 +327,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 				destroy() {
 					isDestroyed = true
 					clearInterval(checkInterval)
-					if (realTransport) {
-						realUnlisten?.()
-						realTransport.destroy()
-					}
+					teardownRealTransport()
 					transportListeners.clear()
 					pendingMessages.length = 0
 				},

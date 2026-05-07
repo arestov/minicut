@@ -693,9 +693,11 @@ export const createPageP2PManager = (
 		}
 		const proxyPort = proxyWorker.port
 		proxyPort.start()
-		if (config.workerProtocol === 'dkt') {
-			proxyPort.postMessage({ type: DKT_MSG.BOOTSTRAP })
-		}
+		// Do NOT pre-bootstrap the proxy worker here.
+		// The client's own BOOTSTRAP message (with the correct sessionKey) will be the first
+		// message forwarded through the DataChannel, establishing the right session.
+		// A premature BOOTSTRAP would create a 'minicut-local' session and lock the sync
+		// stream to the wrong session root, causing the client to receive no state updates.
 		proxyWorker.onerror = (e) => {
 			console.error(e.message, e)
 			const error = new Error('P2P server proxy SharedWorker failed to load')

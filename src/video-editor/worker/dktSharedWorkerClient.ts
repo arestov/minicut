@@ -49,7 +49,11 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 			this.#onError?.(error)
 		}
 		this.#worker.port.start()
-		this.#worker.port.postMessage({ type: DKT_MSG.BOOTSTRAP } satisfies MiniCutDktTransportMessage)
+		// Do NOT send a premature BOOTSTRAP here: the correct sessionKey must come from
+		// the page runtime's own bootstrap call (forwarded via the proxy transport).
+		// A premature no-sessionKey BOOTSTRAP would initialise the worker with the default
+		// 'minicut-local' session, and the subsequent correct-sessionKey BOOTSTRAP would
+		// tear it down and recreate it — causing restore logic to run against the wrong session.
 	}
 
 	subscribeDktSync(listener: (message: Extract<MiniCutDktTransportMessage, { type: typeof DKT_MSG.SYNC_HANDLE }>) => void): () => void {
@@ -102,7 +106,7 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 				this.#onSyncMessage?.(message)
 				break
 			case DKT_MSG.RUNTIME_ERROR:
-					this.#onError?.(new Error(String(message.message)))
+				this.#onError?.(new Error(String(message.message)))
 				break
 		}
 	}

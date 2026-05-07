@@ -233,6 +233,23 @@ export const createMiniCutPageSyncRuntime = ({
         handleSyncMessage(message)
         return
       }
+      case DKT_MSG.P2P_SESSION_LOST: {
+        const current = store.getSnapshot()
+        const sessionKey = current.sessionKey
+        syncReceiver.resetGraph()
+        shapeRegistry.destroy()
+        rootAttrsCache.clear()
+        store.setSnapshot(
+          createPageRuntimeSnapshotWithVersion(current, {
+            booted: false,
+            ready: false,
+            rootNodeId: null,
+            sessionId: null,
+          }),
+        )
+        emit(createBootstrapMessage({ sessionKey }))
+        return
+      }
     }
   }
 

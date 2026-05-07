@@ -37,8 +37,9 @@ type RuntimeLike = {
 	models?: Record<string, RuntimeModelLike>
 }
 
-const createWorkerStream = (transport: DomSyncTransportViewLike<MiniCutDktTransportMessage>) => ({
+const createWorkerStream = (transport: DomSyncTransportViewLike<MiniCutDktTransportMessage>, sessionKey: string) => ({
 	id: `minicut-stream-${Math.random().toString(36).slice(2)}`,
+	sessionKey,
 	send(list: unknown[]) {
 		transport.send({ type: DKT_MSG.SYNC_HANDLE, syncType: SYNCR_TYPES.UPDATE, payload: list.slice() })
 	},
@@ -598,8 +599,14 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 				throw new Error('MiniCut DKT session root is not available')
 			}
 
+			// Recreate the sync stream if the sessionKey changed (e.g. after failover reconnect
+			// or if a premature BOOTSTRAP previously locked the stream to the wrong session).
+			if (stream && stream.sessionKey !== activeSessionKey) {
+				app.runtime.sync_sender.removeSyncStream(stream)
+				stream = null
+			}
 			if (!stream) {
-				stream = createWorkerStream(transport)
+				stream = createWorkerStream(transport, activeSessionKey)
 				await app.runtime.sync_sender.addSyncStream(sessionRoot, stream, SESSION_IMPORTANT_REL_PATHS)
 			}
 

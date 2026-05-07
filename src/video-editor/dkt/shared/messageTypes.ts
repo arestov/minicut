@@ -2,6 +2,7 @@ export const DKT_MSG = {
 	BOOTSTRAP: 'dkt:bootstrap',
 	CLOSE_SESSION: 'dkt:close-session',
 	DISPATCH_ACTION: 'dkt:dispatch-action',
+	P2P_SESSION_LOST: 'dkt:p2p-session-lost',
 	RUNTIME_READY: 'dkt:runtime-ready',
 	RUNTIME_ERROR: 'dkt:runtime-error',
 	RUNTIME_LOG: 'dkt:runtime-log',
@@ -52,10 +53,16 @@ export type DktRuntimeLogMessage = {
 	message: unknown
 }
 
+export type DktP2PSessionLostMessage = {
+	type: typeof DKT_MSG.P2P_SESSION_LOST
+	reason: string
+}
+
 export type MiniCutDktTransportMessage =
 	| { type: typeof DKT_MSG.BOOTSTRAP; sessionKey?: string; route?: unknown }
 	| { type: typeof DKT_MSG.CLOSE_SESSION }
 	| DktDispatchActionMessage
+	| DktP2PSessionLostMessage
 	| DktRuntimeReadyMessage
 	| DktRuntimeErrorMessage
 	| DktRuntimeLogMessage
