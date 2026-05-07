@@ -246,6 +246,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>()
 	const clipNodeIdsBySourceId = new Map<string, string>()
+	const projectNodeIdsBySourceId = new Map<string, string>()
 	const trackNodeIdsBySourceId = new Map<string, string>()
 	const enabled = options.enabled === true
 
@@ -354,7 +355,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await target.dispatch(actionName, payload)
-		await syncSessionSelectionRels(sessionRoot)
 	}
 
 	const dispatchSessionAction = async (actionName: string, payload?: unknown): Promise<void> => {
@@ -364,7 +364,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		await sessionRoot.dispatch(actionName, payload)
-		await syncSessionSelectionRels(sessionRoot)
 	}
 
 	// Phase 1 hard rewrite: All registry materialization functions removed.
@@ -527,6 +526,11 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position: selectedClipTrackPosition })
 	}
 
+	const dispatchProjectAction = async (project: MiniCutDktProjectSeed, actionName: string, payload?: unknown): Promise<void> => {
+		const nodeId = await ensureSeededModel(projectNodeIdsBySourceId, project, 'minicut_project', 'sourceProjectId', 'createProjectModel', project.sourceProjectId)
+		await dispatchAction(actionName, payload, nodeId)
+	}
+
 	const dispatchTrackAction = async (track: MiniCutDktTrackSeed, actionName: string, payload?: unknown): Promise<void> => {
 		const nodeId = await ensureSeededModel(trackNodeIdsBySourceId, track, 'minicut_track', 'sourceTrackId', 'createTrackModel', track.sourceTrackId)
 		await dispatchAction(actionName, payload, nodeId)
@@ -665,6 +669,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		dispatchAction,
 		dispatchSessionAction,
 		ensureClipSeed,
+		dispatchProjectAction,
 		dispatchTrackAction,
 		dispatchClipAction,
 		connect,
