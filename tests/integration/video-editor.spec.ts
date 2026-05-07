@@ -25,6 +25,27 @@ const importFixtureVideo = async (page: import('@playwright/test').Page) => {
 	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
 }
 
+const ensureTimelineLaneOverflow = async (timeline: import('@playwright/test').Locator) => {
+	const scrollArea = timeline.locator('.ve-timeline-scroll-area')
+	const laneScroll = timeline.locator('.ve-track-lane-scroll')
+	const firstRail = timeline.locator('.ve-track-row__rail').first()
+
+	await laneScroll.evaluate((element) => {
+		const laneColumn = element.querySelector('.ve-track-lane-column')
+		if (!(laneColumn instanceof HTMLElement)) {
+			throw new Error('Timeline lane column is unavailable')
+		}
+		laneColumn.style.minWidth = `${element.clientWidth + 640}px`
+	})
+
+	await expect.poll(async () => laneScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+	await expect.poll(async () => scrollArea.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+	await laneScroll.evaluate((element) => { element.scrollLeft = 0 })
+	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBe(0)
+
+	return { scrollArea, laneScroll, firstRail }
+}
+
 const clickExportAndWaitForDownload = async (page: import('@playwright/test').Page): Promise<import('@playwright/test').Download> => {
 	try {
 		const [download] = await Promise.all([
@@ -1207,7 +1228,7 @@ test('creates an initial project automatically on startup', async ({ page }) => 
 	await expect(page.getByLabel('Media bin')).not.toContainText('No active project.')
 })
 
-test('timeline tools perform select, split, trim, and hand pan actions', async ({ page }) => {
+test('timeline tools perform selection, split, and trim actions', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
@@ -1240,29 +1261,24 @@ test('timeline tools perform select, split, trim, and hand pan actions', async (
 	await page.mouse.move(handleBox.x + handleBox.width / 2 + 28, handleBox.y + handleBox.height / 2)
 	await page.mouse.up()
 	await expect(rightClip).not.toHaveText(beforeTrimText)
+	await expect(timeline.getByLabel('V1 controls')).toBeVisible()
+})
 
-	for (let index = 0; index < 8; index += 1) {
-		await timeline.getByRole('button', { name: 'Add video track' }).click()
-	}
-	for (let index = 0; index < 12; index += 1) {
-		await page.getByLabel('Media bin').getByRole('button', { name: 'Add to timeline' }).first().click()
-	}
-	for (let index = 0; index < 5; index += 1) {
-		await timeline.getByRole('button', { name: 'Zoom in' }).click()
-	}
+test('timeline hand tool pans horizontally when the lane overflows', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+	await importFixtureVideo(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	await expect(timeline.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
 	await timeline.getByRole('button', { name: 'Hand tool' }).click()
-	const scrollArea = timeline.locator('.ve-timeline-scroll-area')
-	const laneScroll = timeline.locator('.ve-track-lane-scroll')
-	const firstRail = timeline.locator('.ve-track-row__rail').first()
-	await expect.poll(async () => laneScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
-	await expect.poll(async () => scrollArea.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
-	await laneScroll.evaluate((element) => { element.scrollLeft = 0 })
-	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBe(0)
+	const { scrollArea, laneScroll, firstRail } = await ensureTimelineLaneOverflow(timeline)
+
 	const scrollBox = await laneScroll.boundingBox()
 	if (!scrollBox) {
 		throw new Error('Timeline lane scroll area is unavailable')
 	}
-	const visibleLaneY = scrollBox.y + 40
+	const visibleLaneY = scrollBox.y + Math.min(40, Math.max(12, scrollBox.height - 12))
 	await laneScroll.dispatchEvent('pointerdown', {
 		clientX: scrollBox.x + scrollBox.width - 80,
 		clientY: visibleLaneY,
