@@ -10,6 +10,7 @@ import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRu
 import { useScope } from '../../dkt-react-sync/hooks/useScope'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { createPreviewMediaElementRegistry } from './mediaElementRegistry'
+import { PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS, type PreviewBuffer } from '../read-model/previewComps'
 
 const playbackUiFrameMs = 1000 / 30
 const inspectorWidthMin = 240
@@ -42,12 +43,17 @@ const ActiveProjectScope = ({ children }: { children: React.ReactNode }) => {
 
 const PlaybackLoop = () => {
 	const sessionDispatch = useActions()
+	const scope = useScope()
+	const runtime = useReactScopeRuntime()
 	const { isPlaying } = useAttrs(['isPlaying']) as { isPlaying?: unknown }
 
 	useEffect(() => {
 		if (!isPlaying) {
 			return
 		}
+
+		// Fill buffer immediately when playback starts
+		sessionDispatch('startPreviewBuffer')
 
 		let lastTime = performance.now()
 		let accumulatedMs = 0
@@ -60,13 +66,22 @@ const PlaybackLoop = () => {
 				const deltaSeconds = Math.min(accumulatedMs / 1000, 0.25)
 				accumulatedMs = 0
 				sessionDispatch('tickPlayback', { deltaSeconds })
+
+				// Refill buffer when cursor approaches end
+				if (scope) {
+					const buf = runtime.readOne(scope, 'previewBuffer') as PreviewBuffer | null
+					const cursor = runtime.readOne(scope, 'cursor') as number
+					if (!buf || cursor + PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS >= buf.endCursor) {
+						sessionDispatch('startPreviewBuffer')
+					}
+				}
 			}
 			frameId = requestAnimationFrame(tick)
 		}
 
 		frameId = requestAnimationFrame(tick)
 		return () => cancelAnimationFrame(frameId)
-	}, [sessionDispatch, isPlaying])
+	}, [sessionDispatch, isPlaying, scope, runtime])
 
 	return null
 }

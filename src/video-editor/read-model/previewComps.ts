@@ -151,3 +151,49 @@ export const createPreviewFrame = (structure: PreviewStructure, cursor: number):
 		activeClipNames: renderedClips.map((clip) => clip.name),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Preview buffer — pre-computed frames for smooth playback
+// ---------------------------------------------------------------------------
+
+export interface PreviewBuffer {
+	frames: PreviewFrame[]
+	startCursor: number
+	fps: number
+	endCursor: number
+}
+
+export const PREVIEW_BUFFER_FPS = 30
+export const PREVIEW_BUFFER_LOOKAHEAD_SECONDS = 2
+export const PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS = 0.5
+
+export const buildPreviewBuffer = (
+	structure: PreviewStructure,
+	startCursor: number,
+	fps: number = PREVIEW_BUFFER_FPS,
+	lookaheadSeconds: number = PREVIEW_BUFFER_LOOKAHEAD_SECONDS,
+): PreviewBuffer => {
+	const frameCount = Math.ceil(fps * lookaheadSeconds)
+	const step = 1 / fps
+	const frames: PreviewFrame[] = []
+	for (let i = 0; i < frameCount; i++) {
+		frames.push(createPreviewFrame(structure, startCursor + i * step))
+	}
+	return {
+		frames,
+		startCursor,
+		fps,
+		endCursor: startCursor + frameCount * step,
+	}
+}
+
+export const lookupPreviewBufferFrame = (
+	buffer: PreviewBuffer | null | undefined,
+	cursor: number,
+): PreviewFrame | null => {
+	if (!buffer || cursor < buffer.startCursor || cursor >= buffer.endCursor) {
+		return null
+	}
+	const index = Math.round((cursor - buffer.startCursor) * buffer.fps)
+	return buffer.frames[index] ?? null
+}

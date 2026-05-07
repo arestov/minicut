@@ -1,7 +1,7 @@
 import { model } from 'dkt/model.js'
 import { SessionRoot as BaseSessionRoot } from 'dkt-all/libs/provoda/bwlev/SessionRoot.js'
 import { TIMELINE_ZOOM_DEFAULT } from './sessionZoom'
-import { createPreviewFrame, type PreviewFrame, type PreviewStructure } from '../read-model/previewComps'
+import { createPreviewFrame, lookupPreviewBufferFrame, type PreviewBuffer, type PreviewFrame, type PreviewStructure } from '../read-model/previewComps'
 import { dktSessionActions } from './SessionRoot/actions'
 
 const DEFAULT_PREVIEW_STRUCTURE: PreviewStructure = { clipSources: [] }
@@ -20,6 +20,7 @@ export const EditorSessionRoot = model({
 		activeInspectorTab: ['input', 'edit'],
 		cursor: ['input', 0],
 		isPlaying: ['input', false],
+		previewBuffer: ['input', null as PreviewBuffer | null],
 		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
 		timelineTool: ['input', 'select'],
 		snappingEnabled: ['input', true],
@@ -30,12 +31,20 @@ export const EditorSessionRoot = model({
 				}
 				return DEFAULT_PREVIEW_STRUCTURE
 			}],
-		previewFrame: ['comp', ['previewStructure', 'cursor'] as const, (previewStructure: unknown, cursor: unknown): PreviewFrame => createPreviewFrame(
-			previewStructure && typeof previewStructure === 'object' && Array.isArray((previewStructure as { clipSources?: unknown }).clipSources)
-				? previewStructure as PreviewStructure
-				: DEFAULT_PREVIEW_STRUCTURE,
-			typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0,
-		)],
+		previewFrame: ['comp', ['previewStructure', 'cursor', 'previewBuffer', 'isPlaying'] as const,
+			(previewStructure: unknown, cursor: unknown, previewBuffer: unknown, isPlaying: unknown): PreviewFrame => {
+				const time = typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0
+				if (isPlaying) {
+					const buffered = lookupPreviewBufferFrame(previewBuffer as PreviewBuffer | null, time)
+					if (buffered) return buffered
+				}
+				return createPreviewFrame(
+					previewStructure && typeof previewStructure === 'object' && Array.isArray((previewStructure as { clipSources?: unknown }).clipSources)
+						? previewStructure as PreviewStructure
+						: DEFAULT_PREVIEW_STRUCTURE,
+					time,
+				)
+			}],
 		selectedClipSummary: ['comp', [
 			'< @one:sourceClipId < selectedClip',
 			'< @one:color < selectedClip',

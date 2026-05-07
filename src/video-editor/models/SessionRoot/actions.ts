@@ -1,4 +1,5 @@
 import { PROJECT_CREATION_SHAPE } from '../Project'
+import { buildPreviewBuffer, type PreviewBuffer, type PreviewStructure } from '../../read-model/previewComps'
 
 /** Inline session state patch type – replaces legacy EditorSessionState from domain/types. */
 type SessionStateFields = {
@@ -8,6 +9,7 @@ type SessionStateFields = {
 	isPlaying: boolean
 	timelineZoom: number
 	activeInspectorTab: 'edit' | 'color' | 'audio' | 'export'
+	previewBuffer: PreviewBuffer | null
 }
 
 type CreateProjectPayload = {
@@ -41,6 +43,8 @@ export type DktSessionActionName =
 	| 'zoomTimeline'
 	| 'deleteSelectedClip'
 	| 'splitSelectedClip'
+	| 'startPreviewBuffer'
+	| 'clearPreviewBuffer'
 
 export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 	| 'activeProjectId'
@@ -431,4 +435,26 @@ export const dktSessionActions = {
 	zoomTimeline: sessionZoomTimelineAction,
 	deleteSelectedClip: sessionDeleteSelectedClipAction,
 	splitSelectedClip: sessionSplitSelectedClipAction,
+	startPreviewBuffer: {
+		to: {
+			previewBuffer: ['previewBuffer'],
+		},
+		fn: [
+			['previewStructure', 'cursor'] as const,
+			(_payload: unknown, previewStructure: unknown, cursor: unknown) => {
+				const structure: PreviewStructure =
+					previewStructure && typeof previewStructure === 'object' && Array.isArray((previewStructure as { clipSources?: unknown }).clipSources)
+						? previewStructure as PreviewStructure
+						: { clipSources: [] }
+				const startCursor = typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0
+				return { previewBuffer: buildPreviewBuffer(structure, startCursor) }
+			},
+		],
+	} as const satisfies DktActionDescriptor,
+	clearPreviewBuffer: {
+		to: {
+			previewBuffer: ['previewBuffer'],
+		},
+		fn: () => ({ previewBuffer: null }),
+	} as const satisfies DktActionDescriptor,
 } as const satisfies Record<DktSessionActionName, DktActionDefinition>
