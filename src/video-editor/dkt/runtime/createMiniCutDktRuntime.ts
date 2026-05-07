@@ -583,6 +583,35 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		let selectedClipTrackPosition: Record<string, unknown> | null = null
 
 		if (selectedEntityId) {
+			const selectedClipFromSource = await findSeededModelBySourceId('minicut_clip', 'sourceClipId', selectedEntityId)
+			if (isRuntimeModelLike(selectedClipFromSource)) {
+				const clipAttrs = selectedClipFromSource.states ?? {}
+				selectedClipModel = selectedClipFromSource
+				const clipTrack = (await queryModelRel(selectedClipFromSource, 'track'))[0] ?? null
+				if (isRuntimeModelLike(clipTrack)) {
+					selectedClipSummary = {
+						color: asString(clipAttrs.color, '#2563eb'),
+						resourceName: asString(clipAttrs.name, 'Clip'),
+						trackName: asString(clipTrack.states?.name, 'Track'),
+					}
+					const tracks = await queryModelRel(activeProjectModel, 'tracks')
+					const trackIndex = tracks.findIndex((entry) => entry._node_id === clipTrack._node_id)
+					if (trackIndex >= 0) {
+						selectedClipTrackPosition = {
+							trackName: asString(clipTrack.states?.name, `Track ${trackIndex + 1}`),
+							ordinal: trackIndex + 1,
+						}
+					}
+				}
+			}
+
+			if (selectedClipModel && selectedClipSummary) {
+				await sessionRoot.dispatch('syncSelectedClipRel', { clip: selectedClipModel })
+				await sessionRoot.dispatch('syncSelectedClipSummary', { summary: selectedClipSummary })
+				await sessionRoot.dispatch('syncSelectedClipTrackPosition', { position: selectedClipTrackPosition })
+				return
+			}
+
 			const tracks = await queryModelRel(activeProjectModel, 'tracks')
 			outer: for (const [trackIndex, trackModel] of tracks.entries()) {
 				const trackName = asString(trackModel.states?.name, `Track ${trackIndex + 1}`)
