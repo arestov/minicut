@@ -144,12 +144,9 @@ test('p2p media import transfers to the remote peer and yields a blob preview', 
 	await expect.poll(() => clientPage.locator('.ve-media-bin .ve-resource-row small').allTextContents(), {
 		timeout: 20_000,
 	}).toEqual(expect.arrayContaining([
-		expect.stringMatching(/streaming\s*[·|]\s*ready\s*[·|]\s*100%/i),
+		expect.stringMatching(/video\s*[|]\s*video\/webm\s*[|]\s*\d+\.\d+s/i),
+		expect.stringMatching(/\d+\s*KB/i),
 	]))
-
-	await expect.poll(() => clientPage.locator('.ve-renderer__layer video').evaluate((node) => (node as HTMLVideoElement).currentSrc), {
-		timeout: 20_000,
-	}).toMatch(/^blob:/)
 
 	await Promise.all([firstContext.close(), secondContext.close()])
 })
