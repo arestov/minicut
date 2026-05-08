@@ -1,6 +1,9 @@
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+import { getAttrsShape } from '../../dkt-react-sync/shape/autoShapes'
 import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
 import type { ExportPlan } from '../render/renderPlan'
+import type { EffectRenderInstruction } from '../render/colorPipeline'
+import { mergeEffectFilters } from '../render/colorPipeline'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 
@@ -260,6 +263,24 @@ const buildFallbackExportPlan = (
 			const transform = attrs.transform && typeof attrs.transform === 'object'
 				? attrs.transform as { x?: unknown; y?: unknown; scale?: unknown; rotation?: unknown }
 				: null
+			const effectScopes = env.pageRuntime.readMany(clipScope, 'effects')
+			const effects: EffectRenderInstruction[] = effectScopes.map((effectScope) => {
+				const effectAttrs = env.pageRuntime?.readAttrs(effectScope, ['kind', 'name', 'enabled', 'amount', 'params']) as {
+					kind?: unknown
+					name?: unknown
+					enabled?: unknown
+					amount?: unknown
+					params?: unknown
+				}
+				return {
+					kind: typeof effectAttrs?.kind === 'string' ? effectAttrs.kind as EffectRenderInstruction['kind'] : 'blur',
+					name: typeof effectAttrs?.name === 'string' ? effectAttrs.name : 'Effect',
+					enabled: effectAttrs?.enabled !== false,
+					...(typeof effectAttrs?.amount === 'number' ? { amount: effectAttrs.amount } : {}),
+					...(effectAttrs?.params && typeof effectAttrs.params === 'object' ? { params: effectAttrs.params as Record<string, unknown> } : {}),
+				}
+			})
+			const mergedFilters = mergeEffectFilters(effects)
 
 			clipSources.push({
 				id: attrs.sourceClipId,
@@ -289,8 +310,8 @@ const buildFallbackExportPlan = (
 					gain: Math.max(0, asFiniteNumber(audio?.gain, 1)),
 					pan: asFiniteNumber(audio?.pan, 0),
 				},
-				filters: [],
-				effects: [],
+				filters: mergedFilters ? [mergedFilters] : [],
+				effects,
 				text: null,
 			})
 		}
@@ -458,6 +479,12 @@ const queueExport = async (
 		})
 		return null
 	}
+	const exportAttrsShape = getAttrsShape(['exportPlan', 'sourceProjectId', 'fps', 'width', 'height', 'duration'])
+	const releaseExportAttrsShape = exportAttrsShape
+		? env.pageRuntime.mountShape(projectScope, exportAttrsShape)
+		: () => undefined
+
+	try {
 
 	const computedAttrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan']) as {
 		exportPlan?: ExportPlan
@@ -479,8 +506,12 @@ const queueExport = async (
 		typeof projectAttrs.sourceProjectId === 'string' && projectAttrs.sourceProjectId
 			? projectAttrs.sourceProjectId
 			: (typeof rootAttrs?.activeProjectId === 'string' ? rootAttrs.activeProjectId : '')
-	const plan = computedAttrs.exportPlan && computedAttrs.exportPlan.projectId
-		? computedAttrs.exportPlan
+	const computedPlan = computedAttrs.exportPlan
+	const plan = computedPlan
+		? {
+			...computedPlan,
+			projectId: computedPlan.projectId || fallbackProjectId,
+		}
 		: buildFallbackExportPlan(env, projectScope, fallbackProjectId, projectAttrs)
 	if (!plan || !plan.projectId) {
 		pushExportDebug('missing-export-plan', {
@@ -546,6 +577,9 @@ const queueExport = async (
 			error: error instanceof Error ? error.stack || error.message : String(error),
 		})
 		return null
+	}
+	} finally {
+		releaseExportAttrsShape()
 	}
 }
 

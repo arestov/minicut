@@ -31,11 +31,8 @@ const ActiveProjectScope = ({ children }: { children: React.ReactNode }) => {
 		() => sessionScope ? runtime.readOne(sessionScope, 'activeProject') : null,
 		() => sessionScope ? runtime.readOne(sessionScope, 'activeProject') : null,
 	)
-	if (!projectScope) {
-		return <>{children}</>
-	}
 	return (
-		<ScopeContext.Provider value={projectScope}>
+		<ScopeContext.Provider value={projectScope ?? sessionScope}>
 			{children}
 		</ScopeContext.Provider>
 	)

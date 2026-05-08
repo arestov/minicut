@@ -5,6 +5,7 @@ import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { useOne } from '../../../dkt-react-sync/hooks/useOne'
+import { useScope } from '../../../dkt-react-sync/hooks/useScope'
 import { createPaletteFromHex, sampleVideoFramePalette } from '../../color/framePalette'
 import type { TextAttrs } from '../../models/Text/types'
 import type { TransformAttrs } from '../../models/Clip/types'
@@ -18,8 +19,9 @@ import type { ClipRenderAttrs, TextRenderAttrs } from './types'
 import { getTextAttrs } from './types'
 
 const EffectEntry = ({ onRemove }: { onRemove: (effectId: string) => void }) => {
+	const effectScope = useScope()
 	const attrs = useAttrs(['sourceEffectId', 'name', 'kind']) as { sourceEffectId?: unknown; name?: unknown; kind?: unknown }
-	const effectId = typeof attrs.sourceEffectId === 'string' ? attrs.sourceEffectId : null
+	const effectId = effectScope?._nodeId ?? (typeof attrs.sourceEffectId === 'string' ? attrs.sourceEffectId : null)
 	const name = String(attrs.name)
 	const kind = String(attrs.kind)
 

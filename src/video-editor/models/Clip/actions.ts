@@ -223,9 +223,12 @@ export const normalizeEffectCreationAttrs = (payload: unknown) => {
 		?? asString((payload as { effectId?: unknown } | null)?.effectId)
 		?? createDktEffectSourceId(value?.kind)
 
+	const kindStr = asString(value?.kind)
+	const kindDerivedName = kindStr ? kindStr.charAt(0).toUpperCase() + kindStr.slice(1) : null
+
 	return {
 		sourceEffectId,
-		name: asString(value?.name) ?? defaultEffectAttrs.name,
+		name: asString(value?.name) ?? kindDerivedName ?? defaultEffectAttrs.name,
 		kind: asString(value?.kind) ?? defaultEffectAttrs.kind,
 		enabled: asBoolean(value?.enabled) ?? defaultEffectAttrs.enabled,
 		amount: asNumber(value?.amount),
