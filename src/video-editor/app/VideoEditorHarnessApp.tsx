@@ -446,6 +446,7 @@ export const VideoEditorHarnessApp = ({
 				}
 			},
 			getRuntimeMessages: () => ownedHarness.pageRuntime?.debugMessages?.() ?? [],
+			dumpWorkerState: () => ownedHarness.pageRuntime?.requestDebugDump?.() ?? Promise.resolve(null),
 			getRole: () => {
 				const worker = ownedHarness.worker as { role?: string }
 				return typeof worker.role === 'string' ? worker.role : null

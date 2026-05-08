@@ -51,12 +51,23 @@ export const TrackLane = ({ timelineZoom, activeTool, selectedEntityId }: TrackR
 			) : (
 				<div className="ve-track-row__timeline" style={{ width: `${trackWidth}px` }}>
 					{clipScopes.map((clipScope) => (
+						// readyAttr="start" belt-and-suspenders on top of ClipItem's own null check:
+						// prevents the entire subtree from mounting during the skeleton window.
 						<ScopeContext.Provider key={clipScope._nodeId} value={clipScope}>
-							<ClipItem timelineZoom={timelineZoom} activeTool={activeTool} selectedEntityId={selectedEntityId} />
+							<ClipReadyGate timelineZoom={timelineZoom} activeTool={activeTool} selectedEntityId={selectedEntityId} />
 						</ScopeContext.Provider>
 					))}
 				</div>
 			)}
 		</div>
 	)
+}
+
+/** Defers ClipItem until `start` attr has arrived from the worker. */
+const ClipReadyGate = (props: TrackRowProps) => {
+	const startAttr = useAttrs(['start'])
+	if (startAttr.start == null) {
+		return null
+	}
+	return <ClipItem {...props} />
 }

@@ -36,6 +36,7 @@ export const createMiniCutPageSyncRuntime = ({
   const store = createSyncStore(createEmptyPageRuntimeSnapshot())
   const rootAttrsCache = new Map<string, RootAttrsCacheEntry>()
   const debugMessageLog: unknown[] = []
+  let pendingDumpResolve: ((result: unknown) => void) | null = null
 
   const pushDebugMessage = (direction: 'in' | 'out', message: unknown) => {
     debugMessageLog.push({
@@ -255,6 +256,11 @@ export const createMiniCutPageSyncRuntime = ({
         emit(createBootstrapMessage({ sessionKey }))
         return
       }
+      case DKT_MSG.DEBUG_DUMP_RESPONSE: {
+        pendingDumpResolve?.(message.dump)
+        pendingDumpResolve = null
+        return
+      }
     }
   }
 
@@ -269,6 +275,10 @@ export const createMiniCutPageSyncRuntime = ({
     debugDescribeNode: (nodeId) => syncReceiver.debugDescribeNode(nodeId),
     debugDumpGraph: () => syncReceiver.debugDumpGraph(),
     debugMessages: () => debugMessageLog.slice(),
+    requestDebugDump: () => new Promise<unknown>((resolve) => {
+      pendingDumpResolve = resolve
+      emit({ type: DKT_MSG.DEBUG_DUMP_REQUEST })
+    }),
     dispatchAction,
     getSnapshot: () => store.getSnapshot(),
     getRootScope: () => syncReceiver.getRootScope(),

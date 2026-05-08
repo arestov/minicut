@@ -50,6 +50,14 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 	const clipAttrs = useAttrs(['sourceClipId', 'name', 'start', 'duration', 'in', 'opacity', 'color']) as ClipRenderAttrs
 	const effectScopes = useMany('effects')
 	const clipId = typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null
+
+	// Skeleton guard: start/duration arrive slightly after the clip node appears
+	// in the track's clips relation (worker streams structure before attrs).
+	// Render nothing until both critical positioning attrs are present.
+	if (clipAttrs.start == null || clipAttrs.duration == null) {
+		return null
+	}
+
 	const selected = clipId !== null && selectedEntityId === clipId
 	const name = String(clipAttrs.name)
 	const start = Number(clipAttrs.start)

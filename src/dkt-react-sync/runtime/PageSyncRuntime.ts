@@ -21,6 +21,8 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
   debugDescribeNode(nodeId: string): unknown
   debugDumpGraph(): unknown
   debugMessages(): readonly unknown[]
+  /** Debug-only: requests a full serialised worker model state. Promise resolves when the worker responds. */
+  requestDebugDump?(): Promise<unknown>
   dispatchAction(actionName: string, payload?: unknown, scope?: ReactSyncScopeHandle | null): void
   destroy(): void
   getSnapshot(): PageRootSnapshot

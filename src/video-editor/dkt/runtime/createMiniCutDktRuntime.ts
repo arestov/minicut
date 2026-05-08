@@ -5,6 +5,7 @@ import { SYNCR_TYPES } from 'dkt-all/libs/provoda/SyncR_TYPES.js'
 import { getModelById } from 'dkt-all/libs/provoda/utils/getModelById.js'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../shared/messageTypes'
 import { MiniCutAppRoot } from '../../models/AppRoot'
+import { dumpWorkerAppState } from './workerStateDump'
 
 type RuntimeModelLike = {
 	_node_id?: string | null
@@ -239,6 +240,16 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 						throw new Error('MiniCut DKT sync stream is not bootstrapped')
 					}
 					app.runtime.sync_sender.requireShapeForModel(stream.id, message.data)
+					return
+				}
+				case DKT_MSG.DEBUG_DUMP_REQUEST: {
+					const app = await bootstrapApp()
+					if (!app) {
+						transport.send({ type: DKT_MSG.DEBUG_DUMP_RESPONSE, dump: null })
+						return
+					}
+					const dump = await dumpWorkerAppState(app.appModel, app.runtime.models ?? {})
+					transport.send({ type: DKT_MSG.DEBUG_DUMP_RESPONSE, dump })
 					return
 				}
 			}

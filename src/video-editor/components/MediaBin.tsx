@@ -63,6 +63,7 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 	const url = String(resourceAttrs.url)
 	const totalBytes = Number(resourceAttrs.size ?? 0)
 	const statusLabel = totalBytes > 0 ? `${Math.round(totalBytes / 1024)} KB` : null
+	const durationLabel = resourceAttrs.duration != null ? `${duration.toFixed(1)}s` : '—'
 
 	return (
 		<li className="ve-resource-row">
@@ -70,7 +71,7 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 			<div className="ve-resource-row__content">
 				<strong>{name}</strong>
 				<div className="ve-resource-row__meta">
-								<small>{kind} | {mime} | {duration.toFixed(1)}s</small>
+								<small>{kind} | {mime} | {durationLabel}</small>
 					{statusLabel ? <small>{statusLabel}</small> : null}
 					<div className="ve-resource-row__action-line">
 						<IconButton

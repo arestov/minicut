@@ -9,6 +9,9 @@ export const DKT_MSG = {
 	SYNC_HANDLE: 'dkt:sync-handle',
 	SYNC_UPDATE_STRUCTURE_USAGE: 'dkt:sync-update-structure-usage',
 	SYNC_REQUIRE_SHAPE: 'dkt:sync-require-shape',
+	// Debug-only: request/receive a full worker model state dump
+	DEBUG_DUMP_REQUEST: 'dkt:debug-dump-request',
+	DEBUG_DUMP_RESPONSE: 'dkt:debug-dump-response',
 } as const
 
 export type DktDispatchActionMessage = {
@@ -69,4 +72,6 @@ export type MiniCutDktTransportMessage =
 	| DktSyncHandleMessage
 	| DktSyncUpdateStructureUsageMessage
 	| DktSyncRequireShapeMessage
+	| { type: typeof DKT_MSG.DEBUG_DUMP_REQUEST }
+	| { type: typeof DKT_MSG.DEBUG_DUMP_RESPONSE; dump: unknown }
 
