@@ -15,6 +15,44 @@ interface VideoEditorHarnessAppProps {
 
 const LAST_ROOM_STORAGE_KEY = 'minicut:last-room-id'
 
+const summarizeGraph = (graph: unknown) => {
+	if (!graph || typeof graph !== 'object') {
+		return graph
+	}
+
+	const value = graph as {
+		nodes?: Array<{ nodeId?: unknown; modelName?: unknown; rels?: unknown; attrsVersion?: unknown; relsVersion?: unknown }>
+		models?: Record<string, { attrs?: unknown; rels?: Array<{ name?: unknown }> }>
+	}
+	const summary: Record<string, unknown> = {}
+
+	if (Array.isArray(value.nodes)) {
+		summary.nodes = value.nodes.map((node) => ({
+			nodeId: node.nodeId,
+			modelName: node.modelName,
+			relNames: node.rels && typeof node.rels === 'object' ? Object.keys(node.rels as Record<string, unknown>) : [],
+			attrsVersion: node.attrsVersion,
+			relsVersion: node.relsVersion,
+		}))
+	}
+
+	if (value.models && typeof value.models === 'object') {
+		summary.models = Object.fromEntries(
+			Object.entries(value.models).map(([modelName, model]) => [
+				modelName,
+				{
+					attrsCount: Array.isArray(model.attrs) ? model.attrs.length : undefined,
+					relNames: Array.isArray(model.rels)
+						? model.rels.map((rel) => rel.name).filter((name): name is string => typeof name === 'string')
+						: undefined,
+				},
+			]),
+		)
+	}
+
+	return summary
+}
+
 const normalizeList = (raw: string | null | undefined): string[] =>
 	String(raw ?? '')
 		.split(',')
@@ -191,6 +229,9 @@ export const VideoEditorHarnessApp = ({
 		}
 
 		const debug = {
+			getSnapshot: () => ownedHarness.pageRuntime?.getSnapshot() ?? null,
+			dumpGraph: () => ownedHarness.pageRuntime?.debugDumpGraph?.() ?? null,
+			dumpGraphSummary: () => summarizeGraph(ownedHarness.pageRuntime?.debugDumpGraph?.() ?? null),
 			getResourceTransfers: () => Object.values(ownedHarness.resourceTransfers$.get()).map((transfer) => ({
 				resourceId: transfer.resourceId,
 				name: transfer.name,
@@ -319,6 +360,91 @@ export const VideoEditorHarnessApp = ({
 						: null,
 				}
 			},
+			getActiveProjectDetails: () => {
+				const runtime = ownedHarness.pageRuntime
+				const projectScope = getActiveProjectScope()
+				if (!runtime || !projectScope) {
+					return null
+				}
+
+				const projectAttrs = runtime.readAttrs(projectScope, ['title', 'duration', 'timelineDuration', 'sourceProjectId']) as {
+					title?: unknown
+					duration?: unknown
+					timelineDuration?: unknown
+					sourceProjectId?: unknown
+				}
+
+				const tracks = runtime.readMany(projectScope, 'tracks').map((trackScope) => {
+					const trackAttrs = runtime.readAttrs(trackScope, ['name', 'kind', 'muted', 'locked', 'height']) as {
+						name?: unknown
+						kind?: unknown
+						muted?: unknown
+						locked?: unknown
+						height?: unknown
+					}
+					const clips = runtime.readMany(trackScope, 'clips').map((clipScope) => {
+						const clipAttrs = runtime.readAttrs(clipScope, ['sourceClipId', 'sourceResourceId', 'sourceResourceName', 'name', 'mediaKind', 'start', 'in', 'duration']) as {
+							sourceClipId?: unknown
+							sourceResourceId?: unknown
+							sourceResourceName?: unknown
+							name?: unknown
+							mediaKind?: unknown
+							start?: unknown
+							in?: unknown
+							duration?: unknown
+						}
+						return {
+							nodeId: clipScope._nodeId,
+							sourceClipId: typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null,
+							sourceResourceId: typeof clipAttrs.sourceResourceId === 'string' ? clipAttrs.sourceResourceId : null,
+							sourceResourceName: typeof clipAttrs.sourceResourceName === 'string' ? clipAttrs.sourceResourceName : null,
+							name: typeof clipAttrs.name === 'string' ? clipAttrs.name : 'Clip',
+							mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : null,
+							start: typeof clipAttrs.start === 'number' ? clipAttrs.start : null,
+							in: typeof clipAttrs.in === 'number' ? clipAttrs.in : null,
+							duration: typeof clipAttrs.duration === 'number' ? clipAttrs.duration : null,
+						}
+					})
+
+					return {
+						nodeId: trackScope._nodeId,
+						name: typeof trackAttrs.name === 'string' ? trackAttrs.name : 'Track',
+						kind: typeof trackAttrs.kind === 'string' ? trackAttrs.kind : null,
+						muted: trackAttrs.muted === true,
+						locked: trackAttrs.locked === true,
+						height: typeof trackAttrs.height === 'number' ? trackAttrs.height : null,
+						clips,
+					}
+				})
+
+				const resources = runtime.readMany(projectScope, 'resources').map((resourceScope) => {
+					const resourceAttrs = runtime.readAttrs(resourceScope, ['sourceResourceId', 'name', 'kind', 'duration', 'status']) as {
+						sourceResourceId?: unknown
+						name?: unknown
+						kind?: unknown
+						duration?: unknown
+						status?: unknown
+					}
+					return {
+						nodeId: resourceScope._nodeId,
+						sourceResourceId: typeof resourceAttrs.sourceResourceId === 'string' ? resourceAttrs.sourceResourceId : null,
+						name: typeof resourceAttrs.name === 'string' ? resourceAttrs.name : 'Resource',
+						kind: typeof resourceAttrs.kind === 'string' ? resourceAttrs.kind : null,
+						duration: typeof resourceAttrs.duration === 'number' ? resourceAttrs.duration : null,
+						status: typeof resourceAttrs.status === 'string' ? resourceAttrs.status : null,
+					}
+				})
+
+				return {
+					nodeId: projectScope._nodeId,
+					sourceProjectId: typeof projectAttrs.sourceProjectId === 'string' ? projectAttrs.sourceProjectId : null,
+					title: typeof projectAttrs.title === 'string' ? projectAttrs.title : 'Project',
+					duration: typeof projectAttrs.duration === 'number' ? projectAttrs.duration : null,
+					timelineDuration: typeof projectAttrs.timelineDuration === 'number' ? projectAttrs.timelineDuration : null,
+					tracks,
+					resources,
+				}
+			},
 			getRuntimeMessages: () => ownedHarness.pageRuntime?.debugMessages?.() ?? [],
 			getRole: () => {
 				const worker = ownedHarness.worker as { role?: string }
@@ -333,6 +459,16 @@ export const VideoEditorHarnessApp = ({
 			},
 			createProject: (title?: string) => {
 				ownedHarness.actions.createProject(title)
+			},
+			dispatchRootAction: (actionName: string, payload?: unknown) => {
+				ownedHarness.pageRuntime?.dispatch(actionName, payload, null)
+			},
+			dispatchProjectAction: (actionName: string, payload?: unknown) => {
+				const projectScope = getActiveProjectScope()
+				if (!projectScope) {
+					throw new Error('No active project')
+				}
+				ownedHarness.pageRuntime?.dispatch(actionName, payload, projectScope)
 			},
 			setCursor: (cursor: number) => {
 				ownedHarness.actions.setCursor(cursor)

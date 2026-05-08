@@ -1,3 +1,4 @@
+import React from 'react'
 import { useEffect, useSyncExternalStore } from 'react'
 import { RootScope } from '../../../dkt-react-sync/scope/RootScope'
 import type { PageSyncRuntime } from '../../../dkt-react-sync/runtime/PageSyncRuntime'

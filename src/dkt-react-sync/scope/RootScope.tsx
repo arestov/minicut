@@ -1,3 +1,4 @@
+import React from 'react'
 import { useSyncExternalStore } from 'react'
 import { ReactScopeRuntimeContext } from '../context/ReactScopeRuntimeContext'
 import { ScopeContext } from '../context/ScopeContext'
