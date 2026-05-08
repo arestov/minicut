@@ -121,9 +121,28 @@ const createDefaultTracks = (projectId: string) => [
 
 let createdProjectSequence = 0
 
-const createProjectSeedPayload = (payload: unknown, forcedProjectId?: string) => {
+const getNextProjectIndex = (projectTitles: unknown): number => {
+	const titleList = Array.isArray(projectTitles) ? projectTitles : []
+	let maxIndex = createdProjectSequence
+	for (const value of titleList) {
+		if (typeof value !== 'string') {
+			continue
+		}
+		const match = value.match(/^Project\s+(\d+)$/i)
+		if (!match) {
+			continue
+		}
+		const parsed = Number.parseInt(match[1], 10)
+		if (Number.isFinite(parsed) && parsed > maxIndex) {
+			maxIndex = parsed
+		}
+	}
+	return maxIndex + 1
+}
+
+const createProjectSeedPayload = (payload: unknown, forcedProjectId?: string, projectTitles?: unknown) => {
 	const value = asObject(payload) as CreateProjectPayload | null
-	const nextSequence = forcedProjectId ? createdProjectSequence || 1 : createdProjectSequence + 1
+	const nextSequence = forcedProjectId ? createdProjectSequence || 1 : getNextProjectIndex(projectTitles)
 	if (!forcedProjectId) {
 		createdProjectSequence = nextSequence
 	}
@@ -140,21 +159,6 @@ const createProjectSeedPayload = (payload: unknown, forcedProjectId?: string) =>
 		createdAt: asNumber(value?.createdAt, now),
 		updatedAt: asNumber(value?.updatedAt, now),
 		autoCreateDefaultTracks: true,
-	}
-}
-
-	const createProjectCreationResult = (payload: unknown) => {
-	const seed = createProjectSeedPayload(payload)
-
-	return {
-		activeProjectId: seed.sourceProjectId,
-		selectedEntityId: null,
-		cursor: 0,
-		createdProject: {
-			attrs: seed,
-			hold_ref_id: 'createdProject',
-		},
-		activeProject: { use_ref_id: 'createdProject' },
 	}
 }
 
@@ -238,7 +242,23 @@ export const sessionCreateProjectAction = [
 				can_use_refs: true,
 			}],
 		},
-		fn: createProjectCreationResult,
+		fn: [
+			['< @all:title < pioneer.project'] as const,
+			(payload: unknown, projectTitles: unknown) => {
+				const seed = createProjectSeedPayload(payload, undefined, projectTitles)
+
+				return {
+					activeProjectId: seed.sourceProjectId,
+					selectedEntityId: null,
+					cursor: 0,
+					createdProject: {
+						attrs: seed,
+						hold_ref_id: 'createdProject',
+					},
+					activeProject: { use_ref_id: 'createdProject' },
+				}
+			},
+		],
 	},
 	{
 		to: ['<< activeProject', { action: 'handleInit', inline_subwalker: true }],

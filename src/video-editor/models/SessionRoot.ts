@@ -88,8 +88,23 @@ export const EditorSessionRoot = model({
 			const modelList = Array.isArray(clips) ? clips : []
 			const idList = Array.isArray(sourceClipIds) ? sourceClipIds : []
 			const index = idList.indexOf(selectedEntityId)
-			if (index === -1 || !modelList[index]) return null
-			return modelList[index]
+			if (index !== -1 && modelList[index]) return modelList[index]
+
+			for (const clipModel of modelList) {
+				if (!clipModel || typeof clipModel !== 'object') {
+					continue
+				}
+				const nodeId = (clipModel as { _node_id?: unknown; _nodeId?: unknown })._node_id
+				const nodeIdCamel = (clipModel as { _node_id?: unknown; _nodeId?: unknown })._nodeId
+				if (
+					(typeof nodeId === 'string' && nodeId === selectedEntityId)
+					|| (typeof nodeIdCamel === 'string' && nodeIdCamel === selectedEntityId)
+				) {
+					return clipModel
+				}
+			}
+
+			return null
 		}, { linking: '<< clip << #' }],
 		selectedResource: ['input', { linking: '<< resource << #' }],
 		selectedText: ['input', { linking: '<< text << #' }],

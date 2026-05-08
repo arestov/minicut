@@ -11,9 +11,43 @@ const roundToHundredths = (value: number): number => Math.round(value * 100) / 1
 const asFiniteNumber = (value: unknown, fallback: number): number =>
 	typeof value === 'number' && Number.isFinite(value) ? value : fallback
 let projectSequence = 0
-let projectTitleSequence = 0
 
 const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
+
+const resolveNextProjectTitle = (env: EditorActionEnvironment): string => {
+	if (!env.pageRuntime) {
+		return 'Project 1'
+	}
+
+	const rootScope = getRootScope(env)
+	if (!rootScope) {
+		return 'Project 1'
+	}
+
+	const pioneerScope = env.pageRuntime.readOne(rootScope, 'pioneer')
+	if (!pioneerScope) {
+		return 'Project 1'
+	}
+
+	const projectScopes = env.pageRuntime.readMany(pioneerScope, 'project')
+	let maxIndex = 0
+	for (const projectScope of projectScopes) {
+		const attrs = env.pageRuntime.readAttrs(projectScope, ['title']) as { title?: unknown }
+		if (typeof attrs.title !== 'string') {
+			continue
+		}
+		const match = attrs.title.match(/^Project\s+(\d+)$/i)
+		if (!match) {
+			continue
+		}
+		const value = Number.parseInt(match[1], 10)
+		if (Number.isFinite(value) && value > maxIndex) {
+			maxIndex = value
+		}
+	}
+
+	return `Project ${maxIndex + 1}`
+}
 
 const getRootScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => env.pageRuntime?.getRootScope() ?? null
 
@@ -591,7 +625,7 @@ _resourceChunkSizeRef.set(env, _options.resourceChunkSize)
 
 return ({
 createProject(title?: string): void {
-const resolvedTitle = typeof title === 'string' && title ? title : `Project ${++projectTitleSequence}`
+const resolvedTitle = typeof title === 'string' && title ? title : resolveNextProjectTitle(env)
 const sourceProjectId = `project:${++projectSequence}:${Date.now().toString(36)}`
 dispatchRoot(env, 'createProject', { title: resolvedTitle, sourceProjectId })
 },

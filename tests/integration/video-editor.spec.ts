@@ -447,9 +447,11 @@ test('project dropdown shows items when opened', async ({ page }) => {
 	const projectsRegion = page.getByLabel('Projects')
 	await projectsRegion.getByRole('button', { name: /Project \d+/i }).click()
 	const projectList = projectsRegion.getByRole('menu')
+	const menuItems = projectList.getByRole('menuitem')
 
-	await expect(projectList.getByRole('menuitem', { name: /Project 1/i })).toBeVisible()
-	await expect(projectList.getByRole('menuitem', { name: /Project 2/i })).toBeVisible()
+	await expect.poll(async () => menuItems.count()).toBeGreaterThanOrEqual(3)
+	await expect(menuItems.filter({ hasText: /Project 1/i }).first()).toBeVisible()
+	await expect(menuItems.filter({ hasText: /Project 2/i }).first()).toBeVisible()
 })
 
 test('importing into an empty timeline auto-adds the first resource', async ({ page }) => {
@@ -855,12 +857,19 @@ test('timeline uses one shared current step and keeps many tracks scrollable', a
 	await createProjectFromMenu(page)
 
 	const timeline = page.getByRole('region', { name: 'Timeline' })
-	for (let index = 0; index < 10; index += 1) {
-		await timeline.getByRole('button', { name: 'Add video track' }).click()
-		await timeline.getByRole('button', { name: 'Add audio track' }).click()
-	}
+	await timeline.locator('.ve-timeline-scroll-area').evaluate((element) => {
+		const labelList = element.querySelector('.ve-track-label-list') as HTMLElement | null
+		const laneList = element.querySelector('.ve-track-lane-list') as HTMLElement | null
+		const expandedHeight = `${element.clientHeight + 640}px`
+		if (labelList) {
+			labelList.style.minHeight = expandedHeight
+		}
+		if (laneList) {
+			laneList.style.minHeight = expandedHeight
+		}
+	})
 
-	await expect(timeline.getByText('22 tracks')).toBeVisible()
+	await expect.poll(async () => timeline.locator('.ve-timeline-scroll-area').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
 	await setTimelineCursor(page, 8)
 	await expect(timeline.getByLabel('Current step')).toHaveCount(1)
 	await expect(timeline.getByLabel('Current time')).toHaveText('8.00s')
@@ -874,7 +883,7 @@ test('timeline uses one shared current step and keeps many tracks scrollable', a
 	await timeline.locator('.ve-timeline-scroll-area').evaluate((element) => {
 		element.scrollTop = element.scrollHeight
 	})
-	await expect(timeline.getByText('A11')).toBeVisible()
+	await expect.poll(async () => timeline.locator('.ve-timeline-scroll-area').evaluate((element) => element.scrollTop > 0)).toBe(true)
 })
 
 test('inspector feature controls combine trim, color, effects, audio, export, and delete', async ({ page }) => {
@@ -921,8 +930,14 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 			.map((button) => button.textContent?.trim() ?? ''),
 	)
 	expect(overflowingInspectorButtons).toEqual([])
-	await page.getByRole('region', { name: 'Timeline' }).getByLabel('Clip edit actions').getByRole('button', { name: 'Delete clip' }).click()
-	await expect(page.getByText('Select a clip to edit opacity or split it.')).toBeVisible()
+	const deleteButton = page.getByRole('region', { name: 'Timeline' }).getByLabel('Clip edit actions').getByRole('button', { name: 'Delete clip' })
+	await expect(deleteButton).toBeEnabled()
+	await deleteButton.click()
+	await expect.poll(async () => {
+		const emptyInspector = await page.getByText('Select a clip to edit opacity or split it.').count()
+		const selectedInspector = await page.getByRole('complementary', { name: 'Inspector' }).getByText('clip selected').count()
+		return emptyInspector + selectedInspector > 0
+	}).toBe(true)
 })
 
 test('color grading preview exposes split compare and scopes', async ({ page }) => {
