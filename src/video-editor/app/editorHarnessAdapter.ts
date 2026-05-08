@@ -229,14 +229,15 @@ const buildFallbackExportPlan = (
 		}
 	}
 
-	const resources = new Map<string, { name: string; kind: 'video' | 'audio' | 'image' | 'text'; url: string; mime: string }>()
+	const resources = new Map<string, { name: string; kind: 'video' | 'audio' | 'image' | 'text'; url: string; mime: string; duration: number }>()
 	for (const resourceScope of env.pageRuntime.readMany(projectScope, 'resources')) {
-		const attrs = env.pageRuntime.readAttrs(resourceScope, ['sourceResourceId', 'name', 'kind', 'url', 'mime']) as {
+		const attrs = env.pageRuntime.readAttrs(resourceScope, ['sourceResourceId', 'name', 'kind', 'url', 'mime', 'duration']) as {
 			sourceResourceId?: unknown
 			name?: unknown
 			kind?: unknown
 			url?: unknown
 			mime?: unknown
+			duration?: unknown
 		}
 		if (typeof attrs.sourceResourceId !== 'string' || !attrs.sourceResourceId) {
 			continue
@@ -246,6 +247,7 @@ const buildFallbackExportPlan = (
 			kind: attrs.kind === 'audio' || attrs.kind === 'image' || attrs.kind === 'text' ? attrs.kind : 'video',
 			url: typeof attrs.url === 'string' ? attrs.url : '',
 			mime: typeof attrs.mime === 'string' ? attrs.mime : 'application/octet-stream',
+			duration: Math.max(0, asFiniteNumber(attrs.duration, 0)),
 		})
 	}
 
@@ -289,7 +291,8 @@ const buildFallbackExportPlan = (
 			const sourceResourceId = typeof attrs.sourceResourceId === 'string' ? attrs.sourceResourceId : attrs.sourceClipId
 			const resource = resources.get(sourceResourceId)
 			const start = Math.max(0, asFiniteNumber(attrs.start, 0))
-			const clipDuration = Math.max(0, asFiniteNumber(attrs.duration, 0))
+			const rawClipDuration = Math.max(0, asFiniteNumber(attrs.duration, 0))
+			const clipDuration = rawClipDuration > 0 ? rawClipDuration : Math.max(0, resource?.duration ?? 0)
 			const audio = attrs.audio && typeof attrs.audio === 'object'
 				? attrs.audio as { gain?: unknown; pan?: unknown }
 				: null
@@ -540,13 +543,24 @@ const queueExport = async (
 			? projectAttrs.sourceProjectId
 			: (typeof rootAttrs?.activeProjectId === 'string' ? rootAttrs.activeProjectId : '')
 	const computedPlan = computedAttrs.exportPlan
-	const plan = computedPlan
+	const fallbackPlan = buildFallbackExportPlan(env, projectScope, fallbackProjectId, projectAttrs)
+	const normalizedComputedPlan = computedPlan
 		? {
 			...computedPlan,
 			projectId: computedPlan.projectId || fallbackProjectId,
 		}
-		: buildFallbackExportPlan(env, projectScope, fallbackProjectId, projectAttrs)
-	if (!plan || !plan.projectId) {
+		: null
+	const computedDuration = normalizedComputedPlan ? asFiniteNumber(normalizedComputedPlan.duration, 0) : 0
+	const fallbackDuration = asFiniteNumber(fallbackPlan.duration, 0)
+	const computedClipCount = normalizedComputedPlan?.clipSources?.length ?? 0
+	const fallbackClipCount = fallbackPlan.clipSources.length
+	const shouldPreferFallbackPlan =
+		!normalizedComputedPlan
+		|| !normalizedComputedPlan.projectId
+		|| (computedDuration < 0.1 && fallbackDuration > 0.25)
+		|| (computedClipCount === 0 && fallbackClipCount > 0)
+	const selectedPlan = shouldPreferFallbackPlan ? fallbackPlan : normalizedComputedPlan
+	if (!selectedPlan || !selectedPlan.projectId) {
 		pushExportDebug('missing-export-plan', {
 			range,
 			sourceProjectId: projectAttrs.sourceProjectId ?? null,
@@ -563,11 +577,25 @@ const queueExport = async (
 		})
 		return null
 	}
+	const maxClipEnd = selectedPlan.clipSources.reduce((maxEnd, clipSource) => {
+		const start = asFiniteNumber(clipSource.start, 0)
+		const duration = asFiniteNumber(clipSource.duration, 0)
+		return Math.max(maxEnd, Math.max(0, start) + Math.max(0, duration))
+	}, 0)
+	const normalizedDuration = Math.max(asFiniteNumber(selectedPlan.duration, 0), maxClipEnd)
+	const plan = normalizedDuration === selectedPlan.duration
+		? selectedPlan
+		: {
+			...selectedPlan,
+			duration: normalizedDuration,
+		}
 
 	try {
 		pushExportDebug('render-start', {
 			range,
 			projectId: plan.projectId,
+			planDuration: plan.duration,
+			clipCount: plan.clipSources.length,
 			runtimeSnapshot,
 		})
 		console.info('[minicut:adapter-export] render start', {

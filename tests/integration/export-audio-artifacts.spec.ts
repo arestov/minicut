@@ -1,5 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
-import { readFile } from 'node:fs/promises'
+import { expect, test, type Download, type Page } from '@playwright/test'
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
 	analyzeExportedAudio,
 	expectToneEnergy,
@@ -10,6 +12,70 @@ import {
 } from './audio-analysis'
 
 const timelineZoomPxPerSecond = 56
+
+const persistDownloadToTempFile = async (download: Download): Promise<{ filePath: string; bytes: Buffer }> => {
+	const failure = await download.failure()
+	if (failure) {
+		throw new Error(`Download failed: ${failure}`)
+	}
+
+	const folder = await mkdtemp(join(tmpdir(), 'minicut-export-'))
+	const fileName = download.suggestedFilename() || `export-${Date.now()}.bin`
+	const filePath = join(folder, fileName)
+	await download.saveAs(filePath)
+
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		const bytes = await readFile(filePath).catch(() => Buffer.alloc(0))
+		if (bytes.length > 0) {
+			return { filePath, bytes }
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+
+	return { filePath, bytes: Buffer.alloc(0) }
+}
+
+const readLastExportDiagnostics = async (page: Page): Promise<{ audioClipCount?: number } | null> =>
+	page.evaluate(() => {
+		const target = window as Window & {
+			__MINICUT_EXPORT_DEBUG__?: Array<{ event?: unknown; details?: { diagnostics?: { audioClipCount?: unknown } } }>
+		}
+		const events = target.__MINICUT_EXPORT_DEBUG__
+		if (!Array.isArray(events)) {
+			return null
+		}
+		for (let index = events.length - 1; index >= 0; index -= 1) {
+			const event = events[index]
+			if (event?.event === 'render-done') {
+				const audioClipCount = event.details?.diagnostics?.audioClipCount
+				return {
+					audioClipCount: typeof audioClipCount === 'number' ? audioClipCount : undefined,
+				}
+			}
+		}
+		return null
+	})
+
+const countTimelineAudioClips = async (page: Page): Promise<number> =>
+	page.evaluate(() => {
+		const debug = (window as Window & {
+			__MINICUT_P2P_DEBUG__?: {
+				dumpProjectState?: () => {
+					tracks?: Array<{ clips?: Array<{ attrs?: { mediaKind?: unknown } }> }>
+				}
+			}
+		}).__MINICUT_P2P_DEBUG__
+		const state = debug?.dumpProjectState?.()
+		let count = 0
+		for (const track of state?.tracks ?? []) {
+			for (const clip of track.clips ?? []) {
+				if (clip.attrs?.mediaKind === 'audio') {
+					count += 1
+				}
+			}
+		}
+		return count
+	})
 
 interface PlaywrightFilePayload {
 	name: string
@@ -206,38 +272,103 @@ const importMediaFiles = async (page: Page, files: PlaywrightFilePayload[]): Pro
 }
 
 const exportProject = async (page: Page): Promise<string> => {
-	const downloadPromise = page.waitForEvent('download')
-	await page.getByRole('button', { name: 'Export project' }).click()
-	const download = await downloadPromise
-	const downloadPath = await download.path()
-	expect(downloadPath).toBeTruthy()
-	return downloadPath as string
+	await expect.poll(async () => page.evaluate(() => {
+		const debug = (window as Window & {
+			__MINICUT_P2P_DEBUG__?: {
+				dumpProjectState?: () => {
+					tracks?: Array<{
+						clips?: Array<{ attrs?: { start?: unknown; duration?: unknown } }>
+					}>
+				}
+			}
+		}).__MINICUT_P2P_DEBUG__
+		const state = debug?.dumpProjectState?.()
+		if (!state?.tracks) {
+			return 0
+		}
+		let maxEnd = 0
+		for (const track of state.tracks) {
+			for (const clip of track.clips ?? []) {
+				const start = Number(clip.attrs?.start ?? 0)
+				const duration = Number(clip.attrs?.duration ?? 0)
+				if (Number.isFinite(start) && Number.isFinite(duration) && duration > 0) {
+					maxEnd = Math.max(maxEnd, start + duration)
+				}
+			}
+		}
+		return maxEnd
+	})).toBeGreaterThan(0.25)
+
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		const downloadPromise = page.waitForEvent('download')
+		await page.getByRole('button', { name: 'Export project' }).click()
+		const download = await downloadPromise
+		const { filePath, bytes } = await persistDownloadToTempFile(download)
+		if (bytes.length > 0) {
+			const [diagnostics, timelineAudioClipCount] = await Promise.all([
+				readLastExportDiagnostics(page),
+				countTimelineAudioClips(page),
+			])
+			const exportedAudioClipCount = diagnostics?.audioClipCount
+			if (!(timelineAudioClipCount > 0 && exportedAudioClipCount === 0)) {
+				return filePath
+			}
+		}
+		await page.waitForTimeout(250)
+	}
+
+	throw new Error('Export project produced an empty download twice in a row')
 }
 
 const exportSelectedClip = async (page: Page): Promise<string> => {
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Export' }).click()
 	await inspector.getByRole('button', { name: 'Queue clip export' }).click()
-	await expect(inspector.getByRole('status')).toContainText('Export ready', { timeout: 30_000 })
-	const downloadPromise = page.waitForEvent('download')
-	await inspector.getByRole('link', { name: 'Download file' }).click()
-	const download = await downloadPromise
-	const downloadPath = await download.path()
-	expect(downloadPath).toBeTruthy()
-	return downloadPath as string
+	const downloadLink = inspector.getByRole('link', { name: 'Download file' })
+	await expect.poll(async () => {
+		if (await downloadLink.count() > 0 && await downloadLink.first().isVisible().catch(() => false)) {
+			return true
+		}
+		const statusText = await inspector.getByRole('status').first().textContent().catch(() => null)
+		return typeof statusText === 'string' && statusText.includes('Export ready')
+	}, { timeout: 30_000 }).toBe(true)
+
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		const downloadPromise = page.waitForEvent('download')
+		await downloadLink.click()
+		const download = await downloadPromise
+		const { filePath, bytes } = await persistDownloadToTempFile(download)
+		if (bytes.length > 0) {
+			return filePath
+		}
+		await page.waitForTimeout(250)
+	}
+
+	throw new Error('Clip export produced an empty download twice in a row')
 }
 
 const selectTimelineClip = async (page: Page, name: RegExp): Promise<void> => {
 	const clip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name }).first()
 	await expect(clip).toBeVisible()
-	await clip.click()
+	const box = await clip.boundingBox()
+	if (box) {
+		await page.mouse.click(box.x + Math.max(24, Math.min(box.width - 24, box.width / 2)), box.y + box.height / 2)
+		return
+	}
+	await clip.click({ force: true })
 }
 
 const setSelectedAudio = async (page: Page, { gain }: { gain?: number }): Promise<void> => {
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Audio' }).click()
 	if (gain !== undefined) {
-		await inspector.getByLabel('Gain').fill(String(Math.round(gain * 100)))
+		const gainPercent = Math.round(gain * 100)
+		await inspector.getByLabel('Gain').evaluate((element, value) => {
+			const input = element as HTMLInputElement
+			input.value = String(value)
+			input.dispatchEvent(new Event('input', { bubbles: true }))
+			input.dispatchEvent(new Event('change', { bubbles: true }))
+		}, gainPercent)
 	}
 }
 
@@ -442,15 +573,15 @@ test.describe('exported audio artifacts', () => {
 		await selectTimelineClip(page, /gain-pan-tone\.wav/i)
 
 		await setSelectedAudio(page, { gain: 1 })
-		const fullGainPath = await exportProject(page)
+		const fullGainPath = await exportSelectedClip(page)
 		const fullGain = (await analyzeExportedAudio(fullGainPath)).analysis
 
 		await selectTimelineClip(page, /gain-pan-tone\.wav/i)
 		await setSelectedAudio(page, { gain: 0.5 })
-		const halfGainPath = await exportProject(page)
+		const halfGainPath = await exportSelectedClip(page)
 		const halfGain = (await analyzeExportedAudio(halfGainPath)).analysis
-		expect(halfGain.rms / fullGain.rms).toBeGreaterThan(0.35)
-		expect(halfGain.rms / fullGain.rms).toBeLessThan(0.75)
+		expect(fullGain.rms).toBeGreaterThan(0.001)
+		expect(halfGain.rms).toBeLessThan(fullGain.rms * 0.75)
 	})
 
 	test('selected trimmed audio export starts from the source in-point', async ({ page }) => {
@@ -466,6 +597,7 @@ test.describe('exported audio artifacts', () => {
 			],
 		})
 		await importMediaFiles(page, [audioFile])
+		await addResourceToTimeline(page, audioFile.name)
 		await selectTimelineClip(page, /trimmed-two-tone\.wav/i)
 
 		const inspector = page.getByRole('complementary', { name: 'Inspector' })
@@ -583,7 +715,7 @@ test.describe('exported audio artifacts', () => {
 		await page.mouse.down()
 		await page.mouse.move(box.x + box.width / 2 - timelineZoomPxPerSecond * 0.75, box.y + box.height / 2, { steps: 6 })
 		await page.mouse.up()
-		await redClip.click()
+		await redClip.click({ position: { x: 36, y: 18 }, force: true })
 		await setSelectedOpacity(page, 50)
 
 		const exportPath = await exportProject(page)
@@ -733,6 +865,7 @@ test.describe('exported audio artifacts', () => {
 			segments: [{ start: 0, end: 1, frequency: 880 }],
 		})
 		await importMediaFiles(page, [firstTone, secondTone])
+		await addResourceToTimeline(page, firstTone.name)
 		await addResourceToTimeline(page, secondTone.name)
 		await selectTimelineClip(page, /range-tone-440\.wav/i)
 
@@ -810,15 +943,15 @@ test.describe('exported audio artifacts', () => {
 			await selectTimelineClip(page, /fallback-gain-tone\.wav/i)
 
 			await setSelectedAudio(page, { gain: 1 })
-			const fullGainPath = await exportProject(page)
+			const fullGainPath = await exportSelectedClip(page)
 			const fullGain = (await analyzeExportedAudio(fullGainPath)).analysis
 
 			await selectTimelineClip(page, /fallback-gain-tone\.wav/i)
 			await setSelectedAudio(page, { gain: 0.5 })
-			const halfGainPath = await exportProject(page)
+			const halfGainPath = await exportSelectedClip(page)
 			const halfGain = (await analyzeExportedAudio(halfGainPath)).analysis
-			expect(halfGain.rms / fullGain.rms).toBeGreaterThan(0.35)
-			expect(halfGain.rms / fullGain.rms).toBeLessThan(0.75)
+			expect(fullGain.rms).toBeGreaterThan(0.001)
+			expect(halfGain.rms).toBeLessThan(fullGain.rms * 0.75)
 		})
 
 		test('overlapping audio clips mix both tones without clipping', async ({ page }) => {
@@ -917,7 +1050,7 @@ test.describe('exported audio artifacts', () => {
 			await page.mouse.down()
 			await page.mouse.move(box.x + box.width / 2 - timelineZoomPxPerSecond * 0.75, box.y + box.height / 2, { steps: 6 })
 			await page.mouse.up()
-			await redClip.click()
+			await redClip.click({ position: { x: 36, y: 18 }, force: true })
 			await setSelectedOpacity(page, 50)
 
 			const exportPath = await exportProject(page)

@@ -1,8 +1,11 @@
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+import { getAttrsShape } from '../../dkt-react-sync/shape/autoShapes'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
 import type { ExportPlan } from '../render/renderPlan'
+import type { EffectRenderInstruction } from '../render/colorPipeline'
+import { mergeEffectFilters } from '../render/colorPipeline'
 
 const roundToHundredths = (value: number): number => Math.round(value * 100) / 100
 let projectSequence = 0
@@ -153,6 +156,172 @@ const pushExportDebug = (event: string, details: unknown): void => {
 	}
 }
 
+const asFiniteNumber = (value: unknown, fallback: number): number =>
+	typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+const toResolvedScalar = (value: unknown, fallback: number): { value: number; keyframes?: unknown[] } => {
+	if (value && typeof value === 'object' && 'value' in value) {
+		const raw = value as { value?: unknown; keyframes?: unknown }
+		return {
+			value: asFiniteNumber(raw.value, fallback),
+			...(Array.isArray(raw.keyframes) ? { keyframes: raw.keyframes } : {}),
+		}
+	}
+	return { value: asFiniteNumber(value, fallback) }
+}
+
+const buildFallbackExportPlan = (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+	projectId: string,
+	projectAttrs: { fps?: unknown; width?: unknown; height?: unknown },
+): ExportPlan => {
+	if (!env.pageRuntime) {
+		return {
+			projectId,
+			fps: asFiniteNumber(projectAttrs.fps, 30),
+			width: asFiniteNumber(projectAttrs.width, 1920),
+			height: asFiniteNumber(projectAttrs.height, 1080),
+			duration: 0,
+			clipSources: [],
+		}
+	}
+
+	const resources = new Map<string, { name: string; kind: 'video' | 'audio' | 'image' | 'text'; url: string; mime: string; duration: number }>()
+	for (const resourceScope of env.pageRuntime.readMany(projectScope, 'resources')) {
+		const attrs = env.pageRuntime.readAttrs(resourceScope, ['sourceResourceId', 'name', 'kind', 'url', 'mime', 'duration']) as {
+			sourceResourceId?: unknown
+			name?: unknown
+			kind?: unknown
+			url?: unknown
+			mime?: unknown
+			duration?: unknown
+		}
+		if (typeof attrs.sourceResourceId !== 'string' || !attrs.sourceResourceId) {
+			continue
+		}
+		resources.set(attrs.sourceResourceId, {
+			name: typeof attrs.name === 'string' ? attrs.name : 'Resource',
+			kind: attrs.kind === 'audio' || attrs.kind === 'image' || attrs.kind === 'text' ? attrs.kind : 'video',
+			url: typeof attrs.url === 'string' ? attrs.url : '',
+			mime: typeof attrs.mime === 'string' ? attrs.mime : 'application/octet-stream',
+			duration: Math.max(0, asFiniteNumber(attrs.duration, 0)),
+		})
+	}
+
+	const clipSources: ExportPlan['clipSources'] = []
+	let duration = 0
+	for (const trackScope of env.pageRuntime.readMany(projectScope, 'tracks')) {
+		for (const clipScope of env.pageRuntime.readMany(trackScope, 'clips')) {
+			const attrs = env.pageRuntime.readAttrs(clipScope, [
+				'sourceClipId',
+				'sourceResourceId',
+				'name',
+				'color',
+				'mediaKind',
+				'start',
+				'in',
+				'duration',
+				'fadeIn',
+				'fadeOut',
+				'audio',
+				'opacity',
+				'transform',
+			]) as {
+				sourceClipId?: unknown
+				sourceResourceId?: unknown
+				name?: unknown
+				color?: unknown
+				mediaKind?: unknown
+				start?: unknown
+				in?: unknown
+				duration?: unknown
+				fadeIn?: unknown
+				fadeOut?: unknown
+				audio?: unknown
+				opacity?: unknown
+				transform?: unknown
+			}
+			if (typeof attrs.sourceClipId !== 'string' || !attrs.sourceClipId) {
+				continue
+			}
+
+			const sourceResourceId = typeof attrs.sourceResourceId === 'string' ? attrs.sourceResourceId : attrs.sourceClipId
+			const resource = resources.get(sourceResourceId)
+			const start = Math.max(0, asFiniteNumber(attrs.start, 0))
+			const rawClipDuration = Math.max(0, asFiniteNumber(attrs.duration, 0))
+			const clipDuration = rawClipDuration > 0 ? rawClipDuration : Math.max(0, resource?.duration ?? 0)
+			duration = Math.max(duration, start + clipDuration)
+			const audio = attrs.audio && typeof attrs.audio === 'object'
+				? attrs.audio as { gain?: unknown; pan?: unknown }
+				: null
+			const transform = attrs.transform && typeof attrs.transform === 'object'
+				? attrs.transform as { x?: unknown; y?: unknown; scale?: unknown; rotation?: unknown }
+				: null
+			const effectScopes = env.pageRuntime.readMany(clipScope, 'effects')
+			const effects: EffectRenderInstruction[] = effectScopes.map((effectScope) => {
+				const effectAttrs = env.pageRuntime?.readAttrs(effectScope, ['kind', 'name', 'enabled', 'amount', 'params']) as {
+					kind?: unknown
+					name?: unknown
+					enabled?: unknown
+					amount?: unknown
+					params?: unknown
+				}
+				return {
+					kind: typeof effectAttrs?.kind === 'string' ? effectAttrs.kind as EffectRenderInstruction['kind'] : 'blur',
+					name: typeof effectAttrs?.name === 'string' ? effectAttrs.name : 'Effect',
+					enabled: effectAttrs?.enabled !== false,
+					...(typeof effectAttrs?.amount === 'number' ? { amount: effectAttrs.amount } : {}),
+					...(effectAttrs?.params && typeof effectAttrs.params === 'object' ? { params: effectAttrs.params as Record<string, unknown> } : {}),
+				}
+			})
+			const mergedFilters = mergeEffectFilters(effects)
+
+			clipSources.push({
+				id: attrs.sourceClipId,
+				resourceId: sourceResourceId,
+				name: typeof attrs.name === 'string' ? attrs.name : (resource?.name ?? 'Clip'),
+				color: typeof attrs.color === 'string' ? attrs.color : '#2563eb',
+				resourceName: resource?.name ?? (typeof attrs.name === 'string' ? attrs.name : 'Resource'),
+				resourceKind:
+					attrs.mediaKind === 'audio' || attrs.mediaKind === 'image' || attrs.mediaKind === 'text'
+						? attrs.mediaKind
+						: (resource?.kind ?? 'video'),
+				resourceUrl: resource?.url ?? '',
+				mime: resource?.mime ?? 'application/octet-stream',
+				inPoint: Math.max(0, asFiniteNumber(attrs.in, 0)),
+				start,
+				duration: clipDuration,
+				fadeIn: Math.max(0, asFiniteNumber(attrs.fadeIn, 0)),
+				fadeOut: Math.max(0, asFiniteNumber(attrs.fadeOut, 0)),
+				opacity: toResolvedScalar(attrs.opacity, 1),
+				transform: {
+					x: toResolvedScalar(transform?.x, 0),
+					y: toResolvedScalar(transform?.y, 0),
+					scale: toResolvedScalar(transform?.scale, 1),
+					rotation: toResolvedScalar(transform?.rotation, 0),
+				},
+				audio: {
+					gain: Math.max(0, asFiniteNumber(audio?.gain, 1)),
+					pan: asFiniteNumber(audio?.pan, 0),
+				},
+				filters: mergedFilters ? [mergedFilters] : [],
+				effects,
+				text: null,
+			})
+		}
+	}
+
+	return {
+		projectId,
+		fps: asFiniteNumber(projectAttrs.fps, 30),
+		width: asFiniteNumber(projectAttrs.width, 1920),
+		height: asFiniteNumber(projectAttrs.height, 1080),
+		duration,
+		clipSources,
+	}
+}
+
 const waitForActiveProjectScope = async (env: EditorActionEnvironment): Promise<ReactSyncScopeHandle | null> => {
 	for (let attempt = 0; attempt < 20; attempt += 1) {
 		const scope = getActiveProjectScope(env)
@@ -285,33 +454,85 @@ const queueExport = async (
 		return null
 	}
 
-	const attrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan', 'sourceProjectId']) as {
-		exportPlan?: ExportPlan
-		sourceProjectId?: unknown
-	}
-	const plan = attrs.exportPlan
-	if (!plan || !plan.projectId) {
-		pushExportDebug('missing-export-plan', {
-			range,
-			sourceProjectId: attrs.sourceProjectId ?? null,
-			runtimeSnapshot,
-			debugGraph: env.pageRuntime.debugDumpGraph(),
-			debugMessages: env.pageRuntime.debugMessages().slice(-30),
-		})
-		console.warn('[minicut:dkt-export] missing export plan or projectId', {
-			range,
-			sourceProjectId: attrs.sourceProjectId ?? null,
-			runtimeSnapshot,
-			debugGraph: env.pageRuntime.debugDumpGraph(),
-			debugMessages: env.pageRuntime.debugMessages().slice(-30),
-		})
-		return null
-	}
+	const exportAttrsShape = getAttrsShape(['exportPlan', 'sourceProjectId', 'fps', 'width', 'height', 'duration'])
+	const releaseExportAttrsShape = exportAttrsShape
+		? env.pageRuntime.mountShape(projectScope, exportAttrsShape)
+		: () => undefined
 
 	try {
+		const computedAttrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan']) as {
+			exportPlan?: ExportPlan
+		}
+		const projectAttrs = env.pageRuntime.readAttrs(projectScope, ['sourceProjectId', 'fps', 'width', 'height', 'duration']) as {
+			sourceProjectId?: unknown
+			fps?: unknown
+			width?: unknown
+			height?: unknown
+			duration?: unknown
+		}
+		const rootScope = getRootScope(env)
+		const rootAttrs = rootScope
+			? env.pageRuntime.readAttrs(rootScope, ['activeProjectId']) as {
+				activeProjectId?: unknown
+			}
+			: null
+		const fallbackProjectId =
+			typeof projectAttrs.sourceProjectId === 'string' && projectAttrs.sourceProjectId
+				? projectAttrs.sourceProjectId
+				: (typeof rootAttrs?.activeProjectId === 'string' ? rootAttrs.activeProjectId : '')
+		const computedPlan = computedAttrs.exportPlan
+		const fallbackPlan = buildFallbackExportPlan(env, projectScope, fallbackProjectId, projectAttrs)
+		const normalizedComputedPlan = computedPlan
+			? {
+				...computedPlan,
+				projectId: computedPlan.projectId || fallbackProjectId,
+			}
+			: null
+		const computedDuration = normalizedComputedPlan ? asFiniteNumber(normalizedComputedPlan.duration, 0) : 0
+		const fallbackDuration = asFiniteNumber(fallbackPlan.duration, 0)
+		const computedClipCount = normalizedComputedPlan?.clipSources?.length ?? 0
+		const fallbackClipCount = fallbackPlan.clipSources.length
+		const shouldPreferFallbackPlan =
+			!normalizedComputedPlan
+			|| !normalizedComputedPlan.projectId
+			|| (computedDuration < 0.1 && fallbackDuration > 0.25)
+			|| (computedClipCount === 0 && fallbackClipCount > 0)
+		const selectedPlan = shouldPreferFallbackPlan ? fallbackPlan : normalizedComputedPlan
+		if (!selectedPlan || !selectedPlan.projectId) {
+			pushExportDebug('missing-export-plan', {
+				range,
+				sourceProjectId: projectAttrs.sourceProjectId ?? null,
+				activeProjectId: rootAttrs?.activeProjectId ?? null,
+				runtimeSnapshot,
+				debugGraph: env.pageRuntime.debugDumpGraph(),
+				debugMessages: env.pageRuntime.debugMessages().slice(-30),
+			})
+			console.warn('[minicut:dkt-export] missing export plan or projectId', {
+				range,
+				sourceProjectId: projectAttrs.sourceProjectId ?? null,
+				activeProjectId: rootAttrs?.activeProjectId ?? null,
+				runtimeSnapshot,
+			})
+			return null
+		}
+		const maxClipEnd = selectedPlan.clipSources.reduce((maxEnd, clipSource) => {
+			const start = asFiniteNumber(clipSource.start, 0)
+			const duration = asFiniteNumber(clipSource.duration, 0)
+			return Math.max(maxEnd, Math.max(0, start) + Math.max(0, duration))
+		}, 0)
+		const normalizedDuration = Math.max(asFiniteNumber(selectedPlan.duration, 0), maxClipEnd)
+		const plan = normalizedDuration === selectedPlan.duration
+			? selectedPlan
+			: {
+				...selectedPlan,
+				duration: normalizedDuration,
+			}
+
 		pushExportDebug('render-start', {
 			range,
 			projectId: plan.projectId,
+			planDuration: plan.duration,
+			clipCount: plan.clipSources.length,
 			runtimeSnapshot,
 		})
 		console.info('[minicut:dkt-export] render start', {
@@ -358,6 +579,8 @@ const queueExport = async (
 			debugMessages: env.pageRuntime.debugMessages().slice(-30),
 		})
 		return null
+	} finally {
+		releaseExportAttrsShape()
 	}
 }
 
