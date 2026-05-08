@@ -124,6 +124,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 	let destroyed = false
 	let role: 'server' | 'client' | 'undecided' = 'undecided'
 	let activeClient: EditorAuthorityClient | null = null
+	const clientChangeCallbacks = new Set<() => void>()
 
 	const dktSyncListeners = new Set<DktSyncListener>()
 
@@ -146,6 +147,9 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 				listener(message)
 			}
 		})
+		for (const cb of clientChangeCallbacks) {
+			cb()
+		}
 	}
 
 	const manager = createManager(
@@ -302,6 +306,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			activateRealTransport()
 
 			// Also set up a listener for when activeClient becomes available or changes
+			clientChangeCallbacks.add(activateRealTransport)
 			const checkInterval = setInterval(() => {
 				activateRealTransport()
 			}, 100)
@@ -327,6 +332,7 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 				destroy() {
 					isDestroyed = true
 					clearInterval(checkInterval)
+					clientChangeCallbacks.delete(activateRealTransport)
 					teardownRealTransport()
 					transportListeners.clear()
 					pendingMessages.length = 0
