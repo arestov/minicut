@@ -19,6 +19,27 @@ const getExportBoundsFromPlan = (plan: ExportPlan, range: ExportRange): { start:
 	return { start: source.start, duration: source.duration }
 }
 
+const resolveClipIdsForClipExport = (plan: ExportPlan, clipId: string): Set<string> => {
+	const selectedSource = plan.clipSources.find((source) => source.id === clipId)
+	if (!selectedSource) {
+		return new Set([clipId])
+	}
+
+	const clipIds = new Set<string>([clipId])
+	if (selectedSource.resourceKind === 'video' && selectedSource.resourceId) {
+		for (const source of plan.clipSources) {
+			if (source.id === clipId) {
+				continue
+			}
+			if (source.resourceKind === 'audio' && source.resourceId === selectedSource.resourceId) {
+				clipIds.add(source.id)
+			}
+		}
+	}
+
+	return clipIds
+}
+
 export const resolveExportRange = (
 	plan: ExportPlan,
 	range: ExportRange,
@@ -28,7 +49,7 @@ export const resolveExportRange = (
 		return { ...bounds, clipIds: null }
 	}
 
-	return { ...bounds, clipIds: new Set([range.clipId]) }
+	return { ...bounds, clipIds: resolveClipIdsForClipExport(plan, range.clipId) }
 }
 
 export const filterClipsForRange = (

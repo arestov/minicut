@@ -102,7 +102,7 @@ export const Clip = model({
 				name: asStr(name, 'Clip'),
 				color: asStr(color, '#2563eb'),
 				resourceName: res?.name ?? asStr(sourceResourceName ?? name, 'Clip'),
-				resourceKind: asStr(res?.kind ?? mediaKind, 'video') as PreviewClipSource['resourceKind'],
+				resourceKind: asStr(mediaKind ?? res?.kind, 'video') as PreviewClipSource['resourceKind'],
 				resourceUrl: res?.url ?? '',
 				mime: res?.mime ?? 'application/octet-stream',
 				inPoint: asNum(inPoint, 0),
