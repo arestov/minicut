@@ -216,7 +216,7 @@ const buildFallbackExportPlan = (
 	env: EditorActionEnvironment,
 	projectScope: ReactSyncScopeHandle,
 	projectId: string,
-	projectAttrs: { fps?: unknown; width?: unknown; height?: unknown },
+	projectAttrs: { fps?: unknown; width?: unknown; height?: unknown; duration?: unknown },
 ): ExportPlan => {
 	if (!env.pageRuntime) {
 		return {
@@ -224,7 +224,7 @@ const buildFallbackExportPlan = (
 			fps: asFiniteNumber(projectAttrs.fps, 30),
 			width: asFiniteNumber(projectAttrs.width, 1920),
 			height: asFiniteNumber(projectAttrs.height, 1080),
-			duration: 0,
+			duration: asFiniteNumber(projectAttrs.duration, 0),
 			clipSources: [],
 		}
 	}
@@ -250,7 +250,7 @@ const buildFallbackExportPlan = (
 	}
 
 	const clipSources: ExportPlan['clipSources'] = []
-	let duration = 0
+	const projectDuration = asFiniteNumber(projectAttrs.duration, 0)
 	for (const trackScope of env.pageRuntime.readMany(projectScope, 'tracks')) {
 		for (const clipScope of env.pageRuntime.readMany(trackScope, 'clips')) {
 			const attrs = env.pageRuntime.readAttrs(clipScope, [
@@ -290,7 +290,6 @@ const buildFallbackExportPlan = (
 			const resource = resources.get(sourceResourceId)
 			const start = Math.max(0, asFiniteNumber(attrs.start, 0))
 			const clipDuration = Math.max(0, asFiniteNumber(attrs.duration, 0))
-			duration = Math.max(duration, start + clipDuration)
 			const audio = attrs.audio && typeof attrs.audio === 'object'
 				? attrs.audio as { gain?: unknown; pan?: unknown }
 				: null
@@ -356,7 +355,7 @@ const buildFallbackExportPlan = (
 		fps: asFiniteNumber(projectAttrs.fps, 30),
 		width: asFiniteNumber(projectAttrs.width, 1920),
 		height: asFiniteNumber(projectAttrs.height, 1080),
-		duration,
+		duration: projectDuration,
 		clipSources,
 	}
 }

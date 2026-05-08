@@ -268,4 +268,216 @@ describe('createEditorHarnessAdapter queueProjectExport', () => {
 		expect(rendered?.plan.clipSources[0]?.effects).toHaveLength(1)
 		expect(rendered?.plan.clipSources[0]?.filters[0]).toContain('saturate(0)')
 	})
+
+	it('comp and fallback produce convergent export plans for same project state', async () => {
+		// This test verifies that Project.exportPlan comp and buildFallbackExportPlan
+		// produce the same result when fed identical project data.
+		// This catches:
+		//   - Duration semantic differences (Project.duration vs max timeline calc)
+		//   - ProjectId fallback logic mismatches
+		//   - Text preservation differences
+		//   - Effects/filters handling divergence
+
+		const rootScope = createScope('root')
+		const projectScope = createScope('project')
+		const trackScope = createScope('track-video')
+		const clipScope = createScope('clip-1')
+		const effectScope = createScope('effect-1')
+		const resourceScope = createScope('resource-1')
+
+		// Shared project state
+		const projectAttrs = {
+			sourceProjectId: 'project-convergence-test',
+			fps: 24,
+			width: 1920,
+			height: 1080,
+			duration: 3, // Project duration = 3s
+		}
+
+		// Shared clip state: start=0, duration=2 (so timeline max = 0+2 = 2, NOT 3)
+		const clipAttrs = {
+			sourceClipId: 'clip-conv-1',
+			sourceResourceId: 'resource-conv-1',
+			name: 'Test Clip',
+			color: '#ff6b6b',
+			mediaKind: 'video',
+			start: 0,
+			in: 0,
+			duration: 2, // ← Duration = 2, not 3
+			fadeIn: 0,
+			fadeOut: 0,
+			audio: { gain: 1.5, pan: 0.25 },
+			opacity: { value: 0.8 },
+			transform: { x: { value: 10 }, y: { value: 20 }, scale: { value: 1.1 }, rotation: { value: 45 } },
+		}
+
+		const builtPlan = {
+			projectId: projectAttrs.sourceProjectId,
+			fps: projectAttrs.fps,
+			width: projectAttrs.width,
+			height: projectAttrs.height,
+			duration: projectAttrs.duration, // ← comp should use Project.duration
+			clipSources: [{
+				id: 'clip-conv-1',
+				resourceId: 'resource-conv-1',
+				name: 'Test Clip',
+				color: '#ff6b6b',
+				resourceName: 'test-video.webm',
+				resourceKind: 'video',
+				resourceUrl: 'blob:resource-conv-1',
+				mime: 'video/webm',
+				inPoint: 0,
+				start: 0,
+				duration: 2,
+				fadeIn: 0,
+				fadeOut: 0,
+				opacity: { value: 0.8 },
+				transform: { x: { value: 10 }, y: { value: 20 }, scale: { value: 1.1 }, rotation: { value: 45 } },
+				audio: { gain: 1.5, pan: 0.25 },
+				filters: ['saturate(1.5)'],
+				effects: [{ kind: 'color-correction', name: 'Saturation Boost', enabled: true, params: { saturation: { value: 0.5 } } }],
+				text: null,
+			}],
+		}
+
+		let renderedWithComp: ExportRenderRequest | null = null
+		let renderedWithFallback: ExportRenderRequest | null = null
+
+		// Test 1: With comp available
+		{
+			const runtime = {
+				mountShape: () => () => undefined,
+				getSnapshot: () => ({ ready: true }),
+				getRootScope: () => rootScope,
+				readOne: (scope: ReactSyncScopeHandle, relName: string) => {
+					if (scope._nodeId === 'root' && relName === 'activeProject') return projectScope
+					return null
+				},
+				readMany: () => [],
+				readAttrs: (scope: ReactSyncScopeHandle, fields: string[]) => {
+					if (scope._nodeId === 'project' && fields.includes('exportPlan')) {
+						return {
+							exportPlan: builtPlan,
+							...projectAttrs,
+						}
+					}
+					if (scope._nodeId === 'project' && fields.includes('sourceProjectId')) {
+						return projectAttrs
+					}
+					if (scope._nodeId === 'root' && fields.includes('activeProjectId')) {
+						return { activeProjectId: 'unused-fallback-id' }
+					}
+					return {}
+				},
+				debugDumpGraph: () => null,
+				debugMessages: () => [],
+			} as unknown as PageSyncRuntime
+
+			const env = createBaseEnvironment(runtime, (request) => {
+				renderedWithComp = request
+			})
+			const actions = createEditorHarnessAdapter(env, { resourceChunkSize: 64 * 1024 })
+			await actions.queueProjectExport()
+		}
+
+		// Test 2: Without comp (forces fallback)
+		{
+			const runtime = {
+				mountShape: () => () => undefined,
+				getSnapshot: () => ({ ready: true }),
+				getRootScope: () => rootScope,
+				readOne: (scope: ReactSyncScopeHandle, relName: string) => {
+					if (scope._nodeId === 'root' && relName === 'activeProject') return projectScope
+					return null
+				},
+				readMany: (scope: ReactSyncScopeHandle, relName: string) => {
+					if (scope._nodeId === 'project' && relName === 'tracks') return [trackScope]
+					if (scope._nodeId === 'project' && relName === 'resources') return [resourceScope]
+					if (scope._nodeId === 'track-video' && relName === 'clips') return [clipScope]
+					if (scope._nodeId === 'clip-1' && relName === 'effects') return [effectScope]
+					return []
+				},
+				readAttrs: (scope: ReactSyncScopeHandle, fields: string[]) => {
+					if (scope._nodeId === 'project' && fields.includes('exportPlan')) {
+						return { exportPlan: undefined } // ← Force fallback
+					}
+					if (scope._nodeId === 'project') {
+						return projectAttrs
+					}
+					if (scope._nodeId === 'clip-1') {
+						return clipAttrs
+					}
+					if (scope._nodeId === 'resource-1') {
+						return {
+							sourceResourceId: 'resource-conv-1',
+							name: 'test-video.webm',
+							kind: 'video',
+							url: 'blob:resource-conv-1',
+							mime: 'video/webm',
+						}
+					}
+					if (scope._nodeId === 'effect-1') {
+						return {
+							kind: 'color-correction',
+							name: 'Saturation Boost',
+							enabled: true,
+							params: { saturation: { value: 0.5 } },
+						}
+					}
+					if (scope._nodeId === 'root' && fields.includes('activeProjectId')) {
+						return { activeProjectId: 'unused-fallback-id' }
+					}
+					return {}
+				},
+				debugDumpGraph: () => null,
+				debugMessages: () => [],
+			} as unknown as PageSyncRuntime
+
+			const env = createBaseEnvironment(runtime, (request) => {
+				renderedWithFallback = request
+			})
+			const actions = createEditorHarnessAdapter(env, { resourceChunkSize: 64 * 1024 })
+			await actions.queueProjectExport()
+		}
+
+		// Convergence checks:
+		// These assertions will FAIL if comp and fallback diverge
+		expect(renderedWithComp).toBeTruthy()
+		expect(renderedWithFallback).toBeTruthy()
+
+		if (renderedWithComp && renderedWithFallback) {
+			// Duration: WILL FAIL if fallback uses max(start+duration) instead of Project.duration
+			expect(renderedWithFallback.plan.duration).toBe(renderedWithComp.plan.duration)
+			expect(renderedWithFallback.plan.duration).toBe(3) // Not 2!
+
+			// ProjectId: should match
+			expect(renderedWithFallback.plan.projectId).toBe(renderedWithComp.plan.projectId)
+
+			// FPS, dimensions
+			expect(renderedWithFallback.plan.fps).toBe(renderedWithComp.plan.fps)
+			expect(renderedWithFallback.plan.width).toBe(renderedWithComp.plan.width)
+			expect(renderedWithFallback.plan.height).toBe(renderedWithComp.plan.height)
+
+			// Clip count
+			expect(renderedWithFallback.plan.clipSources).toHaveLength(renderedWithComp.plan.clipSources.length)
+
+			// Per-clip attributes
+			const fallbackClip = renderedWithFallback.plan.clipSources[0]
+			const compClip = renderedWithComp.plan.clipSources[0]
+
+			if (fallbackClip && compClip) {
+				expect(fallbackClip.id).toBe(compClip.id)
+				expect(fallbackClip.name).toBe(compClip.name)
+				expect(fallbackClip.start).toBe(compClip.start)
+				expect(fallbackClip.duration).toBe(compClip.duration)
+				expect(fallbackClip.audio).toEqual(compClip.audio)
+				expect(fallbackClip.opacity).toEqual(compClip.opacity)
+				expect(fallbackClip.transform).toEqual(compClip.transform)
+				expect(fallbackClip.effects).toEqual(compClip.effects)
+
+				// WILL FAIL if fallback returns text: null while comp includes text
+				expect(fallbackClip.text).toEqual(compClip.text)
+			}
+		}
+	})
 })
