@@ -159,6 +159,14 @@ export const createVideoEditorHarness = (
 		let disposeProjectResources = EMPTY_CLEANUP
 		let disposeActiveProject = EMPTY_CLEANUP
 		let runtimeReadyTimeout: ReturnType<typeof window.setTimeout> | null = null
+		let projectRefreshInterval: ReturnType<typeof window.setInterval> | null = null
+
+		const clearProjectRefreshInterval = (): void => {
+			if (projectRefreshInterval !== null) {
+				window.clearInterval(projectRefreshInterval)
+				projectRefreshInterval = null
+			}
+		}
 
 		const syncActiveProjectResources = () => {
 			const rootScope = pageRuntime.getRootScope()
@@ -172,30 +180,37 @@ export const createVideoEditorHarness = (
 				? pageRuntime.readMany(pioneerScope, 'project')
 				: []
 			const activeProjectScope = pageRuntime.readOne(rootScope, 'activeProject')
-			const projectScope = activeProjectScope ?? projectScopes[0] ?? null
+			const fallbackProjectScope = activeProjectScope ?? projectScopes[0] ?? null
 			disposeProjectResources()
-			if (!projectScope) {
+			clearProjectRefreshInterval()
+			if (!fallbackProjectScope) {
 				resourceTransferManager.syncResources([])
-				// Retry in a moment if runtime is still initializing (bounded to 5 retries = 2.5s)
 				if (runtimeReadyTimeout === null) {
-					const retryKey = '__p2pResourceSyncRetries'
-					const retries = (window as any)[retryKey] ?? 0
-					if (retries < 5) {
-						(window as any)[retryKey] = retries + 1
-						runtimeReadyTimeout = window.setTimeout(() => {
-							runtimeReadyTimeout = null
-							syncActiveProjectResources()
-						}, 500)
-					}
+					runtimeReadyTimeout = window.setTimeout(() => {
+						runtimeReadyTimeout = null
+						syncActiveProjectResources()
+					}, 500)
 				}
 				return
 			}
 
-			// Runtime is ready, clear retry counter
-			(window as any).__p2pResourceSyncRetries = 0
-
 			const syncResources = () => {
-				const scopesToRead = projectScopes.length > 0 ? projectScopes : [projectScope]
+				const latestRootScope = pageRuntime.getRootScope()
+				if (!latestRootScope) {
+					resourceTransferManager.syncResources([])
+					return
+				}
+
+				const latestPioneerScope = pageRuntime.readOne(latestRootScope, 'pioneer')
+				const latestProjectScopes = latestPioneerScope
+					? pageRuntime.readMany(latestPioneerScope, 'project')
+					: []
+				const latestActiveProjectScope = pageRuntime.readOne(latestRootScope, 'activeProject')
+				const scopesToRead = latestProjectScopes.length > 0
+					? latestProjectScopes
+					: latestActiveProjectScope
+						? [latestActiveProjectScope]
+						: [fallbackProjectScope]
 				const resourceScopes = scopesToRead.flatMap((scope) => pageRuntime.readMany(scope, 'resources'))
 				const resources = resourceScopes
 					.map((resourceScope) => {
@@ -210,7 +225,14 @@ export const createVideoEditorHarness = (
 				resourceTransferManager.syncResources(resources)
 			}
 
-			disposeProjectResources = pageRuntime.subscribeMany(projectScope, 'resources', syncResources)
+			const scopesToWatch = projectScopes.length > 0 ? projectScopes : [fallbackProjectScope]
+			const unsubscribers = scopesToWatch.map((scope) => pageRuntime.subscribeMany(scope, 'resources', syncResources))
+			disposeProjectResources = () => {
+				for (const unlisten of unsubscribers) {
+					unlisten()
+				}
+			}
+			projectRefreshInterval = window.setInterval(syncResources, 500)
 			syncResources()
 		}
 
@@ -224,6 +246,7 @@ export const createVideoEditorHarness = (
 				window.clearTimeout(runtimeReadyTimeout)
 				runtimeReadyTimeout = null
 			}
+			clearProjectRefreshInterval()
 			disposeProjectResources()
 			disposeActiveProject()
 		}

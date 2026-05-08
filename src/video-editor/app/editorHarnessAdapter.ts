@@ -1,4 +1,4 @@
-﻿import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
 import type { ExportPlan } from '../render/renderPlan'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
@@ -14,7 +14,7 @@ const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toStr
 
 const getRootScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => env.pageRuntime?.getRootScope() ?? null
 
-// Reading a direct rel on root — not traversal
+// Reading a direct rel on root - not traversal
 const getActiveProjectScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => {
 const rootScope = getRootScope(env)
 if (!rootScope || !env.pageRuntime) {
@@ -34,7 +34,7 @@ const projects = env.pageRuntime.readMany(pioneerScope, 'project')
 return projects[0] ?? null
 }
 
-// Reading a direct rel on root — not traversal
+// Reading a direct rel on root - not traversal
 const getSelectedClipScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => {
 const rootScope = getRootScope(env)
 if (!rootScope || !env.pageRuntime) {
@@ -346,13 +346,42 @@ const waitForActiveProjectScope = async (env: EditorActionEnvironment): Promise<
 	return null
 }
 
+const waitForRuntimeReady = async (env: EditorActionEnvironment): Promise<void> => {
+	if (!env.pageRuntime) {
+		return
+	}
+
+	for (let attempt = 0; attempt < 80; attempt += 1) {
+		if (env.pageRuntime.getSnapshot().ready) {
+			return
+		}
+		await new Promise((resolve) => setTimeout(resolve, 25))
+	}
+}
+
+const waitForPeerId = async (env: EditorActionEnvironment): Promise<string | null> => {
+	for (let attempt = 0; attempt < 80; attempt += 1) {
+		const peerId = env.transfers.getPeerId()
+		if (typeof peerId === 'string' && peerId.length > 0) {
+			return peerId
+		}
+		await new Promise((resolve) => setTimeout(resolve, 25))
+	}
+
+	return env.transfers.getPeerId()
+}
+
 const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void => {
 	const resourceChunkSize = _resourceChunkSizeRef.get(env) ?? 1024 * 1024
 	void (async () => {
+		await waitForRuntimeReady(env)
 		const projectScope = await waitForActiveProjectScope(env)
 		if (!projectScope) {
 			return
 		}
+		const ownerPeerId = await waitForPeerId(env)
+		// Give DKT transport time to attach after role/peer assignment to avoid dropped first sync writes.
+		await new Promise((resolve) => setTimeout(resolve, 300))
 		for (const file of files) {
 			const kind = env.media.getFileKind(file)
 			if (!kind) {
@@ -363,7 +392,13 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 				continue
 			}
 			env.lifecycle.registerObjectUrl(objectUrl, 'import')
-			const duration = await env.media.getImportedResourceDuration(objectUrl, kind)
+			let duration = 0
+			try {
+				duration = await env.media.getImportedResourceDuration(objectUrl, kind)
+			} catch {
+				// Continue import even if metadata probing fails on this engine/codec.
+				duration = 0
+			}
 			const sourceResourceId = createSourceId('resource')
 			const shouldAddEmbeddedAudio = kind === 'video' && isTimelineEmpty(env, projectScope)
 			env.dkt?.dispatch('importResource', {
@@ -374,7 +409,7 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 				mime: file.type || 'application/octet-stream',
 				duration,
 				size: file.size,
-				source: { kind: 'local', ownerPeerId: env.transfers.getPeerId() },
+				source: { kind: 'local', ownerPeerId },
 				status: 'ready',
 				data: {
 					status: 'ready',
@@ -396,7 +431,7 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 				duration,
 				size: file.size,
 				chunkSize: resourceChunkSize,
-				ownerPeerId: env.transfers.getPeerId(),
+				ownerPeerId,
 				sourceKind: 'local',
 				fallbackUrl: objectUrl,
 				name: file.name,
@@ -710,3 +745,4 @@ dispatchRoot(env, 'zoomTimeline', { delta })
 },
 })
 }
+

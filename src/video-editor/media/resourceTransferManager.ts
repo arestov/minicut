@@ -684,7 +684,21 @@ export const createResourceTransferManager = (
 
 	const getRequestPeerKey = (snapshot: ResourceSnapshot): string | null => {
 		if (options.getRole() === 'server') {
-			return snapshot.ownerPeerId && snapshot.ownerPeerId !== options.getPeerId() ? snapshot.ownerPeerId : null
+			const ownerPeerId = snapshot.ownerPeerId && snapshot.ownerPeerId !== options.getPeerId()
+				? snapshot.ownerPeerId
+				: null
+			if (ownerPeerId && getTransport(ownerPeerId)) {
+				return ownerPeerId
+			}
+
+			// Fallback: in some reconnect / mixed-engine flows transport key may differ from
+			// ownerPeerId while still representing the same single remote owner.
+			const connectedPeerKeys = Array.from(transports.keys()).filter((peerKey) => peerKey !== SERVER_TRANSPORT_KEY)
+			if (connectedPeerKeys.length === 1) {
+				return connectedPeerKeys[0]
+			}
+
+			return null
 		}
 
 		return options.getRole() === 'client' ? SERVER_TRANSPORT_KEY : null
@@ -733,7 +747,7 @@ export const createResourceTransferManager = (
 
 	const planNextRequest = (resourceId: string): void => {
 		const state = remoteStates.get(resourceId)
-		if (!state || state.requestedRanges.length > 0) {
+		if (!state) {
 			return
 		}
 
@@ -1157,9 +1171,7 @@ export const createResourceTransferManager = (
 
 			ensureRemoteState(snapshot)
 			updateTransferView(snapshot.resourceId)
-			if (snapshot.ownerPeerId && snapshot.ownerPeerId !== options.getPeerId()) {
-				planNextRequest(snapshot.resourceId)
-			}
+			planNextRequest(snapshot.resourceId)
 		}
 
 		for (const resourceId of Array.from(resourceSnapshots.keys())) {
@@ -1220,20 +1232,16 @@ export const createResourceTransferManager = (
 		attachClientTransport(transport) {
 			attachTransport(SERVER_TRANSPORT_KEY, transport)
 			resetRemoteRequestsForPeer(SERVER_TRANSPORT_KEY)
-			for (const [resourceId, snapshot] of resourceSnapshots) {
-				if (snapshot.ownerPeerId && snapshot.ownerPeerId !== options.getPeerId()) {
-					planNextRequest(resourceId)
-				}
+			for (const [resourceId] of resourceSnapshots) {
+				planNextRequest(resourceId)
 			}
 		},
 
 		attachServerTransport(remotePeerId, transport) {
 			attachTransport(remotePeerId, transport)
 			resetRemoteRequestsForPeer(remotePeerId)
-			for (const [resourceId, snapshot] of resourceSnapshots) {
-				if (snapshot.ownerPeerId === remotePeerId) {
-					planNextRequest(resourceId)
-				}
+			for (const [resourceId] of resourceSnapshots) {
+				planNextRequest(resourceId)
 			}
 		},
 
