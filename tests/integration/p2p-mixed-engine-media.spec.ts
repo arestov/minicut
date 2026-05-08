@@ -138,13 +138,29 @@ const waitForRole = async (peer: PeerHandle, role: 'server' | 'client'): Promise
 	}).toBe(role)
 }
 
-const waitForPartialTransfer = async (page: Page): Promise<void> => {
+const waitForProgressBeforeOrAtReady = async (page: Page): Promise<void> => {
 	await expect.poll(async () => {
 		const transfers = await getTransfers(page)
-		return transfers.some((transfer) => transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1)
+		return transfers.some((transfer) =>
+			(transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1)
+			|| (transfer.status === 'ready' && transfer.progress === 1 && transfer.loadedBytes > 0),
+		)
 	}, {
 		timeout: 20_000,
 	}).toBe(true)
+}
+
+const waitForLocalReadyTransfer = async (page: Page): Promise<void> => {
+	await expect.poll(() => getTransfers(page), {
+		timeout: 20_000,
+	}).toEqual(expect.arrayContaining([
+		expect.objectContaining({
+			availability: 'local',
+			status: 'ready',
+			progress: 1,
+			lastError: null,
+		}) as DebugTransfer,
+	]))
 }
 
 const waitForReadyTransfer = async (
@@ -261,8 +277,9 @@ for (const scenario of twoPeerScenarios) {
 			const observer = scenario.importer === 'main' ? clientPeer : mainPeer
 
 			await importer.page.getByLabel('Import media files').setInputFiles(videoFile)
+			await waitForLocalReadyTransfer(importer.page)
 
-			await waitForPartialTransfer(observer.page)
+			await waitForProgressBeforeOrAtReady(observer.page)
 			await waitForReadyTransfer(observer.page, scenario.readyAvailability, scenario.readyMode)
 			await waitForBlobPreview(observer.page)
 		} finally {
@@ -294,7 +311,7 @@ for (const scenario of threePeerScenarios) {
 
 			await ownerPeer.page.getByLabel('Import media files').setInputFiles(videoFile)
 
-			await waitForPartialTransfer(mainPeer.page)
+			await waitForProgressBeforeOrAtReady(mainPeer.page)
 			await waitForReadyTransfer(mainPeer.page, 'remote')
 
 			await ownerPeer.context.close()
@@ -302,7 +319,7 @@ for (const scenario of threePeerScenarios) {
 			const lateJoiner = await engines.openPeer(scenario.lateJoinerEngine, roomUrl)
 			await waitForRole(lateJoiner, 'client')
 
-			await waitForPartialTransfer(lateJoiner.page)
+			await waitForProgressBeforeOrAtReady(lateJoiner.page)
 			await waitForReadyTransfer(lateJoiner.page, 'remote')
 			await waitForBlobPreview(lateJoiner.page)
 		} finally {

@@ -90,6 +90,31 @@ const waitForTwoPeerRoles = async (first: Page, second: Page): Promise<void> => 
 	}).toBe(true)
 }
 
+const waitForProgressBeforeOrAtReady = async (page: Page): Promise<void> => {
+	await expect.poll(async () => {
+		const transfers = await getTransfers(page)
+		return transfers.some((transfer) =>
+			(transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1)
+			|| (transfer.status === 'ready' && transfer.progress === 1 && transfer.loadedBytes > 0),
+		)
+	}, {
+		timeout: 20_000,
+	}).toBe(true)
+}
+
+const waitForLocalReadyTransfer = async (page: Page): Promise<void> => {
+	await expect.poll(() => getTransfers(page), {
+		timeout: 20_000,
+	}).toEqual(expect.arrayContaining([
+		expect.objectContaining({
+			availability: 'local',
+			status: 'ready',
+			progress: 1,
+			lastError: null,
+		}) as DebugTransfer,
+	]))
+}
+
 test('client-owned media imports transfer to main without sticking in error', async ({ browser }) => {
 	const roomId = `p2p-client-owned-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	const roomUrl = buildRoomUrl(roomId, {
@@ -107,13 +132,9 @@ test('client-owned media imports transfer to main without sticking in error', as
 	const generatedVideo = await createLargeVideoFile()
 
 	await clientPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
+	await waitForLocalReadyTransfer(clientPeer.page)
 
-	await expect.poll(async () => {
-		const transfers = await getTransfers(serverPeer.page)
-		return transfers.some((transfer) => transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1)
-	}, {
-		timeout: 20_000,
-	}).toBe(true)
+	await waitForProgressBeforeOrAtReady(serverPeer.page)
 
 	await expect.poll(() => getTransfers(serverPeer.page), {
 		timeout: 20_000,
@@ -146,6 +167,7 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 	const generatedVideo = await createLargeVideoFile()
 
 	await ownerPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
+	await waitForLocalReadyTransfer(ownerPeer.page)
 
 	await expect.poll(() => getTransfers(serverPeer.page), {
 		timeout: 20_000,
@@ -165,12 +187,7 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 		timeout: 20_000,
 	}).toBe('client')
 
-	await expect.poll(async () => {
-		const transfers = await getTransfers(lateJoiner.page)
-		return transfers.some((transfer) => transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1)
-	}, {
-		timeout: 20_000,
-	}).toBe(true)
+	await waitForProgressBeforeOrAtReady(lateJoiner.page)
 
 	await expect.poll(() => getTransfers(lateJoiner.page), {
 		timeout: 20_000,
