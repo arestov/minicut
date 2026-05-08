@@ -40,6 +40,17 @@ export interface ExportPlan {
 	clipSources: PreviewClipSource[]
 }
 
+export const normalizeExportPlan = (plan: ExportPlan): ExportPlan => {
+	const maxClipEnd = plan.clipSources.reduce((maxEnd, clipSource) => {
+		const start = Number.isFinite(clipSource.start) ? Math.max(0, clipSource.start) : 0
+		const duration = Number.isFinite(clipSource.duration) ? Math.max(0, clipSource.duration) : 0
+		return Math.max(maxEnd, start + duration)
+	}, 0)
+	return maxClipEnd > plan.duration
+		? { ...plan, duration: maxClipEnd }
+		: plan
+}
+
 export const compileClipFrameOperationFromSource = (
 	source: PreviewClipSource,
 	time: number,

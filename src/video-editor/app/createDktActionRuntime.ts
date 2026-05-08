@@ -4,6 +4,7 @@ import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
 import type { ExportPlan } from '../render/renderPlan'
+import { normalizeExportPlan } from '../render/renderPlan'
 import type { EffectRenderInstruction } from '../render/colorPipeline'
 import { mergeEffectFilters } from '../render/colorPipeline'
 
@@ -312,14 +313,14 @@ const buildFallbackExportPlan = (
 		}
 	}
 
-	return {
+	return normalizeExportPlan({
 		projectId,
 		fps: asFiniteNumber(projectAttrs.fps, 30),
 		width: asFiniteNumber(projectAttrs.width, 1920),
 		height: asFiniteNumber(projectAttrs.height, 1080),
 		duration,
 		clipSources,
-	}
+	})
 }
 
 const waitForActiveProjectScope = async (env: EditorActionEnvironment): Promise<ReactSyncScopeHandle | null> => {

@@ -88,7 +88,7 @@ export const probeMedia = async (filePath: string): Promise<MediaStreamInfo> => 
 		'-show_format',
 		'-show_streams',
 		filePath,
-	], { timeoutMs: 15_000 })
+	], { timeoutMs: 90_000 })
 	const payload = JSON.parse(stdout.toString('utf8')) as {
 		format?: { duration?: string }
 		streams?: Array<Record<string, unknown>>
@@ -137,7 +137,7 @@ export const decodeAudioPcm = async (
 		'-ar',
 		String(sampleRate),
 		'pipe:1',
-	], { timeoutMs: 20_000 })
+	], { timeoutMs: 60_000 })
 	const arrayBuffer = stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + stdout.byteLength)
 	return new Float32Array(arrayBuffer)
 }
@@ -332,7 +332,7 @@ export const sampleVideoFrameRgba = async (
 		'-pix_fmt',
 		'rgba',
 		'pipe:1',
-	], { timeoutMs: 20_000 })
+	], { timeoutMs: 60_000 })
 	if (stdout.length < 4) {
 		throw new Error('Unable to sample exported video frame')
 	}
@@ -360,7 +360,7 @@ export const sampleVideoFramePixelRgba = async (
 		'-pix_fmt',
 		'rgba',
 		'pipe:1',
-	], { timeoutMs: 20_000 })
+	], { timeoutMs: 60_000 })
 	if (stdout.length < 4) {
 		throw new Error('Unable to sample exported video frame pixel')
 	}

@@ -3,7 +3,7 @@ import { RESOURCE_CREATION_SHAPE } from './Resource'
 import { TRACK_CREATION_SHAPE } from './Track'
 import { normalizeResourceCreationAttrs, normalizeTrackCreationAttrs } from './Project/actions'
 import type { PreviewClipSource, PreviewStructure } from '../read-model/previewComps'
-import type { ExportPlan } from '../render/renderPlan'
+import { normalizeExportPlan, type ExportPlan } from '../render/renderPlan'
 
 export const PROJECT_CREATION_SHAPE = {
 	attrs: ['sourceProjectId', 'title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt', 'autoCreateDefaultTracks'],
@@ -100,7 +100,7 @@ export const Project = model({
 				return { clipSources: sources }
 			}],
 		exportPlan: ['comp', ['sourceProjectId', 'fps', 'width', 'height', 'duration', 'previewClipSources'] as const,
-			(sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, previewClipSources: unknown): ExportPlan => ({
+			(sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, previewClipSources: unknown): ExportPlan => normalizeExportPlan({
 				projectId: typeof sourceProjectId === 'string' ? sourceProjectId : '',
 				fps: asNumber(fps, 30),
 				width: asNumber(width, 1920),
