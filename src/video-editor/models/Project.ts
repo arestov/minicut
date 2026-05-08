@@ -364,8 +364,8 @@ export const Project = model({
 				],
 				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
 				fn: [
-					['$noop', '< @all:timelineClipSource < resources', '< @one:appendStart < primaryVideoTrack'] as const,
-					(payload: unknown, noop: unknown, resources: unknown[], videoTrackAppendStart: unknown) => {
+					['$noop', '< @all:timelineClipSource < resources', '< @one:appendStart < primaryVideoTrack', '< @one:appendStart < primaryAudioTrack'] as const,
+					(payload: unknown, noop: unknown, resources: unknown[], videoTrackAppendStart: unknown, audioTrackAppendStart: unknown) => {
 						const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
 						if (typeof sourceResourceId !== 'string') {
 							return noop
@@ -374,7 +374,11 @@ export const Project = model({
 						if (!resource) {
 							return noop
 						}
-						return createTimelineClipPayload(noop, resource, {}, undefined, typeof videoTrackAppendStart === 'number' ? videoTrackAppendStart : 0)
+						const start = Math.max(
+							typeof videoTrackAppendStart === 'number' ? videoTrackAppendStart : 0,
+							typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0,
+						)
+						return createTimelineClipPayload(noop, resource, {}, undefined, start)
 					},
 				],
 			},
@@ -400,8 +404,8 @@ export const Project = model({
 						if (!resource || resource.kind !== 'audio') {
 							return noop
 						}
-						return createTimelineClipPayload(noop, resource, {}, undefined, typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
-					},
+					return createTimelineClipPayload(noop, resource, {}, undefined, typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
+				},
 				],
 			},
 		],

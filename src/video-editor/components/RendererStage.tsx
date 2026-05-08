@@ -693,7 +693,7 @@ export const RendererStage = ({ structure, frame, isPlaying, mediaElementRegistr
 						<span className="ve-renderer__compare-label ve-renderer__compare-label--after">After</span>
 					</div>
 				) : null}
-				<div className="ve-renderer__audio-elements" aria-hidden="true">
+			<div className="ve-renderer__audio-elements" aria-hidden="true">
 					{frame.audioRenderedClips.map((clip) =>
 						isRealMediaUrl(clip.resourceUrl) ? (
 							<AudioClipElement

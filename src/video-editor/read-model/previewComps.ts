@@ -143,11 +143,14 @@ export const renderPreviewStructureAtCursor = (
 
 export const createPreviewFrame = (structure: PreviewStructure, cursor: number): PreviewFrame => {
 	const renderedClips = renderPreviewStructureAtCursor(structure, cursor)
+	const visualRenderedClips = renderedClips.filter((clip) => clip.resourceKind !== 'audio')
+	const audioRenderedClips = renderedClips.filter((clip) => clip.resourceKind === 'audio')
+
 	return {
 		cursor,
 		renderedClips,
-		visualRenderedClips: renderedClips.filter((clip) => clip.resourceKind !== 'audio'),
-		audioRenderedClips: renderedClips.filter((clip) => clip.resourceKind === 'audio'),
+		visualRenderedClips,
+		audioRenderedClips,
 		activeClipNames: renderedClips.map((clip) => clip.name),
 	}
 }

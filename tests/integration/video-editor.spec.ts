@@ -834,16 +834,20 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	await expect(renderer.locator('img[alt="fixture-image.png"]')).toBeVisible()
 	await expect(renderer.locator('.ve-renderer__layer--image')).toHaveCSS('opacity', '0.6')
 
-	await setTimelineCursor(page, 0.5)
-	await expect(renderer.locator('audio')).toHaveCount(2)
-	await expect(renderer.locator('audio[data-resource-name="fixture-video.webm"]')).toHaveCount(1)
-	await expect(renderer.locator('.ve-renderer__layer--audio')).toHaveCount(0)
+	const rendererForAudioCheck = page.getByLabel('Renderer stage')
 
+	// Embedded audio clip: check it renders when cursor is in its range
+	const embeddedAudioClipText = await timeline.getByRole('button', { name: /Embedded audio/i }).innerText()
+	const embeddedAudioStart = Number(embeddedAudioClipText.match(/[|·]\s*(\d+(?:\.\d+)?)s\s*\//)?.[1] ?? 0)
+	await setTimelineCursor(page, embeddedAudioStart + 0.5)
+	await expect(rendererForAudioCheck.locator('audio[data-resource-name="fixture-video.webm"]')).toHaveCount(1)
+	await expect(rendererForAudioCheck.locator('.ve-renderer__layer--audio')).toHaveCount(0)
+
+	// Standalone audio clip: check it renders when cursor is in its range
 	const audioClipText = await timeline.getByRole('button', { name: /fixture-audio.wav/i }).innerText()
 	const audioClipStart = Number(audioClipText.match(/[|·]\s*(\d+(?:\.\d+)?)s\s*\//)?.[1] ?? 0)
 	await setTimelineCursor(page, audioClipStart + 0.5)
-	await expect(renderer.locator('audio')).toHaveCount(2)
-	await expect(renderer.locator('audio[data-resource-name="fixture-audio.wav"]')).toHaveCount(1)
+	await expect(rendererForAudioCheck.locator('audio[data-resource-name="fixture-audio.wav"]')).toHaveCount(1)
 })
 
 test('timeline uses one shared current step and keeps many tracks scrollable', async ({ page }) => {
@@ -1411,7 +1415,7 @@ test('preview keeps offscreen canvas active and syncs media layers across playhe
 	await setTimelineCursor(page, 0.5)
 	await expect(canvas).toHaveAttribute('data-render-mode', 'offscreen')
 	await expect(renderer.locator('video')).toHaveCount(1)
-	await expect(renderer.locator('audio')).toHaveCount(2)
+	await expect(renderer.locator('audio[data-resource-name="fixture-video.webm"]')).toHaveCount(1)
 	await expect.poll(async () =>
 		renderer.locator('video').evaluate((element) => (element as HTMLVideoElement).currentTime),
 	).toBeGreaterThan(0.4)
