@@ -122,6 +122,8 @@ const summarizeProfile = (events: ScopeProfileEvent[], measuredMs: number) => {
 
 test.describe('color scopes profile harness', () => {
 	test('logs vectorscope redraw cadence while playing a real video', async ({ page }) => {
+		test.setTimeout(60_000)
+
 		const videoPath = await getProfileVideoPath()
 		await page.addInitScript(() => {
 			const target = window as Window & { __MINICUT_SCOPE_PROFILE__?: { events: unknown[] } }
@@ -133,11 +135,18 @@ test.describe('color scopes profile harness', () => {
 		await page.getByLabel('Import media files').setInputFiles(videoPath)
 
 		const timeline = page.getByRole('region', { name: 'Timeline' })
-		await timeline.getByRole('button', { name: /\.webm|\.ogv|fixture-video/i }).first().click()
+		const importedClip = timeline.getByRole('button', { name: /\.webm|\.ogv|fixture-video/i }).first()
+		await expect(importedClip).toBeVisible()
+		await importedClip.click({ position: { x: 20, y: 18 } })
 		const inspector = page.getByRole('complementary', { name: 'Inspector' })
-		await inspector.getByRole('tab', { name: 'Color' }).click()
+		const colorTab = inspector.getByRole('tab', { name: 'Color' })
+		await expect(colorTab).toBeVisible()
+		await expect(colorTab).toBeEnabled()
+		await colorTab.click()
 		const preview = page.getByRole('region', { name: 'Preview panel' })
-		await preview.getByRole('tab', { name: 'Vectorscope' }).click()
+		const vectorscopeTab = preview.getByRole('tab', { name: 'Vectorscope' })
+		await expect(vectorscopeTab).toBeVisible()
+		await vectorscopeTab.click()
 		await expect(preview.getByLabel('Vectorscope points')).toBeVisible()
 
 		await page.evaluate(() => {
