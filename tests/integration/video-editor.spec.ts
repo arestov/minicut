@@ -25,6 +25,22 @@ const importFixtureVideo = async (page: import('@playwright/test').Page) => {
 	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
 }
 
+const importFixtureImage = async (page: import('@playwright/test').Page) => {
+	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-image.png'))
+}
+
+const dumpProjectState = async (page: import('@playwright/test').Page) => {
+	return page.evaluate(() => {
+		const debug = (window as Window & {
+			__MINICUT_P2P_DEBUG__?: {
+				dumpProjectState?: () => unknown
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		return debug?.dumpProjectState?.() ?? null
+	})
+}
+
 const ensureTimelineLaneOverflow = async (timeline: import('@playwright/test').Locator) => {
 	const scrollArea = timeline.locator('.ve-timeline-scroll-area')
 	const laneScroll = timeline.locator('.ve-track-lane-scroll')
@@ -446,6 +462,56 @@ test('importing into an empty timeline auto-adds the first resource', async ({ p
 
 	await expect(page.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
 	await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+})
+
+test('adding another resource appends clip start in dumpProjectState', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	await importFixtureVideo(page)
+	await expect(page.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible()
+
+	const initialState = await dumpProjectState(page) as {
+		tracks?: Array<{
+			attrs?: { kind?: unknown }
+			clips?: Array<{ attrs?: { name?: unknown; start?: unknown; duration?: unknown } }>
+		}>
+	} | null
+
+	const initialVideoTrack = initialState?.tracks?.find((track) => track.attrs?.kind === 'video')
+	const initialStarts = (initialVideoTrack?.clips ?? []).map((clip) => Number(clip.attrs?.start ?? 0))
+	expect(initialStarts.length).toBeGreaterThan(0)
+	expect(initialStarts[0]).toBe(0)
+
+	await importFixtureImage(page)
+	await expect(page.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-image.png' })).toBeVisible()
+
+	await page
+		.getByLabel('Media bin')
+		.locator('.ve-resource-row')
+		.filter({ hasText: 'fixture-image.png' })
+		.getByRole('button', { name: 'Add to timeline' })
+		.click()
+
+	const timeline = page.getByRole('region', { name: 'Timeline' })
+	await expect(timeline.getByRole('button', { name: /fixture-image.png/i })).toBeVisible()
+
+	const appendedState = await dumpProjectState(page) as {
+		tracks?: Array<{
+			attrs?: { kind?: unknown }
+			clips?: Array<{ attrs?: { name?: unknown; start?: unknown; duration?: unknown } }>
+		}>
+	} | null
+
+	const appendedVideoTrack = appendedState?.tracks?.find((track) => track.attrs?.kind === 'video')
+	const appendedClips = appendedVideoTrack?.clips ?? []
+	const imageClip = appendedClips.find((clip) => clip.attrs?.name === 'fixture-image.png')
+	const starts = appendedClips.map((clip) => Number(clip.attrs?.start ?? 0))
+
+	expect(appendedClips.length).toBeGreaterThan(1)
+	expect(imageClip).toBeTruthy()
+	expect(Number(imageClip?.attrs?.start ?? 0)).toBeGreaterThan(0)
+	expect(starts).toEqual([...starts].sort((left, right) => left - right))
 })
 
 test('video resources add linked audio clips that play, inspect, and export settings', async ({ page }) => {
