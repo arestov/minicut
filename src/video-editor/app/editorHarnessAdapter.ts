@@ -575,39 +575,7 @@ return
 			importFilesDirectly(env, importedFiles)
 },
 addResourceToTimeline(resourceId: string): void {
-	const projectScope = getActiveProjectScope(env)
-	if (!projectScope) {
-		return
-	}
-	const resource = getResourceAttrsById(env, projectScope, resourceId)
-	if (!resource) {
-		return
-	}
-	if (resource.kind !== 'audio') {
-		const videoTrackScope = getTrackScopeByKind(env, projectScope, 'video')
-		dispatchTrackClip(env, videoTrackScope, {
-			sourceClipId: `${resourceId}:clip`,
-			sourceResourceId: resourceId,
-			name: resource.name,
-			mediaKind: resource.kind,
-			start: 0,
-			in: 0,
-			duration: resource.duration,
-		})
-	}
-	if (resource.kind === 'audio' || resource.kind === 'video') {
-		const audioTrackScope = getTrackScopeByKind(env, projectScope, 'audio')
-		dispatchTrackClip(env, audioTrackScope, {
-			sourceClipId: resource.kind === 'video' ? `${resourceId}:audio-clip` : `${resourceId}:clip`,
-			sourceResourceId: resourceId,
-			name: resource.kind === 'video' ? 'Embedded audio' : resource.name,
-			mediaKind: 'audio',
-			start: 0,
-			in: 0,
-			duration: resource.duration,
-			sourceResourceName: resource.kind === 'video' ? resource.name : null,
-		})
-	}
+	dispatchProject(env, 'addResourceToTimeline', { sourceResourceId: resourceId })
 },
 addTextClip(content?: string): void {
 const sourceTextId = createSourceId('text')
