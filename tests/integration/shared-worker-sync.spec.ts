@@ -1,11 +1,24 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
-const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
-	const projectsRegion = page.getByLabel('Projects')
-	await projectsRegion.getByRole('button').click()
-	await projectsRegion.getByRole('button', { name: 'New project' }).click()
-	await expect(projectsRegion.getByRole('button', { name: /Project \d+/i })).toBeVisible()
+/**
+ * Create a project with a unique title via the debug bridge so selection
+ * is unambiguous even when auto-seeding has already created "Project 1"
+ * on both pages concurrently.
+ */
+const createProjectViaDebugBridge = async (
+	page: import('@playwright/test').Page,
+	title: string,
+): Promise<void> => {
+	await page.evaluate(async (nextTitle) => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				dispatchCreateProject: (title?: string) => Promise<unknown>
+			}
+		}).__MINICUT_P2P_DEBUG__
+		if (!debug) throw new Error('P2P debug bridge is unavailable')
+		await debug.dispatchCreateProject(nextTitle)
+	}, title)
 }
 
 test('shared worker synchronizes project patches across browser pages', async ({ context }) => {
@@ -16,12 +29,18 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await expect(firstPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
 	await expect(secondPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
 
-	await createProjectFromMenu(firstPage)
-	const sourceProjectName = (await firstPage.getByLabel('Projects').getByRole('button').innerText()).trim()
-	await expect(secondPage.getByRole('button', { name: /Project \d+/i })).toBeVisible()
+	// Create a project with a unique title so the selector is unambiguous even
+	// when auto-seeding has already added "Project 1" on both pages.
+	const uniqueTitle = `SyncTest-${Date.now()}`
+	await createProjectViaDebugBridge(firstPage, uniqueTitle)
+	await expect(firstPage.getByLabel('Projects').getByRole('button', { name: uniqueTitle })).toBeVisible()
+
+	// secondPage should receive the project via SharedWorker; open its dropdown
+	// and switch to the unique project.
 	const secondProjectsRegion = secondPage.getByLabel('Projects')
 	await secondProjectsRegion.getByRole('button').click()
-	await secondProjectsRegion.getByRole('menuitem', { name: new RegExp(sourceProjectName, 'i') }).click()
+	await expect(secondProjectsRegion.getByRole('menuitem', { name: uniqueTitle })).toBeVisible({ timeout: 10_000 })
+	await secondProjectsRegion.getByRole('menuitem', { name: uniqueTitle }).click()
 
 	await firstPage.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
 	await expect(
