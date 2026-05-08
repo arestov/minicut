@@ -18,7 +18,7 @@ describe('Clip model structural actions', () => {
 		})
 		expect(normalizeEffectCreationAttrs({ kind: 'blur' })).toMatchObject({
 			kind: 'blur',
-			name: 'Effect',
+			name: 'Blur',
 			enabled: true,
 		})
 	})
