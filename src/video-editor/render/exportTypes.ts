@@ -31,6 +31,8 @@ export interface ExportDiagnostics {
 	backend: ExportBackend
 	fallbackReason?: string
 	resolvedClipIds: string[]
+	resolvedClipTypes: Array<EditframeClip['type']>
+	audioClipCount: number
 }
 
 export interface ExportManifest {

@@ -131,6 +131,14 @@ const waitForActiveProjectScope = async (env: EditorActionEnvironment): Promise<
 	return null
 }
 
+const isTimelineEmpty = (env: EditorActionEnvironment, projectScope: ReactSyncScopeHandle): boolean => {
+	if (!env.pageRuntime) {
+		return true
+	}
+	const attrs = env.pageRuntime.readAttrs(projectScope, ['timelineDuration']) as { timelineDuration?: unknown }
+	return typeof attrs.timelineDuration !== 'number' || attrs.timelineDuration <= 0
+}
+
 const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void => {
 const resourceChunkSize = _resourceChunkSizeRef.get(env) ?? 1024 * 1024
 void (async () => {
@@ -150,6 +158,7 @@ continue
 env.lifecycle.registerObjectUrl(objectUrl, 'import')
 const duration = await env.media.getImportedResourceDuration(objectUrl, kind)
 const sourceResourceId = createSourceId('resource')
+const shouldAddEmbeddedAudio = kind === 'video' && isTimelineEmpty(env, projectScope)
 env.dkt?.dispatch('importResource', {
 sourceResourceId,
 name: file.name,
@@ -168,6 +177,11 @@ ranges: { loaded: [[0, file.size]], requested: [] },
 loadedBytes: file.size,
 },
 }, projectScope)
+if (shouldAddEmbeddedAudio) {
+	env.lifecycle.setTimeout(() => {
+		env.dkt?.dispatch('addEmbeddedAudioToTimeline', { sourceResourceId }, projectScope)
+	}, 0)
+}
 env.transfers.manager.registerLocalResource(sourceResourceId, file, {
 objectUrl,
 kind,
@@ -249,6 +263,7 @@ const queueExport = async (
 			fileName: result.fileName,
 			size: result.size,
 			hasDownloadUrl: Boolean(result.downloadUrl),
+			diagnostics: result.diagnostics ?? null,
 		})
 		console.info('[minicut:dkt-export] render done', {
 			range,
@@ -256,6 +271,7 @@ const queueExport = async (
 			fileName: result.fileName,
 			size: result.size,
 			hasDownloadUrl: Boolean(result.downloadUrl),
+			diagnostics: result.diagnostics ?? null,
 		})
 		return result
 	} catch (error) {

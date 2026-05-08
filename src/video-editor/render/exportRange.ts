@@ -73,11 +73,16 @@ export const createExportDiagnostics = (
 	plan: ExportPlan,
 	resolvedRange: ResolvedExportRange,
 	fallbackReason?: string,
-): ExportDiagnostics => ({
-	backend,
-	...(fallbackReason ? { fallbackReason } : {}),
-	resolvedClipIds: getRangeClips(plan, resolvedRange).map((clip) => clip.id),
-})
+): ExportDiagnostics => {
+	const resolvedClips = getRangeClips(plan, resolvedRange)
+	return {
+		backend,
+		...(fallbackReason ? { fallbackReason } : {}),
+		resolvedClipIds: resolvedClips.map((clip) => clip.id),
+		resolvedClipTypes: resolvedClips.map((clip) => clip.type),
+		audioClipCount: resolvedClips.filter((clip) => clip.type === 'ef-audio').length,
+	}
+}
 
 export const getRangeName = (plan: ExportPlan, range: ExportRange): string => {
 	if (range.type === 'clip') {

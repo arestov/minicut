@@ -487,12 +487,14 @@ const queueExport = async (
 			fileName: result.fileName,
 			size: result.size,
 			hasDownloadUrl: Boolean(result.downloadUrl),
+			diagnostics: result.diagnostics ?? null,
 		})
 		console.info('[minicut:adapter-export] render done', {
 			range,
 			projectId: plan.projectId,
 			fileName: result.fileName,
 			hasDownloadUrl: Boolean(result.downloadUrl),
+			diagnostics: result.diagnostics ?? null,
 		})
 		return result
 	} catch (error) {
