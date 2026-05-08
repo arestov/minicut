@@ -214,7 +214,7 @@ export const VideoEditorHarnessApp = ({
 	}, [mediaTransferOptions, providedHarness, resolvedRoom, rtcConfig, signalUrl])
 
 	useEffect(() => {
-		if (typeof window === 'undefined' || !import.meta.env.DEV) {
+		if (typeof window === 'undefined') {
 			return
 		}
 
@@ -232,6 +232,165 @@ export const VideoEditorHarnessApp = ({
 			getSnapshot: () => ownedHarness.pageRuntime?.getSnapshot() ?? null,
 			dumpGraph: () => ownedHarness.pageRuntime?.debugDumpGraph?.() ?? null,
 			dumpGraphSummary: () => summarizeGraph(ownedHarness.pageRuntime?.debugDumpGraph?.() ?? null),
+			dumpProjectState: () => {
+				const graph = ownedHarness.pageRuntime?.debugDumpGraph?.() as
+					| {
+						rootNodeId?: unknown
+						dict?: unknown
+						nodes?: unknown
+					  }
+					| null
+
+				if (!graph) {
+					return null
+				}
+
+				type GraphNode = {
+					nodeId?: unknown
+					id?: unknown
+					_node_id?: unknown
+					modelName?: unknown
+					model_name?: unknown
+					attrs?: unknown
+					rels?: unknown
+				}
+
+				const nodeIdOf = (node: GraphNode | null | undefined): string | null => {
+					if (!node) {
+						return null
+					}
+					const candidate = node.nodeId ?? node.id ?? node._node_id
+					return typeof candidate === 'string' ? candidate : null
+				}
+
+				const extractNodeIds = (value: unknown): string[] => {
+					if (!value) {
+						return []
+					}
+
+					if (typeof value === 'string') {
+						return [value]
+					}
+
+					if (Array.isArray(value)) {
+						return value.flatMap((item) => extractNodeIds(item))
+					}
+
+					if (typeof value === 'object') {
+						const obj = value as Record<string, unknown>
+						const directId = obj.nodeId ?? obj.id ?? obj._node_id
+						if (typeof directId === 'string') {
+							return [directId]
+						}
+
+						return Object.values(obj).flatMap((item) => extractNodeIds(item))
+					}
+
+					return []
+				}
+
+				const nodes: GraphNode[] = []
+				if (Array.isArray(graph.nodes)) {
+					nodes.push(...(graph.nodes as GraphNode[]))
+				}
+
+				if (graph.dict && typeof graph.dict === 'object') {
+					for (const value of Object.values(graph.dict as Record<string, unknown>)) {
+						if (value && typeof value === 'object') {
+							nodes.push(value as GraphNode)
+						}
+					}
+				}
+
+				const nodesById = new Map<string, GraphNode>()
+				for (const node of nodes) {
+					const id = nodeIdOf(node)
+					if (id) {
+						nodesById.set(id, node)
+					}
+				}
+
+				const getNode = (id: string | null): GraphNode | null => {
+					if (!id) {
+						return null
+					}
+					return nodesById.get(id) ?? null
+				}
+
+				const getRels = (node: GraphNode | null): Record<string, unknown> => {
+					if (!node || !node.rels || typeof node.rels !== 'object') {
+						return {}
+					}
+					return node.rels as Record<string, unknown>
+				}
+
+				const getAttrs = (node: GraphNode | null): Record<string, unknown> => {
+					if (!node || !node.attrs || typeof node.attrs !== 'object') {
+						return {}
+					}
+					return node.attrs as Record<string, unknown>
+				}
+
+				const getRelIds = (node: GraphNode | null, relName: string): string[] => {
+					const rels = getRels(node)
+					return extractNodeIds(rels[relName])
+				}
+
+				const rootNodeId = typeof graph.rootNodeId === 'string' ? graph.rootNodeId : null
+				const rootNode = getNode(rootNodeId)
+
+				const activeProjectId = getRelIds(rootNode, 'activeProject')[0] ?? null
+				const pioneerId = getRelIds(rootNode, 'pioneer')[0] ?? null
+				const pioneerNode = getNode(pioneerId)
+				const fallbackProjectId = getRelIds(pioneerNode, 'project')[0] ?? null
+				const projectNodeId = activeProjectId ?? fallbackProjectId
+				const projectNode = getNode(projectNodeId)
+
+				const trackIds = getRelIds(projectNode, 'tracks')
+				const tracks = trackIds.map((trackId) => {
+					const trackNode = getNode(trackId)
+					const clipIds = getRelIds(trackNode, 'clips')
+					const clips = clipIds.map((clipId) => {
+						const clipNode = getNode(clipId)
+						return {
+							nodeId: clipId,
+							model: (clipNode?.modelName ?? clipNode?.model_name ?? null) as string | null,
+							attrs: getAttrs(clipNode),
+						}
+					})
+
+					return {
+						nodeId: trackId,
+						model: (trackNode?.modelName ?? trackNode?.model_name ?? null) as string | null,
+						attrs: getAttrs(trackNode),
+						clipIds,
+						clips,
+					}
+				})
+
+				const resourceIds = getRelIds(projectNode, 'resources')
+				const resources = resourceIds.map((resourceId) => {
+					const resourceNode = getNode(resourceId)
+					return {
+						nodeId: resourceId,
+						model: (resourceNode?.modelName ?? resourceNode?.model_name ?? null) as string | null,
+						attrs: getAttrs(resourceNode),
+					}
+				})
+
+				return {
+					rootNodeId,
+					activeProjectNodeId: activeProjectId,
+					projectNodeId,
+					projectModel: (projectNode?.modelName ?? projectNode?.model_name ?? null) as string | null,
+					projectAttrs: getAttrs(projectNode),
+					trackIds,
+					tracks,
+					resourceIds,
+					resources,
+					nodesCount: nodesById.size,
+				}
+			},
 			getResourceTransfers: () => Object.values(ownedHarness.resourceTransfers$.get()).map((transfer) => ({
 				resourceId: transfer.resourceId,
 				name: transfer.name,
