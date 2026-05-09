@@ -1,6 +1,7 @@
 ﻿import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
