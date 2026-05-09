@@ -108,6 +108,18 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		})
 	}
 
+	const clearExportProgressInAllSessions = async () => {
+		logRuntime('clearExportProgressInAllSessions:start', { sessionCount: sessionRootPromises.size })
+		for (const [sessionKey, sessionRootPromise] of sessionRootPromises) {
+			try {
+				await dispatchScopedAction('clearExportProgress', {}, null, sessionKey)
+				logRuntime('clearExportProgressInAllSessions:cleared', { sessionKey })
+			} catch (error) {
+				logRuntime('clearExportProgressInAllSessions:error', { sessionKey, error: String(error) })
+			}
+		}
+	}
+
 	const bootstrapApp = async () => {
 		if (!enabled) {
 			return null
@@ -133,9 +145,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 									requestId: (payload as { id?: unknown } | null)?.id,
 								})
 								publishExportRequest(payload)
-							},
-							requestClipExport: (payload: unknown) => {
-								void dispatchScopedAction('requestClipExport', payload, null).catch(() => undefined)
 							},
 						},
 					},
@@ -314,6 +323,12 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			Promise.resolve(handleMessage(message)).catch((error) => sendError(error, 'requestId' in message ? message.requestId : undefined))
 		})
 
+		// Subscribe to disconnect event and clear export progress
+		const unlistenDisconnect = transport.onDisconnect?.(() => {
+			logRuntime('transport:onDisconnect', { activeSessionKey })
+			void clearExportProgressInAllSessions()
+		}) ?? (() => {})
+
 		const destroy = (): void => {
 			if (destroyed) {
 				return
@@ -321,6 +336,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			destroyed = true
 			activeTransports.delete(transport)
 			unlisten()
+			unlistenDisconnect()
 			void bootstrapApp().then((app) => {
 				if (app && stream) {
 					app.runtime.sync_sender.removeSyncStream(stream)

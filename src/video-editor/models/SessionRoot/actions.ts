@@ -58,6 +58,7 @@ export type DktSessionActionName =
 	| 'requestSelectedClipExport'
 	| 'consumeExportRequest'
 	| 'setExportProgress'
+	| 'clearExportProgress'
 
 export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 	| 'activeProjectId'
@@ -585,6 +586,13 @@ export const sessionSetExportProgressAction = {
 	fn: reduceSessionSetExportProgressAction,
 } as const satisfies DktActionDescriptor
 
+export const sessionClearExportProgressAction = {
+	to: {
+		exportProgress: ['exportProgress'],
+	},
+	fn: () => ({ exportProgress: null }),
+} as const satisfies DktActionDescriptor
+
 export const sessionRequestProjectExportAction = [
 		{
 			to: {
@@ -868,4 +876,5 @@ export const dktSessionActions = {
 	requestSelectedClipExport: sessionRequestSelectedClipExportAction,
 	consumeExportRequest: sessionConsumeExportRequestAction,
 	setExportProgress: sessionSetExportProgressAction,
+	clearExportProgress: sessionClearExportProgressAction,
 } as const satisfies Record<DktSessionActionName, DktActionDefinition>

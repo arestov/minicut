@@ -47,35 +47,15 @@ export const Inspector = ({ mediaElementRegistry }: { mediaElementRegistry?: Pre
 	const selectedEntityId = typeof rootAttrs.selectedEntityId === 'string' ? rootAttrs.selectedEntityId : null
 	const setActiveTab = (tab: InspectorTab): void => sessionDispatch('setActiveInspectorTab', tab)
 
-	// Read selectedClip rel from session scope (it lives on SessionRoot, not Project)
+	// Read selectedClip rel from session scope (single source of truth)
 	const selectedClipScope = useRootOne('selectedClip')
-	const activeProjectScope = useRootOne('activeProject')
-	const fallbackSelectedClipScope = (() => {
-		if (selectedClipScope || !selectedEntityId || !activeProjectScope) {
-			return null
-		}
 
-		const trackScopes = runtime.readMany(activeProjectScope, 'tracks')
-		for (const trackScope of trackScopes) {
-			const clipScopes = runtime.readMany(trackScope, 'clips')
-			for (const clipScope of clipScopes) {
-				const attrs = runtime.readAttrs(clipScope, ['sourceClipId']) as { sourceClipId?: unknown }
-				if (attrs.sourceClipId === selectedEntityId) {
-					return clipScope
-				}
-			}
-		}
-
-		return null
-	})()
-	const resolvedClipScope = selectedClipScope ?? fallbackSelectedClipScope
-
-	if (!activeProjectId || !selectedEntityId || !resolvedClipScope) {
+	if (!activeProjectId || !selectedClipScope) {
 		return <EmptyInspector activeTab={activeTab} onChange={setActiveTab} />
 	}
 
 	return (
-		<ScopeContext.Provider value={resolvedClipScope}>
+		<ScopeContext.Provider value={selectedClipScope}>
 			<SelectedClipPanels activeTab={activeTab} mediaElementRegistry={mediaElementRegistry} onChangeTab={setActiveTab} trackPosition={trackPosition} />
 		</ScopeContext.Provider>
 	)

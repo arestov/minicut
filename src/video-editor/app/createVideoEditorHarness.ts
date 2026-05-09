@@ -200,15 +200,6 @@ export const createVideoEditorHarness = (
 		}
 
 		let disposeProjectResources = EMPTY_CLEANUP
-		let disposeActiveProject = EMPTY_CLEANUP
-		let startupRetryTimeout: ReturnType<typeof setTimeout> | null = null
-
-		const clearStartupRetry = (): void => {
-			if (startupRetryTimeout !== null) {
-				globalThis.clearTimeout(startupRetryTimeout)
-				startupRetryTimeout = null
-			}
-		}
 
 		const syncActiveProjectResources = () => {
 			const rootScope = pageRuntime.getRootScope()
@@ -217,28 +208,13 @@ export const createVideoEditorHarness = (
 				return
 			}
 
-			const pioneerScope = pageRuntime.readOne(rootScope, 'pioneer')
-			const projectScopes = pioneerScope
-				? pageRuntime.readMany(pioneerScope, 'project')
-				: []
 			const activeProjectScope = pageRuntime.readOne(rootScope, 'activeProject')
-			const fallbackProjectScope = activeProjectScope ?? projectScopes[0] ?? null
-			disposeProjectResources()
-			clearStartupRetry()
-
-			if (!fallbackProjectScope) {
+			if (!activeProjectScope) {
 				resourceTransferManager.syncResources([])
-				// Phase 5: no polling for normal operation. But on startup, if activeProject is not ready yet,
-				// we retry once after 100ms (one-time initialization check, not polling).
-				// After that, rely on subscribeRootScope to re-trigger when activeProject becomes available.
-				if (startupRetryTimeout === null) {
-					startupRetryTimeout = globalThis.setTimeout(() => {
-						startupRetryTimeout = null
-						syncActiveProjectResources()
-					}, 100)
-				}
 				return
 			}
+
+			disposeProjectResources()
 
 			const syncResources = () => {
 				const latestRootScope = pageRuntime.getRootScope()
@@ -247,17 +223,13 @@ export const createVideoEditorHarness = (
 					return
 				}
 
-				const latestPioneerScope = pageRuntime.readOne(latestRootScope, 'pioneer')
-				const latestProjectScopes = latestPioneerScope
-					? pageRuntime.readMany(latestPioneerScope, 'project')
-					: []
 				const latestActiveProjectScope = pageRuntime.readOne(latestRootScope, 'activeProject')
-				const scopesToRead = latestProjectScopes.length > 0
-					? latestProjectScopes
-					: latestActiveProjectScope
-						? [latestActiveProjectScope]
-						: [fallbackProjectScope]
-				const resourceScopes = scopesToRead.flatMap((scope) => pageRuntime.readMany(scope, 'resources'))
+				if (!latestActiveProjectScope) {
+					resourceTransferManager.syncResources([])
+					return
+				}
+
+				const resourceScopes = pageRuntime.readMany(latestActiveProjectScope, 'resources')
 				const resources = resourceScopes
 					.map((resourceScope) => {
 						const attrs = readResourceAttrs(pageRuntime, resourceScope)
@@ -271,25 +243,24 @@ export const createVideoEditorHarness = (
 				resourceTransferManager.syncResources(resources)
 			}
 
-			const scopesToWatch = projectScopes.length > 0 ? projectScopes : [fallbackProjectScope]
-			const unsubscribers = scopesToWatch.map((scope) => pageRuntime.subscribeMany(scope, 'resources', syncResources))
+			// Event-driven: subscribe to resources rel changes
+			const unsubscribe = pageRuntime.subscribeMany(activeProjectScope, 'resources', syncResources)
 			disposeProjectResources = () => {
-				for (const unlisten of unsubscribers) {
-					unlisten()
-				}
+				unsubscribe()
 			}
-			// Phase 5 (cleanup): pure event-driven model via subscribeMany.
-			// No continuous polling — rely on subscription callbacks for all resource updates.
+			// Sync current state immediately
 			syncResources()
 		}
 
-		disposeActiveProject = pageRuntime.subscribeRootScope(() => {
+		// Subscribe to root scope changes (activeProject rel change triggers resync)
+		const disposeActiveProject = pageRuntime.subscribeRootScope(() => {
 			syncActiveProjectResources()
 		})
+		
+		// Initialize immediately with current state
 		syncActiveProjectResources()
 
 		return () => {
-			clearStartupRetry()
 			disposeProjectResources()
 			disposeActiveProject()
 		}
