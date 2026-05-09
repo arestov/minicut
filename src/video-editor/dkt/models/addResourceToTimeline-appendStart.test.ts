@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bootDktModels } from '../testingInit'
+import { expectProjectGraphInvariants, expectClipTiming } from '../test/projectGraphAssertions'
 
 const PROJECT_ID = 'test-append-start'
 
@@ -30,8 +31,8 @@ describe('addResourceToTimeline append start', () => {
 		const { ctx, videoTrack } = await setupProjectWithVideoClip()
 
 		const appendStart = ctx.getAttr(videoTrack, 'appendStart')
-		console.log('[test] empty video track appendStart =', appendStart)
 		expect(appendStart).toBe(0)
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('video track appendStart equals max(start+duration) after one clip', async () => {
@@ -48,19 +49,16 @@ describe('addResourceToTimeline append start', () => {
 			})
 		})
 
-		const clips = await ctx.queryRel(videoTrack, 'clips')
-		console.log('[test] clips count =', clips.length)
-		for (const clip of clips) {
-			console.log('[test] clip attrs:', {
-				sourceClipId: ctx.getAttr(clip, 'sourceClipId'),
-				start: ctx.getAttr(clip, 'start'),
-				duration: ctx.getAttr(clip, 'duration'),
-			})
-		}
-
 		const appendStart = ctx.getAttr(videoTrack, 'appendStart')
-		console.log('[test] video track appendStart after 1 clip =', appendStart)
 		expect(appendStart).toBe(1.5)
+
+		const [clip] = await ctx.queryRel(videoTrack, 'clips')
+		expectClipTiming(ctx, clip, {
+			sourceClipId: 'clip:video-1',
+			start: 0,
+			duration: 1.5,
+		})
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('addResourceToTimeline places new clip after existing clips via deps', async () => {
@@ -87,40 +85,6 @@ describe('addResourceToTimeline append start', () => {
 			})
 		})
 
-		const resources = await ctx.queryRel(project, 'resources')
-		console.log('[test] resources after import:', resources.length)
-		for (const r of resources) {
-			console.log('[test] resource:', {
-				sourceResourceId: ctx.getAttr(r, 'sourceResourceId'),
-				kind: ctx.getAttr(r, 'kind'),
-				duration: ctx.getAttr(r, 'duration'),
-				timelineClipSource: ctx.getAttr(r, 'timelineClipSource'),
-			})
-		}
-
-		const videoClips = await ctx.queryRel(videoTrack, 'clips')
-		console.log('[test] video clips after import:', videoClips.length)
-		for (const c of videoClips) {
-			console.log('[test] video clip:', {
-				sourceClipId: ctx.getAttr(c, 'sourceClipId'),
-				start: ctx.getAttr(c, 'start'),
-				duration: ctx.getAttr(c, 'duration'),
-			})
-		}
-
-		const audioClips = await ctx.queryRel(audioTrack, 'clips')
-		console.log('[test] audio clips after import:', audioClips.length)
-		for (const c of audioClips) {
-			console.log('[test] audio clip:', {
-				sourceClipId: ctx.getAttr(c, 'sourceClipId'),
-				start: ctx.getAttr(c, 'start'),
-				duration: ctx.getAttr(c, 'duration'),
-			})
-		}
-
-		console.log('[test] video track appendStart =', ctx.getAttr(videoTrack, 'appendStart'))
-		console.log('[test] audio track appendStart =', ctx.getAttr(audioTrack, 'appendStart'))
-
 		await ctx.lockToRead(async () => {
 			await project.dispatch('importResource', {
 				sourceResourceId: 'res:image-1',
@@ -142,17 +106,6 @@ describe('addResourceToTimeline append start', () => {
 			})
 		})
 
-		console.log('[test] after importing image resource:')
-		const videoClipsAfterImage = await ctx.queryRel(videoTrack, 'clips')
-		for (const c of videoClipsAfterImage) {
-			console.log('[test] video clip:', {
-				sourceClipId: ctx.getAttr(c, 'sourceClipId'),
-				start: ctx.getAttr(c, 'start'),
-				duration: ctx.getAttr(c, 'duration'),
-			})
-		}
-		console.log('[test] video track appendStart after image =', ctx.getAttr(videoTrack, 'appendStart'))
-
 		await ctx.lockToRead(async () => {
 			await project.dispatch('addResourceToTimeline', {
 				sourceResourceId: 'res:image-1',
@@ -160,24 +113,17 @@ describe('addResourceToTimeline append start', () => {
 		})
 
 		const videoClipsFinal = await ctx.queryRel(videoTrack, 'clips')
-		console.log('[test] video clips after addResourceToTimeline(image):', videoClipsFinal.length)
-		for (const c of videoClipsFinal) {
-			console.log('[test] video clip:', {
-				sourceClipId: ctx.getAttr(c, 'sourceClipId'),
-				start: ctx.getAttr(c, 'start'),
-				duration: ctx.getAttr(c, 'duration'),
-			})
-		}
-
-		console.log('[test] video track appendStart final =', ctx.getAttr(videoTrack, 'appendStart'))
-
 		const imageClip = videoClipsFinal.find(
 			(c) => String(ctx.getAttr(c, 'sourceResourceId')).includes('res:image-1'),
 		)
 		expect(imageClip).toBeTruthy()
-		const imageStart = ctx.getAttr(imageClip!, 'start')
-		console.log('[test] image clip start =', imageStart)
-		expect(imageStart).toBe(1.5)
+		expectClipTiming(ctx, imageClip, {
+			sourceResourceId: 'res:image-1',
+			start: 1.5,
+			duration: 1,
+		})
+		expect(ctx.getAttr(videoTrack, 'appendStart')).toBe(2.5)
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('addResourceToTimeline places audio clip after existing audio clips', async () => {
@@ -233,8 +179,6 @@ describe('addResourceToTimeline append start', () => {
 			})
 		})
 
-		console.log('[test] audio track appendStart after embedded audio =', ctx.getAttr(audioTrack, 'appendStart'))
-
 		await ctx.lockToRead(async () => {
 			await project.dispatch('addResourceToTimeline', {
 				sourceResourceId: 'res:audio-1',
@@ -242,21 +186,15 @@ describe('addResourceToTimeline append start', () => {
 		})
 
 		const audioClips = await ctx.queryRel(audioTrack, 'clips')
-		console.log('[test] audio clips after addResourceToTimeline:', audioClips.length)
-		for (const c of audioClips) {
-			console.log('[test] audio clip:', {
-				sourceClipId: ctx.getAttr(c, 'sourceClipId'),
-				start: ctx.getAttr(c, 'start'),
-				duration: ctx.getAttr(c, 'duration'),
-			})
-		}
-
 		const toneClip = audioClips.find(
 			(c) => String(ctx.getAttr(c, 'sourceResourceId')).includes('res:audio-1'),
 		)
 		expect(toneClip).toBeTruthy()
-		const toneStart = ctx.getAttr(toneClip!, 'start')
-		console.log('[test] audio clip start =', toneStart)
-		expect(toneStart).toBe(1.5)
+		expectClipTiming(ctx, toneClip, {
+			sourceResourceId: 'res:audio-1',
+			start: 1.5,
+			duration: 1,
+		})
+		await expectProjectGraphInvariants(ctx)
 	})
 })

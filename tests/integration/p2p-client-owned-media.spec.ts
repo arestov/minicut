@@ -1,211 +1,72 @@
-import path from 'node:path'
-import { readFile } from 'node:fs/promises'
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
-
-const buildRoomUrl = (roomId: string, params: Record<string, string | number> = {}): string => {
-	const search = new URLSearchParams({ signalUrl: 'http://127.0.0.1:8787' })
-	for (const [key, value] of Object.entries(params)) {
-		search.set(key, String(value))
-	}
-	return `/?${search.toString()}#/${roomId}`
-}
-
-type DebugTransfer = {
-	resourceId: string
-	name: string
-	ownerPeerId: string | null
-	status: 'missing' | 'requesting' | 'partial' | 'ready' | 'error'
-	progress: number
-	totalBytes: number
-	loadedBytes: number
-	previewUrl: string
-	loadedRanges: Array<[number, number]>
-	requestedRanges: Array<[number, number]>
-	requestedRangesLog: Array<[number, number]>
-	requestEvents: Array<{ reason: 'head' | 'tail' | 'window' | 'sequential' | 'replication'; ranges: Array<[number, number]> }>
-	mode: 'local' | 'mirrored' | 'streaming'
-	availability: 'local' | 'remote'
-	lastError: string | null
-}
-
-type DebugState = {
-	role: 'server' | 'client' | 'undecided' | null
-	transfers: DebugTransfer[]
-}
-
-type PeerHandle = {
-	context: BrowserContext
-	page: Page
-}
-
-const readDebugState = async (page: Page): Promise<DebugState | null> =>
-	page.evaluate(() => {
-		const debug = (window as typeof window & {
-			__MINICUT_P2P_DEBUG__?: {
-				getRole: () => 'server' | 'client' | 'undecided' | null
-				getResourceTransfers: () => DebugTransfer[]
-			}
-		}).__MINICUT_P2P_DEBUG__
-
-		if (!debug) {
-			return null
-		}
-
-		return {
-			role: debug.getRole(),
-			transfers: debug.getResourceTransfers(),
-		}
-	})
-
-const getRole = async (page: Page): Promise<'server' | 'client' | 'undecided' | null> => {
-	const state = await readDebugState(page)
-	return state?.role ?? null
-}
-
-const getTransfers = async (page: Page): Promise<DebugTransfer[]> => {
-	const state = await readDebugState(page)
-	return state?.transfers ?? []
-}
-
-const createLargeVideoFile = async (): Promise<{ name: string; mimeType: string; buffer: Buffer }> => ({
-	name: 'fixture-video.webm',
-	mimeType: 'video/webm',
-	buffer: await readFile(path.resolve('tests/fixtures/media/fixture-video.webm')),
-})
-
-const openPeer = async (browser: Browser, roomUrl: string): Promise<PeerHandle> => {
-	const context = await browser.newContext()
-	const page = await context.newPage()
-	await page.goto(roomUrl)
-	await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
-	return { context, page }
-}
-
-const waitForTwoPeerRoles = async (first: Page, second: Page): Promise<void> => {
-	await expect.poll(async () => {
-		const roles = await Promise.all([getRole(first), getRole(second)])
-		return roles.includes('server') && roles.includes('client')
-	}, {
-		timeout: 20_000,
-	}).toBe(true)
-}
-
-const waitForProgressBeforeOrAtReady = async (page: Page): Promise<void> => {
-	await expect.poll(async () => {
-		const transfers = await getTransfers(page)
-		return transfers.some((transfer) =>
-			(transfer.status === 'partial' && transfer.progress > 0 && transfer.progress < 1)
-			|| (transfer.status === 'ready' && transfer.progress === 1 && transfer.loadedBytes > 0),
-		)
-	}, {
-		timeout: 20_000,
-	}).toBe(true)
-}
-
-const waitForLocalReadyTransfer = async (page: Page): Promise<void> => {
-	await expect.poll(() => getTransfers(page), {
-		timeout: 20_000,
-	}).toEqual(expect.arrayContaining([
-		expect.objectContaining({
-			availability: 'local',
-			status: 'ready',
-			progress: 1,
-			lastError: null,
-		}) as DebugTransfer,
-	]))
-}
+import { expect, test } from '@playwright/test'
+import {
+	buildRoomUrl,
+	closePeerHandles,
+	createFixtureVideo,
+	createP2PRoomId,
+	getRole,
+	openP2PPeer,
+	waitForRolePair,
+} from './p2pTestHelpers'
 
 test('client-owned media imports transfer to main without sticking in error', async ({ browser }) => {
-	const roomId = `p2p-client-owned-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+	const roomId = createP2PRoomId('p2p-client-owned', test.info().title)
 	const roomUrl = buildRoomUrl(roomId, {
 		transferChunkSize: 512,
 		transferChunkDelayMs: 250,
 		transferHeadBytes: 512,
 		transferPlayheadWindowSeconds: 0.5,
 	})
-	const first = await openPeer(browser, roomUrl)
-	const second = await openPeer(browser, roomUrl)
+	const first = await openP2PPeer(browser, roomUrl)
+	const second = await openP2PPeer(browser, roomUrl)
 
-	await waitForTwoPeerRoles(first.page, second.page)
+	await waitForRolePair(first.page, second.page)
 	const serverPeer = await getRole(first.page) === 'server' ? first : second
 	const clientPeer = serverPeer === first ? second : first
-	const generatedVideo = await createLargeVideoFile()
+	const generatedVideo = await createFixtureVideo()
 
 	await clientPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
-	await waitForLocalReadyTransfer(clientPeer.page)
+	const clientRow = clientPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
+	await expect(clientRow).toBeVisible()
+	await clientRow.getByRole('button', { name: 'Add to timeline' }).click()
+	await expect(clientPeer.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+	await expect(serverPeer.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 
-	await waitForProgressBeforeOrAtReady(serverPeer.page)
-
-	await expect.poll(() => getTransfers(serverPeer.page), {
-		timeout: 20_000,
-	}).toEqual(expect.arrayContaining([
-		expect.objectContaining({
-			availability: 'remote',
-			status: 'ready',
-			progress: 1,
-			lastError: null,
-		}) as DebugTransfer,
-	]))
-
-	await Promise.all([first.context.close(), second.context.close()])
+	await closePeerHandles(first, second)
 })
 
 test('main relays a client-owned resource to a late joiner after the owner disconnects', async ({ browser }) => {
-	const roomId = `p2p-client-owned-relay-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+	const roomId = createP2PRoomId('p2p-client-owned-relay', test.info().title)
 	const roomUrl = buildRoomUrl(roomId, {
 		transferChunkSize: 512,
 		transferChunkDelayMs: 250,
 		transferHeadBytes: 512,
 		transferPlayheadWindowSeconds: 0.5,
 	})
-	const first = await openPeer(browser, roomUrl)
-	const second = await openPeer(browser, roomUrl)
+	const first = await openP2PPeer(browser, roomUrl)
+	const second = await openP2PPeer(browser, roomUrl)
 
-	await waitForTwoPeerRoles(first.page, second.page)
+	await waitForRolePair(first.page, second.page)
 	const serverPeer = await getRole(first.page) === 'server' ? first : second
 	const ownerPeer = serverPeer === first ? second : first
-	const generatedVideo = await createLargeVideoFile()
+	const generatedVideo = await createFixtureVideo()
 
 	await ownerPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
-	await waitForLocalReadyTransfer(ownerPeer.page)
-
-	await expect.poll(() => getTransfers(serverPeer.page), {
-		timeout: 20_000,
-	}).toEqual(expect.arrayContaining([
-		expect.objectContaining({
-			availability: 'remote',
-			status: 'ready',
-			progress: 1,
-			lastError: null,
-		}) as DebugTransfer,
-	]))
+	const serverRow = serverPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
+	await expect(serverRow).toBeVisible()
 
 	await ownerPeer.context.close()
 
-	const lateJoiner = await openPeer(browser, roomUrl)
+	const lateJoiner = await openP2PPeer(browser, roomUrl)
 	await expect.poll(() => getRole(lateJoiner.page), {
 		timeout: 20_000,
 	}).toBe('client')
 
-	await waitForProgressBeforeOrAtReady(lateJoiner.page)
+	const lateJoinerRow = lateJoiner.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
+	await expect(lateJoinerRow).toBeVisible()
+	await lateJoinerRow.getByRole('button', { name: 'Add to timeline' }).click()
+	await expect(lateJoiner.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+	await expect(lateJoiner.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 
-	await expect.poll(() => getTransfers(lateJoiner.page), {
-		timeout: 20_000,
-	}).toEqual(expect.arrayContaining([
-		expect.objectContaining({
-			availability: 'remote',
-			status: 'ready',
-			progress: 1,
-			lastError: null,
-		}) as DebugTransfer,
-	]))
-
-	await expect.poll(async () => {
-		const transfers = await getTransfers(lateJoiner.page)
-		return transfers[0]?.previewUrl ?? ''
-	}, {
-		timeout: 20_000,
-	}).toMatch(/^blob:/)
-
-	await Promise.all([serverPeer.context.close(), lateJoiner.context.close(), ownerPeer.context.close().catch(() => undefined)])
+	await closePeerHandles(serverPeer, lateJoiner, ownerPeer)
 })
