@@ -13,9 +13,9 @@ describe('DKT import tasks', () => {
 		const tasks = createRuntimeTaskFacade()
 		const task = tasks.dispatchTask(PROJECT_IMPORT_FILES_FX, payload)
 
-		expect(task.payload.runtimeRefId).toBeDefined()
+		expect(task.payload.inputBatchHandleId).toBeDefined()
 		expect(task.payload.data).toEqual({ projectId: 'project:1', addToTimelineWhenEmpty: true })
 		expect(isProjectImportFilesEffectData(task.payload.data)).toBe(true)
-		expect(tasks.consumeRuntimeRef(String(task.payload.runtimeRefId))).toEqual([file])
+		expect(tasks.consumeRuntimeRef(String(task.payload.inputBatchHandleId))).toEqual([file])
 	})
 })

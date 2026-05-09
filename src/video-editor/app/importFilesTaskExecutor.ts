@@ -34,12 +34,12 @@ export const executeImportFilesTask = async ({
 	if (task.dropped) {
 		return
 	}
-	const runtimeRefId = task.payload.runtimeRefId
-	if (typeof runtimeRefId !== 'string' || !runtimeRefId) {
+	const inputBatchHandleId = task.payload.inputBatchHandleId
+	if (typeof inputBatchHandleId !== 'string' || !inputBatchHandleId) {
 		return
 	}
 
-	const raw = env.tasks.consumeRuntimeRef(runtimeRefId)
+	const raw = env.tasks.consumeRuntimeRef(inputBatchHandleId)
 	const fileList = Array.isArray(raw) ? raw.filter(isFileLike) : []
 	if (fileList.length === 0) {
 		env.tasks.completeTask(task)

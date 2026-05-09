@@ -73,7 +73,7 @@ export const createEditorHarnessAdapter = (
 			if (task.dropped) {
 				return
 			}
-			dispatchRoot(env, 'requestImportFiles', { inputBatchHandleId: task.payload.runtimeRefId ?? null })
+			dispatchRoot(env, 'requestImportFiles', { inputBatchHandleId: task.payload.inputBatchHandleId ?? null })
 			void executeImportFilesTask({ task, env })
 		},
 		requestSelectedClipExport(): void {

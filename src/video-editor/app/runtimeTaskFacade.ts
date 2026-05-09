@@ -14,7 +14,7 @@ export interface RuntimeTaskDescriptor {
 	taskId: string
 	fxName: `$fx_${string}`
 	payload: {
-		runtimeRefId?: string
+		inputBatchHandleId?: string
 		data?: unknown
 	}
 	queuePolicy: RuntimeTaskQueuePolicy
@@ -163,7 +163,7 @@ export const createRuntimeTaskFacade = () => {
 			taskId,
 			fxName,
 			payload: {
-				...(runtimeRefId ? { runtimeRefId } : {}),
+				...(runtimeRefId ? { inputBatchHandleId: runtimeRefId } : {}),
 				...(payload.data !== undefined ? { data: payload.data } : {}),
 			},
 			queuePolicy,
