@@ -1,5 +1,5 @@
 import { PROJECT_CREATION_SHAPE } from '../Project'
-import { buildPreviewBuffer, type PreviewBuffer, type PreviewClipSource, type PreviewStructure } from '../../read-model/previewComps'
+import { buildPreviewBuffer, PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS, type PreviewBuffer, type PreviewClipSource, type PreviewStructure } from '../../read-model/previewComps'
 import type { ExportRequestState } from '../../app/exportRequestState'
 import type { ExportProgressState } from '../../app/exportProgressState'
 import { clampProgressPercent } from '../../app/exportProgressState'
@@ -68,6 +68,7 @@ export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 	| 'isPlaying'
 	| 'timelineZoom'
 	| 'activeInspectorTab'
+	| 'previewBuffer'
 >>
 
 type DktActionDescriptor = {
@@ -327,14 +328,29 @@ export const reduceSessionTogglePlaybackAction = (
 
 export const reduceSessionTickPlaybackAction = (
 	payload: unknown,
-	state: Pick<SessionStateFields, 'cursor' | 'isPlaying'>,
-): Pick<SessionStateFields, 'cursor'> | null => {
+	state: Pick<SessionStateFields, 'cursor' | 'isPlaying'> & Partial<Pick<SessionStateFields, 'previewBuffer'> & { previewStructure: PreviewStructure }>,
+): Pick<SessionStateFields, 'cursor' | 'previewBuffer'> | null => {
 	if (!state.isPlaying) {
 		return null
 	}
 
 	const deltaSeconds = finiteNumber((payload as { deltaSeconds?: unknown } | null)?.deltaSeconds)
-	return deltaSeconds === null ? null : { cursor: Math.max(0, roundToHundredths(state.cursor + deltaSeconds)) }
+	if (deltaSeconds === null) {
+		return null
+	}
+
+	const cursor = Math.max(0, roundToHundredths(state.cursor + deltaSeconds))
+	if (!state.previewBuffer || cursor + PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS >= state.previewBuffer.endCursor) {
+		const previewStructure = state.previewStructure && Array.isArray(state.previewStructure.clipSources)
+			? state.previewStructure
+			: { clipSources: [] }
+		return {
+			cursor,
+			previewBuffer: buildPreviewBuffer(previewStructure, cursor),
+		}
+	}
+
+	return { cursor }
 }
 
 export const reduceSessionZoomTimelineAction = (
@@ -568,12 +584,19 @@ export const sessionTogglePlaybackAction = {
 export const sessionTickPlaybackAction = {
 	to: {
 		cursor: ['cursor'],
+		previewBuffer: ['previewBuffer'],
 	},
 	fn: [
-		['cursor', 'isPlaying'] as const,
-		(payload: unknown, cursor: unknown, isPlaying: unknown) => reduceSessionTickPlaybackAction(payload, {
+		['cursor', 'isPlaying', 'previewBuffer', 'previewStructure'] as const,
+		(payload: unknown, cursor: unknown, isPlaying: unknown, previewBuffer: unknown, previewStructure: unknown) => reduceSessionTickPlaybackAction(payload, {
 			cursor: typeof cursor === 'number' ? cursor : 0,
 			isPlaying: Boolean(isPlaying),
+			previewBuffer: previewBuffer && typeof previewBuffer === 'object'
+				? previewBuffer as PreviewBuffer
+				: null,
+			previewStructure: previewStructure && typeof previewStructure === 'object' && Array.isArray((previewStructure as { clipSources?: unknown }).clipSources)
+				? previewStructure as PreviewStructure
+				: { clipSources: [] },
 		}) ?? '$noop',
 	],
 } as const satisfies DktActionDescriptor
