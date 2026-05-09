@@ -50,7 +50,7 @@ export const Clip = model({
 		splitOriginalDuration: ['input', null],
 		crop: ['input', null],
 		colorAdjustments: ['input', null],
-		exportRequestIntent: ['input', null as { id: string; clipId: string; initiatedBy: string } | null],
+		exportRequestIntent: ['input', null as { id: string; clipId: string; initiatedBy: string | null } | null],
 		renderInterval: ['comp', ['start', 'duration'], (start: unknown, duration: unknown) => {
 			const s = typeof start === 'number' && Number.isFinite(start) ? start : 0
 			const d = typeof duration === 'number' && Number.isFinite(duration) ? Math.max(0, duration) : 0
@@ -538,7 +538,7 @@ export const Clip = model({
 						const exportId = typeof value?.id === 'string' && value.id
 							? value.id
 							: `export:${Date.now().toString(36)}`
-						const initiatedBy = typeof value?.initiatedBy === 'string' ? value.initiatedBy : 'local'
+						const initiatedBy = typeof value?.initiatedBy === 'string' ? value.initiatedBy : null
 
 						return {
 							exportRequestIntent: {

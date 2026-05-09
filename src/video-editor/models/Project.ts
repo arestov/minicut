@@ -15,6 +15,73 @@ export const PROJECT_CREATION_SHAPE = {
 
 const asNumber = (value: unknown, fallback: number): number => typeof value === 'number' ? value : fallback
 
+const asString = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback
+
+type TimelineResourceSummary = {
+	sourceResourceId: string
+	kind: string
+	duration: number
+	url?: string
+	mime?: string
+}
+
+const hydrateClipSourcesWithResourceSummaries = (
+	clipSources: PreviewClipSource[],
+	resourceSummaries: TimelineResourceSummary[],
+): PreviewClipSource[] => {
+	if (clipSources.length === 0 || resourceSummaries.length === 0) {
+		return clipSources
+	}
+
+	const byResourceId = new Map<string, TimelineResourceSummary>()
+	for (const summary of resourceSummaries) {
+		if (!summary || typeof summary !== 'object' || !summary.sourceResourceId) {
+			continue
+		}
+		byResourceId.set(summary.sourceResourceId, summary)
+	}
+
+	if (byResourceId.size === 0) {
+		return clipSources
+	}
+
+	return clipSources.map((clipSource) => {
+		if (typeof clipSource.resourceId !== 'string' || !clipSource.resourceId) {
+			return clipSource
+		}
+		const summary = byResourceId.get(clipSource.resourceId)
+		if (!summary) {
+			return clipSource
+		}
+
+		const resolvedUrl = asString(summary.url, '').trim()
+		const resolvedMime = asString(summary.mime, '').trim()
+		const resolvedKind = asString(summary.kind, '').trim()
+		const resolvedDuration = Number.isFinite(summary.duration) ? Math.max(0, summary.duration) : clipSource.duration
+
+		if (
+			clipSource.resourceUrl
+			&& clipSource.mime
+			&& Number.isFinite(clipSource.duration)
+			&& clipSource.duration > 0
+		) {
+			return clipSource
+		}
+
+		return {
+			...clipSource,
+			resourceUrl: clipSource.resourceUrl || resolvedUrl,
+			mime: clipSource.mime !== 'application/octet-stream' ? clipSource.mime : (resolvedMime || clipSource.mime),
+			resourceKind: clipSource.resourceKind !== 'video'
+				? clipSource.resourceKind
+				: (resolvedKind === 'audio' || resolvedKind === 'image' || resolvedKind === 'video' || resolvedKind === 'text'
+					? resolvedKind
+					: clipSource.resourceKind),
+			duration: clipSource.duration > 0 ? clipSource.duration : resolvedDuration,
+		}
+	})
+}
+
 const findResourceBySourceId = (resources: unknown[], sourceResourceId: string): Record<string, unknown> | null => {
 	if (!Array.isArray(resources)) return null
 	for (const resource of resources) {
@@ -99,16 +166,21 @@ export const Project = model({
 				}
 				return { clipSources: sources }
 			}],
-		exportPlan: ['comp', ['sourceProjectId', 'fps', 'width', 'height', 'duration', 'previewClipSources'] as const,
-			(sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, previewClipSources: unknown): ExportPlan => normalizeExportPlan({
+		exportPlan: ['comp', ['sourceProjectId', 'fps', 'width', 'height', 'duration', 'previewClipSources', '< @all:timelineClipSource < resources'] as const,
+			(sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, previewClipSources: unknown, resourceSummaries: unknown): ExportPlan => normalizeExportPlan({
 				projectId: typeof sourceProjectId === 'string' ? sourceProjectId : '',
 				fps: asNumber(fps, 30),
 				width: asNumber(width, 1920),
 				height: asNumber(height, 1080),
 				duration: asNumber(duration, 0),
-				clipSources: previewClipSources && typeof previewClipSources === 'object' && Array.isArray((previewClipSources as PreviewStructure).clipSources)
-					? (previewClipSources as PreviewStructure).clipSources
-					: [],
+				clipSources: hydrateClipSourcesWithResourceSummaries(
+					previewClipSources && typeof previewClipSources === 'object' && Array.isArray((previewClipSources as PreviewStructure).clipSources)
+						? (previewClipSources as PreviewStructure).clipSources
+						: [],
+					Array.isArray(resourceSummaries)
+						? resourceSummaries as TimelineResourceSummary[]
+						: [],
+				),
 			})],
 	},
 	rels: {

@@ -75,7 +75,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>()
 	const activeTransports = new Set<DomSyncTransportLike<MiniCutDktTransportMessage>>()
-	const publishedExportRequestIds = new Set<string>()
 	const enabled = options.enabled === true
 
 	const logRuntime = (message: string, details?: unknown) => {
@@ -96,13 +95,6 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 			requestId,
 			transports: activeTransports.size,
 		})
-		if (typeof requestId === 'string' && requestId) {
-			if (publishedExportRequestIds.has(requestId)) {
-				logRuntime('publishExportRequest:deduped', { requestId })
-				return
-			}
-			publishedExportRequestIds.add(requestId)
-		}
 
 		for (const transport of activeTransports) {
 			transport.send({

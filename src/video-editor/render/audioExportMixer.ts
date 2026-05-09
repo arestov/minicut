@@ -137,6 +137,7 @@ export const mixWebCodecsAudioTrack = async (
 	const audioContext = new AudioContextConstructor()
 	const totalFrames = Math.max(1, Math.ceil(exportDuration * sampleRate))
 	const mixedFrames = Array.from({ length: numberOfChannels }, () => new Float32Array(totalFrames))
+	let mixedClipCount = 0
 
 	try {
 		for (const clip of audioClips) {
@@ -145,7 +146,7 @@ export const mixWebCodecsAudioTrack = async (
 				.then((audioData) => audioContext.decodeAudioData(audioData.slice(0)))
 				.catch(() => null)
 			if (!decodedBuffer) {
-				return null
+				continue
 			}
 
 			const clipEnd = clip.start + clip.duration
@@ -184,6 +185,11 @@ export const mixWebCodecsAudioTrack = async (
 					mixedFrames[1][destinationIndex] += rightSample * rightGain
 				}
 			}
+			mixedClipCount += 1
+		}
+
+		if (mixedClipCount === 0) {
+			return null
 		}
 
 		for (let channel = 0; channel < mixedFrames.length; channel += 1) {
@@ -385,7 +391,15 @@ export const createAudioExportMixer = async (
 					} catch {
 						// Best-effort: metadata might still lag for some browsers.
 					}
-					void clip.element.play().catch(() => undefined)
+					clip.element.volume = 1
+					clip.element.playsInline = true
+					clip.element.muted = true
+					void clip.element.play().then(() => {
+						clip.element.muted = false
+					}).catch(() => {
+						clip.element.muted = false
+						void clip.element.play().catch(() => undefined)
+					})
 				}, delayMs))
 				elementTimers.push(globalThis.setTimeout(() => clip.element.pause(), stopMs))
 			}

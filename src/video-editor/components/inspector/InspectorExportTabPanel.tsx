@@ -1,5 +1,4 @@
 import { Download } from 'lucide-react'
-import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useRootAttrs } from '../../../dkt-react-sync/hooks/useRootAttrs'
 import { useVideoEditor } from '../../app/VideoEditorContext'
@@ -12,7 +11,6 @@ const parseExportProgress = (value: unknown): ExportProgressState | null =>
 
 export const InspectorExportTabPanel = () => {
 	const { actions } = useVideoEditor()
-	const dispatch = useActions()
 	const { sourceClipId, name } = useAttrs(['sourceClipId', 'name']) as { sourceClipId?: unknown; name?: unknown }
 	const rootAttrs = useRootAttrs(['exportProgress']) as { exportProgress?: unknown }
 	const clipId = typeof sourceClipId === 'string' ? sourceClipId : null
@@ -35,11 +33,7 @@ export const InspectorExportTabPanel = () => {
 					disabled={isClipExportRunning || !clipId}
 					onClick={() => {
 						if (clipId) {
-							dispatch('requestClipExport', {
-								clipId,
-								id: `export:${Date.now().toString(36)}`,
-								initiatedBy: actions.getLocalPeerId(),
-							})
+							actions.requestSelectedClipExport()
 						}
 					}}
 				>

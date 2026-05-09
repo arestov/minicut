@@ -602,14 +602,15 @@ export const sessionRequestProjectExportAction = [
 					'< @one:height < activeProject',
 					'< @one:duration < activeProject',
 					'< @all:clipRenderData < activeProject.tracks.clips',
+					'_node_id',
 				] as const,
-				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown) => {
+				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, sessionRootNodeId: unknown) => {
 					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
 					if (!plan) {
 						return '$noop'
 					}
 					const value = asObject(payload)
-					const initiatedBy = asString(value?.initiatedBy)
+					const initiatedBy = asString(value?.initiatedBy) ?? asString(sessionRootNodeId)
 					const id = asString(value?.id) ?? createExportRequestId()
 					const range: ExportProgressState['range'] = { type: 'project' }
 					const request = {
@@ -657,8 +658,9 @@ export const sessionRequestClipExportAction = [
 					'< @one:duration < activeProject',
 					'< @all:clipRenderData < activeProject.tracks.clips',
 					'< @all:sourceClipId < activeProject.tracks.clips',
+					'_node_id',
 				] as const,
-				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown) => {
+				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown, sessionRootNodeId: unknown) => {
 					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
 					if (!plan) {
 						return '$noop'
@@ -676,7 +678,7 @@ export const sessionRequestClipExportAction = [
 						return '$noop'
 					}
 
-					const initiatedBy = asString(value?.initiatedBy)
+					const initiatedBy = asString(value?.initiatedBy) ?? asString(sessionRootNodeId)
 					const id = asString(value?.id) ?? createExportRequestId()
 					const range: ExportProgressState['range'] = { type: 'clip', clipId }
 					const request = {
@@ -724,15 +726,17 @@ export const sessionRequestSelectedClipExportAction = [
 					'< @one:duration < activeProject',
 					'< @all:clipRenderData < activeProject.tracks.clips',
 					'< @one:sourceClipId < selectedClip',
+					'_node_id',
 				] as const,
-				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown) => {
+				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown, sessionRootNodeId: unknown) => {
 					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
 					const clipId = asString(selectedClipId)
 					if (!plan || !clipId) {
 						return '$noop'
 					}
-					const initiatedBy = asString(asObject(payload)?.initiatedBy)
-					const id = asString(asObject(payload)?.id) ?? createExportRequestId()
+					const value = asObject(payload)
+					const initiatedBy = asString(value?.initiatedBy) ?? asString(sessionRootNodeId)
+					const id = asString(value?.id) ?? createExportRequestId()
 					const range: ExportProgressState['range'] = { type: 'clip', clipId }
 					const request = {
 						id,

@@ -6,6 +6,7 @@ import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
 import { parseExportRequest, type ExportRequestState } from './exportRequestState'
+import type { ExportPlan } from '../render/renderPlan'
 import {
 	AUTH_EXT_CHANNEL,
 	AUTH_EXT_EVENT,
@@ -22,6 +23,34 @@ import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandl
 type DktResourceAttrs = ResourceAttrs & { sourceResourceId: string }
 
 const EMPTY_CLEANUP = () => {}
+
+const resolveExportPlanClipSources = (
+	plan: ExportPlan,
+	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string,
+): ExportPlan => {
+	if (!Array.isArray(plan.clipSources) || plan.clipSources.length === 0) {
+		return plan
+	}
+
+	const clipSources = plan.clipSources.map((clipSource) => {
+		if (typeof clipSource.resourceId !== 'string' || !clipSource.resourceId) {
+			return clipSource
+		}
+		const resolvedUrl = resolveResourceUrl(clipSource.resourceId, clipSource.resourceUrl)
+		if (resolvedUrl === clipSource.resourceUrl) {
+			return clipSource
+		}
+		return {
+			...clipSource,
+			resourceUrl: resolvedUrl,
+		}
+	})
+
+	return {
+		...plan,
+		clipSources,
+	}
+}
 
 const debugExport = (message: string, details?: unknown) => {
 	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
@@ -387,11 +416,18 @@ export const createVideoEditorHarness = (
 			inFlightRequestIds.add(requestId)
 
 			void (async () => {
-				const localPeerId = env.transfers.getPeerId()
-				if (request.initiatedBy && localPeerId && request.initiatedBy !== localPeerId) {
-					inFlightRequestIds.delete(request.id)
-					return
-				}
+				const audioClipCount = Array.isArray(request.plan?.clipSources)
+					? request.plan.clipSources.filter((clipSource) => (clipSource as { resourceKind?: unknown } | null)?.resourceKind === 'audio').length
+					: 0
+				const resolvedPlan = resolveExportPlanClipSources(
+					request.plan,
+					(resourceId, fallbackUrl) => resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl),
+				)
+				debugExport('render-start', {
+					requestId: request.id,
+					range: request.range,
+					audioClipCount,
+				})
 
 				const setProgress = (
 					stage: 'queued' | 'rendering' | 'finalizing' | 'done' | 'error',
@@ -416,7 +452,7 @@ export const createVideoEditorHarness = (
 					setProgress('queued', 0)
 					const result = await env.export.renderer.render(
 						{
-							plan: request.plan,
+							plan: resolvedPlan,
 							range: request.range,
 							format: request.format,
 						},
@@ -441,7 +477,6 @@ export const createVideoEditorHarness = (
 								exportId: request.id,
 								downloadUrl,
 								fileName: result.fileName,
-								targetPeerId: request.initiatedBy,
 							},
 						})
 					}
@@ -451,8 +486,10 @@ export const createVideoEditorHarness = (
 						size: result.size,
 						frameCount: result.frameCount,
 					})
+					debugExport('render-done', { requestId: request.id })
 				} catch (error) {
 					const message = error instanceof Error ? error.message : 'Export failed'
+					debugExport('render-error', { requestId: request.id, error: message })
 					setProgress('error', 0, { error: message })
 				} finally {
 					dktPort.dispatch('consumeExportRequest', { id: request.id }, null)

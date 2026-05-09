@@ -44,6 +44,11 @@ const resolveNextProjectTitle = (env: EditorActionEnvironment): string => {
 
 const getRootScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => env.pageRuntime?.getRootScope() ?? null
 
+const getRootNodeId = (env: EditorActionEnvironment): string | null => {
+	const rootScope = getRootScope(env) as { _node_id?: unknown } | null
+	return typeof rootScope?._node_id === 'string' ? rootScope._node_id : null
+}
+
 // Reading a direct rel on root - not traversal
 const getActiveProjectScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => {
 const rootScope = getRootScope(env)
@@ -205,17 +210,17 @@ dispatchRoot(env, 'splitSelectedClip')
 requestSelectedClipExport(): void {
 	dispatchRoot(env, 'requestSelectedClipExport', {
 		id: `export:${Date.now().toString(36)}:${++exportSequence}`,
-		initiatedBy: env.transfers.getPeerId(),
+		initiatedBy: getRootNodeId(env),
 	})
 },
 requestProjectExport(): void {
 	dispatchRoot(env, 'requestProjectExport', {
 		id: `export:${Date.now().toString(36)}:${++exportSequence}`,
-		initiatedBy: env.transfers.getPeerId(),
+		initiatedBy: getRootNodeId(env),
 	})
 },
-getLocalPeerId(): string | null {
-	return env.transfers.getPeerId()
+getSessionRootNodeId(): string | null {
+	return getRootNodeId(env)
 },
 getCachedExportUrl(exportId: string): string | null {
 	const cached = env.export.cachedResults.get(exportId)

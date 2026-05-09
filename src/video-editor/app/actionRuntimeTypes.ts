@@ -10,7 +10,7 @@ export interface VideoEditorHarnessActions {
 	splitSelectedClip(): void
 	requestSelectedClipExport(): void
 	requestProjectExport(): void
-	getLocalPeerId(): string | null
+	getSessionRootNodeId(): string | null
 	togglePlayback(): void
 	setCursor(value: number): void
 	tickPlayback(deltaSeconds: number): void
