@@ -302,9 +302,10 @@ const exportProject = async (page: Page): Promise<string> => {
 		return maxEnd
 	})).toBeGreaterThan(0.25)
 
+	const exportButton = page.getByRole('button', { name: 'Export project' })
 	for (let attempt = 0; attempt < 3; attempt += 1) {
 		const downloadPromise = page.waitForEvent('download')
-		await page.getByRole('button', { name: 'Export project' }).click()
+		await exportButton.click()
 		const download = await downloadPromise
 		const { filePath, bytes } = await persistDownloadToTempFile(download)
 		if (bytes.length > 0) {
@@ -317,10 +318,10 @@ const exportProject = async (page: Page): Promise<string> => {
 				return filePath
 			}
 		}
-		await page.waitForTimeout(250)
+		await expect(exportButton).toBeEnabled({ timeout: 120_000 })
 	}
 
-	throw new Error('Export project produced an empty download twice in a row')
+	throw new Error('Export project produced an empty download three times in a row')
 }
 
 const exportSelectedClip = async (page: Page): Promise<string> => {
@@ -356,7 +357,7 @@ const exportSelectedClip = async (page: Page): Promise<string> => {
 		if (bytes.length > 0) {
 			return filePath
 		}
-		await page.waitForTimeout(250)
+		await expect(downloadLink).toBeVisible({ timeout: 120_000 })
 	}
 
 	throw new Error('Clip export produced an empty download twice in a row')

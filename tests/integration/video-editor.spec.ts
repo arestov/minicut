@@ -1293,8 +1293,10 @@ test('playback toggle advances timeline cursor over time', async ({ page }) => {
 	await expect(currentTime).toHaveText('0.00s')
 
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
-	await page.waitForTimeout(700)
-	await expect(currentTime).not.toHaveText('0.00s')
+	await expect.poll(async () => {
+		const text = await currentTime.textContent()
+		return Number.parseFloat(text?.replace('s', '') ?? '0')
+	}, { timeout: 3_000 }).toBeGreaterThan(0)
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
 })
 
