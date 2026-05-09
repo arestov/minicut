@@ -9,7 +9,7 @@ import {
 	waitForRolePair,
 } from './p2pTestHelpers'
 
-test('large-file preview uses head-first partial blob and bounded sequential requests', async ({ browser }) => {
+test('large-file preview uses head-first partial blob and bounded sequential requests @slow', async ({ browser }) => {
 	test.setTimeout(90_000)
 
 	const roomId = createP2PRoomId('p2p-large-preview', test.info().title)

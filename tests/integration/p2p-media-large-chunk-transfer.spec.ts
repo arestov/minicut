@@ -13,11 +13,11 @@ test.describe.configure({ mode: 'serial' })
 
 const directions: Array<{ title: string; importer: 'main' | 'client' }> = [
 	{
-		title: 'large-chunk transfer smoke: main imports the 3 MB asset',
+		title: 'large-chunk transfer smoke: main imports the 3 MB asset @slow',
 		importer: 'main',
 	},
 	{
-		title: 'large-chunk transfer smoke: client imports the 3 MB asset',
+		title: 'large-chunk transfer smoke: client imports the 3 MB asset @slow',
 		importer: 'client',
 	},
 ]
