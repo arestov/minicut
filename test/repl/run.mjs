@@ -12,6 +12,16 @@ const wait = (ms) =>
 const shouldReport = process.env.MINICUT_REPL_REPORT !== '0'
 const dumpGraph = process.env.MINICUT_REPL_DUMP_GRAPH === '1'
 const dumpMessages = process.env.MINICUT_REPL_DUMP_MESSAGES === '1'
+let isShuttingDown = false
+
+process.on('uncaughtException', (error) => {
+	const message = error instanceof Error ? error.message : String(error)
+	if (isShuttingDown && message.includes('node_id_to_shape_list')) {
+		console.warn('[minicut-repl] ignored teardown race:', message)
+		return
+	}
+	throw error
+})
 
 const installDomGlobals = (window) => {
 	const defineGlobal = (name, value) => {
@@ -120,7 +130,11 @@ const main = async () => {
 			}
 		}
 	} finally {
-		harness.destroy()
+		isShuttingDown = true
+		if (process.env.MINICUT_REPL_SKIP_DESTROY !== '1') {
+			harness.destroy()
+			await wait(0)
+		}
 	}
 }
 

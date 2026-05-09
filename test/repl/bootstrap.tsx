@@ -1,3 +1,4 @@
+import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { createVideoEditorHarness, type VideoEditorHarness } from '../../src/video-editor/app/createVideoEditorHarness'
 import { DktEditorRoot } from '../../src/video-editor/ui/dkt/DktEditorRoot'
