@@ -1,7 +1,7 @@
 import type { AnimatedScalar } from '../../render/registryTypes'
 import type { ClipAttrs, TransformAttrs } from './types'
 import { defaultEffectAttrs } from '../Effect/defaults'
-import type { MiniCutDktEffectSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
+import type { MiniCutDktEffectSeed } from '../../dkt/runtime/seedTypes'
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))

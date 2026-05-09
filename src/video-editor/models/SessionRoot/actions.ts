@@ -513,6 +513,7 @@ export const dktSessionActions = {
 		],
 	setActiveProject: sessionSetActiveProjectAction,
 	syncActiveProjectRel: sessionSyncActiveProjectRelAction,
+	syncSelectedClipRel: sessionSyncSelectedClipRelAction,
 	syncPreviewModel: sessionSyncPreviewModelAction,
 	syncSelectedClipTrackPosition: sessionSyncSelectedClipTrackPositionAction,
 	syncSelectedClipSummary: sessionSyncSelectedClipSummaryAction,

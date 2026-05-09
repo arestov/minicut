@@ -67,7 +67,8 @@ const PlaybackLoop = () => {
 				// Refill buffer when cursor approaches end
 				if (scope) {
 					const buf = runtime.readOne(scope, 'previewBuffer') as PreviewBuffer | null
-					const cursor = runtime.readOne(scope, 'cursor') as number
+					const cursorAttrs = runtime.readAttrs(scope, ['cursor']) as { cursor?: unknown }
+					const cursor = typeof cursorAttrs.cursor === 'number' ? cursorAttrs.cursor : 0
 					if (!buf || cursor + PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS >= buf.endCursor) {
 						sessionDispatch('startPreviewBuffer')
 					}

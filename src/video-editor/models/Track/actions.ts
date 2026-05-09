@@ -1,6 +1,6 @@
 import { defaultClipTransform } from '../Clip/actions'
 import { defaultTextBox, defaultTextStyle } from '../Text/defaults'
-import type { MiniCutDktClipSeed, MiniCutDktTextSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
+import type { MiniCutDktClipSeed, MiniCutDktTextSeed } from '../../dkt/runtime/seedTypes'
 
 export type TrackAddClipPayload = MiniCutDktClipSeed & {
 	resourceId?: string | null

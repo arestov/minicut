@@ -1,4 +1,4 @@
-import type { MiniCutDktResourceSeed, MiniCutDktTrackSeed } from '../../dkt/runtime/createMiniCutDktRuntime'
+import type { MiniCutDktResourceSeed, MiniCutDktTrackSeed } from '../../dkt/runtime/seedTypes'
 
 export type ProjectAddTrackPayload = MiniCutDktTrackSeed
 export type ProjectImportResourcePayload = MiniCutDktResourceSeed

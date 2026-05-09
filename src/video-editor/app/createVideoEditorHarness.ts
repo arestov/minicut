@@ -158,12 +158,12 @@ export const createVideoEditorHarness = (
 
 		let disposeProjectResources = EMPTY_CLEANUP
 		let disposeActiveProject = EMPTY_CLEANUP
-		let runtimeReadyTimeout: ReturnType<typeof window.setTimeout> | null = null
-		let projectRefreshInterval: ReturnType<typeof window.setInterval> | null = null
+		let runtimeReadyTimeout: ReturnType<typeof setTimeout> | null = null
+		let projectRefreshInterval: ReturnType<typeof setInterval> | null = null
 
 		const clearProjectRefreshInterval = (): void => {
 			if (projectRefreshInterval !== null) {
-				window.clearInterval(projectRefreshInterval)
+				globalThis.clearInterval(projectRefreshInterval)
 				projectRefreshInterval = null
 			}
 		}
@@ -186,7 +186,7 @@ export const createVideoEditorHarness = (
 			if (!fallbackProjectScope) {
 				resourceTransferManager.syncResources([])
 				if (runtimeReadyTimeout === null) {
-					runtimeReadyTimeout = window.setTimeout(() => {
+					runtimeReadyTimeout = globalThis.setTimeout(() => {
 						runtimeReadyTimeout = null
 						syncActiveProjectResources()
 					}, 500)
@@ -232,7 +232,7 @@ export const createVideoEditorHarness = (
 					unlisten()
 				}
 			}
-			projectRefreshInterval = window.setInterval(syncResources, 500)
+			projectRefreshInterval = globalThis.setInterval(syncResources, 500)
 			syncResources()
 		}
 
@@ -243,7 +243,7 @@ export const createVideoEditorHarness = (
 
 		return () => {
 			if (runtimeReadyTimeout !== null) {
-				window.clearTimeout(runtimeReadyTimeout)
+				globalThis.clearTimeout(runtimeReadyTimeout)
 				runtimeReadyTimeout = null
 			}
 			clearProjectRefreshInterval()
