@@ -22,6 +22,7 @@ import {
 	reduceAddEmbeddedAudio,
 	reduceAddTextClipToVideoTrack,
 } from './Project/actions'
+import { reduceProjectPreviewClipSources } from './Project/comps'
 import type { PreviewClipSource, PreviewStructure } from '../read-model/previewComps'
 import { normalizeExportPlan, type ExportPlan } from '../render/renderPlan'
 
@@ -118,17 +119,7 @@ export const Project = model({
 		autoCreateDefaultTracks: ['input', false],
 		isLandscape: ['comp', ['width', 'height'], (width: unknown, height: unknown) => asNumber(width, 0) >= asNumber(height, 0)],
 		previewClipSources: ['comp', ['< @all:clipRenderData < tracks.clips'] as const,
-			(allTrackClipData: unknown): PreviewStructure => {
-				const sources: PreviewClipSource[] = []
-				if (Array.isArray(allTrackClipData)) {
-					for (const clipData of allTrackClipData) {
-						if (clipData && typeof clipData === 'object' && 'id' in clipData) {
-							sources.push(clipData as PreviewClipSource)
-						}
-					}
-				}
-				return { clipSources: sources }
-			}],
+			reduceProjectPreviewClipSources],
 	},
 	rels: {
 		tracks: ['input', { many: true, linking: '<< track << #' }],

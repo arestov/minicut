@@ -7,6 +7,7 @@ import {
 	reduceAddClip, reduceAddTextClip, reduceSplitClipAt,
 	reduceSetClips, reduceRemoveClip, reduceRemoveClipBySourceId,
 } from './Track/actions'
+import { reduceTrackAppendStart } from './Track/comps'
 
 export const TRACK_CREATION_SHAPE = {
 	attrs: ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height'],
@@ -25,18 +26,7 @@ export const Track = model({
 		trackDuration: ['input', 0],
 		clipCount: ['input', 0],
 		appendStart: ['comp', ['< @all:start < clips', '< @all:duration < clips'] as const,
-			(starts: unknown, durations: unknown): number => {
-				const s = Array.isArray(starts) ? starts : []
-				const d = Array.isArray(durations) ? durations : []
-				let maxEnd = 0
-				const len = Math.max(s.length, d.length)
-				for (let i = 0; i < len; i += 1) {
-					const sv = typeof s[i] === 'number' && Number.isFinite(s[i]) ? s[i] : 0
-					const dv = typeof d[i] === 'number' && Number.isFinite(d[i]) ? d[i] : 0
-					maxEnd = Math.max(maxEnd, sv + dv)
-				}
-				return maxEnd
-			}],
+			reduceTrackAppendStart],
 		laneRenderState: ['comp', ['muted', 'locked', 'isVisible'], (muted: unknown, locked: unknown, isVisible: unknown) => ({
 			muted: muted === true,
 			locked: locked === true,

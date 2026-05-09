@@ -5,8 +5,7 @@ import { createPreviewFrame, lookupPreviewBufferFrame, type PreviewBuffer, type 
 import type { ExportProgressState } from '../app/exportProgressState'
 import type { ExportRequestState } from '../app/exportRequestState'
 import { dktSessionActions } from './SessionRoot/actions'
-
-const DEFAULT_PREVIEW_STRUCTURE: PreviewStructure = { clipSources: [] }
+import { reducePreviewFrame, reducePreviewStructure, reduceSelectedClip } from './SessionRoot/comps'
 
 const debugExport = (message: string, details?: unknown) => {
 	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
@@ -37,26 +36,9 @@ export const EditorSessionRoot = model({
 		timelineTool: ['input', 'select'],
 		snappingEnabled: ['input', true],
 		previewStructure: ['comp', ['< @one:previewClipSources < activeProject'] as const,
-			(previewClipSources: unknown): PreviewStructure => {
-				if (previewClipSources && typeof previewClipSources === 'object' && Array.isArray((previewClipSources as PreviewStructure).clipSources)) {
-					return previewClipSources as PreviewStructure
-				}
-				return DEFAULT_PREVIEW_STRUCTURE
-			}],
+			reducePreviewStructure],
 		previewFrame: ['comp', ['previewStructure', 'cursor', 'previewBuffer', 'isPlaying'] as const,
-			(previewStructure: unknown, cursor: unknown, previewBuffer: unknown, isPlaying: unknown): PreviewFrame => {
-				const time = typeof cursor === 'number' && Number.isFinite(cursor) ? cursor : 0
-				if (isPlaying) {
-					const buffered = lookupPreviewBufferFrame(previewBuffer as PreviewBuffer | null, time)
-					if (buffered) return buffered
-				}
-				return createPreviewFrame(
-					previewStructure && typeof previewStructure === 'object' && Array.isArray((previewStructure as { clipSources?: unknown }).clipSources)
-						? previewStructure as PreviewStructure
-						: DEFAULT_PREVIEW_STRUCTURE,
-					time,
-				)
-			}],
+			reducePreviewFrame],
 		selectedClipSummary: ['comp', [
 			'< @one:sourceClipId < selectedClip',
 			'< @one:color < selectedClip',
@@ -126,29 +108,7 @@ export const EditorSessionRoot = model({
 			'<< @all:activeProject.tracks.clips',
 			'< @all:sourceClipId < activeProject.tracks.clips',
 			'selectedEntityId',
-		] as const, (clips: unknown, sourceClipIds: unknown, selectedEntityId: unknown) => {
-			if (typeof selectedEntityId !== 'string' || !selectedEntityId) return null
-			const modelList = Array.isArray(clips) ? clips : []
-			const idList = Array.isArray(sourceClipIds) ? sourceClipIds : []
-			const index = idList.indexOf(selectedEntityId)
-			if (index !== -1 && modelList[index]) return modelList[index]
-
-			for (const clipModel of modelList) {
-				if (!clipModel || typeof clipModel !== 'object') {
-					continue
-				}
-				const nodeId = (clipModel as { _node_id?: unknown; _nodeId?: unknown })._node_id
-				const nodeIdCamel = (clipModel as { _node_id?: unknown; _nodeId?: unknown })._nodeId
-				if (
-					(typeof nodeId === 'string' && nodeId === selectedEntityId)
-					|| (typeof nodeIdCamel === 'string' && nodeIdCamel === selectedEntityId)
-				) {
-					return clipModel
-				}
-			}
-
-			return null
-		}, { linking: '<< clip << #' }],
+		] as const, reduceSelectedClip, { linking: '<< clip << #' }],
 		selectedResource: ['input', { linking: '<< resource << #' }],
 		selectedText: ['input', { linking: '<< text << #' }],
 		selectedEffect: ['input', { linking: '<< effect << #' }],
