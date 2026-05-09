@@ -127,49 +127,260 @@
 | `tickPlayback` | playback tick | Ок | Оставить. |
 | `zoomTimeline` | zoom | Ок | Оставить. |
 
-## Зачем сейчас нужен `dispatchClipActionById`
+## Аудит actions: потребности в SessionRoot данных
 
-Практически он закрывает UX-кейс: UI часто знает `clipId`, а не runtime `clipScope`, и нужно применить clip action к конкретному клипу.
+### Ключевой вывод
 
-Что не так:
-- Для этого он вручную travers-ит `activeProject -> tracks -> clips` и читает `sourceClipId` через `readAttrs`.
-- Если клип не найден, молча применяет действие к selected clip (`dispatchSelectedClipAction`), что делает поведение неявным и хрупким.
+Полный аудит всех actions на всех моделях (Clip, Effect, Track, Resource, Text) показывает:
 
-Рекомендация:
-- Удалить helper.
-- Ввести DKT-level by-id actions (multi-step), где выбор target происходит через deps-addressing.
-- Никакого fallback к selected clip без явного `when_fn` и явной ветки в action.
+**Ни один entity-level action не нуждается в SessionRoot-данных.**
 
-## Нормативное правило: запрет на by-id wrapper helpers вне DKT
+Все actions читают только:
+- свои собственные attrs
+- свои собственные downward rels (`<< effects`, `<< clips`)
+- payload от caller-а
+- upward rels как dispatch target (`<< track`, `<< project`) — но не как data source
+
+У каждой модели есть upward rels для traversal:
+- Clip: `track`, `project`, `resource`, `text`
+- Effect: `clip`, `project`
+- Track: `project`
+- Resource: `project`, `clips`
+- Text: `clip`
+
+### Таблица: Clip actions (23 action)
+
+| Action | Deps (что читает) | Root данные? | Достаточно scoped dispatch? |
+|---|---|---|---|
+| `updateOpacity` | payload | нет | да |
+| `rename` | payload | нет | да |
+| `setClipAttrs` | payload (15 полей) | нет | да |
+| `setMediaKind` | payload | нет | да |
+| `color` | payload | нет | да |
+| `setFade` | `fadeIn`, `fadeOut`, `duration` (self) | нет | да |
+| `setAudio` | `audio` (self) | нет | да |
+| `setTimelineAttrs` | payload | нет | да |
+| `setTransform` | `transform` (self) | нет | да |
+| `moveBy` | `start` (self) | нет | да |
+| `trim` | `start`, `in`, `duration` (self) | нет | да |
+| `resize` | `start`, `in`, `duration` (self) | нет | да |
+| `splitAt` | `start`, `duration` (self) | нет | да |
+| `addEffect` | payload | нет | да |
+| `setResource` | payload | нет | да |
+| `setText` | payload | нет | да |
+| `setTrack` | payload | нет | да |
+| `setProject` | payload | нет | да |
+| `setEffects` | payload | нет | да |
+| `removeEffect` | `<< @all:effects` (self rel) | нет | да |
+| `reorderEffect` | `<< @all:effects` (self rel) | нет | да |
+| `removeSelf` | `sourceClipId` (self), `<< track` (upward dispatch) | нет | да |
+| `splitSelfAt` | 14 self attrs + `<< track` (upward dispatch) | нет | да |
+
+### Таблица: Effect actions (8 action)
+
+| Action | Deps | Root данные? | Достаточно scoped dispatch? |
+|---|---|---|---|
+| `setEffectName` | payload | нет | да |
+| `setEffectKind` | payload | нет | да |
+| `setEffectEnabled` | payload | нет | да |
+| `setEffectAmount` | payload | нет | да |
+| `setEffectParams` | payload | нет | да |
+| `setEffectColor` | payload | нет | да |
+| `setEffectClip` | payload | нет | да |
+| `setEffectProject` | payload | нет | да |
+
+### Таблица: Track actions (9 action)
+
+| Action | Deps | Root данные? | Достаточно scoped dispatch? |
+|---|---|---|---|
+| `renameTrack` | payload | нет | да |
+| `setTrackMuted` | payload | нет | да |
+| `setTrackLocked` | payload | нет | да |
+| `addClip` | `<<<<` (self) | нет | да |
+| `addTextClip` | `<<<<` (self) | нет | да |
+| `splitClipAt` | `<<<<` (self) | нет | да |
+| `setClips` | payload | нет | да |
+| `removeClip` | `<< @all:clips` (self rel) | нет | да |
+| `removeClipBySourceId` | `<< @all:clips` (self rel) | нет | да |
+
+### Таблица: Resource actions (6 action)
+
+| Action | Deps | Root данные? | Достаточно scoped dispatch? |
+|---|---|---|---|
+| `renameResource` | payload | нет | да |
+| `setResourceStatus` | payload | нет | да |
+| `setResourceAttrs` | payload | нет | да |
+| `requestAddToTimeline` | payload | нет | да |
+| `setProject` | payload | нет | да |
+| `setClips` | payload | нет | да |
+
+### Таблица: Text actions (4 action)
+
+| Action | Deps | Root данные? | Достаточно scoped dispatch? |
+|---|---|---|---|
+| `setTextContent` | payload | нет | да |
+| `setTextStyle` | `style` (self) | нет | да |
+| `setTextBox` | `box` (self) | нет | да |
+| `setClip` | payload | нет | да |
+
+### Таблица: SessionRoot actions (21 action) — root по определению
+
+| Action | Root данные | Почему root |
+|---|---|---|
+| `handleInit` | activeProjectId, pendingProjectInit | Создание проекта при инициализации |
+| `createProject` | activeProjectId, activeProject (rel) | Создание нового проекта |
+| `setActiveProject` | activeProjectId, activeProject (rel) | Переключение проекта |
+| `selectEntity` | selectedEntityId | Session-level selection |
+| `syncActiveProjectRel` | activeProject (rel) | Sync от P2P runtime |
+| `syncPreviewModel` | previewStructure | Sync от P2P runtime |
+| `syncSelectedClipTrackPosition` | selectedClipTrackPosition | Sync от P2P runtime |
+| `syncSelectedClipSummary` | selectedClipSummary | Sync от P2P runtime |
+| `setActiveInspectorTab` | activeInspectorTab | Session-level UI state |
+| `setCursor` | cursor | Session-level playback |
+| `setPlaying` | isPlaying | Session-level playback |
+| `setTimelineZoom` | timelineZoom | Session-level UI state |
+| `tickPlayback` | cursor, isPlaying | Session-level playback |
+| `togglePlayback` | isPlaying | Session-level playback |
+| `zoomTimeline` | timelineZoom | Session-level UI state |
+| `addTextClipToTimeline` | activeProject (rel), selectedEntityId | Root → project delegation + selection |
+| `deleteSelectedClip` | selectedClip (rel), selectedEntityId | Root → clip delegation + cleanup |
+| `splitSelectedClip` | selectedClip (rel), cursor | Root → clip delegation + cursor |
+| `startPreviewBuffer` | previewStructure, cursor | Session-level preview |
+| `clearPreviewBuffer` | previewBuffer | Session-level preview |
+| `syncSelectedClipRel` | selectedClip (rel) | Sync от P2P runtime |
+
+### Таблица: adapter methods → реальная потребность
+
+| Adapter method | Вызов в UI | UI в scope? | Clip action нуждается в root? | Что делать |
+|---|---|---|---|---|
+| **Session control** | | | | |
+| `createProject` | Toolbar, MediaBin, ProjectDropdown | session | N/A | `dispatchRoot` (без изменений) |
+| `setActiveProject` | ProjectDropdown | session | N/A | `dispatchRoot` (без изменений) |
+| `selectEntity` | нет call sites | — | N/A | `dispatchRoot` |
+| `setActiveInspectorTab` | нет call sites | — | N/A | `dispatchRoot` |
+| `togglePlayback` | нет call sites | — | N/A | `dispatchRoot` |
+| `setCursor` | VideoEditorHarnessApp (debug) | session | N/A | `dispatchRoot` |
+| `tickPlayback` | нет call sites | — | N/A | `dispatchRoot` |
+| `zoomTimeline` | нет call sites | — | N/A | `dispatchRoot` |
+| **Root → entity delegation** | | | | |
+| `deleteSelectedClip` | нет call sites | — | нет, но root чистит selectedEntityId | `dispatchRoot` (уже реализован) |
+| `splitSelectedClip` | нет call sites | — | нет, но root передаёт cursor | `dispatchRoot` (уже реализован) |
+| `addTextClip` | MediaBin | session | нет, но root делегирует в activeProject | `dispatchRoot` (уже реализован) |
+| `importSampleResource` | нет call sites | — | N/A | `dispatchRoot` |
+| **Entity scoped** | | | | |
+| `renameClipById` | InspectorClipHeader | **Да, Clip scope** | нет | → `useActions()` + `dispatch('rename', {name})` |
+| `colorClipById` | нет call sites | — | нет | Удалить |
+| `updateClipOpacityById` | нет call sites | — | нет | Удалить |
+| `updateClipFadeById` | нет call sites | — | нет | Удалить |
+| `updateClipTransformById` | нет call sites | — | нет | Удалить |
+| `updateClipAudioById` | нет call sites | — | нет | Удалить |
+| `trimClipById` | нет call sites | — | нет | Удалить |
+| `resizeClipById` | нет call sites | — | нет | Удалить |
+| `addEffectToClip` | нет call sites | — | нет | Удалить |
+| `addColorCorrectionToClip` | нет call sites | — | нет | Удалить |
+| `deleteClipById` | нет call sites | — | нет | Удалить |
+| `splitClipByIdAt` | нет call sites | — | нет | Удалить |
+| `removeEffectFromClip` | нет call sites | — | нет | Удалить |
+| `moveClipById` | нет call sites | — | нет | Удалить |
+| `renameSelectedClip` | нет call sites | — | нет | Удалить |
+| `colorSelectedClip` | нет call sites | — | нет | Удалить |
+| `updateSelectedClipOpacity` | нет call sites | — | нет | Удалить |
+| `updateSelectedClipFade` | нет call sites | — | нет | Удалить |
+| `updateSelectedClipTransform` | нет call sites | — | нет | Удалить |
+| `updateSelectedClipAudio` | нет call sites | — | нет | Удалить |
+| `trimSelectedClip` | нет call sites | — | нет | Удалить |
+| `addEffectToSelectedClip` | нет call sites | — | нет | Удалить |
+| `addColorCorrectionToSelectedClip` | нет call sites | — | нет | Удалить |
+| `removeEffectFromSelectedClip` | нет call sites | — | нет | Удалить |
+| `nudgeSelectedClip` | нет call sites | — | нет | Удалить |
+| `addResourceToTimeline` | MediaBin | **Да, Project scope** | нет | → `useActions()` + `dispatch('addResourceToTimeline', {resourceId})` |
+| `addTrack` | нет call sites | — | нет | Удалить (если понадобится — scoped dispatch) |
+| **Import/Export (saga/fx)** | | | | |
+| `importFiles` | MediaBin | session | N/A | → `dispatchRoot` + `$fx_handleInputFiles` |
+| `queueClipExportById` | InspectorExportTabPanel | **Да, Clip scope** | нет, но нужен fx pipeline | → scoped action + `$fx_renderExport` |
+| `queueSelectedClipExport` | нет call sites | — | нет | Удалить |
+| `queueProjectExport` | Toolbar, test | session | N/A | → `dispatchRoot('requestProjectExport')` + `$fx_renderExport` |
+
+### Вывод
+
+Из 43 adapter methods:
+- **8** остаются как `dispatchRoot` (session control, root-level orchestration)
+- **2** переходят на scoped `useActions()` (`renameClipById` → `dispatch('rename')`, `addResourceToTimeline` → `dispatch('addResourceToTimeline')`)
+- **27** удаляются без замены (нет call sites, все данные локальны)
+- **4** переписываются в DKT saga/fx pipeline (`importFiles`, `queueClipExportById`, `queueSelectedClipExport` → delete, `queueProjectExport`)
+- **2** остаются как `dispatchRoot` для существующих root-level clip delegation (`deleteSelectedClip`, `splitSelectedClip`)
+
+## Нормативное правило: scoped dispatch first
 
 Это правило обязательно для нового кода.
 
-Запрещено:
+### Приоритет dispatch
 
-1. Добавлять wrapper-методы в adapter/UI вида `actions.renameClipById`, `actions.colorClipById`, `actions.trimClipById`, если внутри есть graph traversal.
-2. Добавлять helper-ы `findClipScopeById`/`dispatchClipActionById`/аналогичные по track/effect вне DKT action layer.
+1. **Scoped `useActions()`** — дефолт для entity actions, если компонент в нужном scope.
+2. **`dispatchRoot`** — только когда action реально нуждается в SessionRoot-данных (cursor, isPlaying, selectedEntityId, activeProject rel) или это session-level concern.
+3. **`dispatchRoot` + `$fx_*`** — для async/IO pipelines (import, export).
+
+### Запрещено
+
+1. Добавлять wrapper-методы `actions.*ById(...)` в adapter с graph traversal.
+2. Использовать кастомный `clipId`/`sourceClipId` для адресации между слоями — только DKT `_node_id`.
 3. Делать `pageRuntime.readOne/readMany/readAttrs` в adapter ради target resolution.
 4. Делать неявный fallback на selected entity при lookup failure.
+5. Добавлять helper-ы `findClipScopeById`/`dispatchClipActionById`/аналогичные вне DKT action layer.
 
-Разрешено:
+### Разрешено
 
-1. Root dispatch на `SessionRoot` как command entrypoint.
-2. Target resolution только внутри DKT actions через deps/subwalker.
-3. Async/IO через `$fx_*`/task executor, но выбор target также внутри DKT.
+1. Scoped `useActions()` для model actions, если компонент в нужном scope.
+2. Root dispatch (`dispatchRoot`) для session-level команд и root → entity delegation.
+3. Async/IO через DKT command → `$fx_*` → executor.
+4. Доступ к model references через comp rels с zip (`<< @one:primaryVideoTrack` даёт runtime model reference, `<< @all:effects` даёт список references).
 
-Идеальный путь:
+### Принцип
 
-1. UI формирует payload (`clipId`, `delta`, `effectId`, ...).
-2. UI dispatch-ит root command.
-3. `SessionRoot` action внутри DKT находит target.
-4. Следующий шаг dispatch-ит subwalker action в найденную модель.
-5. При отсутствии target: явный `$noop` или controlled error branch.
-
-Принцип:
-
+- adapter не знает graph topology;
 - traversal и address resolution принадлежат DKT actions;
-- adapter не должен знать, как искать clip в `activeProject.tracks.clips`;
-- UI boundary должен знать command payload, но не graph traversal rules.
+- UI boundary формирует payload, но не ищет target;
+- каждая модель имеет upward rels (Clip→track, Clip→project, Effect→clip, Track→project) — если нужны данные от parent, они доступны через deps.
+
+### Примечание: model references через deps
+
+`<< @one:<rel>` и `<< @all:<rel>` в deps возвращают **runtime model references**, а не scalar values.
+
+Это значит:
+- `<< @one:primaryVideoTrack` в deps даёт model reference Track
+- `<< @all:effects` в deps даёт массив model references Effect
+- `<< @one:activeProject` в deps даёт model reference Project
+
+Эти references можно использовать:
+- как base для дальнейшего чтения attrs (`< @one:title < activeProject`)
+- как dispatch target (`to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }]`)
+- для передачи через `$output`/`$input` между steps
+
+См. `docs/dkt-addressing-and-spec-addr-ru.md`, раздел "Nesting-only traversal" и "Zip names".
+
+### Примечание: `inline_subwalker` vs `sub_flow` — два направления delegation
+
+DKT поддерживает два паттерна delegation через rels:
+
+**Downward: `inline_subwalker`** — parent делегирует action child-модели через named rel.
+
+```ts
+// SessionRoot → activeProject
+to: ['<< activeProject', { action: 'handleInit', inline_subwalker: true }]
+
+// Project → primaryVideoTrack
+to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }]
+```
+
+**Upward: `sub_flow`** — child делегирует action parent-модели.
+
+```ts
+// Clip → track (upward delegation)
+to: ['<< track', { action: 'removeClipBySourceId', sub_flow: true }]
+to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
+```
+
+Оба паттерна уже используются в minicut (12 `inline_subwalker`, 2 `sub_flow`). При добавлении новых root-level действий, которые делегируют от root через project в clip и затем clip в track, может потребоваться комбинированный паттерн: root action → `inline_subwalker` в clip → clip action → `sub_flow` в track.
 
 ## Обзор реальных `*ById` call sites и scope-контекста
 
@@ -206,113 +417,211 @@
 
 1. Adapter = thin boundary:
 - генерирует payload (например id/time)
-- вызывает только root-level `dispatch`
+- вызывает `dispatchRoot` для session-level команд
 - не читает graph state
 - не travers-ит rel
 - не делает wait loops
 
-2. Domain behavior = DKT actions:
-- выбор активного проекта/клипа через deps
-- multi-step orchestration (`$output` между шагами)
+2. React render = scoped dispatch:
+- компоненты в entity scope используют `useActions()` напрямую
+- `dispatch('rename', {name})` вместо `actions.renameClipById(id, name)`
+- `dispatch('addResourceToTimeline', {resourceId})` вместо `actions.addResourceToTimeline(resourceId)`
+- export из scope: `dispatch('requestClipExport', ...)` или `dispatchRoot('requestProjectExport')`
+
+3. Domain behavior = DKT actions:
+- session-level actions на SessionRoot (createProject, setCursor, splitSelectedClip, deleteSelectedClip)
+- все entity actions уже существуют на соответствующих моделях
+- multi-step orchestration (`$output` между шагами) только для import/export
 - `$noop` для раннего выхода
 
-3. Side effects = runtime task layer:
+4. Side effects = runtime task layer:
 - через `$fx_...` target (если нужен IO/async)
 - task payload serializable, runtimeRef через `tasks.dispatchTask`
 - execution в отдельном executor (не в adapter)
 
+## Разделение работы: React render vs DKT
+
+### Что меняется в React render
+
+| Компонент | Сейчас | Станет | Тип работы |
+|---|---|---|---|
+| `InspectorClipHeader.tsx` | `actions.renameClipById(sourceClipId, value)` | `useActions()` + `dispatch('rename', { name: value })` | React: добавить import useActions, заменить вызов |
+| `InspectorExportTabPanel.tsx` | `actions.queueClipExportById(clipId, onProgress)` | `useActions()` + `dispatch('requestClipExport', { onProgress })` (после Phase 4) | React: заменить; DKT: добавить clip export action |
+| `MediaBin.tsx` (addResourceToTimeline) | `actions.addResourceToTimeline(sourceResourceId)` | `useActions()` + `dispatch('addResourceToTimeline', { sourceResourceId })` | React: заменить; adapter method удалить |
+| `MediaBin.tsx` (importFiles) | `actions.importFiles(files)` | `dispatchRoot('importFilesRequested', { files })` (после Phase 3) | React: заменить; DKT: добавить root action |
+| `MediaBin.tsx` (addTextClip) | `actions.addTextClip()` | `dispatchRoot('addTextClipToTimeline', payload)` — без изменений | Без изменений |
+| `Toolbar.tsx` (queueProjectExport) | `actions.queueProjectExport(onProgress)` | `dispatchRoot('requestProjectExport', { onProgress })` (после Phase 4) | React: заменить; DKT: добавить root action |
+| Inspector panels (Edit/Audio/Color) | уже используют `useActions()` | без изменений | Уже корректно |
+
+### Что меняется в DKT
+
+| Что | Файл | Тип работы |
+|---|---|---|
+| Удалить dead code (3 функции) | `editorHarnessAdapter.ts` | Adapter cleanup |
+| Удалить 27 unused methods | `editorHarnessAdapter.ts` | Adapter cleanup |
+| Удалить `findClipScopeById`, `dispatchClipActionById` | `editorHarnessAdapter.ts` | Adapter cleanup |
+| Удалить `buildFallbackExportPlan` | `editorHarnessAdapter.ts` | Adapter cleanup |
+| Удалить `createDktActionRuntime.ts` | новый | Удалить файл |
+| Добавить `requestProjectExport` action | `SessionRoot/actions.ts` | DKT: new root action |
+| Добавить `requestClipExport` action на Clip или root | `Clip.ts` или `SessionRoot/actions.ts` | DKT: new action |
+| Добавить `importFilesRequested` action | `Project.ts` или `SessionRoot/actions.ts` | DKT: new root action |
+| Удалить `Project.exportPlan` comp | `Project.ts` | DKT: удалить eager comp |
+| Вынести polling в testing helpers | `createVideoEditorHarness.ts` | Infrastructure |
+| Удалить production import `.testing.ts` | `VideoEditorHarnessApp.tsx` | Infrastructure |
+
+### Что НЕ нужно менять в DKT
+
+- Все 23 Clip actions — остаются как есть, не нуждаются в root данных
+- Все 8 Effect actions — остаются как есть
+- Все 9 Track actions — остаются как есть
+- Все 6 Resource actions — остаются как есть
+- Все 4 Text actions — остаются как есть
+- SessionRoot actions `deleteSelectedClip`, `splitSelectedClip` — уже реализованы корректно
+
 ## Конкретный план миграции
 
-### Phase 0. Stop duplication
+### Phase 0. Stop duplication + dead code
 
-1. Выбрать один runtime entrypoint: `createEditorHarnessAdapter` или `createDktActionRuntime`.
-2. Удалить дублирующий файл после выбора источника истины.
+1. Удалить `createDktActionRuntime.ts` — мертвый файл (нигде не импортирован, grep: 0 ссылок).
+2. Удалить dead code из `editorHarnessAdapter.ts`: `getTrackScopeByKind`, `getResourceAttrsById`, `dispatchTrackClip`.
 
-### Phase 1. Root-level action façade для project/clip команд
+Подсказки для дебага проблем на шаге:
 
-1. В `SessionRoot/actions.ts` добавить root actions:
-- `addTrackToActiveProject`
-- `addResourceToActiveProjectTimeline`
-- `renameSelectedClip`, `colorSelectedClip`, `updateSelectedClipOpacity`, `updateSelectedClipFade`, `updateSelectedClipTransform`, `updateSelectedClipAudio`, `trimSelectedClipByDelta`, `resizeSelectedClipByDelta`, `addEffectToSelectedClip`, `removeEffectFromSelectedClip`, `moveSelectedClipByDelta`
-2. Каждая selected-clip команда: `to: ['<< selectedClip', { action: '...', inline_subwalker: true }]`.
-3. Adapter methods заменить на root dispatch этих actions.
+- Проверка типов/ссылок: `npm run test:video-editor:node` + `rg` по удаленным символам.
+- Если после удаления runtime не стартует: `npm run repl:run` и смотреть `snapshot/messages`.
+- Если проблема только в browser entrypoint: `window.__MINICUT_P2P_DEBUG__.getSnapshot()` и `getRuntimeMessages()`.
 
-### Phase 2. By-id команды внутри DKT (замена dispatchClipActionById)
+### Phase 1. Удалить unused adapter methods + перевести UI на scoped dispatch
 
-1. Добавить унифицированный root action `runClipCommandById` (или набор typed by-id actions).
-2. Step 1 deps: массив clip моделей + массив sourceClipId, матчинг id, результат в `$output`.
-3. Step 2: dispatch subwalker action на найденный clip (через `$input` base или промежуточную rel/field с описанным shape).
-4. Если clip не найден: явный `$noop` или controlled error path (без silent fallback).
+1. Удалить из adapter 27 методов без call sites:
+- все `*ById` методы (14 штук): `renameClipById`, `colorClipById`, `updateClipOpacityById`, `updateClipFadeById`, `updateClipTransformById`, `updateClipAudioById`, `trimClipById`, `resizeClipById`, `addEffectToClip`, `addColorCorrectionToClip`, `deleteClipById`, `splitClipByIdAt`, `removeEffectFromClip`, `moveClipById`
+- все `*Selected` методы (13 штук): `renameSelectedClip`, `colorSelectedClip`, `updateSelectedClipOpacity`, `updateSelectedClipFade`, `updateSelectedClipTransform`, `updateSelectedClipAudio`, `trimSelectedClip`, `addEffectToSelectedClip`, `addColorCorrectionToSelectedClip`, `removeEffectFromSelectedClip`, `nudgeSelectedClip`, `queueSelectedClipExport`, `addTrack`
+2. Удалить helper-ы, ставшие unused: `findClipScopeById`, `dispatchClipActionById`, `dispatchSelectedClipAction`, `getSelectedClipScope`, `dispatchProject`, `getActiveProjectScope`.
+3. Перевести React-компоненты на scoped dispatch:
+- `InspectorClipHeader.tsx`: `useActions()` + `dispatch('rename', { name })`
+- `MediaBin.tsx`: `useActions()` + `dispatch('addResourceToTimeline', { sourceResourceId })`
+4. Удалить helper-ы для fallback export: `buildFallbackExportPlan`, `toResolvedScalar`, `asFiniteNumber`.
 
-Примечание по shape:
-- При передаче model через `$output` и чтении через `$input*` обязательно описать `output_base_rel_shape` и `input_base_rel_shape`.
+Подсказки для дебага проблем на шаге:
 
-### Phase 3. Import pipeline: убрать waits и imperative orchestration
+- scoped dispatch не доходит до модели: `npm run repl:run` + `harness.inspect.messages()`.
+- изменение не отражается в графе: `harness.inspect.graph()` и `harness.inspect.diff(before, after)`.
+- проблема в конкретном клипе/треке: `harness.inspect.activeProject()` (включает clips/effects/text).
+- UI в browser не совпадает с jsdom: `npm run repl:playwright:runtime` + `activeProject/selection/messages`.
 
-1. Удалить из adapter:
-- `waitForRuntimeReady`
-- `waitForActiveProjectScope`
-- `waitForPeerId`
-- `importFilesDirectly`
-2. Ввести root/project action `importFilesRequested`:
-- формирует task payload
-- пишет в `$fx_handleInputFiles` с `intent: 'call'` (или `request` по протоколу)
+Результат: adapter сокращается с ~775 до ~200 строк, содержит только session control dispatch + import/export placeholders.
+
+### Phase 2. Import pipeline: DKT action + `$fx_*`
+
+1. Удалить из adapter: `importFilesDirectly`, `isTimelineEmpty`.
+2. Ввести root action `importFilesRequested`:
+- формирует task payload из files
+- пишет в `$fx_handleInputFiles` с `intent: 'call'`
 3. Runtime task executor:
 - consume runtime refs
 - media probe duration
 - dispatch model actions (`importResource`, `addEmbeddedAudioToTimeline`)
 - registerLocalResource
 4. 300ms delay убрать; заменить readiness condition/event-driven attachment (или retry policy в task executor).
+5. `MediaBin.tsx`: заменить `actions.importFiles(files)` на `dispatchRoot('importFilesRequested', { files })`.
 
-### Phase 4. Export pipeline: on-demand plan в action (без `exportPlan` comp)
+Подсказки для дебага проблем на шаге:
 
-1. Удалить `buildFallbackExportPlan` и связанные helper-преобразования.
-2. Удалить `Project.exportPlan` из `Project.attrs` (не держать export-only projection как eager comp).
-3. Оставить `previewClipSources` для preview runtime, но не использовать его как persisted export attr.
-4. Добавить root action:
-- `requestProjectExport`
-- `requestClipExportById`
-5. Реализация action как multi-step saga:
-- Step 1: deps читают export projection из active project (`sourceProjectId`, `fps`, `width`, `height`, `duration`, `< @all:clipRenderData < activeProject.tracks.clips`) и формируют plan в `$output`.
-- Step 2: фильтруют range (project/clip) и при необходимости clip-by-id selection.
-- Step 3: target в `$fx_renderExport` с `intent: 'call'`.
-6. Runtime task executor делает `env.export.render`, создает blob URL и публикует результат/прогресс.
-7. Если `projectId` пустой: чинить инициализацию проекта (`sourceProjectId`), без fallback-патчинга в adapter.
+- проверить state diff до/после import: helper `test/repl/debugGraphDiff.testing.ts` через `harness.inspect.diff(before, after)`.
+- проверить эффекты/текст на клипах после import: helper `test/repl/stateInspect.testing.ts` через `harness.inspect.activeProject()`.
+- проверить синхрон page vs worker: helper `test/repl/playwright-runtime-inspect.testing.mjs` (`workerState`, `divergence`).
+- если импорт dispatch прошел, но модель не изменилась: анализировать `harness.inspect.messages()` и `debug.dumpRuntimeTasks()` в browser REPL.
 
-### Phase 5. Тестовый контур и quarantine для imperative helper
+### Phase 3. Export pipeline: on-demand action + `$fx_*` (без `exportPlan` comp)
 
-1. Вынести test-only helpers в явный testing файл, например:
-- `src/video-editor/dkt/testing/runtimeWaits.ts`
+1. Удалить `Project.exportPlan` из `Project.attrs` (не держать export-only projection как eager comp).
+2. Оставить `previewClipSources` для preview runtime, но не использовать как persisted export attr.
+3. Добавить root action `requestProjectExport`:
+- Step 1: deps читают export projection — **используются те же deps, что и в `previewClipSources` comp** (`< @all:clipRenderData < activeProject.tracks.clips`) плюс `sourceProjectId`, `fps`, `width`, `height`, `duration`. Результат в `$output`.
+- Step 2: target в `$fx_renderExport` с `intent: 'call'`.
+4. Добавить scoped export (на Clip или через root):
+- `requestClipExport`: deps читают `clipRenderData` + duration, формируют plan, `$fx_renderExport`.
+5. Runtime task executor делает `env.export.render`, создает blob URL и публикует результат/прогресс.
+6. Если `projectId` пустой: чинить инициализацию проекта (`sourceProjectId`), без fallback-патчинга.
+7. Обновить UI:
+- `Toolbar.tsx`: `dispatchRoot('requestProjectExport', { onProgress })`
+- `InspectorExportTabPanel.tsx`: scoped `dispatch('requestClipExport', ...)` или `dispatchRoot`
+
+**Синхронизация deps**: Dep `< @all:clipRenderData < tracks.clips` идентичен dep в `previewClipSources` comp (Project.ts:90). Export action обязан использовать тот же dep. Если в будущем `clipRenderData` поменяет структуру — preview и export должны меняться вместе. Опционально: вынести dep string в константу (`CLIP_RENDER_DATA_DEP`).
+
+Подсказки для дебага проблем на шаге:
+
+- проверить, что `$fx_renderExport` действительно встал в очередь: `window.__MINICUT_P2P_DEBUG__.dumpRuntimeTasks()`.
+- диагностировать queue policy (`replace-last`/`keep-first`): смотреть `active/completed/failed/dropped` в dump.
+- проверить расхождение export payload vs graph: `harness.inspect.activeProject()` + `harness.inspect.diff(before, after)`.
+- проверить worker/page divergence перед экспортом: `npm run repl:playwright:runtime` и блок `divergence`.
+
+### Phase 4. Тестовый контур и quarantine для imperative helper
+
+1. Вынести test-only helpers в явный testing файл:
+- `src/video-editor/app/testing/runtimeWaits.testing.ts` (уже существует)
 2. В production коде не оставлять polling helpers.
-3. Тесты adapter перефокусировать:
+3. Убрать production import `.testing.ts` из `VideoEditorHarnessApp.tsx` — вынести `dispatchCreateProject` debug-метод в debug-only initialization path, не импортируя testing helpers в production bundle.
+4. Тесты adapter перефокусировать:
 - проверка, что adapter делает корректный dispatch
 - доменная логика проверяется в DKT model tests (`src/video-editor/dkt/models/...`).
-4. Debug polling из UI-харнесса держать только через helper из `src/video-editor/app/testing/*.testing.ts`.
 
-### Phase 6. Дополнительные внешние orchestrators (новый аудит)
+Подсказки для дебага проблем на шаге:
 
-1. `VideoEditorHarnessApp.tsx`
-- `dispatchCreateProject` должен использовать только тестовый helper ожидания runtime-ready (без inline polling loops в файле компонента).
-2. `createVideoEditorHarness.ts`
-- `runtimeReadyTimeout` и `projectRefreshInterval` в `subscribeToResourceScopes` формально являются orchestration debt.
-- Вынести retry/refresh policy в runtime task/executor слой или событийный механизм синхронизации, чтобы не держать polling в app harness.
-3. Зафиксировать правило:
+- утечки test-helper в production bundle: искать импорты `*.testing.ts` через `rg "\.testing" src/video-editor/app`.
+- если debug API пропал: проверить инициализацию `__MINICUT_P2P_DEBUG__` в browser и cleanup на unmount.
+
+### Phase 5. Внешние orchestrators cleanup
+
+1. `createVideoEditorHarness.ts`
+- `subscribeToResourceScopes`: вынести `setTimeout` retry (500ms) и `setInterval` refresh (500ms) в runtime task/executor слой или событийный механизм синхронизации.
+2. Зафиксировать правило:
 - Любой новый polling (`while + setTimeout`, `setInterval` refresh) в `src/video-editor/app/**` допускается только в файлах `*.testing.ts` или в явном runtime task executor с документированной причиной.
+
+Подсказки для дебага проблем на шаге:
+
+- регресс по transfer/resource sync: `window.__MINICUT_P2P_DEBUG__.getResourceTransfers()`.
+- пропажа ресурсов в timeline после cleanup polling: `harness.inspect.activeProject().resources` + `messages`.
+
+## Фаза 0.5. Подготовка debug helper-инструментов
+
+Добавленные helper-ы (только для тестирования и отладки):
+
+- `test/repl/stateInspect.testing.ts` — summary root/project/track/clip/effects/text.
+- `test/repl/debugGraphDiff.testing.ts` — state diff по двум graph snapshot.
+- `test/repl/playwright-runtime-inspect.testing.mjs` — page graph + worker dump + divergence.
+- `src/video-editor/app/runtimeTaskFacade.ts` (`debugDumpTasksTesting`) — dump очереди `$fx_*` задач.
+
+Быстрый runbook:
+
+1. jsdom: `npm run repl:run`.
+2. browser runtime inspect: `npm run repl:playwright:runtime`.
+3. в devtools: `window.__MINICUT_P2P_DEBUG__.dumpRuntimeTasks()`.
+4. сравнение до/после dispatch: `before = inspect.graph()`, `after = inspect.graph()`, `inspect.diff(before, after)`.
 
 ## Минимальные критерии готовности
 
 1. В `editorHarnessAdapter.ts` нет `readOne/readMany/readAttrs`.
 2. В `editorHarnessAdapter.ts` нет `setTimeout`-polling loops.
-3. Нет `dispatchClipActionById` и `findClipScopeById`.
-4. В `Project` нет `exportPlan` как eager `comp`; export plan строится только в export action/saga.
-5. Все clip-by-id кейсы покрыты DKT actions tests.
+3. Нет `dispatchClipActionById`, `findClipScopeById`, `dispatchSelectedClipAction`.
+4. Нет файла `createDktActionRuntime.ts`.
+5. Нет unused adapter methods (`*ById`, `*Selected` без call sites).
+6. В `Project` нет `exportPlan` как eager `comp`; export plan строится только в export action/saga.
+7. `InspectorClipHeader.tsx` использует scoped `useActions()` вместо `actions.renameClipById`.
+8. `MediaBin.tsx` использует scoped `useActions()` для `addResourceToTimeline`.
+9. В `VideoEditorHarnessApp.tsx` нет production import из `.testing.ts`.
 
 ## Приоритеты (что делать первым)
 
-1. Убрать by-id traversal (`dispatchClipActionById`) через DKT root actions.
-2. Перевести export на on-demand action/saga и удалить `exportPlan` comp + fallback traversal.
-3. Убрать import waits и вынести async IO в `$fx_`/task executor.
-4. Удалить dead helpers и дубль runtime файла.
+```
+Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5
+```
+
+1. **Phase 0** (zero risk): удалить `createDktActionRuntime.ts` + dead code. Не трогает ничего живого.
+2. **Phase 1** (самый большой эффект): удалить 27 unused adapter methods, перевести 2 React-компонента на scoped dispatch. Adapter сокращается ~5x. Не требует новых DKT actions — только удаление и замена на уже существующий `useActions()`.
+3. **Phase 2** (import): убрать imperative pipeline, перевести на DKT action + `$fx_*`. Проще чем export — `$fx_handleInputFiles` уже объявлен, `runtimeTaskFacade` уже работает. Хороший полигон для отладки fx pipeline.
+4. **Phase 3** (export): on-demand action/saga, удалить `exportPlan` comp. Самая сложная фаза — делается после import, когда fx pipeline уже проверен.
+5. **Phase 4-5** (cleanup): testing quarantine, polling cleanup. Phase 4 можно делать параллельно с Phase 2. Phase 5 зависит от Phase 4 (testing helpers должны быть готовы).
 
 ## Карта использования: internal/helpers (каждая функция)
 
@@ -397,15 +706,125 @@
 
 ## Риски, проблемы и REPL runbook
 
-### Основные риски миграции
+### Риски по Phase 1 (удаление методов + scoped dispatch)
 
-1. **Semantic drift export payload**: on-demand action начнет формировать payload иначе, чем старый `clipRenderData`.
-2. **Потеря текста/эффектов**: при ручной сборке плана легко забыть `text.renderAttrs` или `effects` flatten/merge.
-3. **Range bugs (clip vs project)**: неверная фильтрация clip-by-id в saga даст пустой export или лишние clip.
-4. **Race в `$fx_renderExport`**: repeated clicks могут порождать дубликаты задач без queue policy.
-5. **Регрессия UX progress/result**: если runtime task executor не публикует completion/error, UI зависнет в exporting.
-6. **ID consistency**: если `sourceProjectId` пустой, раньше fallback это маскировал; после удаления fallback всплывут реальные init bugs.
-7. **Разъезд preview/export**: preview остается через `previewClipSources`, export уходит в on-demand action; важно удержать единый projection source.
+1. **ScopeContext edge case**: Inspector рендерит панели внутри `<ScopeContext.Provider value={resolvedClipScope}>`, с guard `if (!activeProjectId || !selectedEntityId || !resolvedClipScope)`. После миграции scoped dispatch из `useActions()` работает только внутри guard. Если guard изменить и panels рендерятся при null scope — dispatch поведёт себя непредсказуемо.
+   - **Митигация**: `useActions()` внутри guard (как сейчас). При null scope panels не рендерятся — dispatch недоступен.
+
+2. **Type breaking change**: `VideoEditorHarnessActions` type определяет все 43 метода. Удаление 27 — breaking change для типа. TypeScript поймает это при `tsc --noEmit`, но только если все consumers типизированы.
+   - **Митигация**: прогонять `tsc --noEmit` после каждого шага Phase 1.
+
+3. **`addResourceToTimeline` scope change**: MediaBin находится внутри `<ScopeContext.Provider value={projectScope ?? sessionScope}>` (VideoEditorApp.tsx:35). При переключении на scoped dispatch — scope может быть session (если projectScope null), и `dispatch('addResourceToTimeline')` уйдёт в SessionRoot, где этого action нет.
+   - **Митигация**: проверить что `projectScope` всегда доступен в MediaBin при наличии active project. Если нет — оставить dispatchRoot для этого метода.
+
+### Риски по Phase 2 (import)
+
+4. **300ms delay для audio track**: `importFilesDirectly` делает `setTimeout(300ms)` перед `addEmbeddedAudioToTimeline` — workaround для "resource ещё не готов". При переносе в `$fx_*`/executor нужно убедиться, что executor дожидается resource ready, а не просто убирает delay.
+   - **Митигация**: в task executor добавить explicit readiness check (проверка `resource.status === 'ready'` или event от resource transfer).
+
+### Риски по Phase 3 (export)
+
+5. **Queue policy для `$fx_renderExport`**: Быстрый двойной клик Export → два fx task → гонка.
+   - **Митигация**: в `runtimeTaskFacade` добавить `queuePolicy: 'replace-last'` для `$fx_renderExport` intent.
+
+6. **`onProgress` не serializable**: Сейчас `queueExport` принимает `onProgress` closure. В DKT `$fx_*` payload должен быть serializable. Closure не serializable.
+   - **Митигация**: `onProgress` передавать через runtime ref (`putRuntimeRef`/`consumeRuntimeRef` в runtimeTaskFacade), не через payload. В fx payload — только taskId и render params.
+
+7. **`sourceProjectId` пустой**: Удаление fallback вскроет латентные init bugs.
+   - **Митигация**: до Phase 3 прогнать `npm run repl:run` и убедиться, что `sourceProjectId` установлен у всех проектов. Если нет — чинить инициализацию ДО удаления fallback.
+
+8. **previewClipSources ↔ export deps drift**: Dep `< @all:clipRenderData < tracks.clips` используется и в `previewClipSources`, и в export action. Если кто-то изменит один и забудет другой — preview и export разъедутся.
+   - **Митигация**: вынести dep string в константу. См. Phase 3 "Синхронизация deps".
+
+### Общие риски
+
+9. **Semantic drift export payload**: on-demand action начнёт формировать payload иначе, чем старый `clipRenderData`.
+10. **Потеря текста/эффектов**: при ручной сборке плана легко забыть `text.renderAttrs` или `effects` flatten/merge.
+11. **Регрессия UX progress/result**: если runtime task executor не публикует completion/error, UI зависнет в "exporting".
+
+### Порядок фаз: почему именно такой
+
+```
+Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5
+```
+
+Логика:
+- **Phase 0** — zero-risk, immediate win. Не трогает ничего, что используется.
+- **Phase 1** — самый большой эффект (adapter -5x). Можно делать сразу после Phase 0, потому что не требует новых DKT actions — только удаление и замена на уже существующий `useActions()`.
+- **Phase 2 (import)** — проще чем export, потому что `$fx_handleInputFiles` уже объявлен, `runtimeTaskFacade` уже работает. Хороший полигон для отладки fx pipeline до export.
+- **Phase 3 (export)** — самая сложная фаза. Делается после import, когда fx pipeline уже проверен.
+- **Phase 4 (testing)** — не блокирует Phase 2-3, но важен для чистоты. Можно делать параллельно с Phase 2.
+- **Phase 5 (orchestrators)** — зависит от Phase 4 (testing helpers должны быть готовы).
+
+## Тест-план по фазам
+
+### Перед началом (baseline)
+
+```bash
+tsc --noEmit          # Типы чистые
+npm run repl:run      # DKT runtime smoke: boot, project creation, graph summary
+```
+
+### После Phase 0 (dead code deletion)
+
+```bash
+tsc --noEmit          # Убедиться, что удаление не сломало типы
+npm run repl:run      # Smoke: runtime поднимается, project создаётся
+```
+
+Риск: минимальный. Удаляемый код нигде не импортирован.
+
+### После Phase 1 (27 методов + scoped dispatch)
+
+**Самая опасная фаза** — меняется и adapter, и React render.
+
+```bash
+tsc --noEmit                                           # Типы
+npm test -- editorHarnessAdapter.test.ts               # Оставшиеся adapter методы (createProject, togglePlayback, etc.)
+npm run repl:run                                       # DKT runtime: project, track, clip creation
+```
+
+Ручная проверка:
+- Inspector → переименовать clip → `dispatch('rename')` работает
+- MediaBin → кликнуть resource → "Add to timeline" → clip появляется
+- Timeline → кликнуть clip → Inspector показывает панели (Edit/Audio/Color через scoped dispatch)
+- Timeline → ClipItem context menu (если есть) → delete/split через root actions
+
+### После Phase 2 (import)
+
+```bash
+npm run repl:run       # scenario: import file → проверить, что resource + clip создаются
+npm run repl:playwright      # Browser: import file через MediaBin → clip в timeline
+```
+
+Ручная проверка:
+- Import video file → clip появляется, audio track создаётся автоматически
+- Import audio-only file → clip на audio track
+- Import при пустом timeline → embedded audio добавляется
+- Import multiple files → все создаются, нет race condition
+
+### После Phase 3 (export)
+
+```bash
+npm run repl:run       # scenario: export project → проверить payload в $fx_renderExport
+npm run repl:playwright      # Browser: Export → progress → download
+```
+
+Ручная проверка:
+- Export project → blob URL создался, download работает
+- Export clip из Inspector → только один clip в output
+- Повторный быстрый Export → не создаёт дубликат (queue policy)
+- Export при пустом `sourceProjectId` → явная ошибка, не silent fail
+- Export с text clips → text включён в output
+- Export с effects → effects включены в output
+
+### После Phase 4-5 (cleanup)
+
+```bash
+tsc --noEmit
+npm run repl:playwright:runtime    # Проверить debug API работает
+npm run repl:playwright:css        # Если были layout-проблемы
+```
 
 ### Как используем REPL, если что-то ломается
 
@@ -420,9 +839,9 @@ npm run repl:run
 ```
 
 Проверяем:
-- что root action `requestProjectExport`/`requestClipExportById` dispatch-ится,
+- что root action dispatch-ится и не уходит в `$noop`,
 - что saga формирует корректный payload (`projectId`, `range`, `clipSources`, `effects/text`),
-- что нет silent `$noop` из-за неверных deps.
+- что deps `'< @all:clipRenderData < activeProject.tracks.clips'` возвращают данные.
 
 #### Слой 2: browser runtime sync graph
 
@@ -434,8 +853,8 @@ npm run repl:playwright:runtime
 
 Проверяем:
 - совпадают ли active project/tracks/clips между authoritative и page runtime,
-- что debug API видит тот же clip/source ids перед export,
-- что в runtime messages есть шаги export action/saga.
+- что debug API видит тот же clip/source ids,
+- что в runtime messages есть шаги action/saga.
 
 #### Слой 3: browser smoke + screenshot
 
@@ -446,9 +865,9 @@ npm run repl:playwright
 ```
 
 Проверяем:
-- UI триггер export,
-- нет визуального зависания панели экспорта,
-- финальный screenshot и messages после клика Export.
+- UI триггер (export, import, rename),
+- нет визуального зависания панели,
+- финальный screenshot и messages после действия.
 
 #### Слой 4: CSS/overlay (если кажется, что не нажимается кнопка)
 
@@ -459,25 +878,35 @@ npm run repl:playwright:css
 ```
 
 Проверяем:
-- hit-testing, `pointer-events`, `z-index` у export panel/button,
-- что проблема не в layout, а реально в action/fx pipeline.
+- hit-testing, `pointer-events`, `z-index` у панелей/кнопок,
+- что проблема не в layout, а в action/fx pipeline.
 
 ### Мини-runbook по типовым авариям
 
-1. **Экспорт ничего не делает**:
+1. **Scoped dispatch не работает (после Phase 1)**:
+- проверить, что компонент рендерится внутри `<ScopeContext.Provider>`,
+- `repl:playwright:runtime` -> проверить, что scope models в page graph совпадают с ожидаемыми,
+- проверить, что `useActions()` вызывается внутри guard (если есть).
+
+2. **Экспорт ничего не делает (после Phase 3)**:
 - `repl:run` -> убедиться, что action не уходит в `$noop`.
 - `repl:playwright:runtime` -> проверить runtime messages на `requestProjectExport`.
 
-2. **Экспорт без text/effects**:
+3. **Экспорт без text/effects**:
 - `repl:run` -> сравнить `clipRenderData` vs payload, который saga отправляет в fx.
 - проверить deps на `'< @all:clipRenderData < activeProject.tracks.clips'`.
 
-3. **Экспорт не того клипа**:
-- `repl:playwright:runtime` -> проверить `sourceClipId` selection до вызова fx.
-- `repl:run` с custom scenario (`MINICUT_REPL_SCENARIO`) для конкретного clipId.
+4. **Import не создаёт clip (после Phase 2)**:
+- `repl:run` с import scenario -> проверить, что `$fx_handleInputFiles` получает payload,
+- проверить, что executor вызвал `importResource` и `addEmbeddedAudioToTimeline`,
+- если audio track не создаётся: проверить readiness check в executor.
 
-4. **Повторные клики создают гонки**:
+5. **Повторные клики создают гонки (export)**:
 - в jsdom и browser runtime проверить queue policy (`replace-last`/`keep-first`) для `'$fx_renderExport'` intent key.
+
+6. **`sourceProjectId` пустой (после удаления fallback)**:
+- `repl:run` -> проверить `sourceProjectId` у active project,
+- если пустой — чинить инициализацию, не возвращать fallback.
 
 
 ## Связанные файлы

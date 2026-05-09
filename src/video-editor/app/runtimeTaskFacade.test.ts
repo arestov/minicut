@@ -60,4 +60,33 @@ describe('createRuntimeTaskFacade', () => {
 		expect(tasks.consumeRuntimeRef(String(first.payload.runtimeRefId))).toBeUndefined()
 		expect(tasks.consumeRuntimeRef(String(second.payload.runtimeRefId))).toBeTruthy()
 	})
+
+	it('provides debug queue dump with active, completed, failed and dropped counters', () => {
+		const tasks = createRuntimeTaskFacade()
+
+		const active = tasks.dispatchTask('$fx_handleInputFiles', { data: { id: 'active' } })
+		const completed = tasks.dispatchTask('$fx_renderExport', { data: { id: 'completed' } })
+		const failed = tasks.dispatchTask('$fx_renderExport', { data: { id: 'failed' } }, { intentKey: 'export:failed' })
+		const kept = tasks.dispatchTask('$fx_renderExport', { data: { id: 'keep-1' } }, {
+			queuePolicy: 'keep-first',
+			intentKey: 'export:keep-first',
+		})
+		const dropped = tasks.dispatchTask('$fx_renderExport', { data: { id: 'keep-2' } }, {
+			queuePolicy: 'keep-first',
+			intentKey: 'export:keep-first',
+		})
+
+		tasks.completeTask(completed)
+		tasks.failTask(failed)
+
+		const dump = tasks.debugDumpTasksTesting()
+
+		expect(dump.completed).toBe(1)
+		expect(dump.failed).toBe(1)
+		expect(dump.dropped).toBe(1)
+		expect(dump.active.map((task) => task.taskId).sort()).toEqual([active.taskId, kept.taskId].sort())
+		expect(dump.active.find((task) => task.taskId === dropped.taskId)).toBeUndefined()
+		expect(dump.byFxName.$fx_handleInputFiles).toBe(1)
+		expect(dump.byFxName.$fx_renderExport).toBe(4)
+	})
 })

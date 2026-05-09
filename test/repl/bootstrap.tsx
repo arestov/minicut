@@ -1,9 +1,9 @@
-import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { createVideoEditorHarness, type VideoEditorHarness } from '../../src/video-editor/app/createVideoEditorHarness'
 import { DktEditorRoot } from '../../src/video-editor/ui/dkt/DktEditorRoot'
 import { MemoryWorkerAuthority } from '../../src/video-editor/worker/memoryWorker'
-import { flushRuntime, getActiveProjectScope, summarizeActiveProject, summarizeGraph, summarizeRootState, waitForRuntimeReady } from './stateInspect'
+import { flushRuntime, getActiveProjectScope, summarizeActiveProject, summarizeGraph, summarizeRootState, waitForRuntimeReady } from './stateInspect.testing'
+import { diffGraph, type GraphDiff } from './debugGraphDiff.testing'
 
 export interface MiniCutReplHarness {
 	document: Document
@@ -19,6 +19,7 @@ export interface MiniCutReplHarness {
 	flush(ticks?: number): Promise<void>
 	inspect: {
 		activeProject(): ReturnType<typeof summarizeActiveProject>
+		diff(beforeGraph: unknown, afterGraph: unknown): GraphDiff
 		graph(): unknown
 		graphSummary(): unknown
 		messages(): unknown[]
@@ -79,6 +80,7 @@ export const createMiniCutReplHarness = async ({
 		},
 		inspect: {
 			activeProject: () => summarizeActiveProject(runtime),
+			diff: (beforeGraph: unknown, afterGraph: unknown) => diffGraph(beforeGraph, afterGraph),
 			graph: () => runtime.debugDumpGraph(),
 			graphSummary: () => summarizeGraph(runtime.debugDumpGraph()),
 			messages: () => runtime.debugMessages(),

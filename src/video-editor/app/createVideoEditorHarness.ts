@@ -307,6 +307,8 @@ export const createVideoEditorHarness = (
 		pageRuntime,
 		actions,
 		resourceTransfers$: resourceTransferManager.transfers$,
+		// TESTING AND DEBUG ONLY — queue snapshot for fx task diagnostics.
+		debugDumpRuntimeTasksTesting: () => runtimeTasks.debugDumpTasksTesting(),
 		
 		resolveResourceUrl(resourceId: string, fallbackUrl: string): string {
 			return resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl)

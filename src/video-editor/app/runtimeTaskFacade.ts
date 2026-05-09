@@ -23,6 +23,14 @@ export interface RuntimeTaskDescriptor {
 	replacedTaskId?: string
 }
 
+export interface RuntimeTaskDebugDumpTesting {
+	active: RuntimeTaskDescriptor[]
+	completed: number
+	failed: number
+	dropped: number
+	byFxName: Record<string, number>
+}
+
 interface RuntimeRefRecord {
 	value: unknown
 }
@@ -62,6 +70,8 @@ export const createRuntimeTaskFacade = () => {
 	const runtimeRefs = new Map<string, RuntimeRefRecord>()
 	const queuedTaskByIntent = new Map<string, string>()
 	const taskRuntimeRef = new Map<string, string>()
+	const taskHistory = new Map<string, RuntimeTaskDescriptor>()
+	const taskStatus = new Map<string, 'active' | 'completed' | 'failed' | 'dropped'>()
 
 	const putRuntimeRef = (value: unknown): string => {
 		runtimeRefSeq += 1
@@ -87,6 +97,13 @@ export const createRuntimeTaskFacade = () => {
 		}
 		taskRuntimeRef.delete(taskId)
 		deleteRuntimeRef(runtimeRefId)
+	}
+
+	const markDropped = (taskId: string): void => {
+		if (!taskHistory.has(taskId)) {
+			return
+		}
+		taskStatus.set(taskId, 'dropped')
 	}
 
 	const dispatchTask = (
@@ -116,7 +133,7 @@ export const createRuntimeTaskFacade = () => {
 			if (runtimeRefId) {
 				deleteRuntimeRef(runtimeRefId)
 			}
-			return {
+			const descriptor: RuntimeTaskDescriptor = {
 				taskId,
 				fxName,
 				payload: { data: payload.data },
@@ -124,11 +141,15 @@ export const createRuntimeTaskFacade = () => {
 				intentKey,
 				dropped,
 			}
+			taskHistory.set(taskId, descriptor)
+			taskStatus.set(taskId, 'dropped')
+			return descriptor
 		}
 
 		if (queuePolicy === 'replace-last' && existingTaskId) {
 			replacedTaskId = existingTaskId
 			releaseTaskRuntimeRef(existingTaskId)
+			markDropped(existingTaskId)
 		}
 
 		if (queuePolicy !== 'queue-all') {
@@ -138,7 +159,7 @@ export const createRuntimeTaskFacade = () => {
 			taskRuntimeRef.set(taskId, runtimeRefId)
 		}
 
-		return {
+		const descriptor: RuntimeTaskDescriptor = {
 			taskId,
 			fxName,
 			payload: {
@@ -150,6 +171,10 @@ export const createRuntimeTaskFacade = () => {
 			dropped,
 			...(replacedTaskId ? { replacedTaskId } : {}),
 		}
+
+		taskHistory.set(taskId, descriptor)
+		taskStatus.set(taskId, dropped ? 'dropped' : 'active')
+		return descriptor
 	}
 
 	const completeTask = (task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void => {
@@ -158,12 +183,63 @@ export const createRuntimeTaskFacade = () => {
 			queuedTaskByIntent.delete(task.intentKey)
 		}
 		taskRuntimeRef.delete(task.taskId)
+		if (taskHistory.has(task.taskId) && taskStatus.get(task.taskId) === 'active') {
+			taskStatus.set(task.taskId, 'completed')
+		}
+	}
+
+	const failTask = (task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void => {
+		const queuedTaskId = queuedTaskByIntent.get(task.intentKey)
+		if (queuedTaskId === task.taskId) {
+			queuedTaskByIntent.delete(task.intentKey)
+		}
+		taskRuntimeRef.delete(task.taskId)
+		if (taskHistory.has(task.taskId) && taskStatus.get(task.taskId) === 'active') {
+			taskStatus.set(task.taskId, 'failed')
+		}
+	}
+
+	const debugDumpTasksTesting = (): RuntimeTaskDebugDumpTesting => {
+		const active: RuntimeTaskDescriptor[] = []
+		let completed = 0
+		let failed = 0
+		let dropped = 0
+		const byFxName: Record<string, number> = {}
+
+		for (const [taskId, descriptor] of taskHistory.entries()) {
+			const status = taskStatus.get(taskId) ?? 'active'
+			byFxName[descriptor.fxName] = (byFxName[descriptor.fxName] ?? 0) + 1
+
+			if (status === 'active') {
+				active.push(descriptor)
+				continue
+			}
+			if (status === 'completed') {
+				completed += 1
+				continue
+			}
+			if (status === 'failed') {
+				failed += 1
+				continue
+			}
+			dropped += 1
+		}
+
+		return {
+			active,
+			completed,
+			failed,
+			dropped,
+			byFxName,
+		}
 	}
 
 	const clear = (): void => {
 		runtimeRefs.clear()
 		queuedTaskByIntent.clear()
 		taskRuntimeRef.clear()
+		taskHistory.clear()
+		taskStatus.clear()
 	}
 
 	return {
@@ -171,6 +247,9 @@ export const createRuntimeTaskFacade = () => {
 		consumeRuntimeRef,
 		deleteRuntimeRef,
 		completeTask,
+		failTask,
+		// TESTING AND DEBUG ONLY — inspect runtime task queue state in REPL/tests.
+		debugDumpTasksTesting,
 		clear,
 	}
 }

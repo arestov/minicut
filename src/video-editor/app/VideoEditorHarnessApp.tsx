@@ -233,6 +233,7 @@ export const VideoEditorHarnessApp = ({
 			getSnapshot: () => ownedHarness.pageRuntime?.getSnapshot() ?? null,
 			dumpGraph: () => ownedHarness.pageRuntime?.debugDumpGraph?.() ?? null,
 			dumpGraphSummary: () => summarizeGraph(ownedHarness.pageRuntime?.debugDumpGraph?.() ?? null),
+			dumpRuntimeTasks: () => ownedHarness.debugDumpRuntimeTasksTesting?.() ?? null,
 			dumpProjectState: () => {
 				const graph = ownedHarness.pageRuntime?.debugDumpGraph?.() as
 					| {

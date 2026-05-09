@@ -1,3 +1,9 @@
+/**
+ * TESTING AND DEBUG ONLY — DO NOT USE IN PRODUCTION CODE
+ *
+ * Runtime state inspection helpers for jsdom REPL scenarios.
+ */
+
 import type { PageSyncRuntime } from '../../src/dkt-react-sync/runtime/PageSyncRuntime'
 import type { ReactSyncScopeHandle } from '../../src/dkt-react-sync/scope/ScopeHandle'
 
@@ -104,6 +110,10 @@ const summarizeClip = (runtime: PageSyncRuntime, clipScope: ReactSyncScopeHandle
 		'duration',
 	]) as Record<string, unknown>
 
+	const effects = runtime.readMany(clipScope, 'effects').map((effectScope) => summarizeEffect(runtime, effectScope))
+	const textScope = runtime.readOne(clipScope, 'text')
+	const text = textScope ? summarizeText(runtime, textScope) : null
+
 	return {
 		nodeId: clipScope._nodeId,
 		sourceClipId: typeof attrs.sourceClipId === 'string' ? attrs.sourceClipId : null,
@@ -114,6 +124,8 @@ const summarizeClip = (runtime: PageSyncRuntime, clipScope: ReactSyncScopeHandle
 		start: typeof attrs.start === 'number' ? attrs.start : null,
 		in: typeof attrs.in === 'number' ? attrs.in : null,
 		duration: typeof attrs.duration === 'number' ? attrs.duration : null,
+		effects,
+		text,
 	}
 }
 
@@ -144,6 +156,30 @@ const summarizeResource = (runtime: PageSyncRuntime, resourceScope: ReactSyncSco
 		duration: typeof attrs.duration === 'number' ? attrs.duration : null,
 		status: typeof attrs.status === 'string' ? attrs.status : null,
 		size: typeof attrs.size === 'number' ? attrs.size : null,
+	}
+}
+
+const summarizeEffect = (runtime: PageSyncRuntime, effectScope: ReactSyncScopeHandle) => {
+	const attrs = runtime.readAttrs(effectScope, ['sourceEffectId', 'name', 'kind', 'enabled', 'amount', 'color']) as Record<string, unknown>
+
+	return {
+		nodeId: effectScope._nodeId,
+		sourceEffectId: typeof attrs.sourceEffectId === 'string' ? attrs.sourceEffectId : null,
+		name: typeof attrs.name === 'string' ? attrs.name : 'Effect',
+		kind: typeof attrs.kind === 'string' ? attrs.kind : null,
+		enabled: attrs.enabled !== false,
+		amount: typeof attrs.amount === 'number' ? attrs.amount : null,
+		color: attrs.color ?? null,
+	}
+}
+
+const summarizeText = (runtime: PageSyncRuntime, textScope: ReactSyncScopeHandle) => {
+	const attrs = runtime.readAttrs(textScope, ['sourceTextId', 'content']) as Record<string, unknown>
+
+	return {
+		nodeId: textScope._nodeId,
+		sourceTextId: typeof attrs.sourceTextId === 'string' ? attrs.sourceTextId : null,
+		content: typeof attrs.content === 'string' ? attrs.content : null,
 	}
 }
 
