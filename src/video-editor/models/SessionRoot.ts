@@ -3,6 +3,7 @@ import { SessionRoot as BaseSessionRoot } from 'dkt-all/libs/provoda/bwlev/Sessi
 import { TIMELINE_ZOOM_DEFAULT } from './sessionZoom'
 import { createPreviewFrame, lookupPreviewBufferFrame, type PreviewBuffer, type PreviewFrame, type PreviewStructure } from '../read-model/previewComps'
 import type { ExportProgressState } from '../app/exportProgressState'
+import type { ExportRequestState } from '../app/exportRequestState'
 import { dktSessionActions } from './SessionRoot/actions'
 
 const DEFAULT_PREVIEW_STRUCTURE: PreviewStructure = { clipSources: [] }
@@ -23,6 +24,7 @@ export const EditorSessionRoot = model({
 		cursor: ['input', 0],
 		isPlaying: ['input', false],
 		previewBuffer: ['input', null as PreviewBuffer | null],
+		exportRequest: ['input', null as ExportRequestState | null],
 		exportProgress: ['input', null as ExportProgressState | null],
 		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
 		timelineTool: ['input', 'select'],

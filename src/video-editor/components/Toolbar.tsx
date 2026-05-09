@@ -1,4 +1,5 @@
 import { Download, FolderPlus } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ExportProgressState } from '../app/exportProgressState'
@@ -12,14 +13,42 @@ const parseExportProgress = (value: unknown): ExportProgressState | null =>
 export const Toolbar = () => {
 	const { actions } = useVideoEditor()
 	const rootAttrs = useRootAttrs(['activeProjectId', 'exportProgress']) as { activeProjectId?: unknown; exportProgress?: unknown }
+	const downloadedExportIdsRef = useRef<Set<string>>(new Set())
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 	const exportProgress = parseExportProgress(rootAttrs.exportProgress)
 	const projectExport = exportProgress?.range.type === 'project' ? exportProgress : null
 	const isProjectExportRunning = isExportRunning(projectExport)
+	const localPeerId = actions.getLocalPeerId()
 
 	const exportProject = (): void => {
-		void actions.queueProjectExport()
+		actions.requestProjectExport()
 	}
+
+	useEffect(() => {
+		if (!projectExport || projectExport.stage !== 'done') {
+			return
+		}
+		if (localPeerId !== projectExport.initiatedBy) {
+			return
+		}
+		if (downloadedExportIdsRef.current.has(projectExport.id)) {
+			return
+		}
+
+		// Get download URL from cached results
+		const downloadUrl = actions.getCachedExportUrl(projectExport.id)
+		if (!downloadUrl) {
+			return
+		}
+
+		downloadedExportIdsRef.current.add(projectExport.id)
+		const anchor = document.createElement('a')
+		anchor.href = downloadUrl
+		anchor.download = projectExport.fileName ?? 'project-export.webm'
+		document.body.appendChild(anchor)
+		anchor.click()
+		document.body.removeChild(anchor)
+	}, [localPeerId, projectExport, actions])
 
 	return (
 		<header className="ve-toolbar">

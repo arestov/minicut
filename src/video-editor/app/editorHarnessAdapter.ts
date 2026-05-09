@@ -1,8 +1,5 @@
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { getAttrsShape } from '../../dkt-react-sync/shape/autoShapes'
-import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
-import type { ExportPlan } from '../render/renderPlan'
-import { clampProgressPercent } from './exportProgressState'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 
@@ -69,36 +66,11 @@ return projects[0] ?? null
 }
 
 // Reading a direct rel on root - not traversal
-const getSelectedClipScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => {
-const rootScope = getRootScope(env)
-if (!rootScope || !env.pageRuntime) {
-return null
-}
-return env.pageRuntime.readOne(rootScope, 'selectedClip')
-}
-
 const dispatchRoot = (env: EditorActionEnvironment, actionName: string, payload?: unknown): void => {
 env.dkt?.dispatch(actionName, payload, getRootScope(env))
 }
 
 const _resourceChunkSizeRef = new WeakMap<EditorActionEnvironment, number>()
-
-const pushExportDebug = (event: string, details: unknown): void => {
-	const payload = {
-		event,
-		timestamp: Date.now(),
-		details,
-	}
-	try {
-		const target = globalThis as typeof globalThis & { __MINICUT_EXPORT_DEBUG__?: unknown[] }
-		if (!Array.isArray(target.__MINICUT_EXPORT_DEBUG__)) {
-			target.__MINICUT_EXPORT_DEBUG__ = []
-		}
-		target.__MINICUT_EXPORT_DEBUG__.push(payload)
-	} catch {
-		// ignore debug storage failures
-	}
-}
 
 const isTimelineEmpty = (env: EditorActionEnvironment, projectScope: ReactSyncScopeHandle): boolean => {
 	if (!env.pageRuntime) {
@@ -177,147 +149,6 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 	})().catch(() => undefined)
 }
 
-const queueExport = async (
-	env: EditorActionEnvironment,
-	range: ExportRange,
-	onProgress?: (event: ExportProgressEvent) => void,
-): Promise<ExportRenderResult | null> => {
-	const exportId = `export:${Date.now().toString(36)}:${++exportSequence}`
-	const initiatedBy = env.transfers.getPeerId()
-	const setExportProgress = (payload: Record<string, unknown>): void => {
-		dispatchRoot(env, 'setExportProgress', {
-			id: exportId,
-			range,
-			initiatedBy,
-			updatedAt: Date.now(),
-			...payload,
-		})
-	}
-
-	setExportProgress({ stage: 'queued', progress: 0 })
-
-	const projectScope = getActiveProjectScope(env)
-	const runtimeSnapshot = env.pageRuntime?.getSnapshot() ?? null
-	if (!projectScope || !env.pageRuntime) {
-		setExportProgress({
-			stage: 'error',
-			progress: 0,
-			error: 'Missing active project scope',
-		})
-		pushExportDebug('missing-project-scope', {
-			range,
-			runtimeSnapshot,
-		})
-		console.warn('[minicut:adapter-export] missing active project scope', {
-			range,
-			runtimeSnapshot,
-		})
-		return null
-	}
-	const exportAttrsShape = getAttrsShape(['exportPlan', 'sourceProjectId', 'fps', 'width', 'height', 'duration'])
-	const releaseExportAttrsShape = exportAttrsShape
-		? env.pageRuntime.mountShape(projectScope, exportAttrsShape)
-		: () => undefined
-
-	try {
-
-	const computedAttrs = env.pageRuntime.readAttrs(projectScope, ['exportPlan']) as {
-		exportPlan?: ExportPlan
-	}
-	const plan = computedAttrs.exportPlan
-	if (!plan || !plan.projectId) {
-		setExportProgress({
-			stage: 'error',
-			progress: 0,
-			error: 'Missing export plan',
-		})
-		pushExportDebug('missing-export-plan', {
-			range,
-			runtimeSnapshot,
-			debugGraph: env.pageRuntime.debugDumpGraph(),
-			debugMessages: env.pageRuntime.debugMessages().slice(-30),
-		})
-		console.warn('[minicut:adapter-export] missing export plan or projectId', {
-			range,
-			runtimeSnapshot,
-		})
-		return null
-	}
-
-	try {
-		const handleProgress = (event: ExportProgressEvent): void => {
-			onProgress?.(event)
-			setExportProgress({
-				stage: event.stage,
-				progress: clampProgressPercent(event.progress * 100, 0),
-			})
-		}
-
-		pushExportDebug('render-start', {
-			range,
-			projectId: plan.projectId,
-			planDuration: plan.duration,
-			clipCount: plan.clipSources.length,
-			runtimeSnapshot,
-		})
-		console.info('[minicut:adapter-export] render start', {
-			range,
-			projectId: plan.projectId,
-		})
-		const result = await env.export.render({ plan, range, format: 'video-webm' }, handleProgress)
-		const downloadUrl = env.media.createObjectUrl(result.blob)
-		if (downloadUrl) {
-			env.lifecycle.registerObjectUrl(downloadUrl, 'export')
-			result.downloadUrl = downloadUrl
-		}
-		setExportProgress({
-			stage: 'done',
-			progress: 100,
-			fileName: result.fileName,
-			size: result.size,
-			frameCount: result.frameCount,
-		})
-		pushExportDebug('render-done', {
-			range,
-			projectId: plan.projectId,
-			fileName: result.fileName,
-			size: result.size,
-			hasDownloadUrl: Boolean(result.downloadUrl),
-			diagnostics: result.diagnostics ?? null,
-		})
-		console.info('[minicut:adapter-export] render done', {
-			range,
-			projectId: plan.projectId,
-			fileName: result.fileName,
-			hasDownloadUrl: Boolean(result.downloadUrl),
-			diagnostics: result.diagnostics ?? null,
-		})
-		return result
-	} catch (error) {
-		setExportProgress({
-			stage: 'error',
-			progress: 0,
-			error: error instanceof Error ? error.message : String(error),
-		})
-		pushExportDebug('render-failed', {
-			range,
-			projectId: plan.projectId,
-			error: error instanceof Error ? error.stack || error.message : String(error),
-			runtimeSnapshot,
-			debugMessages: env.pageRuntime.debugMessages().slice(-30),
-		})
-		console.error('[minicut:adapter-export] render failed', {
-			range,
-			projectId: plan.projectId,
-			error: error instanceof Error ? error.stack || error.message : String(error),
-		})
-		return null
-	}
-	} finally {
-		releaseExportAttrsShape()
-	}
-}
-
 export const createEditorHarnessAdapter = (
 env: EditorActionEnvironment,
 _options: CreateEditorHarnessAdapterOptions,
@@ -372,21 +203,25 @@ dispatchRoot(env, 'deleteSelectedClip')
 splitSelectedClip(): void {
 dispatchRoot(env, 'splitSelectedClip')
 },
-queueClipExportById(clipId: string, onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null> {
-	return queueExport(env, { type: 'clip', clipId }, onProgress)
+requestSelectedClipExport(): void {
+	dispatchRoot(env, 'requestSelectedClipExport', {
+		id: `export:${Date.now().toString(36)}:${++exportSequence}`,
+		initiatedBy: env.transfers.getPeerId(),
+	})
 },
-queueSelectedClipExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null> {
-	const selectedClipScope = getSelectedClipScope(env)
-	if (!selectedClipScope || !env.pageRuntime) {
-		return Promise.resolve(null)
-	}
-	const attrs = env.pageRuntime.readAttrs(selectedClipScope, ['sourceClipId']) as { sourceClipId?: unknown }
-	const clipId = typeof attrs.sourceClipId === 'string' && attrs.sourceClipId ? attrs.sourceClipId : selectedClipScope._nodeId
-	return queueExport(env, { type: 'clip', clipId }, onProgress)
+requestProjectExport(): void {
+	dispatchRoot(env, 'requestProjectExport', {
+		id: `export:${Date.now().toString(36)}:${++exportSequence}`,
+		initiatedBy: env.transfers.getPeerId(),
+	})
 },
-queueProjectExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null> {
-	return queueExport(env, { type: 'project' }, onProgress)
+getLocalPeerId(): string | null {
+	return env.transfers.getPeerId()
 },
+getCachedExportUrl(exportId: string): string | null {
+	const cached = env.export.cachedResults.get(exportId)
+	return cached?.downloadUrl ?? null
+	   },
 togglePlayback(): void {
 dispatchRoot(env, 'togglePlayback')
 },

@@ -1,7 +1,9 @@
 import { PROJECT_CREATION_SHAPE } from '../Project'
-import { buildPreviewBuffer, type PreviewBuffer, type PreviewStructure } from '../../read-model/previewComps'
+import { buildPreviewBuffer, type PreviewBuffer, type PreviewClipSource, type PreviewStructure } from '../../read-model/previewComps'
+import type { ExportRequestState } from '../../app/exportRequestState'
 import type { ExportProgressState } from '../../app/exportProgressState'
 import { clampProgressPercent } from '../../app/exportProgressState'
+import { normalizeExportPlan, type ExportPlan } from '../../render/renderPlan'
 
 /** Inline session state patch type – replaces legacy EditorSessionState from domain/types. */
 type SessionStateFields = {
@@ -10,6 +12,7 @@ type SessionStateFields = {
 	selectedEntityId: string | null
 	cursor: number
 	isPlaying: boolean
+	exportRequest: ExportRequestState | null
 	exportProgress: ExportProgressState | null
 	timelineZoom: number
 	activeInspectorTab: 'edit' | 'color' | 'audio' | 'export'
@@ -50,6 +53,10 @@ export type DktSessionActionName =
 	| 'splitSelectedClip'
 	| 'startPreviewBuffer'
 	| 'clearPreviewBuffer'
+	| 'requestProjectExport'
+	| 'requestClipExport'
+	| 'requestSelectedClipExport'
+	| 'consumeExportRequest'
 	| 'setExportProgress'
 
 export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
@@ -142,6 +149,52 @@ const reduceSessionSetExportProgressAction = (payload: unknown): Pick<SessionSta
 		},
 	}
 }
+
+const normalizePreviewClipSources = (value: unknown): PreviewClipSource[] => {
+	if (!Array.isArray(value)) {
+		return []
+	}
+	return value.filter((clipSource): clipSource is PreviewClipSource => {
+		if (!clipSource || typeof clipSource !== 'object') {
+			return false
+		}
+		return typeof (clipSource as { id?: unknown }).id === 'string'
+	})
+}
+
+const createExportRequestId = (): string => `export:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
+
+const buildExportPlan = (
+	projectId: unknown,
+	fps: unknown,
+	width: unknown,
+	height: unknown,
+	duration: unknown,
+	clipSources: unknown,
+): ExportPlan | null => {
+	const normalizedProjectId = asString(projectId)
+	if (!normalizedProjectId) {
+		return null
+	}
+
+	return normalizeExportPlan({
+		projectId: normalizedProjectId,
+		fps: asNumber(fps, 30),
+		width: asNumber(width, 1920),
+		height: asNumber(height, 1080),
+		duration: Math.max(0, asNumber(duration, 0)),
+		clipSources: normalizePreviewClipSources(clipSources),
+	})
+}
+
+const createQueuedProgressState = (id: string, range: ExportProgressState['range'], initiatedBy: string | null): ExportProgressState => ({
+	id,
+	range,
+	stage: 'queued',
+	progress: 0,
+	updatedAt: Date.now(),
+	initiatedBy,
+})
 
 const normalizeInitialTrack = (value: unknown) => {
 	const track = asObject(value)
@@ -532,6 +585,154 @@ export const sessionSetExportProgressAction = {
 	fn: reduceSessionSetExportProgressAction,
 } as const satisfies DktActionDescriptor
 
+export const sessionRequestProjectExportAction = {
+	to: {
+		exportRequest: ['exportRequest'],
+		exportProgress: ['exportProgress'],
+	},
+	fn: [
+		[
+			'< @one:sourceProjectId < activeProject',
+			'< @one:fps < activeProject',
+			'< @one:width < activeProject',
+			'< @one:height < activeProject',
+			'< @one:duration < activeProject',
+			'< @all:clipRenderData < activeProject.tracks.clips',
+		] as const,
+		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown) => {
+			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+			if (!plan) {
+				return '$noop'
+			}
+			const value = asObject(payload)
+			const initiatedBy = asString(value?.initiatedBy)
+			const id = asString(value?.id) ?? createExportRequestId()
+			const range: ExportProgressState['range'] = { type: 'project' }
+			return {
+				exportRequest: {
+					id,
+					range,
+					format: 'video-webm',
+					plan,
+					requestedAt: Date.now(),
+					initiatedBy,
+				},
+				exportProgress: createQueuedProgressState(id, range, initiatedBy),
+			}
+		},
+	],
+} as const satisfies DktActionDescriptor
+
+export const sessionRequestClipExportAction = {
+	to: {
+		exportRequest: ['exportRequest'],
+		exportProgress: ['exportProgress'],
+	},
+	fn: [
+		[
+			'< @one:sourceProjectId < activeProject',
+			'< @one:fps < activeProject',
+			'< @one:width < activeProject',
+			'< @one:height < activeProject',
+			'< @one:duration < activeProject',
+			'< @all:clipRenderData < activeProject.tracks.clips',
+			'< @all:sourceClipId < activeProject.tracks.clips',
+		] as const,
+		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown) => {
+			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+			if (!plan) {
+				return '$noop'
+			}
+
+			const value = asObject(payload)
+			const clipId = asString(value?.clipId)
+			if (!clipId) {
+				return '$noop'
+			}
+			const normalizedClipIds = Array.isArray(clipIds)
+				? clipIds.filter((entry): entry is string => typeof entry === 'string')
+				: []
+			if (!normalizedClipIds.includes(clipId)) {
+				return '$noop'
+			}
+
+			const initiatedBy = asString(value?.initiatedBy)
+			const id = asString(value?.id) ?? createExportRequestId()
+			const range: ExportProgressState['range'] = { type: 'clip', clipId }
+			return {
+				exportRequest: {
+					id,
+					range,
+					format: 'video-webm',
+					plan,
+					requestedAt: Date.now(),
+					initiatedBy,
+				},
+				exportProgress: createQueuedProgressState(id, range, initiatedBy),
+			}
+		},
+	],
+} as const satisfies DktActionDescriptor
+
+export const sessionRequestSelectedClipExportAction = {
+	to: {
+		exportRequest: ['exportRequest'],
+		exportProgress: ['exportProgress'],
+	},
+	fn: [
+		[
+			'< @one:sourceProjectId < activeProject',
+			'< @one:fps < activeProject',
+			'< @one:width < activeProject',
+			'< @one:height < activeProject',
+			'< @one:duration < activeProject',
+			'< @all:clipRenderData < activeProject.tracks.clips',
+			'< @one:sourceClipId < selectedClip',
+		] as const,
+		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown) => {
+			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+			const clipId = asString(selectedClipId)
+			if (!plan || !clipId) {
+				return '$noop'
+			}
+			const initiatedBy = asString(asObject(payload)?.initiatedBy)
+			const id = asString(asObject(payload)?.id) ?? createExportRequestId()
+			const range: ExportProgressState['range'] = { type: 'clip', clipId }
+			return {
+				exportRequest: {
+					id,
+					range,
+					format: 'video-webm',
+					plan,
+					requestedAt: Date.now(),
+					initiatedBy,
+				},
+				exportProgress: createQueuedProgressState(id, range, initiatedBy),
+			}
+		},
+	],
+} as const satisfies DktActionDescriptor
+
+export const sessionConsumeExportRequestAction = {
+	to: {
+		exportRequest: ['exportRequest'],
+	},
+	fn: [
+		['exportRequest'] as const,
+		(payload: unknown, exportRequest: unknown) => {
+			const current = asObject(exportRequest)
+			if (!current) {
+				return '$noop'
+			}
+			const payloadId = asString((payload as { id?: unknown } | null)?.id) ?? asString(payload)
+			if (payloadId && payloadId !== asString(current.id)) {
+				return '$noop'
+			}
+			return { exportRequest: null }
+		},
+	],
+} as const satisfies DktActionDescriptor
+
 export const sessionDeleteSelectedClipAction = [
 	{
 		to: ['<< selectedClip', { action: 'removeSelf', inline_subwalker: true }],
@@ -616,5 +817,9 @@ export const dktSessionActions = {
 		},
 		fn: () => ({ previewBuffer: null }),
 	} as const satisfies DktActionDescriptor,
+	requestProjectExport: sessionRequestProjectExportAction,
+	requestClipExport: sessionRequestClipExportAction,
+	requestSelectedClipExport: sessionRequestSelectedClipExportAction,
+	consumeExportRequest: sessionConsumeExportRequestAction,
 	setExportProgress: sessionSetExportProgressAction,
 } as const satisfies Record<DktSessionActionName, DktActionDefinition>

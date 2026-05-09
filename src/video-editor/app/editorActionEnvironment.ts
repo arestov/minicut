@@ -1,6 +1,6 @@
 import type { ResourceKind } from '../render/registryTypes'
 import type { ResourceTransferManager } from '../media/resourceTransferManager'
-import type { ExportProgressEvent, ExportRenderer, ExportRenderRequest, ExportRenderResult } from '../render/exportRenderer'
+import type { ExportRenderer } from '../render/exportRenderer'
 import type { VideoEditorHarnessPlatform } from './platform'
 import type { DispatchRuntimeTaskOptions, DispatchRuntimeTaskPayload, RuntimeTaskDescriptor } from './runtimeTaskFacade'
 import type { PageSyncRuntime } from '../../dkt-react-sync/runtime/PageSyncRuntime'
@@ -20,7 +20,7 @@ export interface EditorMediaPort {
 
 export interface EditorExportPort {
 	renderer: ExportRenderer
-	render(request: ExportRenderRequest, onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult>
+	cachedResults: Map<string, { downloadUrl: string; blob: Blob; timestamp: number }>
 }
 
 export interface EditorResourceTransferPort {

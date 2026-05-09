@@ -149,7 +149,6 @@ export const createVideoEditorHarness = (
 	
 	let isDestroyed = false
 	const importedObjectUrls = new Set<string>()
-	const exportObjectUrls = new Set<string>()
 
 	const subscribeToResourceScopes = (): (() => void) => {
 		if (!pageRuntime) {
@@ -271,7 +270,7 @@ export const createVideoEditorHarness = (
 		},
 		export: {
 			renderer: exportRenderer,
-			render: (request, onProgress) => exportRenderer.render(request, onProgress),
+			cachedResults: new Map<string, { downloadUrl: string; blob: Blob; timestamp: number }>(),
 		},
 		transfers: {
 			manager: resourceTransferManager,
@@ -326,6 +325,7 @@ export const createVideoEditorHarness = (
 			isDestroyed = true
 			runtimeTasks.clear()
 			unsubscribe()
+			unsubscribeExportRequests()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)
 			}

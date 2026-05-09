@@ -3,6 +3,7 @@ import { EFFECT_CREATION_SHAPE } from './Effect'
 import { mergeEffectFilters } from '../render/colorPipeline'
 import type { EffectRenderInstruction } from '../render/colorPipeline'
 import type { PreviewClipSource, ResolvedAnimatedScalar } from '../read-model/previewComps'
+import type { ExportProgressState } from '../app/exportProgressState'
 import {
 	clipSetAudioAction,
 	clipSetFadeAction,
@@ -59,6 +60,7 @@ export const Clip = model({
 			crop: crop && typeof crop === 'object' ? crop : null,
 		})],
 		effectStackSummary: ['input', null],
+		exportProgress: ['input', null as ExportProgressState | null],
 		clipRenderData: ['comp', [
 			'sourceClipId', 'sourceResourceId', 'sourceResourceName', 'mediaKind', 'name', 'color',
 			'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'opacity', 'transform', 'audio',
@@ -477,6 +479,36 @@ export const Clip = model({
 					splitOriginalDuration: ['splitOriginalDuration'],
 				},
 				fn: () => ({ splitOriginalDuration: null }),
+			},
+		],
+		setExportProgress: {
+			to: {
+				exportProgress: ['exportProgress'],
+			},
+			fn: (payload: unknown) => {
+				const p = payload as { stage?: unknown; progress?: unknown; message?: unknown } | null
+				if (!p || typeof p !== 'object') return '$noop'
+				return {
+					exportProgress: {
+						stage: typeof p.stage === 'string' ? p.stage : 'idle',
+						progress: typeof p.progress === 'number' ? Math.max(0, Math.min(100, p.progress)) : 0,
+						message: typeof p.message === 'string' ? p.message : undefined,
+					},
+				}
+			},
+		},
+		requestClipExport: [
+			{
+				to: {
+					exportProgress: ['exportProgress'],
+				},
+				fn: () => ({
+					exportProgress: {
+						stage: 'queued',
+						progress: 0,
+						message: undefined,
+					},
+				}),
 			},
 		],
 	},

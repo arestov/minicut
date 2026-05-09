@@ -10,6 +10,9 @@ export interface VideoEditorHarnessActions {
 	setActiveInspectorTab(tab: 'edit' | 'color' | 'audio' | 'export'): void
 	deleteSelectedClip(): void
 	splitSelectedClip(): void
+	requestSelectedClipExport(): void
+	requestProjectExport(): void
+	getLocalPeerId(): string | null
 	queueClipExportById(clipId: string, onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null>
 	queueSelectedClipExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null>
 	queueProjectExport(onProgress?: (event: ExportProgressEvent) => void): Promise<ExportRenderResult | null>
@@ -17,6 +20,7 @@ export interface VideoEditorHarnessActions {
 	setCursor(value: number): void
 	tickPlayback(deltaSeconds: number): void
 	zoomTimeline(delta: number): void
+	getCachedExportUrl(exportId: string): string | null
 }
 
 export interface CreateEditorHarnessAdapterOptions {
