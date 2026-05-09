@@ -720,13 +720,14 @@ env.export = {
     }
     
     try {
-      // Step 2: render with progress
+      // Step 2: render with progress callback
+      // ✅ Callback НЕ yield, dispatch напрямую (callback = regular function, not generator)
       const result = await env.export.render({ plan: exportPlan, range }, (event) => {
-        yield { 
-          type: 'dispatch', 
-          action: 'setExportProgress', 
-          payload: { stage: 'rendering', progress: event.progress } 
-        }
+        // Sync callback: dispatch progress updates в реал-тайме
+        env.dkt?.dispatch('setExportProgress', 
+          { stage: 'rendering', progress: event.progress },
+          message.scope  // На том же scope где executor запущен
+        )
       })
       
       // Step 3: create blob URL and cache it (DI-only)
@@ -740,6 +741,7 @@ env.export = {
       env.export.scheduleCleanup(clipIdForCache)
       
       // Step 4: dispatch completion с METADATA only (no downloadUrl!)
+      // ✅ Это yield, потому что выполняется после render
       yield {
         type: 'dispatch',
         action: 'setExportProgress',
@@ -755,6 +757,7 @@ env.export = {
         }
       }
     } catch (error) {
+      // ✅ Error dispatch через yield (sequential)
       yield {
         type: 'dispatch',
         action: 'setExportProgress',
@@ -768,6 +771,12 @@ env.export = {
   }
 }
 ```
+
+**Ключевое уточнение: Callback vs Executor**
+- **Callback (sync)**: `(event) => env.dkt?.dispatch(...)` — выполняется синхронно во время render, НЕ может yield
+- **Executor (async generator)**: `async *execute(message)` — может yield для batch dispatch операций
+- **Progress обновления**: идут в реал-тайме из callback (durante render)
+- **Completion**: идёт через yield (после render)
 
 **5. UI Components: State + DI registry**
 
