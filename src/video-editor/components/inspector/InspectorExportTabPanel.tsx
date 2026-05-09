@@ -18,6 +18,7 @@ export const InspectorExportTabPanel = () => {
 	const clipExport = clipId && exportProgress?.range.type === 'clip' && exportProgress.range.clipId === clipId
 		? exportProgress
 		: null
+	const downloadUrl = clipExport?.stage === 'done' ? actions.getCachedExportUrl(clipExport.id) : null
 	const isClipExportRunning = isExportRunning(clipExport)
 	const clipExportLabel = clipExport ? formatExportProgress(clipExport) : 'queued 0%'
 
@@ -41,6 +42,9 @@ export const InspectorExportTabPanel = () => {
 				</IconButton>
 				{isClipExportRunning ? <p className="ve-preview__summary" aria-live="polite">Rendering export file for {String(name)}: {clipExportLabel}</p> : null}
 				{clipExport?.stage === 'done' ? <p className="ve-preview__summary" role="status">Export ready: {clipExport.frameCount ?? 0} frames · {clipExport.size ?? 0} bytes{clipExport.fileName ? ` · ${clipExport.fileName}` : ''}</p> : null}
+				{clipExport?.stage === 'done' && downloadUrl
+					? <a className="ve-preview__summary ve-preview__link" href={downloadUrl} download={clipExport.fileName ?? 'export.webm'}>Download file</a>
+					: null}
 				{clipExport?.stage === 'error' ? <p className="ve-preview__summary" role="status">Export failed: {clipExport.error ?? 'Unknown error'}</p> : null}
 				{!clipId ? <p className="ve-preview__summary" role="status">Select a clip before exporting.</p> : null}
 			</InspectorSection>

@@ -69,6 +69,27 @@ const projects = env.pageRuntime.readMany(pioneerScope, 'project')
 return projects[0] ?? null
 }
 
+const waitForActiveProjectScope = async (
+	env: EditorActionEnvironment,
+	maxAttempts = 50,
+	delayMs = 100,
+): Promise<ReactSyncScopeHandle | null> => {
+	for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+		const projectScope = getActiveProjectScope(env)
+		if (projectScope) {
+			return projectScope
+		}
+		if (env.lifecycle.isDestroyed()) {
+			return null
+		}
+		await new Promise<void>((resolve) => {
+			env.lifecycle.setTimeout(resolve, delayMs)
+		})
+	}
+
+	return getActiveProjectScope(env)
+}
+
 // Reading a direct rel on root - not traversal
 const dispatchRoot = (env: EditorActionEnvironment, actionName: string, payload?: unknown): void => {
 env.dkt?.dispatch(actionName, payload, getRootScope(env))
@@ -87,7 +108,7 @@ const isTimelineEmpty = (env: EditorActionEnvironment, projectScope: ReactSyncSc
 const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void => {
 	const resourceChunkSize = _resourceChunkSizeRef.get(env) ?? 1024 * 1024
 	void (async () => {
-		const projectScope = getActiveProjectScope(env)
+		const projectScope = await waitForActiveProjectScope(env)
 		if (!projectScope) {
 			return
 		}

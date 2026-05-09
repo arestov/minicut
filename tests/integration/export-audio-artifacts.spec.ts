@@ -326,15 +326,27 @@ const exportProject = async (page: Page): Promise<string> => {
 const exportSelectedClip = async (page: Page): Promise<string> => {
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Export' }).click()
-	await inspector.getByRole('button', { name: 'Queue clip export' }).click()
 	const downloadLink = inspector.getByRole('link', { name: 'Download file' })
+	const previousHref = await downloadLink.count() > 0
+		? await downloadLink.first().getAttribute('href').catch(() => null)
+		: null
+	await inspector.getByRole('button', { name: 'Queue clip export' }).click()
 	await expect.poll(async () => {
 		if (await downloadLink.count() > 0 && await downloadLink.first().isVisible().catch(() => false)) {
-			return true
+			const currentHref = await downloadLink.first().getAttribute('href').catch(() => null)
+			if (currentHref && currentHref !== previousHref) {
+				return true
+			}
 		}
 		const statusText = await inspector.getByRole('status').first().textContent().catch(() => null)
-		return typeof statusText === 'string' && statusText.includes('Export ready')
+		return typeof statusText === 'string' && statusText.includes('Rendering export file')
 	}, { timeout: 120_000 }).toBe(true)
+	await expect.poll(async () => {
+		if (await downloadLink.count() === 0 || !(await downloadLink.first().isVisible().catch(() => false))) {
+			return null
+		}
+		return await downloadLink.first().getAttribute('href').catch(() => null)
+	}, { timeout: 120_000 }).not.toBe(previousHref)
 
 	for (let attempt = 0; attempt < 2; attempt += 1) {
 		const downloadPromise = page.waitForEvent('download')
@@ -375,7 +387,8 @@ const setSelectedAudio = async (page: Page, { gain }: { gain?: number }): Promis
 		const gainPercent = Math.round(gain * 100)
 		await inspector.getByLabel('Gain').evaluate((element, value) => {
 			const input = element as HTMLInputElement
-			input.value = String(value)
+			const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+			valueSetter?.call(input, String(value))
 			input.dispatchEvent(new Event('input', { bubbles: true }))
 			input.dispatchEvent(new Event('change', { bubbles: true }))
 		}, gainPercent)
@@ -532,6 +545,22 @@ test.describe('exported audio artifacts', () => {
 		await selectTimelineClip(page, /linked-tone-video\.webm/i)
 
 		const exportPath = await exportSelectedClip(page)
+		const media = await probeMedia(exportPath)
+		expect(media.audioStreams.length).toBeGreaterThan(0)
+		const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })
+		expect(analysis.rms).toBeGreaterThan(0.001)
+		expectToneEnergy(samples, { channels: 2, sampleRate: 48_000, frequency: 440, start: 0.1, end: 0.8, minPower: 0.001 })
+	})
+
+	test('project export includes linked embedded audio from imported video', async ({ page }) => {
+		await page.goto('/')
+		await createProjectFromMenu(page)
+
+		const videoFile = await createVideoWithToneFile(page)
+		await importMediaFiles(page, [videoFile])
+		await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+
+		const exportPath = await exportProject(page)
 		const media = await probeMedia(exportPath)
 		expect(media.audioStreams.length).toBeGreaterThan(0)
 		const { samples, analysis } = await analyzeExportedAudio(exportPath, { windowSeconds: 0.25 })

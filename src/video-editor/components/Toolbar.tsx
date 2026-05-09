@@ -15,6 +15,7 @@ export const Toolbar = () => {
 	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
 	const exportProgress = parseExportProgress(rootAttrs.exportProgress)
 	const projectExport = exportProgress?.range.type === 'project' ? exportProgress : null
+	const projectDownloadUrl = projectExport?.stage === 'done' ? actions.getCachedExportUrl(projectExport.id) : null
 	const isProjectExportRunning = isExportRunning(projectExport)
 
 	const exportProject = (): void => {
@@ -53,6 +54,9 @@ export const Toolbar = () => {
 				</IconButton>
 				{projectExport && isProjectExportRunning ? <span className="ve-toolbar__status">Export {formatExportProgress(projectExport)}</span> : null}
 				{projectExport?.stage === 'done' ? <span className="ve-toolbar__status" role="status">Export ready: {projectExport.fileName ?? 'file prepared'}</span> : null}
+				{projectExport?.stage === 'done' && projectDownloadUrl
+					? <a className="ve-toolbar__status ve-preview__link" href={projectDownloadUrl} download={projectExport.fileName ?? 'export.webm'}>Download file</a>
+					: null}
 				{projectExport?.stage === 'error' ? <span className="ve-toolbar__status is-error" role="status">Export failed{projectExport.error ? `: ${projectExport.error}` : ''}</span> : null}
 			</div>
 		</header>
