@@ -9,6 +9,8 @@ import {
 	reduceEffectKindAction,
 	reduceEffectNameAction,
 	reduceEffectParamsAction,
+	reduceSetEffectClip,
+	reduceSetEffectProject,
 } from './Effect/actions'
 import { defaultEffectAttrs } from './Effect/defaults'
 
@@ -81,17 +83,13 @@ export const Effect = model({
 			to: {
 				clip: ['<< clip', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				clip: (payload as { clip?: unknown } | null)?.clip ?? null,
-			}),
+			fn: reduceSetEffectClip,
 		},
 		setEffectProject: {
 			to: {
 				project: ['<< project', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				project: (payload as { project?: unknown } | null)?.project ?? null,
-			}),
+			fn: reduceSetEffectProject,
 		},
 	},
 })

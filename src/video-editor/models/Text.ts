@@ -1,5 +1,6 @@
 import { model } from 'dkt/model.js'
 import { reduceTextBoxAction, reduceTextContentAction, reduceTextStyleAction } from './Text/actions'
+import { reduceTextContentAction, reduceSetTextStyle, reduceSetTextBox, reduceSetClipRef } from './Text/actions'
 import { defaultTextBox, defaultTextStyle } from './Text/defaults'
 
 export const Text = model({
@@ -31,34 +32,19 @@ export const Text = model({
 			to: {
 				style: ['style'],
 			},
-			fn: [
-				['style'] as const,
-				(payload: unknown, style: unknown) => {
-					const patch = reduceTextStyleAction(payload, {
-						style: style && typeof style === 'object' ? style as typeof defaultTextStyle : defaultTextStyle,
-					})
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['style'] as const, reduceSetTextStyle],
 		},
 		setTextBox: {
 			to: {
 				box: ['box'],
 			},
-			fn: [
-				['box'] as const,
-				(payload: unknown, box: unknown) => reduceTextBoxAction(payload, {
-					box: box && typeof box === 'object' ? box as typeof defaultTextBox : defaultTextBox,
-				}) ?? '$noop',
-			],
+			fn: [['box'] as const, reduceSetTextBox],
 		},
 		setClip: {
 			to: {
 				clip: ['<< clip', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				clip: (payload as { clip?: unknown } | null)?.clip ?? null,
-			}),
+			fn: reduceSetClipRef,
 		},
 	},
 })

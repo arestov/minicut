@@ -270,3 +270,113 @@ export const removeEffectRef = (effects: unknown[], effectId: unknown): unknown[
 	}
 	return effects.filter((effect) => getNodeId(effect) !== effectId)
 }
+
+export const reduceSetClipAttrs = (payload: unknown) => {
+	const value = payload as Record<string, unknown> | null
+	if (!value || typeof value !== 'object') {
+		return '$noop'
+	}
+
+	return {
+		sourceClipId: typeof value.sourceClipId === 'string' ? value.sourceClipId : null,
+		sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : null,
+		sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
+		name: typeof value.name === 'string' ? value.name : 'Clip',
+		color: typeof value.color === 'string' ? value.color : '#2563eb',
+		mediaKind: typeof value.mediaKind === 'string' ? value.mediaKind : null,
+		start: typeof value.start === 'number' ? value.start : 0,
+		in: typeof value.in === 'number' ? value.in : 0,
+		duration: typeof value.duration === 'number' ? value.duration : 0,
+		fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
+		fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,
+		audio: value.audio && typeof value.audio === 'object' ? value.audio : { gain: 1, pan: 0 },
+		opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
+		transform: value.transform && typeof value.transform === 'object' ? value.transform : defaultClipTransform,
+	}
+}
+
+export const reduceSetFade = (payload: unknown, fadeIn: unknown, fadeOut: unknown, duration: unknown) => {
+	const patch = clipSetFadeAction.fn(payload, {
+		fadeIn: typeof fadeIn === 'number' ? fadeIn : 0,
+		fadeOut: typeof fadeOut === 'number' ? fadeOut : 0,
+		duration: typeof duration === 'number' ? duration : 0,
+	})
+	return patch ?? '$noop'
+}
+
+export const reduceSetAudio = (payload: unknown, audio: unknown) => {
+	const patch = clipSetAudioAction.fn(payload, audio as { gain: number; pan: number })
+	return patch ?? '$noop'
+}
+
+export const reduceSetTimelineAttrs = (payload: unknown) =>
+	clipSetTimelineAttrsAction.fn(payload) ?? '$noop'
+
+export const reduceSetTransform = (payload: unknown, transform: unknown) => {
+	const patch = clipSetTransformAction.fn(payload, transform as typeof defaultClipTransform)
+	return patch ?? '$noop'
+}
+
+export const reduceMoveBy = (payload: unknown, start: unknown) => {
+	const patch = reduceTimelineMoveByAction(payload, {
+		start: typeof start === 'number' ? start : 0,
+	})
+	return patch ?? '$noop'
+}
+
+export const reduceTrim = (payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
+	const patch = reduceTimelineTrimAction(payload, {
+		start: typeof start === 'number' ? start : 0,
+		in: typeof inPoint === 'number' ? inPoint : 0,
+		duration: typeof duration === 'number' ? duration : 0,
+	})
+	return patch ?? '$noop'
+}
+
+export const reduceResize = (payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
+	const patch = reduceTimelineResizeAction(payload, {
+		start: typeof start === 'number' ? start : 0,
+		in: typeof inPoint === 'number' ? inPoint : 0,
+		duration: typeof duration === 'number' ? duration : 0,
+	})
+	return patch ?? '$noop'
+}
+
+export const reduceSplitAt = (payload: unknown, start: unknown, _inPoint: unknown, duration: unknown) => {
+	const patch = reduceTimelineSplitAtAction(payload, {
+		start: typeof start === 'number' ? start : 0,
+		duration: typeof duration === 'number' ? duration : 0,
+	})
+	return patch ?? '$noop'
+}
+
+export const reduceAddEffect = (payload: unknown) => {
+	const attrs = normalizeEffectCreationAttrs(payload)
+	return attrs
+		? {
+			effect: { attrs, hold_ref_id: 'newEffect' },
+			effects: { use_ref_id: 'newEffect' },
+		}
+		: '$noop'
+}
+
+export const reduceSetResource = (payload: unknown) => ({
+	resource: (payload as { resource?: unknown } | null)?.resource ?? null,
+})
+
+export const reduceSetText = (payload: unknown) => ({
+	text: (payload as { text?: unknown } | null)?.text ?? null,
+})
+
+export const reduceSetTrack = (payload: unknown) => ({
+	track: (payload as { track?: unknown } | null)?.track ?? null,
+})
+
+export const reduceSetProject = (payload: unknown) => ({
+	project: (payload as { project?: unknown } | null)?.project ?? null,
+})
+
+export const reduceSetEffects = (payload: unknown) => {
+	const effects = (payload as { effects?: unknown } | null)?.effects
+	return { effects: Array.isArray(effects) ? effects : [] }
+}

@@ -1,4 +1,12 @@
 import { model } from 'dkt/model.js'
+import {
+	reduceRenameResource,
+	reduceSetResourceStatus,
+	reduceSetResourceAttrs,
+	reduceRequestAddToTimeline,
+	reduceSetProjectRef,
+	reduceSetClipsRef,
+} from './Resource/actions'
 
 export const RESOURCE_CREATION_SHAPE = {
 	attrs: ['sourceResourceId', 'sourceProjectId', 'name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data'],
@@ -49,25 +57,13 @@ export const Resource = model({
 			to: {
 				name: ['name'],
 			},
-			fn: (payload: unknown) => {
-				const name = typeof payload === 'string'
-					? payload
-					: (payload as { name?: unknown } | null)?.name
-				return typeof name === 'string' && name ? { name } : '$noop'
-			},
+			fn: reduceRenameResource,
 		},
 		setResourceStatus: {
 			to: {
 				status: ['status'],
 			},
-			fn: (payload: unknown) => {
-				const status = typeof payload === 'string'
-					? payload
-					: (payload as { status?: unknown } | null)?.status
-				return status === 'missing' || status === 'partial' || status === 'ready' || status === 'loading' || status === 'error'
-					? { status }
-					: '$noop'
-			},
+			fn: reduceSetResourceStatus,
 		},
 		setResourceAttrs: {
 			to: {
@@ -85,59 +81,25 @@ export const Resource = model({
 				status: ['status'],
 				data: ['data'],
 			},
-			fn: (payload: unknown) => {
-				const value = payload as Record<string, unknown> | null
-				if (!value || typeof value !== 'object') {
-					return '$noop'
-				}
-
-				return {
-					sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : '',
-					sourceProjectId: typeof value.sourceProjectId === 'string' ? value.sourceProjectId : null,
-					name: typeof value.name === 'string' ? value.name : 'Resource',
-					kind: typeof value.kind === 'string' ? value.kind : 'video',
-					url: typeof value.url === 'string' ? value.url : '',
-					mime: typeof value.mime === 'string' ? value.mime : 'application/octet-stream',
-					duration: typeof value.duration === 'number' ? value.duration : 0,
-					width: typeof value.width === 'number' ? value.width : null,
-					height: typeof value.height === 'number' ? value.height : null,
-					size: typeof value.size === 'number' ? value.size : null,
-					source: value.source && typeof value.source === 'object' ? value.source : { kind: 'local' },
-					status: typeof value.status === 'string' ? value.status : 'missing',
-					data: value.data && typeof value.data === 'object' ? value.data : null,
-				}
-			},
+			fn: reduceSetResourceAttrs,
 		},
 		requestAddToTimeline: {
 			to: {
 				timelineAddRequest: ['timelineAddRequest'],
 			},
-			fn: (payload: unknown) => ({
-				timelineAddRequest: {
-					resourceId: typeof (payload as { resourceId?: unknown } | null)?.resourceId === 'string'
-						? (payload as { resourceId: string }).resourceId
-						: null,
-					requestedAt: Date.now(),
-				},
-			}),
+			fn: reduceRequestAddToTimeline,
 		},
 		setProject: {
 			to: {
 				project: ['<< project', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				project: (payload as { project?: unknown } | null)?.project ?? null,
-			}),
+			fn: reduceSetProjectRef,
 		},
 		setClips: {
 			to: {
 				clips: ['<< clips', { method: 'set_many' }],
 			},
-			fn: (payload: unknown) => ({
-				clips: Array.isArray((payload as { clips?: unknown } | null)?.clips)
-					? (payload as { clips: unknown[] }).clips
-					: [],
-			}),
+			fn: reduceSetClipsRef,
 		},
 	},
 })

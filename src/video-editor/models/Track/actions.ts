@@ -129,3 +129,74 @@ export const normalizeRightSplitClipAttrs = (payload: unknown) => {
 	})
 	return attrs
 }
+
+export const reduceRenameTrack = (payload: unknown) => {
+	const name = typeof payload === 'string'
+		? payload
+		: (payload as { name?: unknown } | null)?.name
+	return typeof name === 'string' && name ? { name } : '$noop'
+}
+
+export const reduceSetTrackMuted = (payload: unknown) => {
+	const muted = typeof payload === 'boolean'
+		? payload
+		: (payload as { muted?: unknown } | null)?.muted
+	return typeof muted === 'boolean' ? { muted } : '$noop'
+}
+
+export const reduceSetTrackLocked = (payload: unknown) => {
+	const locked = typeof payload === 'boolean'
+		? payload
+		: (payload as { locked?: unknown } | null)?.locked
+	return typeof locked === 'boolean' ? { locked } : '$noop'
+}
+
+export const reduceAddClip = (payload: unknown, self: unknown) => {
+	const attrs = normalizeClipCreationAttrs(payload)
+	return attrs
+		? {
+			clip: { attrs, rels: { track: self }, hold_ref_id: 'newClip' },
+			clips: { use_ref_id: 'newClip' },
+		}
+		: '$noop'
+}
+
+export const reduceAddTextClip = (payload: unknown, self: unknown) => {
+	const value = payload as { text?: unknown } | null
+	const clipAttrs = normalizeClipCreationAttrs(payload)
+	const textAttrs = normalizeTextCreationAttrs(value?.text)
+	return clipAttrs && textAttrs
+		? {
+			clip: { attrs: clipAttrs, rels: { track: self }, hold_ref_id: 'newTextClip' },
+			text: { attrs: textAttrs, hold_ref_id: 'newTextNode' },
+			clips: { use_ref_id: 'newTextClip' },
+		}
+		: '$noop'
+}
+
+export const reduceSplitClipAt = (payload: unknown, self: unknown) => {
+	const attrs = normalizeRightSplitClipAttrs(payload)
+	return attrs
+		? {
+			clip: { attrs, rels: { track: self }, hold_ref_id: 'rightSplitClip' },
+			clips: { use_ref_id: 'rightSplitClip' },
+		}
+		: '$noop'
+}
+
+export const reduceSetClips = (payload: unknown) => {
+	const clips = (payload as { clips?: unknown } | null)?.clips
+	return { clips: Array.isArray(clips) ? clips : [] }
+}
+
+export const reduceRemoveClip = (payload: unknown, clips: unknown[]) => {
+	const clipId = (payload as { clipId?: unknown } | null)?.clipId ?? payload
+	const nextClips = removeClipRef(Array.isArray(clips) ? clips : [], clipId)
+	return nextClips ? { clips: nextClips } : '$noop'
+}
+
+export const reduceRemoveClipBySourceId = (payload: unknown, clips: unknown[]) => {
+	const sourceClipId = (payload as { sourceClipId?: unknown } | null)?.sourceClipId ?? payload
+	const nextClips = removeClipBySourceClipId(Array.isArray(clips) ? clips : [], sourceClipId)
+	return nextClips ? { clips: nextClips } : '$noop'
+}

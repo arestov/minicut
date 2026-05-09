@@ -16,12 +16,21 @@ import {
 	reduceClipRenameAction,
 	reduceClipSetMediaKindAction,
 	reduceClipUpdateOpacityAction,
-} from './Clip/actions'
-import {
-	reduceTimelineMoveByAction,
-	reduceTimelineResizeAction,
-	reduceTimelineSplitAtAction,
-	reduceTimelineTrimAction,
+	reduceSetClipAttrs,
+	reduceSetFade,
+	reduceSetAudio,
+	reduceSetTimelineAttrs,
+	reduceSetTransform,
+	reduceMoveBy,
+	reduceTrim,
+	reduceResize,
+	reduceSplitAt,
+	reduceAddEffect,
+	reduceSetResource,
+	reduceSetText,
+	reduceSetTrack,
+	reduceSetProject,
+	reduceSetEffects,
 } from './Clip/actions'
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10
@@ -156,29 +165,7 @@ export const Clip = model({
 				opacity: ['opacity'],
 				transform: ['transform'],
 			},
-			fn: (payload: unknown) => {
-				const value = payload as Record<string, unknown> | null
-				if (!value || typeof value !== 'object') {
-					return '$noop'
-				}
-
-				return {
-					sourceClipId: typeof value.sourceClipId === 'string' ? value.sourceClipId : null,
-					sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : null,
-					sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
-					name: typeof value.name === 'string' ? value.name : 'Clip',
-					color: typeof value.color === 'string' ? value.color : '#2563eb',
-					mediaKind: typeof value.mediaKind === 'string' ? value.mediaKind : null,
-					start: typeof value.start === 'number' ? value.start : 0,
-					in: typeof value.in === 'number' ? value.in : 0,
-					duration: typeof value.duration === 'number' ? value.duration : 0,
-					fadeIn: typeof value.fadeIn === 'number' ? value.fadeIn : 0,
-					fadeOut: typeof value.fadeOut === 'number' ? value.fadeOut : 0,
-					audio: value.audio && typeof value.audio === 'object' ? value.audio : { gain: 1, pan: 0 },
-					opacity: value.opacity && typeof value.opacity === 'object' ? value.opacity : { value: 1 },
-					transform: value.transform && typeof value.transform === 'object' ? value.transform : defaultClipTransform,
-				}
-			},
+			fn: reduceSetClipAttrs,
 		},
 		setMediaKind: {
 			to: {
@@ -197,29 +184,13 @@ export const Clip = model({
 				fadeIn: ['fadeIn'],
 				fadeOut: ['fadeOut'],
 			},
-			fn: [
-				['fadeIn', 'fadeOut', 'duration'] as const,
-				(payload: unknown, fadeIn: unknown, fadeOut: unknown, duration: unknown) => {
-					const patch = clipSetFadeAction.fn(payload, {
-						fadeIn: typeof fadeIn === 'number' ? fadeIn : 0,
-						fadeOut: typeof fadeOut === 'number' ? fadeOut : 0,
-						duration: typeof duration === 'number' ? duration : 0,
-					})
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['fadeIn', 'fadeOut', 'duration'] as const, reduceSetFade],
 		},
 		setAudio: {
 			to: {
 				audio: ['audio'],
 			},
-			fn: [
-				['audio'] as const,
-				(payload: unknown, audio: unknown) => {
-					const patch = clipSetAudioAction.fn(payload, audio as { gain: number; pan: number })
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['audio'] as const, reduceSetAudio],
 		},
 		setTimelineAttrs: {
 			to: {
@@ -229,33 +200,19 @@ export const Clip = model({
 				fadeIn: ['fadeIn'],
 				fadeOut: ['fadeOut'],
 			},
-			fn: (payload: unknown) => clipSetTimelineAttrsAction.fn(payload) ?? '$noop',
+			fn: reduceSetTimelineAttrs,
 		},
 		setTransform: {
 			to: {
 				transform: ['transform'],
 			},
-			fn: [
-				['transform'] as const,
-				(payload: unknown, transform: unknown) => {
-					const patch = clipSetTransformAction.fn(payload, transform as typeof defaultClipTransform)
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['transform'] as const, reduceSetTransform],
 		},
 		moveBy: {
 			to: {
 				start: ['start'],
 			},
-			fn: [
-				['start', 'in', 'duration'] as const,
-				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceTimelineMoveByAction(payload, {
-						start: typeof start === 'number' ? start : 0,
-					})
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['start', 'in', 'duration'] as const, reduceMoveBy],
 		},
 		trim: {
 			to: {
@@ -263,17 +220,7 @@ export const Clip = model({
 				in: ['in'],
 				duration: ['duration'],
 			},
-			fn: [
-				['start', 'in', 'duration'] as const,
-				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceTimelineTrimAction(payload, {
-						start: typeof start === 'number' ? start : 0,
-						in: typeof inPoint === 'number' ? inPoint : 0,
-						duration: typeof duration === 'number' ? duration : 0,
-					})
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['start', 'in', 'duration'] as const, reduceTrim],
 		},
 		resize: {
 			to: {
@@ -281,32 +228,13 @@ export const Clip = model({
 				in: ['in'],
 				duration: ['duration'],
 			},
-			fn: [
-				['start', 'in', 'duration'] as const,
-				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceTimelineResizeAction(payload, {
-						start: typeof start === 'number' ? start : 0,
-						in: typeof inPoint === 'number' ? inPoint : 0,
-						duration: typeof duration === 'number' ? duration : 0,
-					})
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['start', 'in', 'duration'] as const, reduceResize],
 		},
 		splitAt: {
 			to: {
 				duration: ['duration'],
 			},
-			fn: [
-				['start', 'in', 'duration'] as const,
-				(payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
-					const patch = reduceTimelineSplitAtAction(payload, {
-						start: typeof start === 'number' ? start : 0,
-						duration: typeof duration === 'number' ? duration : 0,
-					})
-					return patch ?? '$noop'
-				},
-			],
+			fn: [['start', 'in', 'duration'] as const, reduceSplitAt],
 		},
 		addEffect: {
 			to: {
@@ -321,56 +249,37 @@ export const Clip = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: (payload: unknown) => {
-				const attrs = normalizeEffectCreationAttrs(payload)
-				return attrs
-					? {
-						effect: { attrs, hold_ref_id: 'newEffect' },
-						effects: { use_ref_id: 'newEffect' },
-					}
-					: '$noop'
-			},
+			fn: reduceAddEffect,
 		},
 		setResource: {
 			to: {
 				resource: ['<< resource', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				resource: (payload as { resource?: unknown } | null)?.resource ?? null,
-			}),
+			fn: reduceSetResource,
 		},
 		setText: {
 			to: {
 				text: ['<< text', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				text: (payload as { text?: unknown } | null)?.text ?? null,
-			}),
+			fn: reduceSetText,
 		},
 		setTrack: {
 			to: {
 				track: ['<< track', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				track: (payload as { track?: unknown } | null)?.track ?? null,
-			}),
+			fn: reduceSetTrack,
 		},
 		setProject: {
 			to: {
 				project: ['<< project', { method: 'set_one' }],
 			},
-			fn: (payload: unknown) => ({
-				project: (payload as { project?: unknown } | null)?.project ?? null,
-			}),
+			fn: reduceSetProject,
 		},
 		setEffects: {
 			to: {
 				effects: ['<< effects', { method: 'set_many' }],
 			},
-			fn: (payload: unknown) => {
-				const effects = (payload as { effects?: unknown } | null)?.effects
-				return { effects: Array.isArray(effects) ? effects : [] }
-			},
+			fn: reduceSetEffects,
 		},
 		removeEffect: {
 			to: {

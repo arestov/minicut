@@ -44,3 +44,11 @@ export const reduceEffectColorAction = (payload: unknown): Pick<EffectAttrs, 'co
 	const color = (payload as { color?: unknown } | null)?.color ?? payload
 	return color && typeof color === 'object' ? { color: color as EffectAttrs['color'] } : null
 }
+
+export const reduceSetEffectClip = (payload: unknown) => ({
+	clip: (payload as { clip?: unknown } | null)?.clip ?? null,
+})
+
+export const reduceSetEffectProject = (payload: unknown) => ({
+	project: (payload as { project?: unknown } | null)?.project ?? null,
+})

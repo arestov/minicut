@@ -1,7 +1,12 @@
 import { model } from 'dkt/model.js'
 import { CLIP_CREATION_SHAPE } from './Clip'
 import { TEXT_CREATION_SHAPE } from './Text'
-import { normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef, removeClipBySourceClipId } from './Track/actions'
+import {
+	normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef, removeClipBySourceClipId,
+	reduceRenameTrack, reduceSetTrackMuted, reduceSetTrackLocked,
+	reduceAddClip, reduceAddTextClip, reduceSplitClipAt,
+	reduceSetClips, reduceRemoveClip, reduceRemoveClipBySourceId,
+} from './Track/actions'
 
 export const TRACK_CREATION_SHAPE = {
 	attrs: ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height'],
@@ -47,34 +52,19 @@ export const Track = model({
 			to: {
 				name: ['name'],
 			},
-			fn: (payload: unknown) => {
-				const name = typeof payload === 'string'
-					? payload
-					: (payload as { name?: unknown } | null)?.name
-				return typeof name === 'string' && name ? { name } : '$noop'
-			},
+			fn: reduceRenameTrack,
 		},
 		setTrackMuted: {
 			to: {
 				muted: ['muted'],
 			},
-			fn: (payload: unknown) => {
-				const muted = typeof payload === 'boolean'
-					? payload
-					: (payload as { muted?: unknown } | null)?.muted
-				return typeof muted === 'boolean' ? { muted } : '$noop'
-			},
+			fn: reduceSetTrackMuted,
 		},
 		setTrackLocked: {
 			to: {
 				locked: ['locked'],
 			},
-			fn: (payload: unknown) => {
-				const locked = typeof payload === 'boolean'
-					? payload
-					: (payload as { locked?: unknown } | null)?.locked
-				return typeof locked === 'boolean' ? { locked } : '$noop'
-			},
+			fn: reduceSetTrackLocked,
 		},
 		addClip: {
 			when: [
@@ -93,15 +83,7 @@ export const Track = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: [['<<<<'] as const, (payload: unknown, self: unknown) => {
-				const attrs = normalizeClipCreationAttrs(payload)
-				return attrs
-					? {
-						clip: { attrs, rels: { track: self }, hold_ref_id: 'newClip' },
-						clips: { use_ref_id: 'newClip' },
-					}
-					: '$noop'
-			}],
+			fn: [['<<<<'] as const, reduceAddClip],
 		},
 		addTextClip: {
 			to: {
@@ -122,18 +104,7 @@ export const Track = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: [['<<<<'] as const, (payload: unknown, self: unknown) => {
-				const value = payload as { text?: unknown } | null
-				const clipAttrs = normalizeClipCreationAttrs(payload)
-				const textAttrs = normalizeTextCreationAttrs(value?.text)
-				return clipAttrs && textAttrs
-					? {
-						clip: { attrs: clipAttrs, rels: { track: self }, hold_ref_id: 'newTextClip' },
-						text: { attrs: textAttrs, hold_ref_id: 'newTextNode' },
-						clips: { use_ref_id: 'newTextClip' },
-					}
-					: '$noop'
-			}],
+			fn: [['<<<<'] as const, reduceAddTextClip],
 		},
 		splitClipAt: {
 			to: {
@@ -148,50 +119,25 @@ export const Track = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: [['<<<<'] as const, (payload: unknown, self: unknown) => {
-				const attrs = normalizeRightSplitClipAttrs(payload)
-				return attrs
-					? {
-						clip: { attrs, rels: { track: self }, hold_ref_id: 'rightSplitClip' },
-						clips: { use_ref_id: 'rightSplitClip' },
-					}
-					: '$noop'
-			}],
+			fn: [['<<<<'] as const, reduceSplitClipAt],
 		},
 		setClips: {
 			to: {
 				clips: ['<< clips', { method: 'set_many' }],
 			},
-			fn: (payload: unknown) => {
-				const clips = (payload as { clips?: unknown } | null)?.clips
-				return { clips: Array.isArray(clips) ? clips : [] }
-			},
+			fn: reduceSetClips,
 		},
 		removeClip: {
 			to: {
 				clips: ['<< clips', { method: 'set_many' }],
 			},
-			fn: [
-				['<< @all:clips'] as const,
-				(payload: unknown, clips: unknown[]) => {
-					const clipId = (payload as { clipId?: unknown } | null)?.clipId ?? payload
-					const nextClips = removeClipRef(Array.isArray(clips) ? clips : [], clipId)
-					return nextClips ? { clips: nextClips } : '$noop'
-				},
-			],
+			fn: [['<< @all:clips'] as const, reduceRemoveClip],
 		},
 		removeClipBySourceId: {
 			to: {
 				clips: ['<< clips', { method: 'set_many' }],
 			},
-			fn: [
-				['<< @all:clips'] as const,
-				(payload: unknown, clips: unknown[]) => {
-					const sourceClipId = (payload as { sourceClipId?: unknown } | null)?.sourceClipId ?? payload
-					const nextClips = removeClipBySourceClipId(Array.isArray(clips) ? clips : [], sourceClipId)
-					return nextClips ? { clips: nextClips } : '$noop'
-				},
-			],
+			fn: [['<< @all:clips'] as const, reduceRemoveClipBySourceId],
 		},
 	},
 })

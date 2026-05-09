@@ -29,3 +29,19 @@ export const reduceTextBoxAction = (
 		? { box: { ...current.box, ...(box as Partial<TextAttrs['box']>) } }
 		: null
 }
+
+export const reduceSetTextStyle = (payload: unknown, style: unknown) => {
+	const patch = reduceTextStyleAction(payload, {
+		style: style && typeof style === 'object' ? style as TextAttrs['style'] : ({} as TextAttrs['style']),
+	})
+	return patch ?? '$noop'
+}
+
+export const reduceSetTextBox = (payload: unknown, box: unknown) =>
+	reduceTextBoxAction(payload, {
+		box: box && typeof box === 'object' ? box as TextAttrs['box'] : ({} as TextAttrs['box']),
+	}) ?? '$noop'
+
+export const reduceSetClipRef = (payload: unknown) => ({
+	clip: (payload as { clip?: unknown } | null)?.clip ?? null,
+})
