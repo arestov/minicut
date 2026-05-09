@@ -1,4 +1,3 @@
-import { waitFor } from '@testing-library/react'
 import type { ResourceAttrs } from '../render/registryTypes'
 import { createMissingResourceData } from '../domain/resourceData'
 import { createResourceTransferManager, type RequestMessage } from './resourceTransferManager'
@@ -203,7 +202,7 @@ describe('resource transfer manager', () => {
 
 		syncResource(client, 'res-remote')
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-remote')).toMatchObject({
 				availability: 'remote',
 				status: 'ready',
@@ -260,13 +259,13 @@ describe('resource transfer manager', () => {
 
 		syncResource(client, 'res-progressive', { size: blob.size, duration: 8 })
 		client.requestPlayheadWindow('res-progressive', 4)
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-progressive')?.requestEvents.some((event) =>
 				event.reason === 'window' && event.ranges.some(([start]) => start > 0),
 			)).toBe(true)
 		})
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			const transfer = client.getTransfer('res-progressive')
 			expect(transfer).toMatchObject({
 				status: 'partial',
@@ -275,7 +274,7 @@ describe('resource transfer manager', () => {
 			expect((transfer?.progress ?? 0) > 0 && (transfer?.progress ?? 0) < 1).toBe(true)
 		})
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-progressive')).toMatchObject({
 				status: 'ready',
 				progress: 1,
@@ -300,7 +299,7 @@ describe('resource transfer manager', () => {
 		syncResource(client, 'res-request-id', { size: 24, duration: 8, name: 'Request id clip' })
 
 		let headRequestId = ''
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			const headRequest = requests.find((message) =>
 				message.resourceId === 'res-request-id' && message.reason === 'head'
 			)
@@ -324,7 +323,7 @@ describe('resource transfer manager', () => {
 			requestId: headRequestId,
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			const transfer = client.getTransfer('res-request-id')
 			expect(transfer?.requestEvents).toEqual(expect.arrayContaining([
 				expect.objectContaining({
@@ -383,7 +382,7 @@ describe('resource transfer manager', () => {
 		syncResource(client, 'res-race', { size: blob.size, duration: 8, name: 'Race clip' })
 		client.requestPlayheadWindow('res-race', 4)
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-race')).toMatchObject({
 				status: 'ready',
 				loadedBytes: blob.size,
@@ -402,12 +401,7 @@ describe('resource transfer manager', () => {
 
 	it('resumes a partial transfer after client transport reconnect', async () => {
 		const [serverTransport, clientTransport] = createTransportPair()
-		const server = createResourceTransferManager({
-			getRole: () => 'server',
-			getPeerId: () => 'peer-a',
-			chunkSize: 8,
-			chunkSendDelayMs: 250,
-		})
+		const initialRequests = parseRequestMessages(serverTransport)
 		const client = createResourceTransferManager({
 			getRole: () => 'client',
 			getPeerId: () => 'peer-b',
@@ -415,26 +409,35 @@ describe('resource transfer manager', () => {
 			headBytes: 8,
 		})
 
-		server.attachServerTransport('peer-b', serverTransport)
 		client.attachClientTransport(clientTransport)
 
 		const blob = new Blob(['abcdefghijklmnopqrstuvwx'], { type: 'video/webm' })
-		server.registerLocalResource('res-reconnect', blob, {
-			objectUrl: 'blob:server-reconnect',
-			kind: 'video',
-			mime: 'video/webm',
-			duration: 8,
-			size: blob.size,
-			chunkSize: 8,
-			ownerPeerId: 'peer-a',
-			sourceKind: 'p2p',
-			fallbackUrl: '',
-			name: 'Reconnect clip',
-		})
 
 		syncResource(client, 'res-reconnect', { size: blob.size, duration: 8, name: 'Reconnect clip' })
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
+			expect(initialRequests).toContainEqual(expect.objectContaining({
+				resourceId: 'res-reconnect',
+				ranges: [[0, 8]],
+				reason: 'head',
+			}))
+		})
+
+		sendChunk(serverTransport, {
+			resourceId: 'res-reconnect',
+			index: 0,
+			start: 0,
+			end: 8,
+			totalSize: blob.size,
+			reason: 'head',
+		}, 'abcdefgh')
+		serverTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-reconnect',
+			reason: 'head',
+		}))
+
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-reconnect')).toMatchObject({
 				status: 'partial',
 				loadedBytes: 8,
@@ -442,10 +445,54 @@ describe('resource transfer manager', () => {
 		})
 
 		const [replacementServerTransport, replacementClientTransport] = createTransportPair()
-		server.attachServerTransport('peer-b', replacementServerTransport)
+		const replacementRequests = parseRequestMessages(replacementServerTransport)
 		client.attachClientTransport(replacementClientTransport)
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
+			expect(replacementRequests).toContainEqual(expect.objectContaining({
+				resourceId: 'res-reconnect',
+				ranges: [[8, 16]],
+				reason: 'sequential',
+			}))
+		})
+
+		sendChunk(replacementServerTransport, {
+			resourceId: 'res-reconnect',
+			index: 1,
+			start: 8,
+			end: 16,
+			totalSize: blob.size,
+			reason: 'sequential',
+		}, 'ijklmnop')
+		replacementServerTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-reconnect',
+			reason: 'sequential',
+		}))
+
+		await vi.waitFor(() => {
+			expect(replacementRequests).toContainEqual(expect.objectContaining({
+				resourceId: 'res-reconnect',
+				ranges: [[16, 24]],
+				reason: 'sequential',
+			}))
+		})
+
+		sendChunk(replacementServerTransport, {
+			resourceId: 'res-reconnect',
+			index: 2,
+			start: 16,
+			end: 24,
+			totalSize: blob.size,
+			reason: 'sequential',
+		}, 'qrstuvwx')
+		replacementServerTransport.send(JSON.stringify({
+			type: 'resource-chunk-complete',
+			resourceId: 'res-reconnect',
+			reason: 'sequential',
+		}))
+
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-reconnect')).toMatchObject({
 				status: 'ready',
 				loadedBytes: blob.size,
@@ -454,7 +501,6 @@ describe('resource transfer manager', () => {
 		})
 
 		client.destroy()
-		server.destroy()
 	})
 
 	it('waits for owner registration before serving requests for a freshly imported p2p resource', async () => {
@@ -478,7 +524,7 @@ describe('resource transfer manager', () => {
 		syncResource(server, 'res-client-owned', clientOwnedAttrs)
 		syncResource(client, 'res-client-owned', clientOwnedAttrs)
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(server.getTransfer('res-client-owned')).toMatchObject({
 				status: 'requesting',
 				loadedBytes: 0,
@@ -499,7 +545,7 @@ describe('resource transfer manager', () => {
 			name: 'Client owned clip',
 		})
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(server.getTransfer('res-client-owned')).toMatchObject({
 				status: 'ready',
 				loadedBytes: blob.size,
@@ -525,7 +571,7 @@ describe('resource transfer manager', () => {
 		client.attachClientTransport(clientTransport)
 		syncResource(client, 'res-gap', { size: 24, duration: 8, name: 'Gap clip' })
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests).toContainEqual(expect.objectContaining({
 				resourceId: 'res-gap',
 				ranges: [[0, 8]],
@@ -547,7 +593,7 @@ describe('resource transfer manager', () => {
 			reason: 'head',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests).toContainEqual(expect.objectContaining({
 				resourceId: 'res-gap',
 				ranges: [[8, 16]],
@@ -573,7 +619,7 @@ describe('resource transfer manager', () => {
 		syncResource(client, 'res-window-priority', { size: 40, duration: 10, name: 'Window priority clip' })
 		client.requestPlayheadWindow('res-window-priority', 6)
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests.filter((message) => message.resourceId === 'res-window-priority')).toEqual([
 				expect.objectContaining({
 					resourceId: 'res-window-priority',
@@ -597,7 +643,7 @@ describe('resource transfer manager', () => {
 			reason: 'head',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			const resourceRequests = requests.filter((message) => message.resourceId === 'res-window-priority')
 			expect(resourceRequests[1]).toMatchObject({
 				reason: 'window',
@@ -627,7 +673,7 @@ describe('resource transfer manager', () => {
 			reason: 'window',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			const resourceRequests = requests.filter((message) => message.resourceId === 'res-window-priority')
 			expect(resourceRequests.find((message) =>
 				message.reason === 'sequential'
@@ -673,7 +719,7 @@ describe('resource transfer manager', () => {
 			reason: 'head',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests).toContainEqual(expect.objectContaining({
 				resourceId: 'res-tail-preview',
 				ranges: [[24, 32]],
@@ -695,7 +741,7 @@ describe('resource transfer manager', () => {
 			reason: 'tail',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-tail-preview')).toMatchObject({
 				status: 'partial',
 				tailFallbackRequested: true,
@@ -744,7 +790,7 @@ describe('resource transfer manager', () => {
 			reason: 'head',
 		}, 'abcdefgh')
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-invalid')).toMatchObject({
 				loadedBytes: 8,
 				loadedRanges: [[0, 8]],
@@ -786,7 +832,7 @@ describe('resource transfer manager', () => {
 		}))
 		serverTransport.send(new TextEncoder().encode('abcdefgh').buffer)
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-unknown-size')).toMatchObject({
 				status: 'partial',
 				loadedBytes: 8,
@@ -811,7 +857,7 @@ describe('resource transfer manager', () => {
 		client.attachClientTransport(clientTransport)
 		syncResource(client, 'res-retry', { size: 24, duration: 8, name: 'Retry clip' })
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests.length).toBeGreaterThanOrEqual(1)
 		})
 
@@ -821,14 +867,14 @@ describe('resource transfer manager', () => {
 			error: 'temporary failure',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-retry')).toMatchObject({
 				status: 'requesting',
 			})
 			expect(client.getTransfer('res-retry')?.status).not.toBe('error')
 		})
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests.filter((message) => message.resourceId === 'res-retry')).toHaveLength(2)
 		})
 
@@ -846,7 +892,7 @@ describe('resource transfer manager', () => {
 			reason: 'head',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests.some((message) =>
 				message.resourceId === 'res-retry'
 				&& message.reason === 'sequential'
@@ -868,7 +914,7 @@ describe('resource transfer manager', () => {
 			reason: 'sequential',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(requests.some((message) =>
 				message.resourceId === 'res-retry'
 				&& message.reason === 'sequential'
@@ -890,7 +936,7 @@ describe('resource transfer manager', () => {
 			reason: 'sequential',
 		}))
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-retry')).toMatchObject({
 				status: 'ready',
 				loadedBytes: 24,
@@ -933,7 +979,7 @@ describe('resource transfer manager', () => {
 		})
 		syncResource(client, 'res-a', { size: firstBlob.size, duration: 8, name: 'Clip A' })
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-a')).toMatchObject({
 				status: 'ready',
 				loadedBytes: firstBlob.size,
@@ -958,14 +1004,14 @@ describe('resource transfer manager', () => {
 			{ resourceId: 'res-b', attrs: { size: secondBlob.size, duration: 8, name: 'Clip B' } },
 		])
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-b')).toMatchObject({
 				status: 'ready',
 				loadedBytes: secondBlob.size,
 			})
 		})
 
-		await waitFor(() => {
+		await vi.waitFor(() => {
 			expect(client.getTransfer('res-a')).toMatchObject({
 				status: 'missing',
 				loadedBytes: 0,
