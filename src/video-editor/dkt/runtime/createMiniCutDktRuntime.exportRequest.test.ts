@@ -91,4 +91,55 @@ describe('createMiniCutDktRuntime export request channel', () => {
 
 		connection.destroy()
 	})
+
+	it('publishes dkt:import-files-request after requestImportFiles action', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const memory = createMemoryTransport()
+		const connection = runtime.connect(memory.transport)
+
+		memory.emit({ type: DKT_MSG.BOOTSTRAP, sessionKey: 'session:import-channel' })
+		await waitFor(() => memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_READY))
+
+		memory.emit({
+			type: DKT_MSG.DISPATCH_ACTION,
+			actionName: 'createProject',
+			payload: {
+				sourceProjectId: 'project:import-channel',
+				title: 'Import channel test project',
+			},
+			scopeNodeId: null,
+		})
+
+		await waitFor(() =>
+			memory.sent.some((message) =>
+				message.type === DKT_MSG.SYNC_HANDLE,
+			),
+		)
+
+		memory.emit({
+			type: DKT_MSG.DISPATCH_ACTION,
+			actionName: 'requestImportFiles',
+			payload: {
+				inputBatchHandleId: 'input-batch:test-channel-1',
+			},
+			scopeNodeId: null,
+		})
+
+		await waitFor(() =>
+			memory.sent.some((message) =>
+				message.type === DKT_MSG.IMPORT_FILES_REQUEST
+				&& (message.payload as { inputBatchHandleId?: unknown } | null)?.inputBatchHandleId === 'input-batch:test-channel-1',
+			),
+		)
+
+		const importMessage = memory.sent.find((message) =>
+			message.type === DKT_MSG.IMPORT_FILES_REQUEST
+			&& (message.payload as { inputBatchHandleId?: unknown } | null)?.inputBatchHandleId === 'input-batch:test-channel-1',
+		)
+
+		expect(importMessage?.type).toBe(DKT_MSG.IMPORT_FILES_REQUEST)
+		expect((importMessage as { payload?: { projectId?: unknown } } | undefined)?.payload?.projectId).toBe('project:import-channel')
+
+		connection.destroy()
+	})
 })

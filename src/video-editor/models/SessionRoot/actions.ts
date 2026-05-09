@@ -607,8 +607,14 @@ export const sessionClearExportProgressAction = {
 
 export const sessionRequestImportFilesAction = [
 	{
-		to: ['<< activeProject', { action: 'requestImportFiles', inline_subwalker: true }],
-		fn: (payload: unknown) => payload as Record<string, unknown>,
+		to: {
+			projectImport: ['<< activeProject', { action: 'requestImportFiles', inline_subwalker: true }],
+			importFxPayload: ['$output'],
+		},
+		fn: (payload: unknown) => ({
+			projectImport: payload as Record<string, unknown>,
+			importFxPayload: payload,
+		}),
 	},
 	{
 		to: ['$fx_handleInputFiles', { intent: 'call', drop_when_api_not_ready: false }],
