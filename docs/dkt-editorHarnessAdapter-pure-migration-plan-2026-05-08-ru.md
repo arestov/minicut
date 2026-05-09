@@ -136,6 +136,68 @@
 - Ввести DKT-level by-id actions (multi-step), где выбор target происходит через deps-addressing.
 - Никакого fallback к selected clip без явного `when_fn` и явной ветки в action.
 
+## Нормативное правило: запрет на by-id wrapper helpers вне DKT
+
+Это правило обязательно для нового кода.
+
+Запрещено:
+
+1. Добавлять wrapper-методы в adapter/UI вида `actions.renameClipById`, `actions.colorClipById`, `actions.trimClipById`, если внутри есть graph traversal.
+2. Добавлять helper-ы `findClipScopeById`/`dispatchClipActionById`/аналогичные по track/effect вне DKT action layer.
+3. Делать `pageRuntime.readOne/readMany/readAttrs` в adapter ради target resolution.
+4. Делать неявный fallback на selected entity при lookup failure.
+
+Разрешено:
+
+1. Root dispatch на `SessionRoot` как command entrypoint.
+2. Target resolution только внутри DKT actions через deps/subwalker.
+3. Async/IO через `$fx_*`/task executor, но выбор target также внутри DKT.
+
+Идеальный путь:
+
+1. UI формирует payload (`clipId`, `delta`, `effectId`, ...).
+2. UI dispatch-ит root command.
+3. `SessionRoot` action внутри DKT находит target.
+4. Следующий шаг dispatch-ит subwalker action в найденную модель.
+5. При отсутствии target: явный `$noop` или controlled error branch.
+
+Принцип:
+
+- traversal и address resolution принадлежат DKT actions;
+- adapter не должен знать, как искать clip в `activeProject.tracks.clips`;
+- UI boundary должен знать command payload, но не graph traversal rules.
+
+## Обзор реальных `*ById` call sites и scope-контекста
+
+По текущему workspace прямые вызовы `actions.*ById` в React-компонентах есть только в двух местах.
+
+| Метод | Где вызывается | Scope в месте вызова | Можно ли заменить на `useActions()` | Комментарий |
+|---|---|---|---|---|
+| `renameClipById` | `components/inspector/InspectorClipHeader.tsx` | `Clip scope` выбранного клипа (через `ScopeContext.Provider value={resolvedClipScope}` в `Inspector`) | Да | Для этого call site wrapper не нужен. |
+| `queueClipExportById` | `components/inspector/InspectorExportTabPanel.tsx` | `Clip scope` выбранного клипа | Нет, не напрямую | Это async orchestration, не простой clip reducer action. |
+
+Следствия:
+
+1. Тезис "Inspector вне clip scope, значит нужен by-id wrapper" неверен.
+2. Для sync clip actions в inspector при наличии scope использовать `useActions()`.
+3. Для async export/import не делать adapter traversal, а переводить flow в DKT command/saga + `$fx_*`.
+
+### Почему не просто сделать export action внутри `Clip`
+
+Сделать можно, но это отдельная архитектурная фаза, а не точечная замена wrapper-метода.
+
+Что потребуется:
+
+1. Описать async lifecycle (request/progress/success/failure).
+2. Вынести IO в `$fx_renderExport`/executor.
+3. Определить ownership результата (где хранить status/result/blob url).
+4. Сохранить target resolution внутри DKT action chain.
+
+Вывод:
+
+- для `rename/color/trim/resize/transform/audio/effects` by-id wrappers вне DKT должны быть убраны;
+- для export делать полноценный DKT command/saga pipeline, а не adapter helper с graph reads.
+
 ## Предлагаемая целевая архитектура
 
 1. Adapter = thin boundary:

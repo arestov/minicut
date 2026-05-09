@@ -1,265 +1,297 @@
-# Почему useActions() недостаточно? Когда нужен dispatchClipActionById
+# Почему useActions() недостаточно как универсальный слой и почему by-id wrappers надо убирать
 
 ## TL;DR
 
-`useActions()` работает только **внутри React компонента в контексте scope**.  
-`dispatchClipActionById()` нужен когда действие вызывается **из другого контекста** (adapter, другой компонент вне scope, другой слой приложения).
+`useActions()` подходит для обычных clip-команд, когда компонент уже находится в нужном `Clip scope`.
+
+`actions.renameClipById` и похожие wrapper-методы, которые делают traversal вне DKT actions, это anti-pattern.
+
+Если UI не находится в нужном scope, traversal все равно должен происходить внутри DKT action chain, обычно от dispatch на `SessionRoot`.
 
 ---
 
-## Сценарий 1: ✅ Можно использовать useActions() 
+## Сценарий 1: scoped UI, прямой dispatch
 
-### ClipItem (находится ВНУТРи Clip scope):
+### ClipItem (внутри Clip scope)
 
 ```typescript
-// ClipItem.tsx - компонент находится в контексте Clip scope
-export const ClipItem = ({ timelineZoom, activeTool }: Props) => {
-  const dispatch = useActions()  // ← Работает! Это dispatch на текущий Clip scope
-  
-  const handleSplit = (time: number) => {
-    dispatch('splitSelfAt', { time })  // ← Действие на этот клип
-  }
-  
-  const handleMove = (delta: number) => {
-    dispatch('moveBy', { delta })  // ← Действие на этот клип
-  }
-  
-  return <button onClick={() => handleSplit(5)}>Split</button>
-}
-
-// Как это работает:
-// 1. ClipItem рендерится в контексте Track → clips[i] → Clip scope
-// 2. useActions() автоматически получает текущий scope из ScopeContext
-// 3. dispatch() работает прямо на этот scope
+const dispatch = useActions()
+dispatch('moveBy', { delta })
 ```
+
+Flow:
+1. `useActions()` берет текущий scope из `ScopeContext`.
+2. Возвращается `runtime.getDispatch(scope)`.
+3. `dispatch('moveBy', ...)` идет прямо в action текущего `Clip`.
 
 ---
 
-## Сценарий 2: ❌ useActions() НЕ работает
+## Сценарий 2: Inspector тоже в Clip scope
 
-### InspectorClipHeader (находится в Inspector, НО не внутри Clip scope):
+В текущем коде `Inspector` рендерит выбранные панели внутри:
+
+```tsx
+<ScopeContext.Provider value={resolvedClipScope}>
+  <SelectedClipPanels ... />
+</ScopeContext.Provider>
+```
+
+Это значит, что `InspectorClipHeader` находится в `Clip scope` выбранного клипа.
+
+Следствие:
+1. Для rename здесь можно и нужно использовать scoped dispatch (`useActions` + `dispatch('rename', { name })`).
+2. `actions.renameClipById(...)` в этом месте не обязателен и считается лишним wrapper-слоем.
+
+---
+
+## Сценарий 3: компонент вне target scope
+
+Если компонент не внутри нужного clip scope, правильный путь:
 
 ```typescript
-// InspectorClipHeader.tsx - компонент находится в Inspector panel
-export const InspectorClipHeader = ({ trackPosition }: Props) => {
-  const { actions } = useVideoEditor()  // ← Достаем actions из context
-  const attrs = useAttrs(['sourceClipId', 'name', 'color'])
-  const sourceClipId = attrs.sourceClipId
-  
-  // ❌ Можем ли мы использовать useActions() здесь?
-  // const dispatch = useActions()
-  
-  // Проблема: useActions() хочет использовать ScopeContext...
-  // Но ScopeContext - это чей scope? Inspector panel не находится в контексте Clip!
-  
-  // Правильно:
-  const handleNameChange = (name: string) => {
-    // Нельзя: dispatch('rename', { name })
-    // Потому что dispatch будет на InspectorPanel scope, а не на нужный Clip!
-    
-    // Правильно - использовать actions API:
-    actions.renameClipById(sourceClipId, name)  // ← Это вызовет dispatchClipActionById
-  }
-  
-  return (
-    <input
-      value={name}
-      onChange={(e) => handleNameChange(e.target.value)}
-    />
-  )
-}
-
-// Почему это не работает с useActions():
-// 1. InspectorClipHeader находится в Panel (другой scope)
-// 2. useActions() вернет dispatch на Panel scope
-// 3. dispatch('rename', ...) будет на Panel, не на Clip!
+dispatchRoot('renameClipByIdRequested', { clipId, name })
 ```
+
+Дальше внутри DKT:
+1. `SessionRoot` action по deps находит target clip.
+2. Следующим шагом делает subwalker dispatch на найденный `Clip`.
+3. Если clip не найден, делается явный `$noop` или controlled error branch.
 
 ---
 
-## Визуализация: Scope контекст иерархия
+## Почему by-id wrapper в adapter это anti-pattern
 
-### Правильная иерархия для ClipItem:
+Плохой паттерн:
+1. UI вызывает `actions.renameClipById(clipId, name)`.
+2. Adapter вызывает `dispatchClipActionById`.
+3. Adapter сам travers-ит `activeProject -> tracks -> clips`.
+4. Adapter dispatch-ит action на найденный scope.
 
-```
-Project scope
-  └─ Track scope
-      └─ Clip scope
-          └─ ClipItem component
-              └─ useActions() работает на Clip scope ✅
-```
-
-### Проблемная иерархия для InspectorClipHeader:
-
-```
-Project scope
-  └─ Track scope
-      ├─ Clip scope (где данные)
-      │   └─ useAttrs() читает отсюда ✅
-      │
-      └─ Inspector Panel scope (где компонент)
-          └─ InspectorClipHeader component
-              └─ useActions() работает на Panel scope ❌
-```
+Проблемы:
+1. Traversal утекает из DKT action layer.
+2. Правила адресации дублируются с model-layer.
+3. Появляется склонность к скрытому fallback behavior.
+4. Под каждую команду появляется новая wrapper-обертка.
 
 ---
 
-## Сценарий 3: Adapter (совсем вне React компонентов)
+## Нормативное правило
 
-### EditorHarnessAdapter - это не React компонент:
+### Запрещено
 
-```typescript
-// editorHarnessAdapter.ts
-export const createEditorHarnessAdapter = (env: EditorActionEnvironment) => ({
-  // ← Это не React компонент, это обычные функции
-  
-  renameClipById(clipId: string, name: string): void {
-    // ❌ Нельзя использовать useActions() - это не hook!
-    // const dispatch = useActions()  // ← Error: invalid hook call
-    
-    // ✅ Нужно использовать dispatchClipActionById:
-    dispatchClipActionById(env, clipId, 'rename', { name })
-  },
-  
-  deleteClipById(clipId: string): void {
-    // ❌ Нельзя: useActions()
-    
-    // ✅ Правильно:
-    dispatchClipActionById(env, clipId, 'removeSelf')
-  },
-})
+1. Добавлять новые методы вида `actions.*ById(...)`, если они снаружи DKT ищут scope через graph traversal.
+2. Добавлять helper-ы типа `findClipScopeById` / `dispatchClipActionById` в adapter/UI boundary.
+3. Делать `readOne/readMany/readAttrs` в adapter только ради target resolution.
+4. Делать неявный fallback на selected entity при lookup failure.
 
-// Почему:
-// 1. Adapter - это функция, не React компонент
-// 2. Нет ScopeContext (это React feature)
-// 3. Нет способа узнать какой scope нужен
-// 4. dispatchClipActionById нужен чтобы найти scope по ID
-```
+### Разрешено
+
+1. Scoped `useActions()` для синхронных model actions, если компонент уже в нужном scope.
+2. Root command (`SessionRoot`) + target resolution внутри DKT action.
+3. Async/IO через DKT command -> `$fx_*` -> executor.
 
 ---
 
-## Архитектурные слои:
+## Почему export не сводится к "просто useActions()"
 
-```
-┌─────────────────────────────────────────────┐
-│ React Components (Timeline, Inspector)      │
-├─────────────────────────────────────────────┤
-│ useAttrs(), useActions(), useMany()         │
-│ ← Работают внутри ScopeContext              │
-├─────────────────────────────────────────────┤
-│ VideoEditorContext.actions API              │
-│ (createEditorHarnessAdapter)                │
-├─────────────────────────────────────────────┤
-│ dispatchClipActionById, dispatchProject...  │
-│ ← Работают с IDs, ищут scopes               │
-├─────────────────────────────────────────────┤
-│ DKT Runtime (dispatch, readAttrs)           │
-│ ← Работают со Scope объектами               │
-└─────────────────────────────────────────────┘
-```
+`queueClipExportById` сейчас это orchestration, а не простой clip reducer action:
+1. range/plan selection,
+2. renderer call,
+3. progress/result,
+4. blob url lifecycle.
+
+Сделать export action в `Clip` можно, но это уже DKT saga/command-flow:
+1. command action,
+2. `$fx_renderExport`,
+3. task protocol для progress/result/error.
 
 ---
 
-## Почему бы не пробросить scope в props?
+## Полный flow для каждой функции VideoEditorHarnessActions
 
-### ❌ Плохой подход:
+Обозначения:
+- `Root`: `dispatchRoot(env, action, payload)`
+- `Project`: `dispatchProject(env, action, payload)`
+- `Selected`: `dispatchSelectedClipAction(env, action, payload)`
+- `ById`: `dispatchClipActionById(env, clipId, action, payload)`
 
-```typescript
-interface InspectorClipHeaderProps {
-  clipScope: ReactSyncScopeHandle  // ← Тесная связь
-  trackPosition: { trackName: string; ordinal: number } | null
-}
+### A. Project/session control
 
-export const InspectorClipHeader = ({ clipScope, trackPosition }: Props) => {
-  // Проблемы:
-  // 1. React component получает runtime объект (ScopeHandle)
-  // 2. Scope может стать невалидным если структура изменится
-  // 3. Component привязан к runtime реализации DKT
-  // 4. Сложнее тестировать (нужно мокировать ScopeHandle)
-  // 5. API становится нестабильным если DKT изменится
-}
-```
+1. `createProject(title?)`
+- UI -> adapter
+- adapter генерирует `sourceProjectId`/title
+- Root `createProject`
+- graph mutation в SessionRoot action chain
 
-### ✅ Правильный подход:
+2. `setActiveProject(projectId)`
+- UI -> adapter -> Root `setActiveProject`
 
-```typescript
-interface InspectorClipHeaderProps {
-  sourceClipId: string  // ← Просто ID, полностью decoupled
-  trackPosition: { trackName: string; ordinal: number } | null
-}
+3. `selectEntity(entityId)`
+- UI -> adapter -> Root `selectEntity`
 
-export const InspectorClipHeader = ({ sourceClipId, trackPosition }: Props) => {
-  const { actions } = useVideoEditor()  // ← Actions знают как найти scope
-  
-  const handleNameChange = (name: string) => {
-    actions.renameClipById(sourceClipId, name)  // ← Adapter найдет scope
-  }
-}
+4. `setActiveInspectorTab(tab)`
+- UI -> adapter -> Root `setActiveInspectorTab`
 
-// Преимущества:
-// 1. Component не знает о runtime деталях
-// 2. Component не привязан к DKT
-// 3. Легко мокировать в тестах (actions API простой)
-// 4. Стабильное API даже если DKT изменится
-```
+5. `togglePlayback()`
+- UI -> adapter -> Root `togglePlayback`
+
+6. `setCursor(value)`
+- UI -> adapter -> Root `setCursor`
+
+7. `tickPlayback(deltaSeconds)`
+- UI -> adapter -> Root `tickPlayback`
+
+8. `zoomTimeline(delta)`
+- UI -> adapter -> Root `zoomTimeline`
+
+### B. Import/create timeline entities
+
+9. `importSampleResource()`
+- UI -> adapter -> Root `importSampleResource`
+
+10. `importFiles(files)`
+- UI -> adapter -> `importFilesDirectly` (imperative async pipeline)
+- waits + direct graph reads + direct dispatch on project scope
+- anti-pattern branch (target: move to DKT + fx)
+
+11. `addResourceToTimeline(resourceId)`
+- UI -> adapter -> Project `addResourceToTimeline`
+- project scope resolution в adapter
+
+12. `addTextClip(content?)`
+- UI -> adapter
+- генерируются `sourceTextId` + `sourceClipId`
+- Root `addTextClipToTimeline`
+
+13. `addTrack(kind)`
+- UI -> adapter -> Project `addTrack`
+
+### C. Clip by-id wrappers (anti-pattern)
+
+Общий flow для каждого:
+- UI -> adapter method
+- `ById` -> `findClipScopeById`
+- traversal `activeProject -> tracks -> clips` + `sourceClipId`
+- найден -> dispatch на clip scope
+- не найден -> fallback на `Selected`
+
+14. `renameClipById` -> `rename`
+15. `colorClipById` -> `color`
+16. `updateClipOpacityById` -> `updateOpacity`
+17. `updateClipFadeById` -> `setFade`
+18. `updateClipTransformById` -> `setTransform`
+19. `updateClipAudioById` -> `setAudio`
+20. `trimClipById` -> `trim`
+21. `resizeClipById` -> `resize`
+22. `addEffectToClip` -> `addEffect`
+23. `addColorCorrectionToClip` -> `addEffect(color-correction)`
+24. `deleteClipById` -> `removeSelf`
+25. `splitClipByIdAt` -> `splitSelfAt`
+26. `removeEffectFromClip` -> `removeEffect`
+27. `moveClipById` -> `moveBy`
+
+### D. Selected clip flows
+
+Общий flow:
+- UI -> adapter
+- `Selected` helper читает `selectedClip` у root
+- dispatch на selected clip scope
+
+28. `renameSelectedClip` -> `rename`
+29. `colorSelectedClip` -> `color`
+30. `updateSelectedClipOpacity` -> `updateOpacity`
+31. `updateSelectedClipFade` -> `setFade`
+32. `updateSelectedClipTransform` -> `setTransform`
+33. `updateSelectedClipAudio` -> `setAudio`
+34. `trimSelectedClip` -> `trim`
+35. `addEffectToSelectedClip` -> `addEffect`
+36. `addColorCorrectionToSelectedClip` -> `addEffect(color-correction)`
+37. `removeEffectFromSelectedClip` -> `removeEffect`
+38. `nudgeSelectedClip` -> `moveBy`
+
+### E. Root selected-clip commands (лучше)
+
+39. `deleteSelectedClip()`
+- UI -> adapter -> Root `deleteSelectedClip`
+- resolution внутри DKT
+
+40. `splitSelectedClip()`
+- UI -> adapter -> Root `splitSelectedClip`
+- resolution внутри DKT
+
+### F. Export flows
+
+41. `queueClipExportById(clipId, onProgress?)`
+- UI -> adapter -> `queueExport(range=clip)`
+- project scope resolution + attrs reads + fallback/computed plan selection
+- `env.export.render`
+- blob url registration
+
+42. `queueSelectedClipExport(onProgress?)`
+- UI -> adapter
+- selected clip attrs -> clipId
+- потом flow как в п.41
+
+43. `queueProjectExport(onProgress?)`
+- UI -> adapter -> `queueExport(range=project)`
+- потом flow как в п.41
 
 ---
 
-## Реальный пример: Почему InspectorClipHeader используется dispatchClipActionById
+## Сводная таблица по всем функциям
 
-```typescript
-// InspectorClipHeader.tsx (line 68)
-export const InspectorClipHeader = ({ trackPosition }: Props) => {
-  const { actions } = useVideoEditor()  // ← Получаем actions API
-  const attrs = useAttrs(['sourceClipId', 'name', 'color'])
-  const sourceClipId = attrs.sourceClipId
-  
-  // ✅ Используем actions API, которая использует dispatchClipActionById внутри
-  const handleNameChange = (name: string) => {
-    actions.renameClipById(sourceClipId, name)
-  }
-  
-  return (
-    <input
-      value={name}
-      onChange={(e) => handleNameChange(e.currentTarget.value)}
-    />
-  )
-}
-
-// Цепь вызовов:
-// 1. handleNameChange вызывает actions.renameClipById(sourceClipId, name)
-// 2. renameClipById (в adapter) вызывает dispatchClipActionById()
-// 3. dispatchClipActionById находит Clip scope по sourceClipId
-// 4. dispatch('rename', {name}) выполняется на найденном scope
-```
+| Функция | Entry dispatch | Где traversal сейчас | Final action/effect | Статус |
+|---|---|---|---|---|
+| createProject | Root | нет (кроме title/id util) | SessionRoot.createProject | Ок |
+| setActiveProject | Root | нет | SessionRoot.setActiveProject | Ок |
+| importSampleResource | Root | нет | SessionRoot import chain | Ок |
+| importFiles | imperative async | adapter waits + graph reads | importResource + transfer side effects | Не ок |
+| addResourceToTimeline | Project | adapter project lookup | Project.addResourceToTimeline | Не ок |
+| addTextClip | Root | нет | addTextClipToTimeline chain | Ок |
+| addTrack | Project | adapter project lookup | Project.addTrack | Не ок |
+| selectEntity | Root | нет | SessionRoot.selectEntity | Ок |
+| setActiveInspectorTab | Root | нет | SessionRoot.setActiveInspectorTab | Ок |
+| renameClipById | ById | adapter traversal | Clip.rename | Anti-pattern |
+| renameSelectedClip | Selected | adapter selected lookup | Clip.rename | Transitional |
+| colorClipById | ById | adapter traversal | Clip.color | Anti-pattern |
+| colorSelectedClip | Selected | adapter selected lookup | Clip.color | Transitional |
+| updateClipOpacityById | ById | adapter traversal | Clip.updateOpacity | Anti-pattern |
+| updateSelectedClipOpacity | Selected | adapter selected lookup | Clip.updateOpacity | Transitional |
+| updateClipFadeById | ById | adapter traversal | Clip.setFade | Anti-pattern |
+| updateSelectedClipFade | Selected | adapter selected lookup | Clip.setFade | Transitional |
+| updateClipTransformById | ById | adapter traversal | Clip.setTransform | Anti-pattern |
+| updateSelectedClipTransform | Selected | adapter selected lookup | Clip.setTransform | Transitional |
+| updateClipAudioById | ById | adapter traversal | Clip.setAudio | Anti-pattern |
+| updateSelectedClipAudio | Selected | adapter selected lookup | Clip.setAudio | Transitional |
+| trimClipById | ById | adapter traversal | Clip.trim | Anti-pattern |
+| trimSelectedClip | Selected | adapter selected lookup | Clip.trim | Transitional |
+| resizeClipById | ById | adapter traversal | Clip.resize | Anti-pattern |
+| addEffectToClip | ById | adapter traversal | Clip.addEffect | Anti-pattern |
+| addEffectToSelectedClip | Selected | adapter selected lookup | Clip.addEffect | Transitional |
+| addColorCorrectionToClip | ById | adapter traversal | Clip.addEffect(color-correction) | Anti-pattern |
+| addColorCorrectionToSelectedClip | Selected | adapter selected lookup | Clip.addEffect(color-correction) | Transitional |
+| deleteClipById | ById | adapter traversal | Clip.removeSelf | Anti-pattern |
+| deleteSelectedClip | Root | внутри DKT | SessionRoot.deleteSelectedClip | Target pattern |
+| splitSelectedClip | Root | внутри DKT | SessionRoot.splitSelectedClip | Target pattern |
+| splitClipByIdAt | ById | adapter traversal | Clip.splitSelfAt | Anti-pattern |
+| removeEffectFromClip | ById | adapter traversal | Clip.removeEffect | Anti-pattern |
+| removeEffectFromSelectedClip | Selected | adapter selected lookup | Clip.removeEffect | Transitional |
+| queueClipExportById | queueExport | adapter graph reads | export renderer side effect | Move to DKT saga/fx |
+| queueSelectedClipExport | queueExport | adapter selected+graph reads | export renderer side effect | Move to DKT saga/fx |
+| queueProjectExport | queueExport | adapter graph reads | export renderer side effect | Move to DKT saga/fx |
+| nudgeSelectedClip | Selected | adapter selected lookup | Clip.moveBy | Transitional |
+| moveClipById | ById | adapter traversal | Clip.moveBy | Anti-pattern |
+| togglePlayback | Root | нет | SessionRoot.togglePlayback | Ок |
+| setCursor | Root | нет | SessionRoot.setCursor | Ок |
+| tickPlayback | Root | нет | SessionRoot.tickPlayback | Ок |
+| zoomTimeline | Root | нет | SessionRoot.zoomTimeline | Ок |
 
 ---
 
-## Сравнительная таблица
+## Идеальный target flow
 
-| Метод | Где использовать | Пример | Преимущества |
-|-------|-----------------|--------|--------------|
-| **useActions()** | Внутри компонента в scope | `<ClipItem />` внутри Track | Простой API, автоматический scope |
-| **actions.methodById()** | UI компонент вне scope | `<InspectorClipHeader />` | Decoupled от runtime, типизированный API |
-| **dispatchClipActionById()** | Adapter функции | `renameClipById()` в adapter | Гибкий, работает везде |
-| **runtime.dispatch()** | Низкий уровень | Внутри DKT моделей | Полный контроль, но сложный |
-
----
-
-## Заключение
-
-**useActions() недостаточно потому что:**
-
-1. **React hook** - может использоваться только в компонентах
-2. **Привязан к ScopeContext** - работает только на текущий scope
-3. **Требует быть в контексте** - компонент должен быть отрендерен внутри scope
-4. **Не масштабируется** - нельзя вызвать действие на другой scope
-
-**dispatchClipActionById нужен потому что:**
-
-1. **Универсален** - может использоваться везде (компоненты, adapter, другие функции)
-2. **Decoupled** - работает с IDs, не требует runtime объектов
-3. **Находит scope** - может найти нужный scope по ID и выполнить действие
-4. **Масштабируется** - обрабатывает случаи когда компонент не в контексте нужного scope
-5. **Стабильный API** - не привязан к React или DKT деталям
+1. UI вызывает либо scoped `useActions()` (если уже в нужном scope), либо root command.
+2. Если нужен поиск target по id, это делает DKT action через deps/subwalker.
+3. Adapter не делает graph traversal для адресации.
+4. Async/IO идет через DKT command -> `$fx_*` -> executor.
+5. Финальные graph mutations всегда результат DKT action chain.
