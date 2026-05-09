@@ -17,7 +17,7 @@
 Оставшиеся крупные отклонения:
 
 1. **Import flow все еще живет в React/UI boundary.**  
-   `MediaBin.tsx` создает object URL, читает duration, dispatch-ит `importResource`, вручную решает embedded audio, регистрирует local resource. Это нужно перенести в DKT action + `$fx_handleInputFiles` executor.
+   `MediaBin.tsx` создает object URL, читает duration, dispatch-ит `importResource`, вручную решает embedded audio, регистрирует local resource. Это нужно перенести в DKT action + `$fx_handleInputFiles` executor, а для передачи файлов использовать отдельный page-side handle, не DKT internal runtime ref.
 
 2. **Export render все еще исполняется page-side subscriber'ом в harness.**  
    `SessionRoot` уже строит `ExportRequestState` и вызывает `$fx_requestExport`, но сам render запускается через `pageRuntime.subscribeExportRequests`. Лучше довести до `$fx_renderExport` task executor с явной queue policy и progress actions.
@@ -164,17 +164,17 @@ React MediaBin
 Page adapter/runtime boundary
   putRuntimeRef(files)
   dispatch root/project action:
-    requestImportFiles({ runtimeRefId, source: 'file-input' })
+    requestImportFiles({ inputBatchHandleId, source: 'file-input' })
 
 Worker DKT
   SessionRoot.requestImportFiles
     -> delegates to activeProject OR writes command state
   Project.requestImportFiles
     -> to ['$fx_handleInputFiles', { intent: 'call' }]
-    -> payload: { projectId, runtimeRefId, addToTimelineWhenEmpty: true }
+    -> payload: { projectId, inputBatchHandleId, addToTimelineWhenEmpty: true }
 
 Page runtime task executor
-  consumeRuntimeRef(runtimeRefId) -> File[]
+  consumeInputBatchHandle(inputBatchHandleId) -> File[]
   for each file:
     getFileKind
     createObjectUrl
@@ -208,13 +208,13 @@ requestImportFiles: {
   fn: [
     ['sourceProjectId'] as const,
     (payload: unknown, sourceProjectId: unknown) => {
-      const value = payload as { runtimeRefId?: unknown } | null
+      const value = payload as { inputBatchHandleId?: unknown } | null
       if (typeof sourceProjectId !== 'string' || !sourceProjectId) return '$noop'
-      if (typeof value?.runtimeRefId !== 'string') return '$noop'
+      if (typeof value?.inputBatchHandleId !== 'string') return '$noop'
 
       return {
         projectId: sourceProjectId,
-        runtimeRefId: value.runtimeRefId,
+        inputBatchHandleId: value.inputBatchHandleId,
         addToTimelineWhenEmpty: true,
       }
     },
@@ -226,7 +226,7 @@ requestImportFiles: {
 
 ```ts
 {
-  runtimeRefId: 'rt_tmp_1',
+  inputBatchHandleId: 'ib_1',
   data: {
     projectId: 'project:abc',
     addToTimelineWhenEmpty: true,
