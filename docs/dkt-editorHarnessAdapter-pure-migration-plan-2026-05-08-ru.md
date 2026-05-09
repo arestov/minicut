@@ -14,6 +14,10 @@
 4. `waitForRuntimeReady` / `waitForActiveProjectScope` / `waitForPeerId` это polling и temporal coupling; так нельзя оставлять в production adapter.
 5. `dispatchClipActionById` решает удобство API, но ценой traversal + hidden fallback на selected clip (маскировка ошибок).
 6. В `editorHarnessAdapter.ts` есть мертвый код: `getTrackScopeByKind`, `getResourceAttrsById`, `dispatchTrackClip` (используются только внутри файла и нигде не вызываются).
+7. Дополнительно обнаружена внешняя оркестрация, ранее не описанная в плане:
+	- `VideoEditorHarnessApp.tsx`: debug-метод `dispatchCreateProject` с polling-ready loop.
+	- `createVideoEditorHarness.ts`: `subscribeToResourceScopes` с `setTimeout` retry и `setInterval` refresh (500ms).
+8. Polling для debug/test сценариев должен жить только в явных test helpers с маркировкой `testing` в имени файла.
 
 ## Ревью: exportPlan comp vs fallback
 
@@ -283,6 +287,17 @@
 3. Тесты adapter перефокусировать:
 - проверка, что adapter делает корректный dispatch
 - доменная логика проверяется в DKT model tests (`src/video-editor/dkt/models/...`).
+4. Debug polling из UI-харнесса держать только через helper из `src/video-editor/app/testing/*.testing.ts`.
+
+### Phase 6. Дополнительные внешние orchestrators (новый аудит)
+
+1. `VideoEditorHarnessApp.tsx`
+- `dispatchCreateProject` должен использовать только тестовый helper ожидания runtime-ready (без inline polling loops в файле компонента).
+2. `createVideoEditorHarness.ts`
+- `runtimeReadyTimeout` и `projectRefreshInterval` в `subscribeToResourceScopes` формально являются orchestration debt.
+- Вынести retry/refresh policy в runtime task/executor слой или событийный механизм синхронизации, чтобы не держать polling в app harness.
+3. Зафиксировать правило:
+- Любой новый polling (`while + setTimeout`, `setInterval` refresh) в `src/video-editor/app/**` допускается только в файлах `*.testing.ts` или в явном runtime task executor с документированной причиной.
 
 ## Минимальные критерии готовности
 
@@ -323,9 +338,9 @@
 | `buildFallbackExportPlan` | Только fallback-ветка в `queueExport`, когда нет `computed exportPlan`. |
 | `dispatchTrackClip` | Не используется (мертвый код, только declaration). |
 | `isTimelineEmpty` | Только `importFilesDirectly` для условия `addEmbeddedAudioToTimeline`. |
-| `waitForActiveProjectScope` | Только `importFilesDirectly`. |
-| `waitForRuntimeReady` | Только `importFilesDirectly`. |
-| `waitForPeerId` | Только `importFilesDirectly`. |
+| `waitForActiveProjectScope` | Удален из shared adapter/runtime; импорт теперь fail-fast без polling ожидания active project. |
+| `waitForRuntimeReady` | Удален из shared adapter/runtime; debug/test polling вынесен в `src/video-editor/app/testing/runtimeWaits.testing.ts`. |
+| `waitForPeerId` | Удален из shared adapter/runtime; используется мгновенный `getPeerId()` без polling. |
 | `importFilesDirectly` | Только `importFiles` public method (adapter и дубль runtime). |
 | `queueExport` | `queueClipExportById`, `queueSelectedClipExport`, `queueProjectExport` (adapter и дубль runtime). |
 | `createEditorHarnessAdapter` | Вызывается в `createVideoEditorHarness.ts` и в `editorHarnessAdapter.test.ts`. |

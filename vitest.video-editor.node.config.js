@@ -25,6 +25,6 @@ export default defineConfig({
 			'src/video-editor/domain/protocolCompatibility.test.ts',
 			'src/video-editor/dkt/models/**/*.test.ts',
 		],
-		exclude: ['node_modules/**', 'dist*/**'],
+		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**'],
 	},
 })

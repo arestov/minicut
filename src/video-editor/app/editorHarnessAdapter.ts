@@ -392,54 +392,14 @@ const isTimelineEmpty = (env: EditorActionEnvironment, projectScope: ReactSyncSc
 	return typeof attrs.timelineDuration !== 'number' || attrs.timelineDuration <= 0
 }
 
-const waitForActiveProjectScope = async (env: EditorActionEnvironment): Promise<ReactSyncScopeHandle | null> => {
-	for (let attempt = 0; attempt < 20; attempt += 1) {
-		const scope = getActiveProjectScope(env)
-		if (scope) {
-			return scope
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25))
-	}
-
-	return null
-}
-
-const waitForRuntimeReady = async (env: EditorActionEnvironment): Promise<void> => {
-	if (!env.pageRuntime) {
-		return
-	}
-
-	for (let attempt = 0; attempt < 80; attempt += 1) {
-		if (env.pageRuntime.getSnapshot().ready) {
-			return
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25))
-	}
-}
-
-const waitForPeerId = async (env: EditorActionEnvironment): Promise<string | null> => {
-	for (let attempt = 0; attempt < 80; attempt += 1) {
-		const peerId = env.transfers.getPeerId()
-		if (typeof peerId === 'string' && peerId.length > 0) {
-			return peerId
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25))
-	}
-
-	return env.transfers.getPeerId()
-}
-
 const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void => {
 	const resourceChunkSize = _resourceChunkSizeRef.get(env) ?? 1024 * 1024
 	void (async () => {
-		await waitForRuntimeReady(env)
-		const projectScope = await waitForActiveProjectScope(env)
+		const projectScope = getActiveProjectScope(env)
 		if (!projectScope) {
 			return
 		}
-		const ownerPeerId = await waitForPeerId(env)
-		// Give DKT transport time to attach after role/peer assignment to avoid dropped first sync writes.
-		await new Promise((resolve) => setTimeout(resolve, 300))
+		const ownerPeerId = env.transfers.getPeerId()
 		for (const file of files) {
 			const kind = env.media.getFileKind(file)
 			if (!kind) {
@@ -467,7 +427,10 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 				mime: file.type || 'application/octet-stream',
 				duration,
 				size: file.size,
-				source: { kind: 'local', ownerPeerId },
+				source: {
+					kind: 'local',
+					ownerPeerId: typeof ownerPeerId === 'string' && ownerPeerId.length > 0 ? ownerPeerId : null,
+				},
 				status: 'ready',
 				data: {
 					status: 'ready',

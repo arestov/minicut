@@ -25,7 +25,7 @@ export default defineConfig({
 			'src/dkt-react-sync/**/*.test.ts',
 			'src/dkt-react-sync/**/*.test.tsx',
 		],
-		exclude: ['node_modules/**', 'dist*/**'],
+		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**'],
 		setupFiles: ['./src/video-editor/tests/setup.ts'],
 	},
 })

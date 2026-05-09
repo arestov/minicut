@@ -6,6 +6,7 @@ import { VideoEditorApp } from '../components/VideoEditorApp'
 import { DktEditorRoot } from '../ui/dkt/DktEditorRoot'
 import { createDefaultRtcConfig } from '../p2p/PageP2PManager'
 import { resolveRoomUrlState, type RoomUrlResolution } from './roomUrlState'
+import { waitForRuntimeReadyOrThrowTesting } from './testing/runtimeWaits.testing'
 import '../components/styles.css'
 
 interface VideoEditorHarnessAppProps {
@@ -638,19 +639,11 @@ export const VideoEditorHarnessApp = ({
 				if (!runtime) {
 					throw new Error('Runtime not ready')
 				}
-				const TIMEOUT_MS = 15_000
-				const POLL_MS = 50
-				const deadline = Date.now() + TIMEOUT_MS
-				while (!runtime.getSnapshot().ready) {
-					if (Date.now() >= deadline) {
-						const snap = runtime.getSnapshot()
-						const role = (ownedHarness.worker as { role?: string }).role ?? null
-						throw new Error(
-							`Runtime not ready after ${TIMEOUT_MS}ms (role=${role} booted=${snap.booted} rootNodeId=${snap.rootNodeId})`,
-						)
-					}
-					await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS))
-				}
+				await waitForRuntimeReadyOrThrowTesting(runtime, {
+					timeoutMs: 15_000,
+					pollMs: 50,
+					role: (ownedHarness.worker as { role?: string }).role ?? null,
+				})
 				ownedHarness.actions.createProject(title)
 			},
 		}
