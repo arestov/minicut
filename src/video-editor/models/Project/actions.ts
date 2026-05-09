@@ -259,23 +259,6 @@ export const reduceRequestImportFiles = (payload: unknown) => {
 			total: 0,
 		},
 		lastImportError: null,
-		$output: {
-			projectId: null,
-			inputBatchHandleId: value.inputBatchHandleId,
-			addToTimelineWhenEmpty: true,
-		},
-	}
-}
-
-export const reduceCreateImportFilesEffectPayload = (payload: unknown, sourceProjectId: unknown) => {
-	const value = payload as { inputBatchHandleId?: unknown } | null
-	if (typeof value?.inputBatchHandleId !== 'string' || !value.inputBatchHandleId) {
-		return '$noop'
-	}
-	return {
-		projectId: typeof sourceProjectId === 'string' && sourceProjectId ? sourceProjectId : 'active-project',
-		inputBatchHandleId: value.inputBatchHandleId,
-		addToTimelineWhenEmpty: true,
 	}
 }
 

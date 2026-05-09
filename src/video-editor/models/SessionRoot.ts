@@ -6,6 +6,7 @@ import type { ExportProgressState } from '../app/exportProgressState'
 import type { ExportRequestState } from '../app/exportRequestState'
 import { dktSessionActions } from './SessionRoot/actions'
 import { reducePreviewFrame, reducePreviewStructure, reduceSelectedClip } from './SessionRoot/comps'
+import { PROJECT_IMPORT_FILES_FX } from './Project/effects'
 
 const debugExport = (message: string, details?: unknown) => {
 	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
@@ -76,8 +77,25 @@ export const EditorSessionRoot = model({
 				['#exportRuntime'] as const,
 				(exportRuntime: unknown) => exportRuntime,
 			],
+			importRuntime: [
+				['_node_id'] as const,
+				['#importRuntime'] as const,
+				(importRuntime: unknown) => importRuntime,
+			],
 		},
 		out: {
+			[PROJECT_IMPORT_FILES_FX]: {
+				api: ['importRuntime'],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as { requestImportFiles?: (payload: unknown) => void } | null
+					const payload = (state as { payload?: unknown } | null)?.payload
+					if (!runtime || typeof runtime.requestImportFiles !== 'function' || !payload || typeof payload !== 'object') {
+						return
+					}
+					runtime.requestImportFiles(payload)
+				},
+			},
 			$fx_renderExport: {
 				api: ['exportRuntime'],
 				create_when: { api_inits: true },
