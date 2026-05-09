@@ -75,9 +75,9 @@ export const createRuntimeTaskFacade = () => {
 
 	const putRuntimeRef = (value: unknown): string => {
 		runtimeRefSeq += 1
-		const runtimeRefId = `rt_tmp_${runtimeRefSeq}`
-		runtimeRefs.set(runtimeRefId, { value })
-		return runtimeRefId
+		const runtimeHandleId = `rt_tmp_${runtimeRefSeq}`
+		runtimeRefs.set(runtimeHandleId, { value })
+		return runtimeHandleId
 	}
 
 	const consumeRuntimeRef = (runtimeHandleId: string): unknown => {
@@ -91,12 +91,12 @@ export const createRuntimeTaskFacade = () => {
 	}
 
 	const releaseTaskRuntimeRef = (taskId: string): void => {
-		const runtimeRefId = taskRuntimeRef.get(taskId)
-		if (!runtimeRefId) {
+		const runtimeHandleId = taskRuntimeRef.get(taskId)
+		if (!runtimeHandleId) {
 			return
 		}
 		taskRuntimeRef.delete(taskId)
-		deleteRuntimeRef(runtimeRefId)
+		deleteRuntimeRef(runtimeHandleId)
 	}
 
 	const markDropped = (taskId: string): void => {
@@ -126,12 +126,12 @@ export const createRuntimeTaskFacade = () => {
 
 		taskSeq += 1
 		const taskId = `task_${taskSeq}`
-		const runtimeRefId = payload.runtimeRef === undefined ? undefined : putRuntimeRef(payload.runtimeRef)
+		const runtimeHandleId = payload.runtimeRef === undefined ? undefined : putRuntimeRef(payload.runtimeRef)
 
 		if (queuePolicy === 'keep-first' && existingTaskId) {
 			dropped = true
-			if (runtimeRefId) {
-				deleteRuntimeRef(runtimeRefId)
+			if (runtimeHandleId) {
+				deleteRuntimeRef(runtimeHandleId)
 			}
 			const descriptor: RuntimeTaskDescriptor = {
 				taskId,
@@ -155,15 +155,15 @@ export const createRuntimeTaskFacade = () => {
 		if (queuePolicy !== 'queue-all') {
 			queuedTaskByIntent.set(intentKey, taskId)
 		}
-		if (runtimeRefId) {
-			taskRuntimeRef.set(taskId, runtimeRefId)
+		if (runtimeHandleId) {
+			taskRuntimeRef.set(taskId, runtimeHandleId)
 		}
 
 		const descriptor: RuntimeTaskDescriptor = {
 			taskId,
 			fxName,
 			payload: {
-				...(runtimeRefId ? { runtimeHandleId: runtimeRefId } : {}),
+				...(runtimeHandleId ? { runtimeHandleId } : {}),
 				...(payload.data !== undefined ? { data: payload.data } : {}),
 			},
 			queuePolicy,
