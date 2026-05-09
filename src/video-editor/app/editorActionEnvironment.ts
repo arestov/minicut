@@ -47,6 +47,7 @@ export interface EditorRuntimeTaskPort {
 	consumeRuntimeRef(runtimeRefId: string): unknown
 	deleteRuntimeRef(runtimeRefId: string): void
 	completeTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
+	failTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
 }
 
 /** DKT dispatch port used by harness actions. */
@@ -63,4 +64,5 @@ export interface EditorActionEnvironment {
 	lifecycle: EditorLifecyclePort
 	tasks: EditorRuntimeTaskPort
 	platform: VideoEditorHarnessPlatform
+	resourceChunkSize: number
 }

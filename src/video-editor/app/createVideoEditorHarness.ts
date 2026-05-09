@@ -345,6 +345,7 @@ export const createVideoEditorHarness = (
 		},
 		tasks: runtimeTasks,
 		platform,
+		resourceChunkSize,
 	}
 
 	const actions = createEditorHarnessAdapter(env)
