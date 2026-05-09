@@ -634,9 +634,10 @@ export const VideoEditorHarnessApp = ({
 			setCursor: (cursor: number) => {
 				ownedHarness.actions.setCursor(cursor)
 			},
+			// DEBUG-ONLY API: testing and debug bridge — DO NOT USE IN PRODUCTION CODE
+			// Phase 4: synchronous version without polling for test convenience
 			dispatchCreateProject: (title?: string) => {
-				// Phase 4: synchronous version without polling.
-				// If runtime isn't ready, this will silently fail; use regular createProject for production flow.
+				// DANGER: This is debug-only! Production code should use adapter.createProject()
 				ownedHarness.actions.createProject(title)
 				// For testing convenience, return resolved promise (tests expect async).
 				return Promise.resolve()
