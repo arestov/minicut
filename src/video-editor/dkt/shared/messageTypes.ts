@@ -3,10 +3,12 @@ export const DKT_MSG = {
 	CLOSE_SESSION: 'dkt:close-session',
 	DISPATCH_ACTION: 'dkt:dispatch-action',
 	EXPORT_REQUEST: 'dkt:export-request',
+	IDLE: 'dkt:idle',
 	P2P_SESSION_LOST: 'dkt:p2p-session-lost',
 	RUNTIME_READY: 'dkt:runtime-ready',
 	RUNTIME_ERROR: 'dkt:runtime-error',
 	RUNTIME_LOG: 'dkt:runtime-log',
+	WAIT_IDLE: 'dkt:wait-idle',
 	SYNC_HANDLE: 'dkt:sync-handle',
 	SYNC_UPDATE_STRUCTURE_USAGE: 'dkt:sync-update-structure-usage',
 	SYNC_REQUIRE_SHAPE: 'dkt:sync-require-shape',
@@ -62,6 +64,16 @@ export type DktExportRequestMessage = {
 	payload: unknown
 }
 
+export type DktRuntimeIdleRequestMessage = {
+	type: typeof DKT_MSG.WAIT_IDLE
+	requestId?: string
+}
+
+export type DktRuntimeIdleResponseMessage = {
+	type: typeof DKT_MSG.IDLE
+	requestId?: string
+}
+
 export type DktP2PSessionLostMessage = {
 	type: typeof DKT_MSG.P2P_SESSION_LOST
 	reason: string
@@ -79,6 +91,8 @@ export type MiniCutDktTransportMessage =
 	| DktSyncHandleMessage
 	| DktSyncUpdateStructureUsageMessage
 	| DktSyncRequireShapeMessage
+	| DktRuntimeIdleRequestMessage
+	| DktRuntimeIdleResponseMessage
 	| { type: typeof DKT_MSG.DEBUG_DUMP_REQUEST }
 	| { type: typeof DKT_MSG.DEBUG_DUMP_RESPONSE; dump: unknown }
 

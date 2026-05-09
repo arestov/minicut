@@ -145,4 +145,27 @@ describe('createMiniCutPageSyncRuntime', () => {
       scopeNodeId: 'root',
     })
   })
+
+  it('waits for runtime settle through the worker idle handshake', async () => {
+    const memory = createMemoryTransport()
+    const runtime = createMiniCutPageSyncRuntime({ transport: memory.transport })
+
+    const settlePromise = runtime.waitForRuntimeSettled!()
+
+    await expect.poll(() => memory.sent.some((message) => message.type === DKT_MSG.WAIT_IDLE), {
+      timeout: 5_000,
+    }).toBe(true)
+
+    const waitMessage = memory.sent.find((message) => message.type === DKT_MSG.WAIT_IDLE) as
+      | { requestId?: string }
+      | undefined
+    expect(waitMessage?.requestId).toMatch(/^idle:/)
+
+    memory.emit({
+      type: DKT_MSG.IDLE,
+      requestId: waitMessage?.requestId,
+    })
+
+    await settlePromise
+  })
 })

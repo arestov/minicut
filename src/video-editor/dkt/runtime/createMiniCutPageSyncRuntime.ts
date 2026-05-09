@@ -38,6 +38,11 @@ export const createMiniCutPageSyncRuntime = ({
   const exportRequestListeners = new Set<(payload: unknown) => void>()
   const debugMessageLog: unknown[] = []
   let pendingDumpResolve: ((result: unknown) => void) | null = null
+  const pendingIdleResolves = new Map<string, {
+    resolve: () => void
+    timeoutId: ReturnType<typeof setTimeout>
+  }>()
+  let idleRequestSequence = 0
 
   const pushDebugMessage = (direction: 'in' | 'out', message: unknown) => {
     debugMessageLog.push({
@@ -54,6 +59,15 @@ export const createMiniCutPageSyncRuntime = ({
   const emit = (message: MiniCutDktTransportMessage) => {
     pushDebugMessage('out', message)
     transport.send(message)
+  }
+
+  const clearPendingIdleWait = (requestId: string) => {
+    const pending = pendingIdleResolves.get(requestId)
+    if (!pending) {
+      return
+    }
+    clearTimeout(pending.timeoutId)
+    pendingIdleResolves.delete(requestId)
   }
 
   const syncReceiver = new ReactSyncReceiver({
@@ -268,6 +282,16 @@ export const createMiniCutPageSyncRuntime = ({
         pendingDumpResolve = null
         return
       }
+      case DKT_MSG.IDLE: {
+        if (typeof message.requestId === 'string') {
+          const pending = pendingIdleResolves.get(message.requestId)
+          if (pending) {
+            clearPendingIdleWait(message.requestId)
+            pending.resolve()
+          }
+        }
+        return
+      }
     }
   }
 
@@ -285,6 +309,23 @@ export const createMiniCutPageSyncRuntime = ({
     requestDebugDump: () => new Promise<unknown>((resolve) => {
       pendingDumpResolve = resolve
       emit({ type: DKT_MSG.DEBUG_DUMP_REQUEST })
+    }),
+    waitForRuntimeSettled: () => new Promise<void>((resolve, reject) => {
+      const requestId = `idle:${++idleRequestSequence}:${Date.now()}`
+      const timeoutId = setTimeout(() => {
+        pendingIdleResolves.delete(requestId)
+        reject(new Error('Timed out waiting for DKT runtime to settle'))
+      }, 15_000)
+
+      pendingIdleResolves.set(requestId, {
+        resolve: () => {
+          clearPendingIdleWait(requestId)
+          resolve()
+        },
+        timeoutId,
+      })
+
+      emit({ type: DKT_MSG.WAIT_IDLE, requestId })
     }),
     dispatchAction,
     getSnapshot: () => store.getSnapshot(),
@@ -325,6 +366,10 @@ export const createMiniCutPageSyncRuntime = ({
       shapeRegistry.destroy()
       rootAttrsCache.clear()
       exportRequestListeners.clear()
+      for (const { timeoutId } of pendingIdleResolves.values()) {
+        clearTimeout(timeoutId)
+      }
+      pendingIdleResolves.clear()
     },
   }
 }

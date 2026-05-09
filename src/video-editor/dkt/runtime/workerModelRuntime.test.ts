@@ -54,4 +54,29 @@ describe('createMiniCutDktWorkerModelRuntime', () => {
 		connection.destroy()
 		expect(workerRuntime.getConnectionCount()).toBe(0)
 	})
+
+	it('acknowledges runtime idle waits after bootstrap', async () => {
+		const workerRuntime = createMiniCutDktWorkerModelRuntime()
+		const memory = createMemoryTransport()
+		const connection = workerRuntime.connect(memory.transport)
+
+		memory.emit({ type: DKT_MSG.BOOTSTRAP, sessionKey: 'session:idle' })
+		await waitFor(() => memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_READY))
+
+		memory.emit({ type: DKT_MSG.WAIT_IDLE, requestId: 'idle:request-1' })
+
+		await waitFor(() =>
+			memory.sent.some((message) =>
+				message.type === DKT_MSG.IDLE
+				&& (message as { requestId?: string }).requestId === 'idle:request-1',
+			),
+		)
+
+		expect(memory.sent).toContainEqual({
+			type: DKT_MSG.IDLE,
+			requestId: 'idle:request-1',
+		})
+
+		connection.destroy()
+	})
 })

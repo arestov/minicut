@@ -23,6 +23,8 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
   debugMessages(): readonly unknown[]
   /** Debug-only: requests a full serialised worker model state. Promise resolves when the worker responds. */
   requestDebugDump?(): Promise<unknown>
+  /** Debug-only: waits for the DKT worker and page sync runtime to settle. */
+  waitForRuntimeSettled?(): Promise<void>
   dispatchAction(actionName: string, payload?: unknown, scope?: ReactSyncScopeHandle | null): void
   destroy(): void
   getSnapshot(): PageRootSnapshot

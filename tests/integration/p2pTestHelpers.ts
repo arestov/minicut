@@ -74,6 +74,7 @@ export const readP2PDebugState = async (page: Page): Promise<DebugState | null> 
 				getProjectTitles?: () => string[]
 				getPeerId?: () => string | null
 				isRuntimeReady?: () => boolean
+				waitForRuntimeSettled?: () => Promise<void>
 			}
 		}).__MINICUT_P2P_DEBUG__
 
@@ -159,6 +160,22 @@ export const waitForRuntimeReady = async (page: Page): Promise<void> => {
 	await expect.poll(() => isRuntimeReady(page), {
 		timeout: 20_000,
 	}).toBe(true)
+}
+
+export const waitForRuntimeSettled = async (page: Page): Promise<void> => {
+	await page.evaluate(async () => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				waitForRuntimeSettled?: () => Promise<void>
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		if (!debug?.waitForRuntimeSettled) {
+			throw new Error('P2P debug bridge is unavailable')
+		}
+
+		await debug.waitForRuntimeSettled()
+	})
 }
 
 export const createProject = async (page: Page, title?: string): Promise<void> => {

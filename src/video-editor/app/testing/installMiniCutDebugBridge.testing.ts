@@ -18,6 +18,7 @@ type MiniCutDebugBridge = {
 	dumpWorkerState: () => Promise<unknown>
 	getRole: () => string | null
 	isRuntimeReady: () => boolean
+	waitForRuntimeSettled: () => Promise<void>
 	getPeerId: () => string | null
 	createProject: (title?: string) => void
 	dispatchRootAction: (actionName: string, payload?: unknown) => void
@@ -101,6 +102,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 	}
 
 	const getActiveProjectScope = () => getActiveProjectScopeTesting(harness)
+	const waitForRuntimeSettled = () => harness.pageRuntime?.waitForRuntimeSettled?.() ?? Promise.resolve()
 
 	const debug: MiniCutDebugBridge = {
 		getSnapshot: () => harness.pageRuntime?.getSnapshot() ?? null,
@@ -510,8 +512,9 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 		},
 		dispatchCreateProject: (title?: string) => {
 			harness.actions.createProject(title)
-			return Promise.resolve()
+			return waitForRuntimeSettled()
 		},
+		waitForRuntimeSettled,
 	}
 
 	window.__MINICUT_P2P_DEBUG__ = debug

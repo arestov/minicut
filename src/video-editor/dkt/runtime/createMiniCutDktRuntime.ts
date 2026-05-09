@@ -24,6 +24,7 @@ type RuntimeLike = {
 		App: typeof MiniCutAppRoot
 		interfaces: Record<string, unknown>
 	}): Promise<{ app_model: RuntimeModelLike }>
+	whenAllReady?: (fn: () => void) => void
 	sync_sender: {
 		addSyncStream(
 			root: RuntimeModelLike,
@@ -270,6 +271,30 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 				case DKT_MSG.BOOTSTRAP:
 					await bootstrap(undefined, message.sessionKey)
 					return
+				case DKT_MSG.WAIT_IDLE: {
+					const app = await bootstrapApp()
+					if (!app) {
+						transport.send({ type: DKT_MSG.IDLE, requestId: message.requestId })
+						return
+					}
+
+					await new Promise<void>((resolve) => {
+						if (typeof app.runtime.whenAllReady === 'function') {
+							app.runtime.whenAllReady(() => resolve())
+							return
+						}
+
+						if (typeof app.appModel.input === 'function') {
+							app.appModel.input?.(() => resolve())
+							return
+						}
+
+						resolve()
+					})
+
+					transport.send({ type: DKT_MSG.IDLE, requestId: message.requestId })
+					return
+				}
 				case DKT_MSG.CLOSE_SESSION:
 					destroy()
 					return
