@@ -298,8 +298,8 @@
 | **Import/Export (saga/fx)** | | | | |
 | `importFiles` | MediaBin | session | N/A | → `dispatchRoot` + `$fx_handleInputFiles` |
 | `queueClipExportById` | InspectorExportTabPanel | **Да, Clip scope** | нет, но нужен fx pipeline | → scoped action + `$fx_renderExport` |
-| `queueSelectedClipExport` | нет call sites | — | нет | Удалить |
-| `queueProjectExport` | Toolbar, test | session | N/A | → `dispatchRoot('requestProjectExport')` + `$fx_renderExport` |
+| `queueSelectedClipExport` | нет прямых call sites | — | нет, но нужна миграция в action | → `dispatchRoot('requestSelectedClipExport', { refId })` + DKT action с резолвом selected clip |
+| `queueProjectExport` | Toolbar, test | session | N/A | → `dispatchRoot('requestProjectExport', { refId })` + `$fx_renderExport` |
 
 ### Вывод
 
@@ -307,7 +307,7 @@
 - **8** остаются как `dispatchRoot` (session control, root-level orchestration)
 - **2** переходят на scoped `useActions()` (`renameClipById` → `dispatch('rename')`, `addResourceToTimeline` → `dispatch('addResourceToTimeline')`)
 - **27** удаляются без замены (нет call sites, все данные локальны)
-- **4** переписываются в DKT saga/fx pipeline (`importFiles`, `queueClipExportById`, `queueSelectedClipExport` → delete, `queueProjectExport`)
+- **4** переписываются в DKT saga/fx pipeline (`importFiles`, `queueClipExportById`, `queueSelectedClipExport`, `queueProjectExport`)
 - **2** остаются как `dispatchRoot` для существующих root-level clip delegation (`deleteSelectedClip`, `splitSelectedClip`)
 
 ## Нормативное правило: scoped dispatch first
@@ -382,6 +382,47 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 
 Оба паттерна уже используются в minicut (12 `inline_subwalker`, 2 `sub_flow`). При добавлении новых root-level действий, которые делегируют от root через project в clip и затем clip в track, может потребоваться комбинированный паттерн: root action → `inline_subwalker` в clip → clip action → `sub_flow` в track.
 
+## Архитектурный контракт: разделение ответственности state vs DI
+
+Эта миграция вводит четкую границу между доменным слоем и runtime интеграцией.
+
+### DKT state слой
+
+**Ответственность**:
+- Определить доменную модель и её правила (что изменяется, когда и почему).
+- Хранить только данные, нужные для воспроизводимой вычисляемой модели.
+- Target resolution и graph traversal для адресации.
+- Синхронизация между состоянием разных клиентов.
+
+**Исключено из state**:
+- File, Blob, stream объекты напрямую.
+- Callbacks и функции (функциональность — через `$fx_*` targets).
+- Сессионные ссылки на runtime объекты (кроме stateless refId).
+
+### DI и runtime интерфейсы
+
+**Назначение**: работа с side effects, эфемерными runtime объектами и ссылками на них.
+
+**Ответственность**:
+- Выполнение IO операций (media probe, file transfer, rendering).
+- Управление жизненным циклом runtime объектов (File, Blob, WebCodec, worker connection).
+- Трансляция доменных команд (`$fx_*` targets) в конкретные технические действия.
+- Управление async workflows и их progress/error reporting.
+- Хранение и публикация эфемерных результатов (blob urls, transfer state).
+
+**Модель коммуникации**:
+- Control plane: DKT actions и fx-payload (serializable).
+- Data plane: параллельный механизм между render и worker через DI, оперирующий runtime объектами по refId.
+- refId lifecycle: register (render side) → consume (worker executor) → release (оба стороны).
+
+### Ключевой принцип: resolution → execution → publication
+
+1. **Resolution** (в action chain или comp deps): определить, ЧТО нужно сделать и ГДЕ.
+2. **Execution** (в fx executor или DI): выполнить ИЗ-ЧЕМ и КАК технически.
+3. **Publication** (в state или DI callback): поместить результат туда, откуда его смогут прочитать.
+
+Resolution никогда не возникает в executor/bridge; это дело action chain. Executor получает уже готовый план и выполняет по нему.
+
 ## Обзор реальных `*ById` call sites и scope-контекста
 
 По текущему workspace прямые вызовы `actions.*ById` в React-компонентах есть только в двух местах.
@@ -446,11 +487,12 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 | Компонент | Сейчас | Станет | Тип работы |
 |---|---|---|---|
 | `InspectorClipHeader.tsx` | `actions.renameClipById(sourceClipId, value)` | `useActions()` + `dispatch('rename', { name: value })` | React: добавить import useActions, заменить вызов |
-| `InspectorExportTabPanel.tsx` | `actions.queueClipExportById(clipId, onProgress)` | `useActions()` + `dispatch('requestClipExport', { onProgress })` (после Phase 4) | React: заменить; DKT: добавить clip export action |
+| `InspectorExportTabPanel.tsx` | `actions.queueClipExportById(clipId, onProgress)` | `useActions()` + `dispatch('requestClipExport')`, читать progress через `useAttrs(['exportProgress'])` (после Phase 3) | React: заменить; DKT: добавить clip export action с exportProgress field |
 | `MediaBin.tsx` (addResourceToTimeline) | `actions.addResourceToTimeline(sourceResourceId)` | `useActions()` + `dispatch('addResourceToTimeline', { sourceResourceId })` | React: заменить; adapter method удалить |
-| `MediaBin.tsx` (importFiles) | `actions.importFiles(files)` | `dispatchRoot('importFilesRequested', { files })` (после Phase 3) | React: заменить; DKT: добавить root action |
+| `MediaBin.tsx` (importFiles) | `actions.importFiles(files)` | `dispatchRoot('importFilesRequested', { files })` (после Phase 2) | React: заменить; DKT: добавить root action |
 | `MediaBin.tsx` (addTextClip) | `actions.addTextClip()` | `dispatchRoot('addTextClipToTimeline', payload)` — без изменений | Без изменений |
-| `Toolbar.tsx` (queueProjectExport) | `actions.queueProjectExport(onProgress)` | `dispatchRoot('requestProjectExport', { onProgress })` (после Phase 4) | React: заменить; DKT: добавить root action |
+| `Toolbar.tsx` (queueProjectExport) | `actions.queueProjectExport(onProgress)` | `dispatchRoot('requestProjectExport')`, читать progress через `useAttrs(['exportProgress'])` на SessionRoot (после Phase 3) | React: заменить; DKT: добавить root action с exportProgress field |
+| N/A (опционально в UI) | (нет текущего call site) | `dispatch('requestSelectedClipExport')` или `dispatchRoot('requestSelectedClipExport')` (после Phase 3, в зависимости от scope), читать progress из attrs | React: опционально через scoped dispatch или root; DKT: добавить action с резолвом selected clip и exportProgress field |
 | Inspector panels (Edit/Audio/Color) | уже используют `useActions()` | без изменений | Уже корректно |
 
 ### Что меняется в DKT
@@ -458,12 +500,13 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 | Что | Файл | Тип работы |
 |---|---|---|
 | Удалить dead code (3 функции) | `editorHarnessAdapter.ts` | Adapter cleanup |
-| Удалить 27 unused methods | `editorHarnessAdapter.ts` | Adapter cleanup |
+| Удалить 26 unused methods | `editorHarnessAdapter.ts` | Adapter cleanup |
 | Удалить `findClipScopeById`, `dispatchClipActionById` | `editorHarnessAdapter.ts` | Adapter cleanup |
 | Удалить `buildFallbackExportPlan` | `editorHarnessAdapter.ts` | Adapter cleanup |
 | Удалить `createDktActionRuntime.ts` | новый | Удалить файл |
 | Добавить `requestProjectExport` action | `SessionRoot/actions.ts` | DKT: new root action |
 | Добавить `requestClipExport` action на Clip или root | `Clip.ts` или `SessionRoot/actions.ts` | DKT: new action |
+| Добавить `requestSelectedClipExport` action | `SessionRoot/actions.ts` | DKT: new root action, делегирует через selected clip rel |
 | Добавить `importFilesRequested` action | `Project.ts` или `SessionRoot/actions.ts` | DKT: new root action |
 | Удалить `Project.exportPlan` comp | `Project.ts` | DKT: удалить eager comp |
 | Вынести polling в testing helpers | `createVideoEditorHarness.ts` | Infrastructure |
@@ -477,6 +520,29 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 - Все 6 Resource actions — остаются как есть
 - Все 4 Text actions — остаются как есть
 - SessionRoot actions `deleteSelectedClip`, `splitSelectedClip` — уже реализованы корректно
+
+## Phase gates: hard cutover без fallback
+
+Эта миграция применяет принцип: **лучше явная поломка на фазе, чем даже маленький fallback на старую логику**.
+
+### Контрольные ворота каждой фазы
+
+Каждая фаза обязана пройти все три проверки перед мержем:
+
+1. **compile-green**: `npm run tsc --noEmit` — нет type errors, полностью типизировано.
+2. **smoke-green**: `npm run repl:run` (jsdom smoke), `npm run repl:playwright` (browser smoke) — базовые сценарии работают.
+3. **no fallback**: grep-проверка на запрещенные паттерны:
+   - Нет `readOne/readMany/readAttrs` в adapter (кроме локальных utility props).
+   - Нет `setTimeout` polling loops в production adapter.
+   - Нет дуального пути (new action путь И старый adapter путь одновременно).
+
+### Жесткий cutover
+
+- Если новая ветка Phase N не готова → не мержим Phase N.
+- Если что-то ломается на Phase N → чиним в DKT/fx, не возвращаем старый путь.
+- Если нужен fallback → это признак неправильного разделения Phase; перепроектируем.
+
+Исключение: явные test helpers в файлах с маркировкой `*.testing.ts` (Phase 4).
 
 ## Конкретный план миграции
 
@@ -495,7 +561,7 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 
 1. Удалить из adapter 27 методов без call sites:
 - все `*ById` методы (14 штук): `renameClipById`, `colorClipById`, `updateClipOpacityById`, `updateClipFadeById`, `updateClipTransformById`, `updateClipAudioById`, `trimClipById`, `resizeClipById`, `addEffectToClip`, `addColorCorrectionToClip`, `deleteClipById`, `splitClipByIdAt`, `removeEffectFromClip`, `moveClipById`
-- все `*Selected` методы (13 штук): `renameSelectedClip`, `colorSelectedClip`, `updateSelectedClipOpacity`, `updateSelectedClipFade`, `updateSelectedClipTransform`, `updateSelectedClipAudio`, `trimSelectedClip`, `addEffectToSelectedClip`, `addColorCorrectionToSelectedClip`, `removeEffectFromSelectedClip`, `nudgeSelectedClip`, `queueSelectedClipExport`, `addTrack`
+- все `*Selected` методы (12 штук): `renameSelectedClip`, `colorSelectedClip`, `updateSelectedClipOpacity`, `updateSelectedClipFade`, `updateSelectedClipTransform`, `updateSelectedClipAudio`, `trimSelectedClip`, `addEffectToSelectedClip`, `addColorCorrectionToSelectedClip`, `removeEffectFromSelectedClip`, `nudgeSelectedClip`, `addTrack`
 2. Удалить helper-ы, ставшие unused: `findClipScopeById`, `dispatchClipActionById`, `dispatchSelectedClipAction`, `getSelectedClipScope`, `dispatchProject`, `getActiveProjectScope`.
 3. Перевести React-компоненты на scoped dispatch:
 - `InspectorClipHeader.tsx`: `useActions()` + `dispatch('rename', { name })`
@@ -532,22 +598,38 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 - проверить синхрон page vs worker: helper `test/repl/playwright-runtime-inspect.testing.mjs` (`workerState`, `divergence`).
 - если импорт dispatch прошел, но модель не изменилась: анализировать `harness.inspect.messages()` и `debug.dumpRuntimeTasks()` в browser REPL.
 
-### Phase 3. Export pipeline: on-demand action + `$fx_*` (без `exportPlan` comp)
+### Phase 3. Export pipeline: on-demand actions + `$fx_*` (без `exportPlan` comp)
 
 1. Удалить `Project.exportPlan` из `Project.attrs` (не держать export-only projection как eager comp).
 2. Оставить `previewClipSources` для preview runtime, но не использовать как persisted export attr.
 3. Добавить root action `requestProjectExport`:
 - Step 1: deps читают export projection — **используются те же deps, что и в `previewClipSources` comp** (`< @all:clipRenderData < activeProject.tracks.clips`) плюс `sourceProjectId`, `fps`, `width`, `height`, `duration`. Результат в `$output`.
 - Step 2: target в `$fx_renderExport` с `intent: 'call'`.
-4. Добавить scoped export (на Clip или через root):
-- `requestClipExport`: deps читают `clipRenderData` + duration, формируют plan, `$fx_renderExport`.
-5. Runtime task executor делает `env.export.render`, создает blob URL и публикует результат/прогресс.
+4. Добавить scoped export actions (на Clip или на SessionRoot для делегации):
+- **`requestClipExport`** (scoped на Clip или root action с inline_subwalker): deps читают собственный `clipRenderData`, формируют план одного клипа, `$fx_renderExport`.
+  - Эта команда вызывается из Inspector, когда user кликает Export на выбранном клипе.
+  - **Progress tracking**: Clip (или SessionRoot если root action) получает поле `exportProgress: { stage: 'queued' | 'rendering' | 'done' | 'error', progress: 0-100, message?: string }`. Компонент читает это через `useAttrs(['exportProgress'])`.
+- **`requestSelectedClipExport`** (root action с внутренней оркестрацией): берет selectedClip rel, делегирует в него через inline_subwalker или повторяет логику requestClipExport для selected clip.
+  - Эта команда создает action с собственной логикой сборки плана selected clip и запускает `$fx_renderExport`.
+  - **Вызов из UI**: если компонент находится в Clip scope (например, в context-меню или утилит-панели выбранного клипа), предпочесть scoped `dispatch('requestSelectedClipExport')` через `useActions()`.
+  - Если компонент находится на session уровне (например, меню Toolbar), использовать `dispatchRoot('requestSelectedClipExport')`.
+  - Правило: **избегать dispatchRoot для requestSelectedClipExport, если есть доступ к clip scope**.
+  - **Progress tracking**: SessionRoot получает поле `exportProgress` (то же, что у requestClipExport). Компонент читает через `useAttrs(['exportProgress'])`.
+5. Runtime task executor делает `env.export.render`, создает blob URL. Progress и результат публикуются через обновление state field `exportProgress` в модели (делается через `dispatch('setExportProgress', { stage, progress, message })` при каждом обновлении).
 6. Если `projectId` пустой: чинить инициализацию проекта (`sourceProjectId`), без fallback-патчинга.
 7. Обновить UI:
-- `Toolbar.tsx`: `dispatchRoot('requestProjectExport', { onProgress })`
-- `InspectorExportTabPanel.tsx`: scoped `dispatch('requestClipExport', ...)` или `dispatchRoot`
+- `Toolbar.tsx`: `dispatchRoot('requestProjectExport')` (no callback), читать `useAttrs(['exportProgress'])` на SessionRoot.
+- `InspectorExportTabPanel.tsx`: 
+  - scoped `dispatch('requestClipExport')` (preferred, если компонент в Clip scope)
+  - читать `useAttrs(['exportProgress'])` на Clip для отслеживания прогресса.
 
-**Синхронизация deps**: Dep `< @all:clipRenderData < tracks.clips` идентичен dep в `previewClipSources` comp (Project.ts:90). Export action обязан использовать тот же dep. Если в будущем `clipRenderData` поменяет структуру — preview и export должны меняться вместе. Опционально: вынести dep string в константу (`CLIP_RENDER_DATA_DEP`).
+**Progress field вместо callback**: Вместо передачи `onProgress` callback в payload (что не serializable), экспорт обновляет state field типа `{ stage, progress, message }` в модели. Компонент через `useAttrs` читает это поле и обновляет UI в real-time. Это дает:
+- Нет callbacks, нет runtime refs — чище архитектура.
+- Progress синхронизуется через P2P state (если нужно синхронизировать между клиентами).
+- Single source of truth в модели (история progress сохраняется/восстанавливается).
+- Executor просто пишет `dispatch('setExportProgress', { stage, progress, message })` при каждом обновлении.
+
+**Синхронизация deps**: Dep `< @all:clipRenderData < tracks.clips` идентичен dep в `previewClipSources` comp (Project.ts:90). Export actions обязаны использовать тот же dep. Если в будущем `clipRenderData` поменяет структуру — preview и export должны меняться вместе. Опционально: вынести dep string в константу (`CLIP_RENDER_DATA_DEP`).
 
 Подсказки для дебага проблем на шаге:
 
@@ -555,6 +637,7 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 - диагностировать queue policy (`replace-last`/`keep-first`): смотреть `active/completed/failed/dropped` в dump.
 - проверить расхождение export payload vs graph: `harness.inspect.activeProject()` + `harness.inspect.diff(before, after)`.
 - проверить worker/page divergence перед экспортом: `npm run repl:playwright:runtime` и блок `divergence`.
+- если прогресс не обновляется в UI: проверить, что `exportProgress` field правильно обновляется в model и компонент читает его через `useAttrs`.
 
 ### Phase 4. Тестовый контур и quarantine для imperative helper
 
@@ -601,6 +684,13 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 
 ## Минимальные критерии готовности
 
+**Общие для всех фаз (фазовый gate)**:
+- `npm run tsc --noEmit` → compile-green.
+- `npm run repl:run` → smoke-test jsdom baseline работает.
+- `npm run repl:playwright` → smoke-test browser baseline работает.
+- Нет dual-path: все старые адаптер-пути удалены в том же PR, где добавлены новые DKT action-пути.
+
+**Специфичные для миграции**:
 1. В `editorHarnessAdapter.ts` нет `readOne/readMany/readAttrs`.
 2. В `editorHarnessAdapter.ts` нет `setTimeout`-polling loops.
 3. Нет `dispatchClipActionById`, `findClipScopeById`, `dispatchSelectedClipAction`.
@@ -610,6 +700,7 @@ to: ['<< track', { action: 'splitClipAt', sub_flow: true }]
 7. `InspectorClipHeader.tsx` использует scoped `useActions()` вместо `actions.renameClipById`.
 8. `MediaBin.tsx` использует scoped `useActions()` для `addResourceToTimeline`.
 9. В `VideoEditorHarnessApp.tsx` нет production import из `.testing.ts`.
+10. **Phase 3 специально**: `requestSelectedClipExport` реализован как DKT action с собственной оркестрацией (не просто wrapper, не deleted); вызывается через scoped `dispatch()` или `dispatchRoot()` в зависимости от scope компонента.
 
 ## Приоритеты (что делать первым)
 
