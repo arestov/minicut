@@ -21,8 +21,8 @@ type MiniCutDebugBridge = {
 	waitForRuntimeSettled: () => Promise<void>
 	getPeerId: () => string | null
 	createProject: (title?: string) => void
-	dispatchRootAction: (actionName: string, payload?: unknown) => void
-	dispatchProjectAction: (actionName: string, payload?: unknown) => void
+	dispatchRootAction: (actionName: string, payload?: unknown) => Promise<void>
+	dispatchProjectAction: (actionName: string, payload?: unknown) => Promise<void>
 	setCursor: (cursor: number) => void
 	dispatchCreateProject: (title?: string) => Promise<void>
 }
@@ -499,6 +499,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 		},
 		dispatchRootAction: (actionName: string, payload?: unknown) => {
 			harness.pageRuntime?.dispatch(actionName, payload, null)
+			return waitForRuntimeSettled()
 		},
 		dispatchProjectAction: (actionName: string, payload?: unknown) => {
 			const projectScope = getActiveProjectScope()
@@ -506,6 +507,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 				throw new Error('No active project')
 			}
 			harness.pageRuntime?.dispatch(actionName, payload, projectScope)
+			return waitForRuntimeSettled()
 		},
 		setCursor: (cursor: number) => {
 			harness.actions.setCursor(cursor)
