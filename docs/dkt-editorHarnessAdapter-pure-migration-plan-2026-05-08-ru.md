@@ -843,10 +843,10 @@ useEffect(() => {
 }, [exportProgress?.stage])
 ```
 
-**6. Multi-peer behavior:**
+**6. Multi-peer behavior (для новых state-driven export actions):**
 
 ```
-Peer A:  dispatch('requestProjectExport')
+Peer A:  dispatch('requestProjectExport')  [новый path]
   ↓
 State syncs via P2P:
   { stage: 'done', initiatedBy: 'peer-A', metadata: {...} }
@@ -858,21 +858,38 @@ Peer A: exportProgress.initiatedBy === myPeerId ✅
 Peer B: exportProgress.initiatedBy === myPeerId ❌ (не равны)
   → auto-download НЕ срабатывает (правильно!)
   → UI показывает: "Export done: video.webm (42.5MB)" (может скачать вручную позже)
+
+Старый UI (старый promise-based path):
+  actions.queueExport() → result.downloadUrl  [работает как раньше]
 ```
 
-**7. Удалить старый код:**
-- Удалить `queueExport` helper функцию
-- Удалить `buildFallbackExportPlan` (больше не нужна)
-- Удалить методы: `queueProjectExport`, `queueClipExportById`, `queueSelectedClipExport` из adapter
-- Удалить поле `downloadUrl` из `ExportRenderResult`
-- Удалить helpers: `toResolvedScalar`, `asFiniteNumber` (если не используются больше)
+**7. Параллельные пути (parallel transition, НЕ замена):**
 
-**8. Ключевые преимущества:**
+На время Phase 3:
+- ✅ **Новый state-driven path**: dispatch actions + state monitoring + DI registry
+- ✅ **Старый promise-based path**: `queueExport` методы остаются как fallback для старого UI
+- ❌ **НЕ удаляем**: `queueExport` helper, `queueProjectExport`, `queueClipExportById`, `queueSelectedClipExport`, `downloadUrl` из `ExportRenderResult`
+- ❌ **НЕ удаляем**: `buildFallbackExportPlan`, `toResolvedScalar`, `asFiniteNumber` (старый путь их использует)
+
+**Переходная стратегия**:
+1. Phase 3: Добавить новые DKT actions + state field без удаления старого кода
+2. Перевести `Toolbar.tsx` → новый state-driven dispatch
+3. Перевести `InspectorExportTabPanel.tsx` → новый state-driven dispatch
+4. После полного перехода всего UI → отдельная фаза для удаления старых методов
+
+**8. Что удалить в будущей фазе (когда все UI мигрировано):**
+- `queueExport` helper функцию
+- `buildFallbackExportPlan`
+- Methods: `queueProjectExport`, `queueClipExportById`, `queueSelectedClipExport`
+- Helpers: `toResolvedScalar`, `asFiniteNumber` (если не используются больше)
+- **НЕ трогаем** `downloadUrl` в `ExportRenderResult` — это может остаться для совместимости
+
+**9. Ключевые преимущества (для нового state-driven пути):**
 - ✅ State **полностью serializable** (no blob URLs, no closures)
 - ✅ P2P-friendly: каждый peer синхронизирует состояние экспорта
 - ✅ DI registry local: blob URLs остаются в runtime, не кроссуют peer boundary
 - ✅ Per-peer marker: автоматически handle multi-peer случаев
-- ✅ Hard cutover compliant: no fallback, no imperative code
+- ✅ Hard cutover compliant: новый path чистый (нет fallback), старый path удаляется в отдельной фазе
 
 Подсказки для дебага проблем на шаге:
 
