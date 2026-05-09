@@ -4,7 +4,7 @@ export default defineConfig({
 	testDir: './tests/integration',
 	testMatch: ['**/p2p-*.spec.ts'],
 	fullyParallel: true,
-	workers: Number(process.env.P2P_WORKERS ?? (process.env.CI ? 2 : 4)),
+	workers: Number(process.env.P2P_WORKERS ?? (process.env.CI ? 2 : 3)),
 	timeout: 30_000,
 	use: {
 		baseURL: 'http://127.0.0.1:4174',
