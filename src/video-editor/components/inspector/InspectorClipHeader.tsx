@@ -1,7 +1,7 @@
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
+import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useOne } from '../../../dkt-react-sync/hooks/useOne'
-import { useVideoEditor } from '../../app/VideoEditorContext'
 import { formatSeconds } from '../format'
 import type { ClipRenderAttrs, ResourceRenderAttrs } from './types'
 
@@ -37,10 +37,9 @@ const ResourcePreview = ({ color, name }: { color: string; name: string }) => {
 }
 
 export const InspectorClipHeader = ({ trackPosition }: { trackPosition: { trackName: string; ordinal: number } | null }) => {
-	const { actions } = useVideoEditor()
+	const dispatch = useActions()
 	const attrs = useAttrs(['sourceClipId', 'name', 'color', 'start', 'duration']) as ClipRenderAttrs & { sourceClipId?: unknown }
 	const resourceScope = useOne('resource')
-	const sourceClipId = typeof attrs.sourceClipId === 'string' ? attrs.sourceClipId : null
 	const name = String(attrs.name)
 	const color = String(attrs.color ?? '#2563eb')
 	const start = Number(attrs.start)
@@ -64,9 +63,7 @@ export const InspectorClipHeader = ({ trackPosition }: { trackPosition: { trackN
 					aria-label="Clip name"
 					value={name}
 					onChange={(event) => {
-						if (sourceClipId) {
-							actions.renameClipById(sourceClipId, event.currentTarget.value)
-						}
+						dispatch('rename', { name: event.currentTarget.value })
 					}}
 				/>
 				<small>Clip {ordinal} - {trackName} - {formatSeconds(start)} - Duration {formatSeconds(duration)}</small>

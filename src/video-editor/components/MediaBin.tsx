@@ -1,6 +1,7 @@
 ﻿import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
@@ -41,6 +42,7 @@ const ResourceThumbnail = ({
 
 interface ResourceRowProps {
 	resourceScope: ReactSyncScopeHandle
+	onAddToTimeline: (sourceResourceId: string) => void
 }
 
 interface ResourceRenderAttrs {
@@ -52,8 +54,7 @@ interface ResourceRenderAttrs {
 	size?: unknown
 }
 
-const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
-	const { actions } = useVideoEditor()
+const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const resourceAttrs = useAttrs(['sourceResourceId', 'name', 'kind', 'mime', 'duration', 'url', 'size']) as ResourceRenderAttrs & { sourceResourceId?: unknown }
 	const sourceResourceId = typeof resourceAttrs.sourceResourceId === 'string' ? resourceAttrs.sourceResourceId : null
 	const name = String(resourceAttrs.name)
@@ -82,7 +83,7 @@ const ResourceRow = ({ resourceScope }: ResourceRowProps) => {
 							disabled={!sourceResourceId}
 							onClick={() => {
 								if (sourceResourceId) {
-									actions.addResourceToTimeline(sourceResourceId)
+									onAddToTimeline(sourceResourceId)
 								}
 							}}
 						>
@@ -100,6 +101,7 @@ const ResourceListItem = ({
 	kindFilter,
 	normalizedQuery,
 	onMatchChange,
+	onAddToTimeline,
 }: ResourceRowProps & {
 	kindFilter: ResourceAttrs['kind'] | 'all'
 	normalizedQuery: string
@@ -124,7 +126,7 @@ const ResourceListItem = ({
 		return null
 	}
 
-	return <ResourceRow resourceScope={resourceScope} />
+	return <ResourceRow resourceScope={resourceScope} onAddToTimeline={onAddToTimeline} />
 }
 
 const TextTimelineActionRow = () => {
@@ -160,8 +162,12 @@ const ProjectMediaList = ({
 	normalizedQuery: string
 	viewMode: 'list' | 'grid'
 }) => {
+	const projectDispatch = useActions()
 	const resourceScopes = useMany('resources')
 	const [matchingResourceIds, setMatchingResourceIds] = useState<ReadonlySet<string>>(() => new Set())
+	const handleAddToTimeline = useCallback((sourceResourceId: string) => {
+		projectDispatch('addResourceToTimeline', { sourceResourceId })
+	}, [projectDispatch])
 	const handleMatchChange = useCallback((nodeId: string, matches: boolean) => {
 		setMatchingResourceIds((current) => {
 			const next = new Set(current)
@@ -182,7 +188,13 @@ const ProjectMediaList = ({
 					<TextTimelineActionRow />
 					{resourceScopes.map((resourceScope) => (
 						<ScopeContext.Provider key={resourceScope._nodeId} value={resourceScope}>
-							<ResourceListItem resourceScope={resourceScope} kindFilter={kindFilter} normalizedQuery={normalizedQuery} onMatchChange={handleMatchChange} />
+							<ResourceListItem
+								resourceScope={resourceScope}
+								kindFilter={kindFilter}
+								normalizedQuery={normalizedQuery}
+								onMatchChange={handleMatchChange}
+								onAddToTimeline={handleAddToTimeline}
+							/>
 						</ScopeContext.Provider>
 					))}
 				</ul>
