@@ -9,8 +9,8 @@ const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toStr
 const getRootScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => env.pageRuntime?.getRootScope() ?? null
 
 const getRootNodeId = (env: EditorActionEnvironment): string | null => {
-	const rootScope = getRootScope(env) as { _node_id?: unknown } | null
-	return typeof rootScope?._node_id === 'string' ? rootScope._node_id : null
+	const rootScope = getRootScope(env) as { _nodeId?: unknown } | null
+	return typeof rootScope?._nodeId === 'string' ? rootScope._nodeId : null
 }
 
 const dispatchRoot = (env: EditorActionEnvironment, actionName: string, payload?: unknown): void => {

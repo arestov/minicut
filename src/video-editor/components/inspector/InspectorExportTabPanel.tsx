@@ -25,7 +25,7 @@ export const InspectorExportTabPanel = () => {
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Export inspector">
 			<InspectorSection title="Clip export" icon={Download}>
-				<dl className="ve-inspector-grid"><div><dt>Range</dt><dd>Clip</dd></div><div><dt>Format</dt><dd>MP4</dd></div><div><dt>Quality</dt><dd>High</dd></div></dl>
+				<dl className="ve-inspector-grid"><div><dt>Range</dt><dd>Clip</dd></div><div><dt>Format</dt><dd>WebM</dd></div><div><dt>Quality</dt><dd>High</dd></div></dl>
 				<IconButton
 					type="button"
 					icon={Download}
