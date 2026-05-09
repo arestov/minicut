@@ -327,7 +327,7 @@ export const createVideoEditorHarness = (
 		void executeImportFilesTask({ task, env })
 	}
 
-	const subscribeToExportRequests = (): (() => void) => {
+	const subscribeToRenderExportTasks = (): (() => void) => {
 		if (!pageRuntime || !dktPort) {
 			return EMPTY_CLEANUP
 		}
@@ -365,7 +365,7 @@ export const createVideoEditorHarness = (
 		}
 	}
 
-	const subscribeToImportFilesRequests = (): (() => void) => {
+	const subscribeToHandleInputFilesTasks = (): (() => void) => {
 		if (!pageRuntime || !dktPort) {
 			return EMPTY_CLEANUP
 		}
@@ -440,8 +440,8 @@ export const createVideoEditorHarness = (
 	}
 
 	const unsubscribeDownloadBridge = subscribeToDownloadBridge()
-	const unsubscribeExportRequests = subscribeToExportRequests()
-	const unsubscribeImportFilesRequests = subscribeToImportFilesRequests()
+	const unsubscribeRenderExportTasks = subscribeToRenderExportTasks()
+	const unsubscribeHandleInputFilesTasks = subscribeToHandleInputFilesTasks()
 	const unsubscribeImportProgressRequests = subscribeToImportProgressRequests()
 
 	return {
@@ -474,8 +474,8 @@ export const createVideoEditorHarness = (
 			runtimeTasks.clear()
 			unsubscribe()
 			unsubscribeDownloadBridge()
-			unsubscribeExportRequests()
-			unsubscribeImportFilesRequests()
+			unsubscribeRenderExportTasks()
+			unsubscribeHandleInputFilesTasks()
 			unsubscribeImportProgressRequests()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)

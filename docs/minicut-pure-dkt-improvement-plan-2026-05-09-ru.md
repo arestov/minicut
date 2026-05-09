@@ -1,7 +1,7 @@
 # MiniCut -> Pure DKT: план улучшений
 
 Дата: 2026-05-09  
-Статус: draft  
+Статус: implemented, кроме намеренно отложенного replay pending export после reconnect  
 Контекст: ревью `minicut` относительно стиля `D:\code\linkcraft\src` и `D:\code\linkcraft\weather`
 
 Смежные документы:
@@ -14,22 +14,22 @@
 
 `minicut` уже сделал большой шаг в сторону Pure DKT: основные модели (`SessionRoot`, `Project`, `Track`, `Clip`, `Resource`, `Text`, `Effect`) описывают state, rels, derived projections и значимую часть действий декларативно. Export больше не содержит старый dual-path через `exportRequestIntent`, а `Clip` больше не владеет мертвым export state.
 
-Оставшиеся крупные отклонения:
+Изначально найденные крупные отклонения и текущий статус:
 
-1. **Import flow все еще живет в React/UI boundary.**  
-   `MediaBin.tsx` создает object URL, читает duration, dispatch-ит `importResource`, вручную решает embedded audio, регистрирует local resource. Это нужно перенести в DKT action + `$fx_handleInputFiles` executor, а для передачи файлов использовать отдельный page-side handle, не DKT internal runtime ref.
+1. **Import flow был в React/UI boundary. Статус: реализовано.**  
+   `MediaBin.tsx` больше не создает object URL, не читает duration, не регистрирует local resource и не решает embedded audio. UI вызывает `actions.requestImportFiles(files)`, adapter кладет `File[]` в page-side handle, `SessionRoot.requestImportFiles` вызывает `$fx_handleInputFiles`, а page executor делает browser-side подготовку и возвращает plain resource data в DKT.
 
-2. **Export render все еще исполняется page-side subscriber'ом в harness.**  
-   `SessionRoot` уже строит `ExportRequestState` и вызывает `$fx_requestExport`, но сам render запускается через `pageRuntime.subscribeExportRequests`. Лучше довести до `$fx_renderExport` task executor с явной queue policy и progress actions.
+2. **Export render запускался ad-hoc subscriber'ом. Статус: реализовано с осознанным page-side исполнением.**  
+   `SessionRoot` строит `ExportRequestState` и вызывает `$fx_renderExport`; page boundary получает task request через generic `$fx_*` subscription, ставит задачу в `runtimeTaskFacade`, запускает `executeRenderExportTask`, пишет progress actions и completion обратно в DKT. Само кодирование остается page-side из-за browser/video API ограничений.
 
-3. **`runtimeTaskFacade` и `Project/effects.ts` сейчас выглядят как заготовка, а не production pipeline.**  
-   `$fx_handleInputFiles`, `$fx_renderExport`, `$fx_exportBlobUrl` почти не используются вне тестов. Их нужно встроить в модели и runtime boundary.
+3. **`runtimeTaskFacade` и `$fx_*` effects выглядели как заготовка. Статус: реализовано для import/export.**  
+   `$fx_handleInputFiles` и `$fx_renderExport` теперь используются production flow. Runtime task payload использует generic `runtimeHandleId` terminology; публичный import payload использует `inputBatchHandleId`, не DKT internal `runtimeRefId`.
 
-4. **Production app содержит debug graph traversal.**  
-   `VideoEditorHarnessApp.tsx` держит большой `window.__MINICUT_P2P_DEBUG__` bridge с ручными `readOne/readMany/readAttrs`. Его стоит вынести в debug/testing module или включать только под dev flag.
+4. **Production app содержал debug graph traversal. Статус: реализовано.**  
+   Debug bridge вынесен в `src/video-editor/app/testing/installMiniCutDebugBridge.testing.ts` и подключается только под dev flag или явный `window.__MINICUT_ENABLE_DEBUG_BRIDGE__`.
 
-5. **Мелкие несоответствия.**  
-   `editorHarnessAdapter.ts` читает `_node_id`, хотя `ReactSyncScopeHandle` имеет `_nodeId`; inspector пишет `Format MP4`, а pipeline экспортирует WebM; есть отдельные UI-level graph reads, которые можно заменить DKT projections.
+5. **Мелкие несоответствия. Статус: реализовано.**  
+   Page scope handle использует `_nodeId`, UI labels соответствуют WebM export, import/export task names и payload fields разведены по смыслу. Playback buffer refill больше не делает ручной `readAttrs/readOne` в React loop: решение перенесено в DKT `tickPlayback`.
 
 Целевое направление: React инициирует intent и показывает уже синхронизированное state; DKT actions решают доменную логику и graph traversal; page/worker runtime исполняет side effects через явные interfaces/effects; non-serializable объекты остаются в runtime refs и не попадают в persisted state.
 
@@ -302,7 +302,7 @@ importResourcePrepared: [
 
 ## Flow данных: export
 
-### Текущий flow
+### Было до миграции
 
 ```text
 Toolbar / Inspector
@@ -329,9 +329,9 @@ Page harness
   consumeExportRequest
 ```
 
-Это уже намного чище старого dual-path, но render execution живет вне общей `$fx_` task architecture.
+Это было чище старого dual-path, но render execution жил вне общей `$fx_` task architecture.
 
-### Целевой flow
+### Реализованный flow
 
 ```text
 React
@@ -344,17 +344,20 @@ Worker DKT
     step 3: to ['$fx_renderExport', { intent: 'call', queue_policy: 'replace-last' }]
 
 Page effect executor
-  receives render task
+  receives $fx_renderExport task request through generic page runtime task subscription
+  runtimeTaskFacade.dispatchTask(PROJECT_RENDER_EXPORT_FX, ..., queuePolicy: 'replace-last')
+  executeRenderExportTask(...)
   resolve resource URLs via ResourceTransferManager
   env.export.renderer.render(...)
   dispatch setExportProgress(rendering/finalizing/done/error)
   create object URL
-  dispatch setExportResult or setExportProgress(done + fileName)
+  cache export URL page-side by exportId
+  dispatch setExportProgress(done + fileName)
   dispatch consumeExportRequest
 
 React
   useRootAttrs(['exportProgress'])
-  get download URL through DI/cache lookup by exportId OR through state if URL is allowed page-local
+  gets download URL through page-side export cache by exportId
 ```
 
 ### Почему это лучше
@@ -362,7 +365,7 @@ React
 - Один execution path: DKT action -> `$fx_renderExport`.
 - Queue policy можно выразить явно (`replace-last` для повторных export clicks).
 - Progress/error/completion становятся частью DKT action contract.
-- Channel loss/reconnect меньше ломает flow: pending request/task можно восстановить через DKT state или explicit retry action.
+- Channel loss/reconnect replay для pending export намеренно не исправлялся в этой итерации: `exportRequest` остается в DKT state, но автоматический re-run executor после reconnect не добавлялся.
 
 ### Пример декларации export action
 
@@ -651,7 +654,7 @@ out: {
 
 ## Конкретные изменения по файлам
 
-### Phase 1: мелкие fixes
+### Phase 1: мелкие fixes — сделано
 
 Файлы:
 
@@ -672,7 +675,7 @@ npm run test:video-editor -- src/video-editor/app/runtimeTaskFacade.test.ts
 npm run test:video-editor -- src/video-editor/dkt/runtime/createMiniCutDktRuntime.exportRequest.test.ts
 ```
 
-### Phase 2: import boundary API
+### Phase 2: import boundary API — сделано
 
 Файлы:
 
@@ -701,7 +704,7 @@ npm run test:video-editor -- src/video-editor/models/Project/actions.test.ts
 npm run test:video-editor -- src/video-editor/dkt/models/addResourceToTimeline-appendStart.test.ts
 ```
 
-### Phase 3: DKT import action
+### Phase 3: DKT import action — сделано
 
 Файлы:
 
@@ -728,7 +731,7 @@ npm run test:video-editor -- src/video-editor/dkt/models/addResourceToTimeline-a
 npm run test:video-editor -- test/harness/harness.testing.ts
 ```
 
-### Phase 4: export executor через `$fx_renderExport`
+### Phase 4: export executor через `$fx_renderExport` — сделано
 
 Файлы:
 
@@ -742,8 +745,8 @@ npm run test:video-editor -- test/harness/harness.testing.ts
 Изменения:
 
 1. Оставить `SessionRoot` владельцем export state.
-2. Заменить page `subscribeExportRequests` render path на task executor.
-3. Оставить `DKT_MSG.EXPORT_REQUEST` только как compatibility/debug channel или удалить после миграции.
+2. Заменить page `subscribeExportRequests` render path на task executor. Реализовано через generic `subscribeRuntimeTaskRequests(PROJECT_RENDER_EXPORT_FX, ...)`.
+3. Оставить `DKT_MSG.EXPORT_REQUEST` только как compatibility/debug channel или удалить после миграции. Сейчас message остается transport-level совместимостью, но page runtime наружу отдает generic `$fx_*` task subscription.
 4. Ввести queue policy:
    - project export: `replace-last`;
    - clip export: `replace-last` по `clipId`;
@@ -763,7 +766,7 @@ npm run test:video-editor -- test/helpers/completion.testing.ts
 npm run repl:run
 ```
 
-### Phase 5: resource transfer projection
+### Phase 5: resource transfer projection — сделано
 
 Файлы:
 
@@ -794,7 +797,7 @@ npm run test:integration:p2p -- tests/integration/p2p-media-transfer.spec.ts
 npx playwright test -c playwright.p2p.config.js tests/integration/p2p-media-transfer.spec.ts
 ```
 
-### Phase 6: debug bridge cleanup
+### Phase 6: debug bridge cleanup — сделано
 
 Файлы:
 
@@ -859,15 +862,23 @@ rg -n "_node_id|_nodeId" src/video-editor/app src/dkt-react-sync
 
 ## Рекомендуемый порядок работ
 
-1. Сделать мелкие fixes (`_nodeId`, `WebM` label).
-2. Ввести `requestImportFiles` API и executor без удаления старого flow.
-3. Переключить `MediaBin` на новый API.
-4. Перенести embedded audio решение из UI в DKT и удалить `runtime.readAttrs(scope, ['timelineDuration'])`.
-5. Перевести export render на `$fx_renderExport` executor.
-6. Сделать resource transfer projection.
-7. Вынести debug bridge.
+1. Сделано: мелкие fixes (`_nodeId`, `WebM` label).
+2. Сделано: введен `requestImportFiles` API и `$fx_handleInputFiles` executor.
+3. Сделано: `MediaBin` переключен на новый API.
+4. Сделано: embedded audio решение перенесено из UI в DKT; UI больше не читает `timelineDuration` для import decision.
+5. Сделано: export render запускается через `$fx_renderExport` task executor; page-side video encoding сохранен как browser boundary.
+6. Сделано: resource transfer projection добавлен через `Resource.transferSnapshot` и `Project.resourceTransferManifest`.
+7. Сделано: debug bridge вынесен в testing/debug module и ставится условно.
+8. Сделано: playback buffer refill decision перенесен из React loop в DKT `tickPlayback`.
+9. Намеренно не сделано: automatic replay pending export task после channel/page reconnect.
 
-Такой порядок минимизирует риск: сначала чинятся явные мелочи, затем import как более локальный side-effect pipeline, затем export как более сложный pipeline, потом cleanup traversal и debug.
+Такой порядок минимизировал риск: сначала были исправлены явные мелочи, затем import как более локальный side-effect pipeline, затем export как более сложный pipeline, потом cleanup traversal/debug и оставшиеся UI graph reads.
+
+## Итог реализации
+
+План можно считать реализованным в рамках оговоренной границы: React больше не исполняет import file side effects, import/export идут через DKT actions и `$fx_*` executors, resource transfer получает DKT manifest, debug traversal вынесен из production component, а мелкие naming/UI label несоответствия закрыты.
+
+Оставшееся осознанное ограничение: pending `exportRequest` в DKT state сам по себе не replay-ит `$fx_renderExport` executor после потери channel/page reconnect. Это не исправлялось по решению ревью, чтобы не усложнять queue/retry semantics в этой итерации.
 
 ## Что вышло неудачно при реализации
 
