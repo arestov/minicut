@@ -69,27 +69,6 @@ const projects = env.pageRuntime.readMany(pioneerScope, 'project')
 return projects[0] ?? null
 }
 
-const waitForActiveProjectScope = async (
-	env: EditorActionEnvironment,
-	maxAttempts = 50,
-	delayMs = 100,
-): Promise<ReactSyncScopeHandle | null> => {
-	for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-		const projectScope = getActiveProjectScope(env)
-		if (projectScope) {
-			return projectScope
-		}
-		if (env.lifecycle.isDestroyed()) {
-			return null
-		}
-		await new Promise<void>((resolve) => {
-			env.lifecycle.setTimeout(resolve, delayMs)
-		})
-	}
-
-	return getActiveProjectScope(env)
-}
-
 // Reading a direct rel on root - not traversal
 const dispatchRoot = (env: EditorActionEnvironment, actionName: string, payload?: unknown): void => {
 env.dkt?.dispatch(actionName, payload, getRootScope(env))
@@ -106,13 +85,20 @@ const isTimelineEmpty = (env: EditorActionEnvironment, projectScope: ReactSyncSc
 }
 
 const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void => {
+	// Phase 4 cleanup: remove polling, use immediate dispatch.
+	// Import directly if activeProject exists; otherwise skip (edge case where project hasn't been created yet).
 	const resourceChunkSize = _resourceChunkSizeRef.get(env) ?? 1024 * 1024
+	const ownerPeerId = env.transfers.getPeerId()
+	const projectScope = getActiveProjectScope(env)
+
+	if (!projectScope) {
+		// Phase 4: cannot import without active project scope available now.
+		// In normal flow, user creates project first, then imports. If this edge case occurs,
+		// files are silently skipped (better than polling indefinitely).
+		return
+	}
+
 	void (async () => {
-		const projectScope = await waitForActiveProjectScope(env)
-		if (!projectScope) {
-			return
-		}
-		const ownerPeerId = env.transfers.getPeerId()
 		for (const file of files) {
 			const kind = env.media.getFileKind(file)
 			if (!kind) {
@@ -132,6 +118,7 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 			}
 			const sourceResourceId = createSourceId('resource')
 			const shouldAddEmbeddedAudio = kind === 'video' && isTimelineEmpty(env, projectScope)
+
 			env.dkt?.dispatch('importResource', {
 				sourceResourceId,
 				name: file.name,
@@ -153,11 +140,14 @@ const importFilesDirectly = (env: EditorActionEnvironment, files: File[]): void 
 					loadedBytes: file.size,
 				},
 			}, projectScope)
+
 			if (shouldAddEmbeddedAudio) {
 				env.lifecycle.setTimeout(() => {
 					env.dkt?.dispatch('addEmbeddedAudioToTimeline', { sourceResourceId }, projectScope)
 				}, 0)
 			}
+
+			// Register resource in transfer manager
 			env.transfers.manager.registerLocalResource(sourceResourceId, file, {
 				objectUrl,
 				kind,

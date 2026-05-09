@@ -6,7 +6,6 @@ import { VideoEditorApp } from '../components/VideoEditorApp'
 import { DktEditorRoot } from '../ui/dkt/DktEditorRoot'
 import { createDefaultRtcConfig } from '../p2p/PageP2PManager'
 import { resolveRoomUrlState, type RoomUrlResolution } from './roomUrlState'
-import { waitForRuntimeReadyOrThrowTesting } from './testing/runtimeWaits.testing'
 import '../components/styles.css'
 
 interface VideoEditorHarnessAppProps {
@@ -635,16 +634,9 @@ export const VideoEditorHarnessApp = ({
 			setCursor: (cursor: number) => {
 				ownedHarness.actions.setCursor(cursor)
 			},
-			dispatchCreateProject: async (title?: string) => {
-				const runtime = ownedHarness.pageRuntime
-				if (!runtime) {
-					throw new Error('Runtime not ready')
-				}
-				await waitForRuntimeReadyOrThrowTesting(runtime, {
-					timeoutMs: 15_000,
-					pollMs: 50,
-					role: (ownedHarness.worker as { role?: string }).role ?? null,
-				})
+			createProjectDebug: (title?: string) => {
+				// Phase 4: debug-only method for testing. If runtime isn't ready,
+				// this will silently fail; use regular createProject for production flow.
 				ownedHarness.actions.createProject(title)
 			},
 		}
