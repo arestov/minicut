@@ -1,28 +1,12 @@
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { VideoEditorHarnessActions } from './actionRuntimeTypes'
-import {
-	PROJECT_IMPORT_FILES_FX,
-	createProjectImportFilesEffectPayload,
-} from '../models/Project/effects'
-import { executeImportFilesTask } from './importFilesTaskExecutor'
 
 let exportSequence = 0
 
 const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
 
 const getRootScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => env.pageRuntime?.getRootScope() ?? null
-
-const getActiveProjectId = (env: EditorActionEnvironment): string | null => {
-	const pageRuntime = env.pageRuntime
-	if (!pageRuntime) {
-		return null
-	}
-	const rootAttrs = pageRuntime.getRootAttrs(['activeProjectId']) as { activeProjectId?: unknown }
-	return typeof rootAttrs.activeProjectId === 'string' && rootAttrs.activeProjectId
-		? rootAttrs.activeProjectId
-		: null
-}
 
 const getRootNodeId = (env: EditorActionEnvironment): string | null => {
 	const rootScope = getRootScope(env) as { _nodeId?: unknown } | null
@@ -61,20 +45,12 @@ export const createEditorHarnessAdapter = (
 			})
 		},
 		requestImportFiles(files: FileList | File[]): void {
-			const activeProjectId = getActiveProjectId(env)
-			const task = env.tasks.dispatchTask(
-				PROJECT_IMPORT_FILES_FX,
-				createProjectImportFilesEffectPayload(files, { projectId: activeProjectId ?? 'active-project' }),
-				{
-					queuePolicy: 'replace-last',
-					intentKey: activeProjectId ? `${PROJECT_IMPORT_FILES_FX}:${activeProjectId}` : PROJECT_IMPORT_FILES_FX,
-				},
-			)
-			if (task.dropped) {
+			const fileList = Array.from(files)
+			if (fileList.length === 0) {
 				return
 			}
-			dispatchRoot(env, 'requestImportFiles', { inputBatchHandleId: task.payload.runtimeHandleId ?? null })
-			void executeImportFilesTask({ task, env })
+			const inputBatchHandleId = env.tasks.putRuntimeRef(fileList)
+			dispatchRoot(env, 'requestImportFiles', { inputBatchHandleId })
 		},
 		requestSelectedClipExport(): void {
 			dispatchRoot(env, 'requestSelectedClipExport', {

@@ -36,6 +36,7 @@ export const createMiniCutPageSyncRuntime = ({
   const store = createSyncStore(createEmptyPageRuntimeSnapshot())
   const rootAttrsCache = new Map<string, RootAttrsCacheEntry>()
   const exportRequestListeners = new Set<(payload: unknown) => void>()
+  const importFilesRequestListeners = new Set<(payload: unknown) => void>()
   const debugMessageLog: unknown[] = []
   let pendingDumpResolve: ((result: unknown) => void) | null = null
   const pendingIdleResolves = new Map<string, {
@@ -256,6 +257,12 @@ export const createMiniCutPageSyncRuntime = ({
         }
         return
       }
+      case DKT_MSG.IMPORT_FILES_REQUEST: {
+        for (const listener of importFilesRequestListeners) {
+          listener(message.payload)
+        }
+        return
+      }
       case DKT_MSG.SYNC_HANDLE: {
         handleSyncMessage(message)
         return
@@ -355,6 +362,12 @@ export const createMiniCutPageSyncRuntime = ({
         exportRequestListeners.delete(listener)
       }
     },
+    subscribeImportFilesRequests(listener) {
+      importFilesRequestListeners.add(listener)
+      return () => {
+        importFilesRequestListeners.delete(listener)
+      }
+    },
     destroy() {
       const sessionKey = store.getSnapshot().sessionKey
       if (sessionKey) {
@@ -366,6 +379,7 @@ export const createMiniCutPageSyncRuntime = ({
       shapeRegistry.destroy()
       rootAttrsCache.clear()
       exportRequestListeners.clear()
+      importFilesRequestListeners.clear()
       for (const { timeoutId } of pendingIdleResolves.values()) {
         clearTimeout(timeoutId)
       }

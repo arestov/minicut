@@ -3,15 +3,14 @@ import { createExportBlobUrlEffectPayload, createProjectImportFilesEffectPayload
 import { createRuntimeTaskFacade } from '../../app/runtimeTaskFacade'
 
 describe('Project model effects', () => {
-	it('keeps import file handles behind runtime refs', () => {
-		const file = new File(['video'], 'clip.webm', { type: 'video/webm' })
-		const payload = createProjectImportFilesEffectPayload([file], { projectId: 'project:1' })
+	it('keeps import file effect payload serializable', () => {
+		const payload = createProjectImportFilesEffectPayload({ projectId: 'project:1', inputBatchHandleId: 'input-batch:1' })
 		const tasks = createRuntimeTaskFacade()
 		const task = tasks.dispatchTask(PROJECT_IMPORT_FILES_FX, payload)
 
-		expect(task.payload.data).toEqual({ projectId: 'project:1', addToTimelineWhenEmpty: true })
+		expect(task.payload.data).toEqual({ projectId: 'project:1', inputBatchHandleId: 'input-batch:1', addToTimelineWhenEmpty: true })
 		expect(isProjectImportFilesEffectData(task.payload.data)).toBe(true)
-		expect(tasks.consumeRuntimeRef(String(task.payload.runtimeHandleId))).toEqual([file])
+		expect(task.payload.runtimeHandleId).toBeUndefined()
 	})
 
 	it('keeps export blob handles behind runtime refs', () => {

@@ -32,4 +32,5 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
   subscribe(listener: () => void): () => void
   subscribeRootAttrs(attrNames: readonly string[], listener: () => void): () => void
   subscribeExportRequests?(listener: (payload: unknown) => void): () => void
+  subscribeImportFilesRequests?(listener: (payload: unknown) => void): () => void
 }

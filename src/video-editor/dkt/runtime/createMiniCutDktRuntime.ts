@@ -112,6 +112,15 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		})
 	}
 
+	const publishImportFilesRequest = (payload: unknown) => {
+		for (const transport of activeTransports) {
+			transport.send({
+				type: DKT_MSG.IMPORT_FILES_REQUEST,
+				payload,
+			})
+		}
+	}
+
 	const clearExportProgressInAllSessions = async () => {
 		logRuntime('clearExportProgressInAllSessions:start', { sessionCount: sessionRootPromises.size })
 		for (const [sessionKey, sessionRootPromise] of sessionRootPromises) {
@@ -152,6 +161,11 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 									requestId: (requestPayload as { id?: unknown } | null)?.id,
 								})
 								publishExportRequest(payload)
+							},
+						},
+						importRuntime: {
+							requestImportFiles: (payload: unknown) => {
+								publishImportFilesRequest(payload)
 							},
 						},
 					},

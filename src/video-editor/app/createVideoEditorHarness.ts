@@ -6,13 +6,14 @@ import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
 import { parseExportRequest } from './exportRequestState'
-import { PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
+import { isProjectImportFilesEffectData, PROJECT_IMPORT_FILES_FX, PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
 import {
 	AUTH_EXT_CHANNEL,
 	AUTH_EXT_EVENT,
 	createAuthorityExtensionBus,
 } from './authorityExtensionBus'
 import { executeRenderExportTask } from './renderExportTaskExecutor'
+import { executeImportFilesTask } from './importFilesTaskExecutor'
 import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
@@ -328,8 +329,35 @@ export const createVideoEditorHarness = (
 		}
 	}
 
+	const subscribeToImportFilesRequests = (): (() => void) => {
+		if (!pageRuntime || !dktPort) {
+			return EMPTY_CLEANUP
+		}
+
+		const unlistenImportRequest = pageRuntime.subscribeImportFilesRequests?.((payload) => {
+			if (!isProjectImportFilesEffectData(payload)) {
+				return
+			}
+			const task = runtimeTasks.dispatchTask(PROJECT_IMPORT_FILES_FX, {
+				data: payload,
+			}, {
+				queuePolicy: 'queue-all',
+				intentKey: `${PROJECT_IMPORT_FILES_FX}:${payload.inputBatchHandleId}`,
+			})
+			if (task.dropped) {
+				return
+			}
+			void executeImportFilesTask({ task, env })
+		}) ?? EMPTY_CLEANUP
+
+		return () => {
+			unlistenImportRequest()
+		}
+	}
+
 	const unsubscribeDownloadBridge = subscribeToDownloadBridge()
 	const unsubscribeExportRequests = subscribeToExportRequests()
+	const unsubscribeImportFilesRequests = subscribeToImportFilesRequests()
 
 	return {
 		// Only essential public API
@@ -362,6 +390,7 @@ export const createVideoEditorHarness = (
 			unsubscribe()
 			unsubscribeDownloadBridge()
 			unsubscribeExportRequests()
+			unsubscribeImportFilesRequests()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)
 			}

@@ -6,6 +6,7 @@ export const EXPORT_BLOB_URL_FX = '$fx_exportBlobUrl' as const
 
 export type ProjectImportFilesEffectData = {
 	projectId: string
+	inputBatchHandleId: string
 	addToTimelineWhenEmpty?: boolean
 }
 
@@ -22,19 +23,18 @@ export type ExportBlobUrlEffectData = {
 }
 
 export const createProjectImportFilesEffectPayload = (
-	files: FileList | File[],
 	data: ProjectImportFilesEffectData,
 ): DispatchRuntimeTaskPayload => ({
-	runtimeRef: Array.from(files),
 	data: {
 		projectId: data.projectId,
+		inputBatchHandleId: data.inputBatchHandleId,
 		addToTimelineWhenEmpty: data.addToTimelineWhenEmpty !== false,
 	},
 })
 
 export const isProjectImportFilesEffectData = (value: unknown): value is ProjectImportFilesEffectData => {
 	const data = value as Partial<ProjectImportFilesEffectData> | null
-	return Boolean(data && typeof data.projectId === 'string')
+	return Boolean(data && typeof data.projectId === 'string' && typeof data.inputBatchHandleId === 'string')
 }
 
 export const createExportBlobUrlEffectPayload = (

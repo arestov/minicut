@@ -5,6 +5,13 @@ export type ProjectImportResourcePayload = MiniCutDktResourceSeed
 export type ProjectRequestImportFilesPayload = {
 	inputBatchHandleId?: unknown
 }
+export type ProjectSetImportProgressPayload = {
+	taskId?: unknown
+	stage?: unknown
+	processed?: unknown
+	total?: unknown
+	error?: unknown
+}
 
 const asString = (value: unknown): string | null => typeof value === 'string' ? value : null
 const asNumber = (value: unknown): number | null => typeof value === 'number' ? value : null
@@ -252,6 +259,50 @@ export const reduceRequestImportFiles = (payload: unknown) => {
 			total: 0,
 		},
 		lastImportError: null,
+		$output: {
+			projectId: null,
+			inputBatchHandleId: value.inputBatchHandleId,
+			addToTimelineWhenEmpty: true,
+		},
+	}
+}
+
+export const reduceCreateImportFilesEffectPayload = (payload: unknown, sourceProjectId: unknown) => {
+	const value = payload as { inputBatchHandleId?: unknown } | null
+	if (typeof value?.inputBatchHandleId !== 'string' || !value.inputBatchHandleId) {
+		return '$noop'
+	}
+	return {
+		projectId: typeof sourceProjectId === 'string' && sourceProjectId ? sourceProjectId : 'active-project',
+		inputBatchHandleId: value.inputBatchHandleId,
+		addToTimelineWhenEmpty: true,
+	}
+}
+
+export const reduceSetImportProgress = (payload: unknown) => {
+	const value = payload as ProjectSetImportProgressPayload | null
+	const stage = value?.stage
+	if (stage !== 'queued' && stage !== 'processing' && stage !== 'done' && stage !== 'error') {
+		return '$noop'
+	}
+	const processed = typeof value?.processed === 'number' && Number.isFinite(value.processed)
+		? Math.max(0, value.processed)
+		: 0
+	const total = typeof value?.total === 'number' && Number.isFinite(value.total)
+		? Math.max(0, value.total)
+		: 0
+	const taskId = typeof value?.taskId === 'string' && value.taskId ? value.taskId : null
+	const error = typeof value?.error === 'string' && value.error ? value.error : null
+
+	return {
+		activeImportTaskId: stage === 'done' || stage === 'error' ? null : taskId,
+		importProgress: {
+			stage,
+			processed,
+			total,
+			...(error ? { error } : {}),
+		},
+		lastImportError: stage === 'error' ? error : null,
 	}
 }
 

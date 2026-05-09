@@ -3,6 +3,7 @@ export const DKT_MSG = {
 	CLOSE_SESSION: 'dkt:close-session',
 	DISPATCH_ACTION: 'dkt:dispatch-action',
 	EXPORT_REQUEST: 'dkt:export-request',
+	IMPORT_FILES_REQUEST: 'dkt:import-files-request',
 	IDLE: 'dkt:idle',
 	P2P_SESSION_LOST: 'dkt:p2p-session-lost',
 	RUNTIME_READY: 'dkt:runtime-ready',
@@ -64,6 +65,11 @@ export type DktExportRequestMessage = {
 	payload: unknown
 }
 
+export type DktImportFilesRequestMessage = {
+	type: typeof DKT_MSG.IMPORT_FILES_REQUEST
+	payload: unknown
+}
+
 export type DktRuntimeIdleRequestMessage = {
 	type: typeof DKT_MSG.WAIT_IDLE
 	requestId?: string
@@ -84,6 +90,7 @@ export type MiniCutDktTransportMessage =
 	| { type: typeof DKT_MSG.CLOSE_SESSION }
 	| DktDispatchActionMessage
 	| DktExportRequestMessage
+	| DktImportFilesRequestMessage
 	| DktP2PSessionLostMessage
 	| DktRuntimeReadyMessage
 	| DktRuntimeErrorMessage

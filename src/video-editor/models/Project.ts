@@ -17,6 +17,8 @@ import {
 	reduceImportResourceToAudio,
 	reduceImportResourceToEmbeddedAudio,
 	reduceRequestImportFiles,
+	reduceCreateImportFilesEffectPayload,
+	reduceSetImportProgress,
 	reduceSetTracks,
 	reduceSetResources,
 	reduceAddVideoResourceToTimeline,
@@ -24,6 +26,7 @@ import {
 	reduceAddEmbeddedAudio,
 	reduceAddTextClipToVideoTrack,
 } from './Project/actions'
+import { PROJECT_IMPORT_FILES_FX } from './Project/effects'
 import { reduceProjectPreviewClipSources } from './Project/comps'
 import type { PreviewClipSource, PreviewStructure } from '../read-model/previewComps'
 import { normalizeExportPlan, type ExportPlan } from '../render/renderPlan'
@@ -168,6 +171,29 @@ export const Project = model({
 		previewClipSources: ['comp', ['< @all:clipRenderData < tracks.clips'] as const,
 			reduceProjectPreviewClipSources],
 	},
+	effects: {
+		api: {
+			importRuntime: [
+				['_node_id'] as const,
+				['#importRuntime'] as const,
+				(importRuntime: unknown) => importRuntime,
+			],
+		},
+		out: {
+			[PROJECT_IMPORT_FILES_FX]: {
+				api: ['importRuntime'],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as { requestImportFiles?: (payload: unknown) => void } | null
+					const payload = (state as { payload?: unknown } | null)?.payload
+					if (!runtime || typeof runtime.requestImportFiles !== 'function' || !payload || typeof payload !== 'object') {
+						return
+					}
+					runtime.requestImportFiles(payload)
+				},
+			},
+		},
+	},
 	rels: {
 		tracks: ['input', { many: true, linking: '<< track << #' }],
 		resources: ['input', { many: true, linking: '<< resource << #' }],
@@ -242,13 +268,30 @@ export const Project = model({
 			},
 			fn: reduceAddTrack,
 		},
-		requestImportFiles: {
+		requestImportFiles: [
+			{
+				to: {
+					activeImportTaskId: ['activeImportTaskId'],
+					importProgress: ['importProgress'],
+					lastImportError: ['lastImportError'],
+				},
+				fn: reduceRequestImportFiles,
+			},
+			{
+				to: [PROJECT_IMPORT_FILES_FX, { intent: 'call', drop_when_api_not_ready: false }],
+				fn: [
+					['sourceProjectId'] as const,
+					reduceCreateImportFilesEffectPayload,
+				],
+			},
+		],
+		setImportProgress: {
 			to: {
 				activeImportTaskId: ['activeImportTaskId'],
 				importProgress: ['importProgress'],
 				lastImportError: ['lastImportError'],
 			},
-			fn: reduceRequestImportFiles,
+			fn: reduceSetImportProgress,
 		},
 		importResource: [
 			{

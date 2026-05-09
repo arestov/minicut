@@ -24,6 +24,21 @@ const getActiveProjectScope = (env: EditorActionEnvironment): ReactSyncScopeHand
 	return pageRuntime.readOne(rootScope, 'activeProject')
 }
 
+const getImportPayload = (task: RuntimeTaskDescriptor): { inputBatchHandleId: string } | null => {
+	const data = task.payload.data as { inputBatchHandleId?: unknown } | null
+	return typeof data?.inputBatchHandleId === 'string' && data.inputBatchHandleId
+		? { inputBatchHandleId: data.inputBatchHandleId }
+		: null
+}
+
+const dispatchImportProgress = (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+	payload: { taskId: string; stage: 'processing' | 'done' | 'error'; processed: number; total: number; error?: string },
+): void => {
+	env.dkt?.dispatch('setImportProgress', payload, projectScope)
+}
+
 export const executeImportFilesTask = async ({
 	task,
 	env,
@@ -34,10 +49,11 @@ export const executeImportFilesTask = async ({
 	if (task.dropped) {
 		return
 	}
-	const inputBatchHandleId = task.payload.runtimeHandleId
-	if (typeof inputBatchHandleId !== 'string' || !inputBatchHandleId) {
+	const importPayload = getImportPayload(task)
+	if (!importPayload) {
 		return
 	}
+	const { inputBatchHandleId } = importPayload
 
 	const raw = env.tasks.consumeRuntimeRef(inputBatchHandleId)
 	const fileList = Array.isArray(raw) ? raw.filter(isFileLike) : []
@@ -53,14 +69,39 @@ export const executeImportFilesTask = async ({
 	}
 
 	const ownerPeerId = env.transfers.getPeerId()
+	let processed = 0
 
 	try {
+		dispatchImportProgress(env, projectScope, {
+			taskId: inputBatchHandleId,
+			stage: 'processing',
+			processed,
+			total: fileList.length,
+		})
 		for (const file of fileList) {
 			const kind = env.media.getFileKind(file)
-			if (!kind) continue
+			if (!kind) {
+				processed += 1
+				dispatchImportProgress(env, projectScope, {
+					taskId: inputBatchHandleId,
+					stage: 'processing',
+					processed,
+					total: fileList.length,
+				})
+				continue
+			}
 
 			const objectUrl = env.media.createObjectUrl(file)
-			if (!objectUrl) continue
+			if (!objectUrl) {
+				processed += 1
+				dispatchImportProgress(env, projectScope, {
+					taskId: inputBatchHandleId,
+					stage: 'processing',
+					processed,
+					total: fileList.length,
+				})
+				continue
+			}
 			env.lifecycle.registerObjectUrl(objectUrl, 'import')
 
 			let duration = 0
@@ -107,9 +148,29 @@ export const executeImportFilesTask = async ({
 				fallbackUrl: objectUrl,
 				name: file.name,
 			})
+			processed += 1
+			dispatchImportProgress(env, projectScope, {
+				taskId: inputBatchHandleId,
+				stage: 'processing',
+				processed,
+				total: fileList.length,
+			})
 		}
+		dispatchImportProgress(env, projectScope, {
+			taskId: inputBatchHandleId,
+			stage: 'done',
+			processed,
+			total: fileList.length,
+		})
 		env.tasks.completeTask(task)
-	} catch {
+	} catch (error) {
+		dispatchImportProgress(env, projectScope, {
+			taskId: inputBatchHandleId,
+			stage: 'error',
+			processed,
+			total: fileList.length,
+			error: error instanceof Error ? error.message : String(error),
+		})
 		env.tasks.failTask(task)
 	}
 }
