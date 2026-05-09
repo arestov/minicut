@@ -6,7 +6,6 @@ import type { ExportProgressState } from '../app/exportProgressState'
 import type { ExportRequestState } from '../app/exportRequestState'
 import { dktSessionActions } from './SessionRoot/actions'
 import { reducePreviewFrame, reducePreviewStructure, reduceSelectedClip } from './SessionRoot/comps'
-import { PROJECT_IMPORT_FILES_FX } from './Project/effects'
 
 const debugExport = (message: string, details?: unknown) => {
 	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
@@ -84,7 +83,7 @@ export const EditorSessionRoot = model({
 			],
 		},
 		out: {
-			[PROJECT_IMPORT_FILES_FX]: {
+			$fx_handleInputFiles: {
 				api: ['importRuntime'],
 				create_when: { api_inits: true },
 				fn: (api: unknown, state: unknown) => {

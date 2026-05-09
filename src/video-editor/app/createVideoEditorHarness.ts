@@ -41,6 +41,20 @@ const parseExportChannelPayload = (payload: unknown) => {
 	return { request, queueKey }
 }
 
+const parseImportFilesChannelPayload = (payload: unknown) => {
+	const value = payload && typeof payload === 'object'
+		? payload as { projectId?: unknown; inputBatchHandleId?: unknown; addToTimelineWhenEmpty?: unknown }
+		: null
+	if (!value || typeof value.inputBatchHandleId !== 'string' || !value.inputBatchHandleId) {
+		return null
+	}
+	return {
+		projectId: typeof value.projectId === 'string' && value.projectId ? value.projectId : 'active-project',
+		inputBatchHandleId: value.inputBatchHandleId,
+		addToTimelineWhenEmpty: value.addToTimelineWhenEmpty !== false,
+	}
+}
+
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	if (file.type.startsWith('video/')) {
 		return 'video'
@@ -139,6 +153,7 @@ export const createVideoEditorHarness = (
 	let isDestroyed = false
 	const importedObjectUrls = new Set<string>()
 	const exportObjectUrls = new Set<string>()
+	const startedImportHandles = new Set<string>()
 
 	const subscribeToResourceScopes = (): (() => void) => {
 		if (!pageRuntime) {
@@ -291,6 +306,27 @@ export const createVideoEditorHarness = (
 
 	const actions = createEditorHarnessAdapter(env)
 
+	const startImportFilesTask = (payload: unknown): void => {
+		const importPayload = parseImportFilesChannelPayload(payload)
+		if (!importPayload || !isProjectImportFilesEffectData(importPayload)) {
+			return
+		}
+		if (startedImportHandles.has(importPayload.inputBatchHandleId)) {
+			return
+		}
+		startedImportHandles.add(importPayload.inputBatchHandleId)
+		const task = runtimeTasks.dispatchTask(PROJECT_IMPORT_FILES_FX, {
+			data: importPayload,
+		}, {
+			queuePolicy: 'queue-all',
+			intentKey: `${PROJECT_IMPORT_FILES_FX}:${importPayload.inputBatchHandleId}`,
+		})
+		if (task.dropped) {
+			return
+		}
+		void executeImportFilesTask({ task, env })
+	}
+
 	const subscribeToExportRequests = (): (() => void) => {
 		if (!pageRuntime || !dktPort) {
 			return EMPTY_CLEANUP
@@ -335,19 +371,7 @@ export const createVideoEditorHarness = (
 		}
 
 		const unlistenImportRequest = pageRuntime.subscribeImportFilesRequests?.((payload) => {
-			if (!isProjectImportFilesEffectData(payload)) {
-				return
-			}
-			const task = runtimeTasks.dispatchTask(PROJECT_IMPORT_FILES_FX, {
-				data: payload,
-			}, {
-				queuePolicy: 'queue-all',
-				intentKey: `${PROJECT_IMPORT_FILES_FX}:${payload.inputBatchHandleId}`,
-			})
-			if (task.dropped) {
-				return
-			}
-			void executeImportFilesTask({ task, env })
+			startImportFilesTask(payload)
 		}) ?? EMPTY_CLEANUP
 
 		return () => {
@@ -355,9 +379,70 @@ export const createVideoEditorHarness = (
 		}
 	}
 
+	const subscribeToImportProgressRequests = (): (() => void) => {
+		if (!pageRuntime || !dktPort) {
+			return EMPTY_CLEANUP
+		}
+
+		let disposeProjectImportState = EMPTY_CLEANUP
+
+		const syncActiveProjectImportState = () => {
+			const rootScope = pageRuntime.getRootScope()
+			if (!rootScope) {
+				return
+			}
+			const activeProjectScope = pageRuntime.readOne(rootScope, 'activeProject')
+			if (!activeProjectScope) {
+				return
+			}
+
+			disposeProjectImportState()
+
+			const syncImportState = () => {
+				const attrs = pageRuntime.readAttrs(activeProjectScope, ['sourceProjectId', 'activeImportTaskId', 'importProgress']) as {
+					sourceProjectId?: unknown
+					activeImportTaskId?: unknown
+					importProgress?: { stage?: unknown } | null
+				}
+				if (
+					typeof attrs.activeImportTaskId !== 'string'
+					|| !attrs.activeImportTaskId
+					|| attrs.importProgress?.stage !== 'queued'
+				) {
+					return
+				}
+				startImportFilesTask({
+					projectId: typeof attrs.sourceProjectId === 'string' && attrs.sourceProjectId
+						? attrs.sourceProjectId
+						: 'active-project',
+					inputBatchHandleId: attrs.activeImportTaskId,
+					addToTimelineWhenEmpty: true,
+				})
+			}
+
+			const unsubscribe = pageRuntime.subscribeAttrs(activeProjectScope, ['sourceProjectId', 'activeImportTaskId', 'importProgress'], syncImportState)
+			disposeProjectImportState = () => {
+				unsubscribe()
+			}
+			syncImportState()
+		}
+
+		const disposeActiveProject = pageRuntime.subscribeRootScope(() => {
+			syncActiveProjectImportState()
+		})
+
+		syncActiveProjectImportState()
+
+		return () => {
+			disposeProjectImportState()
+			disposeActiveProject()
+		}
+	}
+
 	const unsubscribeDownloadBridge = subscribeToDownloadBridge()
 	const unsubscribeExportRequests = subscribeToExportRequests()
 	const unsubscribeImportFilesRequests = subscribeToImportFilesRequests()
+	const unsubscribeImportProgressRequests = subscribeToImportProgressRequests()
 
 	return {
 		// Only essential public API
@@ -391,6 +476,7 @@ export const createVideoEditorHarness = (
 			unsubscribeDownloadBridge()
 			unsubscribeExportRequests()
 			unsubscribeImportFilesRequests()
+			unsubscribeImportProgressRequests()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)
 			}

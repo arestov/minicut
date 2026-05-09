@@ -1,6 +1,8 @@
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { VideoEditorHarnessActions } from './actionRuntimeTypes'
+import { PROJECT_IMPORT_FILES_FX } from '../models/Project/effects'
+import { executeImportFilesTask } from './importFilesTaskExecutor'
 
 let exportSequence = 0
 
@@ -51,6 +53,19 @@ export const createEditorHarnessAdapter = (
 			}
 			const inputBatchHandleId = env.tasks.putRuntimeRef(fileList)
 			dispatchRoot(env, 'requestImportFiles', { inputBatchHandleId })
+			const task = env.tasks.dispatchTask(PROJECT_IMPORT_FILES_FX, {
+				data: {
+					projectId: 'active-project',
+					inputBatchHandleId,
+					addToTimelineWhenEmpty: true,
+				},
+			}, {
+				queuePolicy: 'queue-all',
+				intentKey: `${PROJECT_IMPORT_FILES_FX}:${inputBatchHandleId}`,
+			})
+			if (!task.dropped) {
+				void executeImportFilesTask({ task, env })
+			}
 		},
 		requestSelectedClipExport(): void {
 			dispatchRoot(env, 'requestSelectedClipExport', {

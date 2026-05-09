@@ -135,6 +135,7 @@ export const executeImportFilesTask = async ({
 					loadedBytes: file.size,
 				},
 			}, projectScope)
+			await env.pageRuntime?.waitForRuntimeSettled?.()
 
 			env.transfers.manager.registerLocalResource(sourceResourceId, file, {
 				objectUrl,

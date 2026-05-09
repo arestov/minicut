@@ -1,5 +1,4 @@
 import { PROJECT_CREATION_SHAPE } from '../Project'
-import { PROJECT_IMPORT_FILES_FX } from '../Project/effects'
 import { buildPreviewBuffer, type PreviewBuffer, type PreviewClipSource, type PreviewStructure } from '../../read-model/previewComps'
 import type { ExportRequestState } from '../../app/exportRequestState'
 import type { ExportProgressState } from '../../app/exportProgressState'
@@ -612,7 +611,7 @@ export const sessionRequestImportFilesAction = [
 		fn: (payload: unknown) => payload as Record<string, unknown>,
 	},
 	{
-		to: [PROJECT_IMPORT_FILES_FX, { intent: 'call', drop_when_api_not_ready: false }],
+		to: ['$fx_handleInputFiles', { intent: 'call', drop_when_api_not_ready: false }],
 		fn: [
 			['< @one:sourceProjectId < activeProject'] as const,
 			(payload: unknown, sourceProjectId: unknown) => {

@@ -282,12 +282,38 @@ export const Project = model({
 			{
 				when: [
 					[] as const,
+					(payload: unknown) => {
+						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: { kind?: unknown } } | null
+						return value?.shouldAddEmbeddedAudio === true && value?.resource?.kind === 'video'
+					},
+				],
+				to: {
+					embeddedAudioClip: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+					$output: ['$output'],
+				},
+				fn: [
+					['$noop', '< @one:appendStart < primaryAudioTrack'] as const,
+					(payload: unknown, noop: unknown, audioTrackAppendStart: unknown) => ({
+						embeddedAudioClip: reduceImportResourceToEmbeddedAudio(payload, noop, audioTrackAppendStart),
+						$output: payload,
+					}),
+				],
+			},
+			{
+				when: [
+					[] as const,
 					(payload: unknown) => (payload as { shouldAddToTimeline?: unknown } | null)?.shouldAddToTimeline === true,
 				],
-				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
+				to: {
+					videoClip: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
+					$output: ['$output'],
+				},
 				fn: [
 					['$noop'] as const,
-					reduceImportResourceToVideo,
+					(payload: unknown, noop: unknown) => ({
+						videoClip: reduceImportResourceToVideo(payload, noop),
+						$output: payload,
+					}),
 				],
 			},
 			{
@@ -298,24 +324,16 @@ export const Project = model({
 						return value?.shouldAddToTimeline === true && value?.resource?.kind === 'audio'
 					},
 				],
-				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+				to: {
+					audioClip: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+					$output: ['$output'],
+				},
 				fn: [
 					['$noop'] as const,
-					reduceImportResourceToAudio,
-				],
-			},
-			{
-				when: [
-					[] as const,
-					(payload: unknown) => {
-						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: { kind?: unknown } } | null
-						return value?.shouldAddEmbeddedAudio === true && value?.resource?.kind === 'video'
-					},
-				],
-				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
-				fn: [
-					['$noop', '< @one:appendStart < primaryAudioTrack'] as const,
-					reduceImportResourceToEmbeddedAudio,
+					(payload: unknown, noop: unknown) => ({
+						audioClip: reduceImportResourceToAudio(payload, noop),
+						$output: payload,
+					}),
 				],
 			},
 		],
@@ -373,7 +391,12 @@ export const Project = model({
 				],
 				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
 				fn: [
-					['$noop', '< @all:timelineClipSource < resources', '< @one:appendStart < primaryAudioTrack'] as const,
+					[
+						'$noop',
+						'< @all:timelineClipSource < resources',
+						'< @one:appendStart < primaryAudioTrack',
+						'< @all:sourceResourceId < primaryAudioTrack.clips',
+					] as const,
 					reduceAddEmbeddedAudio,
 				],
 			},

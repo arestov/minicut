@@ -343,9 +343,13 @@ export const reduceAddEmbeddedAudio = (
 	noop: unknown,
 	resources: unknown[],
 	audioTrackAppendStart: unknown,
+	audioClipResourceIds?: unknown[],
 ) => {
 	const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
 	if (typeof sourceResourceId !== 'string') {
+		return noop
+	}
+	if (Array.isArray(audioClipResourceIds) && audioClipResourceIds.includes(sourceResourceId)) {
 		return noop
 	}
 	const resource = findResourceBySourceId(Array.isArray(resources) ? resources : [], sourceResourceId)
