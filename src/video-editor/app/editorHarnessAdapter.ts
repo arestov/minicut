@@ -1,5 +1,4 @@
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
-import { getAttrsShape } from '../../dkt-react-sync/shape/autoShapes'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 

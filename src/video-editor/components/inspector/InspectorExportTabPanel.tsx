@@ -1,7 +1,6 @@
 import { Download } from 'lucide-react'
-import { useEffect, useRef } from 'react'
-import { useActions } from '../../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
+import { useRootDispatch } from '../../../dkt-react-sync/hooks/useRootDispatch'
 import { useRootAttrs } from '../../../dkt-react-sync/hooks/useRootAttrs'
 import { useVideoEditor } from '../../app/VideoEditorContext'
 import { formatExportProgress, isExportRunning, type ExportProgressState } from '../../app/exportProgressState'
@@ -13,44 +12,16 @@ const parseExportProgress = (value: unknown): ExportProgressState | null =>
 
 export const InspectorExportTabPanel = () => {
 	const { actions } = useVideoEditor()
-	const dispatch = useActions()
+	const dispatchRoot = useRootDispatch()
 	const { sourceClipId, name } = useAttrs(['sourceClipId', 'name']) as { sourceClipId?: unknown; name?: unknown }
 	const rootAttrs = useRootAttrs(['exportProgress']) as { exportProgress?: unknown }
-	const downloadedExportIdsRef = useRef<Set<string>>(new Set())
 	const clipId = typeof sourceClipId === 'string' ? sourceClipId : null
-	const localPeerId = actions.getLocalPeerId()
 	const exportProgress = parseExportProgress(rootAttrs.exportProgress)
 	const clipExport = clipId && exportProgress?.range.type === 'clip' && exportProgress.range.clipId === clipId
 		? exportProgress
 		: null
 	const isClipExportRunning = isExportRunning(clipExport)
 	const clipExportLabel = clipExport ? formatExportProgress(clipExport) : 'queued 0%'
-
-	useEffect(() => {
-		if (!clipExport || clipExport.stage !== 'done') {
-			return
-		}
-		if (localPeerId !== clipExport.initiatedBy) {
-			return
-		}
-		if (downloadedExportIdsRef.current.has(clipExport.id)) {
-			return
-		}
-
-		// Get download URL from cached results
-		const downloadUrl = actions.getCachedExportUrl(clipExport.id)
-		if (!downloadUrl) {
-			return
-		}
-
-		downloadedExportIdsRef.current.add(clipExport.id)
-		const anchor = document.createElement('a')
-		anchor.href = downloadUrl
-		anchor.download = clipExport.fileName ?? 'clip-export.webm'
-		document.body.appendChild(anchor)
-		anchor.click()
-		document.body.removeChild(anchor)
-	}, [clipExport, localPeerId, actions])
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Export inspector">
@@ -64,7 +35,11 @@ export const InspectorExportTabPanel = () => {
 					disabled={isClipExportRunning || !clipId}
 					onClick={() => {
 						if (clipId) {
-							dispatch('requestClipExport')
+							dispatchRoot('requestClipExport', {
+								clipId,
+								id: `export:${Date.now().toString(36)}`,
+								initiatedBy: actions.getLocalPeerId(),
+							})
 						}
 					}}
 				>

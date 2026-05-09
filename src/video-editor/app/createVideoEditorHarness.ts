@@ -5,6 +5,12 @@ import type { ResourceAttrs } from '../render/registryTypes'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
+import { parseExportRequest } from './exportRequestState'
+import {
+	AUTH_EXT_CHANNEL,
+	AUTH_EXT_EVENT,
+	createAuthorityExtensionBus,
+} from './authorityExtensionBus'
 import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
@@ -146,9 +152,11 @@ export const createVideoEditorHarness = (
 	const exportRenderer = options.exportRenderer ?? platform.createExportRenderer()
 	const pageRuntime = createMiniCutPageRuntime(authorityClient)
 	const runtimeTasks = createRuntimeTaskFacade()
+	const extensionBus = createAuthorityExtensionBus()
 	
 	let isDestroyed = false
 	const importedObjectUrls = new Set<string>()
+	const exportObjectUrls = new Set<string>()
 
 	const subscribeToResourceScopes = (): (() => void) => {
 		if (!pageRuntime) {
@@ -253,6 +261,40 @@ export const createVideoEditorHarness = (
 
 	const unsubscribe = subscribeToResourceScopes()
 
+	const subscribeToDownloadBridge = (): (() => void) => extensionBus.subscribe(
+		AUTH_EXT_CHANNEL.EXPORT_DOWNLOAD,
+		(event) => {
+			if (event.event !== AUTH_EXT_EVENT.EXPORT_READY) {
+				return
+			}
+			const payload = event.payload as { downloadUrl?: unknown; fileName?: unknown; targetPeerId?: unknown } | null
+			if (!payload || typeof payload !== 'object') {
+				return
+			}
+			if (typeof document === 'undefined') {
+				return
+			}
+			const downloadUrl = typeof payload.downloadUrl === 'string' ? payload.downloadUrl : null
+			if (!downloadUrl) {
+				return
+			}
+			const localPeerId = env.transfers.getPeerId()
+			const targetPeerId = typeof payload.targetPeerId === 'string' ? payload.targetPeerId : null
+			if (targetPeerId !== null && targetPeerId !== localPeerId) {
+				return
+			}
+			const fileName = typeof payload.fileName === 'string' && payload.fileName
+				? payload.fileName
+				: 'export.webm'
+			const anchor = document.createElement('a')
+			anchor.href = downloadUrl
+			anchor.download = fileName
+			document.body.appendChild(anchor)
+			anchor.click()
+			document.body.removeChild(anchor)
+		},
+	)
+
 	const dktPort: EditorDktScopePort | null = pageRuntime
 		? {
 			dispatch: (actionName, payload, scope) => pageRuntime.dispatch(actionName, payload, scope ?? null),
@@ -300,6 +342,142 @@ export const createVideoEditorHarness = (
 
 	const actions = createEditorHarnessAdapter(env, { resourceChunkSize })
 
+	const subscribeToExportRequests = (): (() => void) => {
+		if (!pageRuntime || !dktPort) {
+			return EMPTY_CLEANUP
+		}
+
+		const inFlightRequestIds = new Set<string>()
+		const handledRequestIds = new Set<string>()
+
+		const readExportRequest = () => {
+			const rootScope = pageRuntime.getRootScope()
+			if (!rootScope) {
+				return null
+			}
+			const attrs = pageRuntime.readAttrs(rootScope, ['exportRequest']) as { exportRequest?: unknown }
+			const request = parseExportRequest(attrs.exportRequest)
+			if (!request) {
+				return null
+			}
+			if (inFlightRequestIds.has(request.id) || handledRequestIds.has(request.id)) {
+				return null
+			}
+			return { request, rootScope }
+		}
+
+		const startRequest = (requestId: string): void => {
+			if (inFlightRequestIds.has(requestId) || handledRequestIds.has(requestId)) {
+				return
+			}
+			inFlightRequestIds.add(requestId)
+
+			void (async () => {
+				const snapshot = readExportRequest()
+				if (!snapshot || snapshot.request.id !== requestId) {
+					inFlightRequestIds.delete(requestId)
+					return
+				}
+
+				const { request, rootScope } = snapshot
+				const localPeerId = env.transfers.getPeerId()
+				if (request.initiatedBy && request.initiatedBy !== localPeerId) {
+					inFlightRequestIds.delete(request.id)
+					return
+				}
+
+				const setProgress = (
+					stage: 'queued' | 'rendering' | 'finalizing' | 'done' | 'error',
+					progress: number,
+					extra?: Partial<{ fileName: string; size: number; frameCount: number; error: string }>,
+				): void => {
+					dktPort.dispatch('setExportProgress', {
+						id: request.id,
+						range: request.range,
+						stage,
+						progress,
+						updatedAt: Date.now(),
+						initiatedBy: request.initiatedBy,
+						...(extra?.fileName ? { fileName: extra.fileName } : {}),
+						...(typeof extra?.size === 'number' ? { size: extra.size } : {}),
+						...(typeof extra?.frameCount === 'number' ? { frameCount: extra.frameCount } : {}),
+						...(extra?.error ? { error: extra.error } : {}),
+					}, rootScope)
+				}
+
+				try {
+					setProgress('queued', 0)
+					const result = await env.export.renderer.render(
+						{
+							plan: request.plan,
+							range: request.range,
+							format: request.format,
+						},
+						(progressEvent) => {
+							const normalizedStage = progressEvent.stage === 'done' ? 'finalizing' : progressEvent.stage
+							setProgress(normalizedStage, Math.round(progressEvent.progress * 100))
+						},
+					)
+
+					const downloadUrl = env.media.createObjectUrl(result.blob)
+					if (downloadUrl) {
+						env.lifecycle.registerObjectUrl(downloadUrl, 'export')
+						env.export.cachedResults.set(request.id, {
+							downloadUrl,
+							blob: result.blob,
+							timestamp: Date.now(),
+						})
+						extensionBus.publish({
+							channel: AUTH_EXT_CHANNEL.EXPORT_DOWNLOAD,
+							event: AUTH_EXT_EVENT.EXPORT_READY,
+							payload: {
+								exportId: request.id,
+								downloadUrl,
+								fileName: result.fileName,
+								targetPeerId: request.initiatedBy,
+							},
+						})
+					}
+
+					setProgress('done', 100, {
+						fileName: result.fileName,
+						size: result.size,
+						frameCount: result.frameCount,
+					})
+				} catch (error) {
+					const message = error instanceof Error ? error.message : 'Export failed'
+					setProgress('error', 0, { error: message })
+				} finally {
+					dktPort.dispatch('consumeExportRequest', { id: request.id }, rootScope)
+					handledRequestIds.add(request.id)
+					inFlightRequestIds.delete(request.id)
+				}
+			})()
+		}
+
+		const unlisten = pageRuntime.subscribeRootScope(() => {
+			const snapshot = readExportRequest()
+			if (!snapshot) {
+				return
+			}
+			startRequest(snapshot.request.id)
+		})
+
+		const snapshot = readExportRequest()
+		if (snapshot) {
+			startRequest(snapshot.request.id)
+		}
+
+		return () => {
+			unlisten()
+			inFlightRequestIds.clear()
+			handledRequestIds.clear()
+		}
+	}
+
+	const unsubscribeDownloadBridge = subscribeToDownloadBridge()
+	const unsubscribeExportRequests = subscribeToExportRequests()
+
 	return {
 		// Only essential public API
 		worker: authorityClient,
@@ -325,16 +503,19 @@ export const createVideoEditorHarness = (
 			isDestroyed = true
 			runtimeTasks.clear()
 			unsubscribe()
+			unsubscribeDownloadBridge()
 			unsubscribeExportRequests()
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url)
 			}
-			resourceTransferManager.destroy()
-			pageRuntime?.destroy()
-			authorityClient.destroy?.()
 			for (const url of exportObjectUrls) {
 				platform.revokeObjectUrl(url)
 			}
+			extensionBus.clear()
+			env.export.cachedResults.clear()
+			resourceTransferManager.destroy()
+			pageRuntime?.destroy()
+			authorityClient.destroy?.()
 		},
 	}
 }
