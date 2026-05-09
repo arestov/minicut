@@ -29,6 +29,17 @@ const debugExport = (message: string, details?: unknown) => {
 	console.info('[minicut:export:harness]', message, details)
 }
 
+const parseExportChannelPayload = (payload: unknown) => {
+	const envelope = payload && typeof payload === 'object'
+		? payload as { request?: unknown; queueKey?: unknown }
+		: null
+	const request = parseExportRequest(envelope?.request ?? payload)
+	const queueKey = typeof envelope?.queueKey === 'string' && envelope.queueKey
+		? envelope.queueKey
+		: null
+	return { request, queueKey }
+}
+
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	if (file.type.startsWith('video/')) {
 		return 'video'
@@ -285,13 +296,15 @@ export const createVideoEditorHarness = (
 		}
 
 		const unlistenExportRequest = pageRuntime.subscribeExportRequests?.((payload) => {
-			const request = parseExportRequest(payload)
+			const { request, queueKey } = parseExportChannelPayload(payload)
 			if (!request) {
 				debugExport('channel export request ignored: invalid payload', payload)
 				return
 			}
 			debugExport('channel export request observed', { id: request.id })
-			const intentKey = request.range.type === 'clip'
+			const intentKey = queueKey
+				? `${PROJECT_RENDER_EXPORT_FX}:${queueKey}`
+				: request.range.type === 'clip'
 				? `${PROJECT_RENDER_EXPORT_FX}:clip:${request.range.clipId}`
 				: `${PROJECT_RENDER_EXPORT_FX}:project`
 			const task = runtimeTasks.dispatchTask(PROJECT_RENDER_EXPORT_FX, {

@@ -76,17 +76,18 @@ describe('createMiniCutDktRuntime export request channel', () => {
 		await waitFor(() =>
 			memory.sent.some((message) =>
 				message.type === DKT_MSG.EXPORT_REQUEST
-				&& (message.payload as { id?: unknown } | null)?.id === 'export:test-channel-1',
+				&& ((message.payload as { request?: { id?: unknown } } | null)?.request?.id) === 'export:test-channel-1',
 			),
 		)
 
 		const exportMessage = memory.sent.find((message) =>
 			message.type === DKT_MSG.EXPORT_REQUEST
-			&& (message.payload as { id?: unknown } | null)?.id === 'export:test-channel-1',
+			&& ((message.payload as { request?: { id?: unknown } } | null)?.request?.id) === 'export:test-channel-1',
 		)
 
 		expect(exportMessage?.type).toBe(DKT_MSG.EXPORT_REQUEST)
-		expect((exportMessage as { payload?: { range?: { type?: unknown } } } | undefined)?.payload?.range?.type).toBe('project')
+		expect((exportMessage as { payload?: { request?: { range?: { type?: unknown } }; queueKey?: unknown } } | undefined)?.payload?.request?.range?.type).toBe('project')
+		expect((exportMessage as { payload?: { queueKey?: unknown } } | undefined)?.payload?.queueKey).toBe('project')
 
 		connection.destroy()
 	})

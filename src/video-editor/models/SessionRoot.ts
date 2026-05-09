@@ -99,7 +99,7 @@ export const EditorSessionRoot = model({
 						id: (request as { id?: unknown }).id,
 						range: (request as { range?: unknown }).range,
 					})
-					runtime.requestExport(request)
+					runtime.requestExport(payload)
 				},
 			},
 		},

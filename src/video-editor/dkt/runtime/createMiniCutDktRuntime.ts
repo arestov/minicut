@@ -91,7 +91,10 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 	}
 
 	const publishExportRequest = (payload: unknown) => {
-		const requestId = (payload as { id?: unknown } | null)?.id
+		const requestPayload = payload && typeof payload === 'object'
+			? ((payload as { request?: unknown }).request ?? payload)
+			: payload
+		const requestId = (requestPayload as { id?: unknown } | null)?.id
 		logRuntime('publishExportRequest:attempt', {
 			requestId,
 			transports: activeTransports.size,
@@ -142,8 +145,11 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 						},
 						exportRuntime: {
 							requestExport: (payload: unknown) => {
+								const requestPayload = payload && typeof payload === 'object'
+									? ((payload as { request?: unknown }).request ?? payload)
+									: payload
 								logRuntime('exportRuntime.requestExport', {
-									requestId: (payload as { id?: unknown } | null)?.id,
+									requestId: (requestPayload as { id?: unknown } | null)?.id,
 								})
 								publishExportRequest(payload)
 							},
