@@ -198,6 +198,11 @@ const createQueuedProgressState = (id: string, range: ExportProgressState['range
 	initiatedBy,
 })
 
+type ExportFxPayload = {
+	request: ExportRequestState
+	queueKey: string
+}
+
 const normalizeInitialTrack = (value: unknown) => {
 	const track = asObject(value)
 	const sourceTrackId = asString(track?.sourceTrackId)
@@ -638,13 +643,16 @@ export const sessionRequestProjectExportAction = [
 					return {
 						exportRequest: request,
 						exportProgress: createQueuedProgressState(id, range, initiatedBy),
-						exportFxPayload: request,
+						exportFxPayload: {
+							request,
+							queueKey: 'project',
+						} as ExportFxPayload,
 					}
 				},
 			],
 		},
 		{
-			to: ['$fx_requestExport', { intent: 'call', drop_when_api_not_ready: false }],
+			to: ['$fx_renderExport', { intent: 'call', drop_when_api_not_ready: false }],
 			fn: (payload: unknown) => {
 				if (!payload || typeof payload !== 'object') {
 					return '$noop'
@@ -704,13 +712,16 @@ export const sessionRequestClipExportAction = [
 					return {
 						exportRequest: request,
 						exportProgress: createQueuedProgressState(id, range, initiatedBy),
-						exportFxPayload: request,
+						exportFxPayload: {
+							request,
+							queueKey: `clip:${clipId}`,
+						} as ExportFxPayload,
 					}
 				},
 			],
 		},
 		{
-			to: ['$fx_requestExport', { intent: 'call', drop_when_api_not_ready: false }],
+			to: ['$fx_renderExport', { intent: 'call', drop_when_api_not_ready: false }],
 			fn: (payload: unknown) => {
 				if (!payload || typeof payload !== 'object') {
 					return '$noop'
@@ -759,13 +770,16 @@ export const sessionRequestSelectedClipExportAction = [
 					return {
 						exportRequest: request,
 						exportProgress: createQueuedProgressState(id, range, initiatedBy),
-						exportFxPayload: request,
+						exportFxPayload: {
+							request,
+							queueKey: `clip:${clipId}`,
+						} as ExportFxPayload,
 					}
 				},
 			],
 		},
 		{
-			to: ['$fx_requestExport', { intent: 'call', drop_when_api_not_ready: false }],
+			to: ['$fx_renderExport', { intent: 'call', drop_when_api_not_ready: false }],
 			fn: (payload: unknown) => {
 				if (!payload || typeof payload !== 'object') {
 					return '$noop'

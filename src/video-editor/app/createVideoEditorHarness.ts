@@ -5,13 +5,14 @@ import type { ResourceAttrs } from '../render/registryTypes'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
-import { parseExportRequest, type ExportRequestState } from './exportRequestState'
-import type { ExportPlan } from '../render/renderPlan'
+import { parseExportRequest } from './exportRequestState'
+import { PROJECT_RENDER_EXPORT_FX } from '../models/Project/effects'
 import {
 	AUTH_EXT_CHANNEL,
 	AUTH_EXT_EVENT,
 	createAuthorityExtensionBus,
 } from './authorityExtensionBus'
+import { executeRenderExportTask } from './renderExportTaskExecutor'
 import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
@@ -23,34 +24,6 @@ import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandl
 type DktResourceAttrs = ResourceAttrs & { sourceResourceId: string }
 
 const EMPTY_CLEANUP = () => {}
-
-const resolveExportPlanClipSources = (
-	plan: ExportPlan,
-	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string,
-): ExportPlan => {
-	if (!Array.isArray(plan.clipSources) || plan.clipSources.length === 0) {
-		return plan
-	}
-
-	const clipSources = plan.clipSources.map((clipSource) => {
-		if (typeof clipSource.resourceId !== 'string' || !clipSource.resourceId) {
-			return clipSource
-		}
-		const resolvedUrl = resolveResourceUrl(clipSource.resourceId, clipSource.resourceUrl)
-		if (resolvedUrl === clipSource.resourceUrl) {
-			return clipSource
-		}
-		return {
-			...clipSource,
-			resourceUrl: resolvedUrl,
-		}
-	})
-
-	return {
-		...plan,
-		clipSources,
-	}
-}
 
 const debugExport = (message: string, details?: unknown) => {
 	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
@@ -355,103 +328,6 @@ export const createVideoEditorHarness = (
 			return EMPTY_CLEANUP
 		}
 
-		const inFlightRequestIds = new Set<string>()
-		const handledRequestIds = new Set<string>()
-
-		const startRequest = (request: ExportRequestState): void => {
-			if (!request) {
-				return
-			}
-			const requestId = request.id
-			if (inFlightRequestIds.has(requestId) || handledRequestIds.has(requestId)) {
-				return
-			}
-			inFlightRequestIds.add(requestId)
-
-			void (async () => {
-				const audioClipCount = Array.isArray(request.plan?.clipSources)
-					? request.plan.clipSources.filter((clipSource) => (clipSource as { resourceKind?: unknown } | null)?.resourceKind === 'audio').length
-					: 0
-				const resolvedPlan = resolveExportPlanClipSources(
-					request.plan,
-					(resourceId, fallbackUrl) => resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl),
-				)
-				debugExport('render-start', {
-					requestId: request.id,
-					range: request.range,
-					audioClipCount,
-				})
-
-				const setProgress = (
-					stage: 'queued' | 'rendering' | 'finalizing' | 'done' | 'error',
-					progress: number,
-					extra?: Partial<{ fileName: string; size: number; frameCount: number; error: string }>,
-				): void => {
-					dktPort.dispatch('setExportProgress', {
-						id: request.id,
-						range: request.range,
-						stage,
-						progress,
-						updatedAt: Date.now(),
-						initiatedBy: request.initiatedBy,
-						...(extra?.fileName ? { fileName: extra.fileName } : {}),
-						...(typeof extra?.size === 'number' ? { size: extra.size } : {}),
-						...(typeof extra?.frameCount === 'number' ? { frameCount: extra.frameCount } : {}),
-						...(extra?.error ? { error: extra.error } : {}),
-					}, null)
-				}
-
-				try {
-					setProgress('queued', 0)
-					const result = await env.export.renderer.render(
-						{
-							plan: resolvedPlan,
-							range: request.range,
-							format: request.format,
-						},
-						(progressEvent) => {
-							const normalizedStage = progressEvent.stage === 'done' ? 'finalizing' : progressEvent.stage
-							setProgress(normalizedStage, Math.round(progressEvent.progress * 100))
-						},
-					)
-
-					const downloadUrl = env.media.createObjectUrl(result.blob)
-					if (downloadUrl) {
-						env.lifecycle.registerObjectUrl(downloadUrl, 'export')
-						env.export.cachedResults.set(request.id, {
-							downloadUrl,
-							blob: result.blob,
-							timestamp: Date.now(),
-						})
-						extensionBus.publish({
-							channel: AUTH_EXT_CHANNEL.EXPORT_DOWNLOAD,
-							event: AUTH_EXT_EVENT.EXPORT_READY,
-							payload: {
-								exportId: request.id,
-								downloadUrl,
-								fileName: result.fileName,
-							},
-						})
-					}
-
-					setProgress('done', 100, {
-						fileName: result.fileName,
-						size: result.size,
-						frameCount: result.frameCount,
-					})
-					debugExport('render-done', { requestId: request.id })
-				} catch (error) {
-					const message = error instanceof Error ? error.message : 'Export failed'
-					debugExport('render-error', { requestId: request.id, error: message })
-					setProgress('error', 0, { error: message })
-				} finally {
-					dktPort.dispatch('consumeExportRequest', { id: request.id }, null)
-					handledRequestIds.add(request.id)
-					inFlightRequestIds.delete(request.id)
-				}
-			})()
-		}
-
 		const unlistenExportRequest = pageRuntime.subscribeExportRequests?.((payload) => {
 			const request = parseExportRequest(payload)
 			if (!request) {
@@ -459,13 +335,27 @@ export const createVideoEditorHarness = (
 				return
 			}
 			debugExport('channel export request observed', { id: request.id })
-			startRequest(request)
+			const intentKey = request.range.type === 'clip'
+				? `${PROJECT_RENDER_EXPORT_FX}:clip:${request.range.clipId}`
+				: `${PROJECT_RENDER_EXPORT_FX}:project`
+			const task = runtimeTasks.dispatchTask(PROJECT_RENDER_EXPORT_FX, {
+				data: request,
+			}, {
+				queuePolicy: 'replace-last',
+				intentKey,
+			})
+			if (task.dropped) {
+				return
+			}
+			void executeRenderExportTask({
+				task,
+				env,
+				extensionBus,
+			})
 		}) ?? EMPTY_CLEANUP
 
 		return () => {
 			unlistenExportRequest()
-			inFlightRequestIds.clear()
-			handledRequestIds.clear()
 		}
 	}
 

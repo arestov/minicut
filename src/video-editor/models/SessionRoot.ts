@@ -78,25 +78,28 @@ export const EditorSessionRoot = model({
 			],
 		},
 		out: {
-			$fx_requestExport: {
+			$fx_renderExport: {
 				api: ['exportRuntime'],
 				create_when: { api_inits: true },
 				fn: (api: unknown, state: unknown) => {
 					const runtime = api as { requestExport?: (payload: unknown) => void } | null
 					const payload = (state as { payload?: unknown } | null)?.payload
-					if (!runtime || typeof runtime.requestExport !== 'function' || !payload || typeof payload !== 'object') {
-						debugExport('skip $fx_requestExport effect', {
+					const request = payload && typeof payload === 'object'
+						? (payload as { request?: unknown }).request
+						: null
+					if (!runtime || typeof runtime.requestExport !== 'function' || !request || typeof request !== 'object') {
+						debugExport('skip $fx_renderExport effect', {
 							hasRuntime: Boolean(runtime && typeof runtime.requestExport === 'function'),
-							hasPayload: Boolean(payload),
+							hasPayload: Boolean(request),
 						})
 						return
 					}
 
-					debugExport('$fx_requestExport effect -> runtime', {
-						id: (payload as { id?: unknown }).id,
-						range: (payload as { range?: unknown }).range,
+					debugExport('$fx_renderExport effect -> runtime', {
+						id: (request as { id?: unknown }).id,
+						range: (request as { range?: unknown }).range,
 					})
-					runtime.requestExport(payload)
+					runtime.requestExport(request)
 				},
 			},
 		},
