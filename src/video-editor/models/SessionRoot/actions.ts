@@ -46,6 +46,7 @@ export type DktSessionActionName =
 	| 'setTimelineZoom'
 	| 'tickPlayback'
 	| 'addTextClipToTimeline'
+	| 'requestImportFiles'
 	| 'syncSelectedClipRel'
 	| 'togglePlayback'
 	| 'zoomTimeline'
@@ -593,6 +594,13 @@ export const sessionClearExportProgressAction = {
 	fn: () => ({ exportProgress: null }),
 } as const satisfies DktActionDescriptor
 
+export const sessionRequestImportFilesAction = [
+	{
+		to: ['<< activeProject', { action: 'requestImportFiles', inline_subwalker: true }],
+		fn: (payload: unknown) => payload as Record<string, unknown>,
+	},
+] as const satisfies DktActionDefinition
+
 export const sessionRequestProjectExportAction = [
 		{
 			to: {
@@ -847,6 +855,7 @@ export const dktSessionActions = {
 	tickPlayback: sessionTickPlaybackAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
+	requestImportFiles: sessionRequestImportFilesAction,
 	deleteSelectedClip: sessionDeleteSelectedClipAction,
 	splitSelectedClip: sessionSplitSelectedClipAction,
 	startPreviewBuffer: {

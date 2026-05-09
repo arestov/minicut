@@ -2,6 +2,9 @@ import type { MiniCutDktResourceSeed, MiniCutDktTrackSeed } from '../../dkt/runt
 
 export type ProjectAddTrackPayload = MiniCutDktTrackSeed
 export type ProjectImportResourcePayload = MiniCutDktResourceSeed
+export type ProjectRequestImportFilesPayload = {
+	inputBatchHandleId?: unknown
+}
 
 const asString = (value: unknown): string | null => typeof value === 'string' ? value : null
 const asNumber = (value: unknown): number | null => typeof value === 'number' ? value : null
@@ -196,13 +199,15 @@ export const reduceImportResourceCreate = (payload: unknown, clips: unknown[], s
 		}
 		return Boolean(entry)
 	})
+	const shouldAddToTimeline = !hasTimelineClips
 
 	return {
 		resource: { attrs, hold_ref_id: 'newResource' },
 		resources: { use_ref_id: 'newResource' },
 		$output: {
 			resource: attrs,
-			shouldAddToTimeline: !hasTimelineClips,
+			shouldAddToTimeline,
+			shouldAddEmbeddedAudio: shouldAddToTimeline && attrs.kind === 'video',
 		},
 	}
 }
@@ -223,6 +228,31 @@ export const reduceImportResourceToAudio = (payload: unknown, noop: unknown) => 
 		return noop
 	}
 	return createTimelineClipPayload(noop, resource)
+}
+
+export const reduceImportResourceToEmbeddedAudio = (payload: unknown, noop: unknown, audioTrackAppendStart: unknown) => {
+	const value = payload as { resource?: Record<string, unknown>; shouldAddEmbeddedAudio?: unknown } | null
+	const resource = value?.resource ?? {}
+	if (value?.shouldAddEmbeddedAudio !== true) {
+		return noop
+	}
+	return createEmbeddedAudioClipPayload(noop, resource, typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
+}
+
+export const reduceRequestImportFiles = (payload: unknown) => {
+	const value = payload as ProjectRequestImportFilesPayload | null
+	if (typeof value?.inputBatchHandleId !== 'string' || !value.inputBatchHandleId) {
+		return '$noop'
+	}
+	return {
+		activeImportTaskId: value.inputBatchHandleId,
+		importProgress: {
+			stage: 'queued',
+			processed: 0,
+			total: 0,
+		},
+		lastImportError: null,
+	}
 }
 
 export const reduceSetTracks = (payload: unknown) => {

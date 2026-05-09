@@ -15,6 +15,8 @@ import {
 	reduceImportResourceCreate,
 	reduceImportResourceToVideo,
 	reduceImportResourceToAudio,
+	reduceImportResourceToEmbeddedAudio,
+	reduceRequestImportFiles,
 	reduceSetTracks,
 	reduceSetResources,
 	reduceAddVideoResourceToTimeline,
@@ -113,6 +115,9 @@ export const Project = model({
 		height: ['input', 1080],
 		duration: ['input', 0],
 		timelineDuration: ['comp', ['duration'], (duration: unknown) => asNumber(duration, 0)],
+		importProgress: ['input', null],
+		lastImportError: ['input', null],
+		activeImportTaskId: ['input', null],
 		previewFrame: ['input', null],
 		createdAt: ['input', 0],
 		updatedAt: ['input', 0],
@@ -195,6 +200,14 @@ export const Project = model({
 			},
 			fn: reduceAddTrack,
 		},
+		requestImportFiles: {
+			to: {
+				activeImportTaskId: ['activeImportTaskId'],
+				importProgress: ['importProgress'],
+				lastImportError: ['lastImportError'],
+			},
+			fn: reduceRequestImportFiles,
+		},
 		importResource: [
 			{
 				to: {
@@ -238,6 +251,20 @@ export const Project = model({
 				fn: [
 					['$noop'] as const,
 					reduceImportResourceToAudio,
+				],
+			},
+			{
+				when: [
+					[] as const,
+					(payload: unknown) => {
+						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: { kind?: unknown } } | null
+						return value?.shouldAddEmbeddedAudio === true && value?.resource?.kind === 'video'
+					},
+				],
+				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+				fn: [
+					['$noop', '< @one:appendStart < primaryAudioTrack'] as const,
+					reduceImportResourceToEmbeddedAudio,
 				],
 			},
 		],
