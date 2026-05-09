@@ -829,3 +829,177 @@ expectSplitInvariant(
 - при изменении CSS-класса, не влияющем на UX/layout contract, большинство тестов не падает;
 - при поломке split/append/trim/source mapping падает быстрый unit/model тест до E2E.
 
+## Дополнение: ожидания DKT-settle в browser/P2P тестах
+
+### Проблема
+
+В `src/video-editor/dkt/testingInit.ts` уже есть правильная модель ожидания вычислений для DKT unit/model тестов:
+
+```ts
+const computed = async (): Promise<void> => {
+  if (runtime.whenAllReady) {
+    return new Promise<void>((resolve) => runtime.whenAllReady!(() => resolve()))
+  }
+  if (flow?.whenReady) {
+    return new Promise<void>((resolve) => flow.whenReady(() => resolve()))
+  }
+  await new Promise<void>((resolve) => {
+    if (typeof appModel.input === 'function') {
+      appModel.input?.(() => resolve())
+    } else {
+      resolve()
+    }
+  })
+}
+```
+
+Этот контракт используется через `lockToRead`: сначала выполнить действие, потом дождаться, что DKT-граф досчитан, и только после этого читать attrs/rels. Это правильный уровень синхронизации для model tests.
+
+В Playwright/P2P тестах сейчас есть более слабое ожидание: `window.__MINICUT_P2P_DEBUG__.isRuntimeReady()`. Оно означает, что page runtime bootstrapped и sync graph в принципе доступен. Оно не гарантирует, что после последнего `dispatchAction` все DKT computations уже завершились, worker отправил sync updates, а page sync receiver применил их локально.
+
+Из-за этого возможен флейк:
+
+1. Тест вызывает debug action через `page.evaluate`.
+2. Worker принял action и начал DKT propagation.
+3. `isRuntimeReady()` уже возвращает `true`.
+4. Тест читает `dumpGraph`, `getProjectCount`, `getActiveProjectDetails` или transfer state.
+5. Часть вычисленного состояния еще не дошла до page graph.
+
+### Решение
+
+Добавить test-only ожидание уровня runtime/model idle и пробросить его на страницу через debug bridge:
+
+```ts
+type MiniCutDebugBridge = {
+  isRuntimeReady: () => boolean
+  waitForRuntimeSettled: () => Promise<void>
+}
+```
+
+На уровне worker/runtime нужен явный request/response контракт, например:
+
+```ts
+export const DKT_MSG = {
+  WAIT_IDLE: 'dkt:wait-idle',
+  IDLE: 'dkt:idle',
+}
+```
+
+Worker-side обработчик:
+
+```ts
+case DKT_MSG.WAIT_IDLE: {
+  const app = await bootstrapApp()
+  if (!app) {
+    transport.send({ type: DKT_MSG.IDLE, requestId: message.requestId })
+    return
+  }
+
+  if ('whenAllReady' in app.runtime && typeof app.runtime.whenAllReady === 'function') {
+    await new Promise<void>((resolve) => app.runtime.whenAllReady(resolve))
+  } else if (typeof app.appModel.input === 'function') {
+    await new Promise<void>((resolve) => app.appModel.input?.(() => resolve()))
+  }
+
+  transport.send({ type: DKT_MSG.IDLE, requestId: message.requestId })
+  return
+}
+```
+
+Page runtime должен уметь отправить `WAIT_IDLE` и дождаться `IDLE`:
+
+```ts
+const waitForRuntimeSettled = () =>
+  new Promise<void>((resolve, reject) => {
+    const requestId = `idle:${Date.now()}:${Math.random()}`
+    pendingIdleResolves.set(requestId, resolve)
+    emit({ type: DKT_MSG.WAIT_IDLE, requestId })
+    setTimeout(() => {
+      pendingIdleResolves.delete(requestId)
+      reject(new Error('Timed out waiting for DKT runtime idle'))
+    }, 5000)
+  })
+```
+
+Debug bridge должен открыть это только для тестов:
+
+```ts
+const debug: MiniCutDebugBridge = {
+  isRuntimeReady: () => harness.pageRuntime?.getSnapshot().ready ?? false,
+  waitForRuntimeSettled: () => harness.pageRuntime?.waitForRuntimeSettled?.() ?? Promise.resolve(),
+}
+```
+
+### Как использовать в тестах
+
+Использовать `waitForRuntimeSettled()` после debug-dispatch или перед чтением debug graph/state:
+
+```ts
+await page.evaluate(() => {
+  window.__MINICUT_P2P_DEBUG__?.dispatchProjectAction('addResourceToTimeline', payload)
+})
+
+await page.evaluate(() =>
+  window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.(),
+)
+
+await expect.poll(() =>
+  page.evaluate(() => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails()),
+).toMatchObject({
+  tracks: expect.arrayContaining([
+    expect.objectContaining({
+      clips: expect.arrayContaining([
+        expect.objectContaining({ sourceResourceId: payload.sourceResourceId }),
+      ]),
+    }),
+  ]),
+})
+```
+
+Не использовать это как замену пользовательским ожиданиям. Для UI-сценариев основной assert остается Testing Library/Playwright-style:
+
+```ts
+await expect(page.getByRole('button', { name: /export/i })).toBeEnabled()
+await expect(page.getByText(projectTitle)).toBeVisible()
+```
+
+`waitForRuntimeSettled()` нужен для тестов, которые сами дергают debug/runtime API и затем читают внутренний graph/state. Он не должен маскировать отсутствие видимого пользовательского результата.
+
+### Критерий готовности
+
+- В DKT unit/model тестах все чтения после mutations идут через `lockToRead`.
+- В browser/P2P тестах `isRuntimeReady()` используется только для bootstrap readiness.
+- После debug `dispatchRootAction`, `dispatchProjectAction`, `createProject` и перед debug graph/state assertions используется `waitForRuntimeSettled()`.
+- Тесты, проверяющие пользовательский UI, продолжают ждать видимый DOM/result через role/label/text/event ожидания.
+- Не добавляются фиксированные `waitForTimeout` для стабилизации DKT propagation.
+
+## Дополнительное ревью выполненной реализации
+
+### Уже сделано
+
+- Добавлен общий P2P helper слой в `tests/integration/p2pTestHelpers.ts`: запуск изолированных комнат, ожидания runtime readiness, transfer activity/ready, чтение debug state, cleanup через единый сценарий.
+- P2P smoke specs переведены на более явные доменные ожидания: роль peer, project count, transfer ready/activity, reconnect/failover state.
+- Убрана часть фиксированных стабилизирующих waits из P2P сценариев и заменена на `expect.poll`.
+- Добавлены DKT invariant helpers в `src/video-editor/dkt/test/projectGraphAssertions.ts`.
+- Добавлены DKT tests для graph invariants и action contracts:
+  - `src/video-editor/dkt/models/project-graph-invariants.test.ts`
+  - `src/video-editor/dkt/models/clip-action-contracts.test.ts`
+- Усилен существующий append-start test: ожидания стали ближе к timeline/domain invariants, debug logging убран.
+- Проверены основные наборы:
+  - `npm run test:integration:p2p`
+  - `npm run test:video-editor:node`
+  - узкий `resourceTransferManager` прогон через Vitest.
+
+### Что осталось сделать
+
+- Реализовать `waitForRuntimeSettled()` для browser/P2P тестов поверх DKT runtime/page sync transport. Это главный оставшийся пробел в ожиданиях вычислений.
+- После добавления `waitForRuntimeSettled()` пройтись по P2P helpers/specs и заменить чтение debug graph/state после debug actions на explicit settled wait.
+- Разделить большой `tests/integration/video-editor.spec.ts` на тематические файлы. Сейчас он все еще смешивает user flows, layout, media playback, export/debug checks и поэтому остается дорогим и сложным для диагностики.
+- Добавить быстрые jsdom/component happy-path тесты там, где browser E2E сейчас проверяет обычное UI-поведение без настоящей browser/system границы.
+- Доработать accessibility roles/labels в компонентах, где тесты все еще вынуждены использовать CSS selectors.
+- Добавить CI/perf reporting по slow tests и закрепить PR/nightly разбиение для export/P2P matrix.
+- Добавить backend/test cleanup API для P2P rooms, если появятся признаки leakage между сценариями на уровне signaling/server state.
+
+### Риск, который стоит закрыть первым
+
+Самый важный оставшийся риск - смешение `runtime ready` и `runtime settled` в browser/P2P тестах. Уже сделанная стабилизация уменьшила флейки transfer-сценариев, но без явного DKT idle handshake тесты, которые читают внутренний graph после debug actions, все еще могут иногда видеть промежуточное состояние. Поэтому следующий технический шаг должен быть именно `WAIT_IDLE`/`IDLE` handshake и `waitForRuntimeSettled()` в debug bridge.
