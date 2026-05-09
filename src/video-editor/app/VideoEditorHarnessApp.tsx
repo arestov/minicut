@@ -634,10 +634,12 @@ export const VideoEditorHarnessApp = ({
 			setCursor: (cursor: number) => {
 				ownedHarness.actions.setCursor(cursor)
 			},
-			createProjectDebug: (title?: string) => {
-				// Phase 4: debug-only method for testing. If runtime isn't ready,
-				// this will silently fail; use regular createProject for production flow.
+			dispatchCreateProject: (title?: string) => {
+				// Phase 4: synchronous version without polling.
+				// If runtime isn't ready, this will silently fail; use regular createProject for production flow.
 				ownedHarness.actions.createProject(title)
+				// For testing convenience, return resolved promise (tests expect async).
+				return Promise.resolve()
 			},
 		}
 

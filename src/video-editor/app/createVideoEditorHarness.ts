@@ -201,6 +201,14 @@ export const createVideoEditorHarness = (
 
 		let disposeProjectResources = EMPTY_CLEANUP
 		let disposeActiveProject = EMPTY_CLEANUP
+		let startupRetryTimeout: ReturnType<typeof setTimeout> | null = null
+
+		const clearStartupRetry = (): void => {
+			if (startupRetryTimeout !== null) {
+				globalThis.clearTimeout(startupRetryTimeout)
+				startupRetryTimeout = null
+			}
+		}
 
 		const syncActiveProjectResources = () => {
 			const rootScope = pageRuntime.getRootScope()
@@ -216,10 +224,19 @@ export const createVideoEditorHarness = (
 			const activeProjectScope = pageRuntime.readOne(rootScope, 'activeProject')
 			const fallbackProjectScope = activeProjectScope ?? projectScopes[0] ?? null
 			disposeProjectResources()
+			clearStartupRetry()
 
 			if (!fallbackProjectScope) {
 				resourceTransferManager.syncResources([])
-				// Phase 5: no polling fallback. Rely on subscribeRootScope to re-trigger when activeProject becomes available.
+				// Phase 5: no polling for normal operation. But on startup, if activeProject is not ready yet,
+				// we retry once after 100ms (one-time initialization check, not polling).
+				// After that, rely on subscribeRootScope to re-trigger when activeProject becomes available.
+				if (startupRetryTimeout === null) {
+					startupRetryTimeout = globalThis.setTimeout(() => {
+						startupRetryTimeout = null
+						syncActiveProjectResources()
+					}, 100)
+				}
 				return
 			}
 
@@ -262,7 +279,7 @@ export const createVideoEditorHarness = (
 				}
 			}
 			// Phase 5 (cleanup): pure event-driven model via subscribeMany.
-			// No 500ms polling fallback — rely on subscription callbacks for all resource updates.
+			// No continuous polling — rely on subscription callbacks for all resource updates.
 			syncResources()
 		}
 
@@ -272,6 +289,7 @@ export const createVideoEditorHarness = (
 		syncActiveProjectResources()
 
 		return () => {
+			clearStartupRetry()
 			disposeProjectResources()
 			disposeActiveProject()
 		}
