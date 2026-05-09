@@ -19,6 +19,7 @@ import {
 import { createEditorHarnessAdapter } from './editorHarnessAdapter'
 import type { EditorActionEnvironment, EditorDktScopePort } from './editorActionEnvironment'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
+import { getAttrsShape } from '../../dkt-react-sync/shape/autoShapes'
 
 type DktResourceAttrs = ResourceAttrs & { sourceResourceId: string }
 
@@ -390,6 +391,22 @@ export const createVideoEditorHarness = (
 
 		const inFlightRequestIds = new Set<string>()
 		const handledRequestIds = new Set<string>()
+		let mountedRequestScope: ReactSyncScopeHandle | null = null
+		let unmountRequestShape = EMPTY_CLEANUP
+
+		const ensureExportRequestShape = () => {
+			const rootScope = pageRuntime.getRootScope()
+			if (!rootScope || rootScope === mountedRequestScope) {
+				return
+			}
+			unmountRequestShape()
+			unmountRequestShape = EMPTY_CLEANUP
+			mountedRequestScope = rootScope
+			const shape = getAttrsShape(['exportRequest'])
+			if (shape) {
+				unmountRequestShape = pageRuntime.mountShape(rootScope, shape)
+			}
+		}
 
 		const readExportRequest = () => {
 			const rootScope = pageRuntime.getRootScope()
@@ -397,6 +414,9 @@ export const createVideoEditorHarness = (
 				return null
 			}
 			const attrs = pageRuntime.readAttrs(rootScope, ['exportRequest']) as { exportRequest?: unknown }
+			if (attrs.exportRequest == null) {
+				return null
+			}
 			const request = asExportRequestState(attrs.exportRequest)
 			if (!request) {
 				return null
@@ -495,6 +515,7 @@ export const createVideoEditorHarness = (
 		}
 
 		const tryStartPendingRequest = () => {
+			ensureExportRequestShape()
 			const snapshot = readExportRequest()
 			if (!snapshot) {
 				return
@@ -510,6 +531,7 @@ export const createVideoEditorHarness = (
 		return () => {
 			unlistenRootScope()
 			unlistenExportRequest()
+			unmountRequestShape()
 			globalThis.clearInterval(pollId)
 			inFlightRequestIds.clear()
 			handledRequestIds.clear()
