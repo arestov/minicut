@@ -1,9 +1,9 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
-import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
+import { expect, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
 
 const SIGNAL_URL = 'http://127.0.0.1:8787'
-let roomSequence = 0
 
 export type DebugTransfer = {
 	resourceId: string
@@ -48,8 +48,18 @@ const slugify = (value: string): string => value
 	.replace(/^-+|-+$/g, '')
 	.slice(0, 64) || 'room'
 
-export const createP2PRoomId = (prefix: string, seed: string): string =>
-	`${prefix}-${slugify(seed)}-${++roomSequence}`
+export const createP2PRoomId = (
+	prefix: string,
+	info: Pick<TestInfo, 'title' | 'workerIndex' | 'repeatEachIndex' | 'retry'>,
+): string =>
+	[
+		prefix,
+		slugify(info.title),
+		`w${info.workerIndex}`,
+		`r${info.repeatEachIndex}`,
+		`retry${info.retry}`,
+		randomUUID().slice(0, 8),
+	].join('-')
 
 export const buildRoomUrl = (
 	roomId: string,
@@ -124,7 +134,9 @@ export const isRuntimeReady = async (page: Page): Promise<boolean> => {
 }
 
 export const openP2PPeer = async (browser: Browser, roomUrl: string): Promise<PeerHandle> => {
-	const context = await browser.newContext()
+	const context = await browser.newContext({
+		storageState: { cookies: [], origins: [] },
+	})
 	const page = await context.newPage()
 	await page.goto(roomUrl)
 	await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()

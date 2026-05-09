@@ -10,7 +10,7 @@ import {
 } from './p2pTestHelpers'
 
 test('p2p media import transfers to the remote peer and yields a blob preview', async ({ browser }) => {
-	const roomId = createP2PRoomId('p2p-media', test.info().title)
+	const roomId = createP2PRoomId('p2p-media', test.info())
 	const roomUrl = buildRoomUrl(roomId, {
 		transferChunkSize: 512,
 		transferChunkDelayMs: 250,

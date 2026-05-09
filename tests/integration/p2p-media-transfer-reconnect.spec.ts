@@ -10,7 +10,7 @@ import {
 } from './p2pTestHelpers'
 
 test('p2p media transfer resumes after the remote peer reconnects mid-transfer', async ({ browser }) => {
-	const roomId = createP2PRoomId('p2p-media-reconnect', test.info().title)
+	const roomId = createP2PRoomId('p2p-media-reconnect', test.info())
 	const roomUrl = buildRoomUrl(roomId, {
 		transferChunkSize: 512,
 		transferChunkDelayMs: 250,

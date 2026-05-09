@@ -30,7 +30,7 @@ const setTimelineCursor = async (page: Page, seconds: number): Promise<void> => 
 test('scrubbing the remote timeline triggers a non-zero playhead window request', async ({ browser }) => {
 	test.setTimeout(90_000)
 
-	const roomId = createP2PRoomId('p2p-window-scrub', test.info().title)
+	const roomId = createP2PRoomId('p2p-window-scrub', test.info())
 	const roomUrl = buildRoomUrl(roomId, {
 		transferChunkSize: 256,
 		transferChunkDelayMs: 700,

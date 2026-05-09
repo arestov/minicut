@@ -12,7 +12,7 @@ import {
 } from './p2pTestHelpers'
 
 test('p2p state sync works over WebRTC across isolated browser contexts', async ({ browser }) => {
-	const roomId = createP2PRoomId('p2p-sync', test.info().title)
+	const roomId = createP2PRoomId('p2p-sync', test.info())
 	const roomUrl = buildRoomUrl(roomId)
 	const first = await openP2PPeer(browser, roomUrl)
 	const second = await openP2PPeer(browser, roomUrl)

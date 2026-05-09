@@ -10,7 +10,7 @@ import {
 } from './p2pTestHelpers'
 
 test('client-owned media imports transfer to main without sticking in error', async ({ browser }) => {
-	const roomId = createP2PRoomId('p2p-client-owned', test.info().title)
+	const roomId = createP2PRoomId('p2p-client-owned', test.info())
 	const roomUrl = buildRoomUrl(roomId, {
 		transferChunkSize: 512,
 		transferChunkDelayMs: 250,
@@ -38,7 +38,7 @@ test('client-owned media imports transfer to main without sticking in error', as
 })
 
 test('main relays a client-owned resource to a late joiner after the owner disconnects', async ({ browser }) => {
-	const roomId = createP2PRoomId('p2p-client-owned-relay', test.info().title)
+	const roomId = createP2PRoomId('p2p-client-owned-relay', test.info())
 	const roomUrl = buildRoomUrl(roomId, {
 		transferChunkSize: 512,
 		transferChunkDelayMs: 250,

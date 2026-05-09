@@ -9,8 +9,6 @@ import {
 	waitForRolePair,
 } from './p2pTestHelpers'
 
-test.describe.configure({ mode: 'serial' })
-
 const directions: Array<{ title: string; importer: 'main' | 'client' }> = [
 	{
 		title: 'large-chunk transfer smoke: main imports the 3 MB asset @slow',
@@ -26,7 +24,7 @@ for (const direction of directions) {
 	test(direction.title, async ({ browser }) => {
 		test.setTimeout(60_000)
 
-		const roomId = createP2PRoomId('p2p-large-chunk', test.info().title)
+		const roomId = createP2PRoomId('p2p-large-chunk', test.info())
 		const roomUrl = buildRoomUrl(roomId, {
 			transferChunkDelayMs: 250,
 		})

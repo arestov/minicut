@@ -16,7 +16,7 @@ import {
 } from './p2pTestHelpers'
 
 test('p2p failover keeps room writable and admits new peers', async ({ browser }) => {
-	const roomId = createP2PRoomId('p2p-failover', test.info().title)
+	const roomId = createP2PRoomId('p2p-failover', test.info())
 	const roomUrl = buildRoomUrl(roomId)
 
 	const peerA = await openP2PPeer(browser, roomUrl)
@@ -74,7 +74,7 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 })
 
 test('p2p survives two consecutive leader failovers across three peers', async ({ browser }) => {
-	const roomId = createP2PRoomId('p2p-three-peer', test.info().title)
+	const roomId = createP2PRoomId('p2p-three-peer', test.info())
 	const roomUrl = buildRoomUrl(roomId)
 	const titles = [
 		`epoch-1-${roomId}`,

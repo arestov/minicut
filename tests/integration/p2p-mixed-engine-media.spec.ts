@@ -22,13 +22,11 @@ const scenarios = [
 	},
 ]
 
-test.describe.configure({ mode: 'serial' })
-
 for (const scenario of scenarios) {
 	test(scenario.title, async ({ browser }) => {
 		test.setTimeout(75_000)
 
-		const roomId = createP2PRoomId('p2p-relay-smoke', test.info().title)
+		const roomId = createP2PRoomId('p2p-relay-smoke', test.info())
 		const roomUrl = buildRoomUrl(roomId, {
 			transferChunkSize: 512,
 			transferChunkDelayMs: 250,
