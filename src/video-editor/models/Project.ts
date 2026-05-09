@@ -123,6 +123,48 @@ export const Project = model({
 		updatedAt: ['input', 0],
 		autoCreateDefaultTracks: ['input', false],
 		isLandscape: ['comp', ['width', 'height'], (width: unknown, height: unknown) => asNumber(width, 0) >= asNumber(height, 0)],
+		resourceTransferManifest: ['comp', ['< @all:transferSnapshot < resources'] as const, (snapshots: unknown) => {
+			if (!Array.isArray(snapshots)) {
+				return []
+			}
+			return snapshots
+				.map((entry) => {
+					const item = entry as {
+						sourceResourceId?: unknown
+						name?: unknown
+						kind?: unknown
+						url?: unknown
+						mime?: unknown
+						duration?: unknown
+						width?: unknown
+						height?: unknown
+						size?: unknown
+						source?: unknown
+						status?: unknown
+						data?: unknown
+					} | null
+					if (!item || typeof item.sourceResourceId !== 'string' || !item.sourceResourceId) {
+						return null
+					}
+					return {
+						resourceId: item.sourceResourceId,
+						attrs: {
+							name: typeof item.name === 'string' ? item.name : item.sourceResourceId,
+							kind: item.kind === 'audio' || item.kind === 'image' || item.kind === 'text' ? item.kind : 'video',
+							url: typeof item.url === 'string' ? item.url : '',
+							mime: typeof item.mime === 'string' ? item.mime : 'application/octet-stream',
+							duration: typeof item.duration === 'number' && Number.isFinite(item.duration) ? item.duration : 0,
+							width: typeof item.width === 'number' && Number.isFinite(item.width) ? item.width : undefined,
+							height: typeof item.height === 'number' && Number.isFinite(item.height) ? item.height : undefined,
+							size: typeof item.size === 'number' && Number.isFinite(item.size) ? item.size : undefined,
+							source: item.source && typeof item.source === 'object' ? item.source : { kind: 'local' },
+							status: typeof item.status === 'string' ? item.status : 'missing',
+							data: item.data && typeof item.data === 'object' ? item.data : {},
+						},
+					}
+				})
+				.filter((entry): entry is { resourceId: string; attrs: Record<string, unknown> } => entry !== null)
+		}],
 		previewClipSources: ['comp', ['< @all:clipRenderData < tracks.clips'] as const,
 			reduceProjectPreviewClipSources],
 	},
