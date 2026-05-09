@@ -27,9 +27,6 @@ export const createEditorHarnessAdapter = (
 		setActiveProject(projectId: string): void {
 			dispatchRoot(env, 'setActiveProject', projectId)
 		},
-		importSampleResource(): void {
-			dispatchRoot(env, 'importSampleResource')
-		},
 		addTextClip(content?: string): void {
 			const sourceTextId = createSourceId('text')
 			const sourceClipId = createSourceId('clip')
@@ -47,18 +44,6 @@ export const createEditorHarnessAdapter = (
 				},
 			})
 		},
-		selectEntity(entityId: string | null): void {
-			dispatchRoot(env, 'selectEntity', entityId)
-		},
-		setActiveInspectorTab(tab): void {
-			dispatchRoot(env, 'setActiveInspectorTab', tab)
-		},
-		deleteSelectedClip(): void {
-			dispatchRoot(env, 'deleteSelectedClip')
-		},
-		splitSelectedClip(): void {
-			dispatchRoot(env, 'splitSelectedClip')
-		},
 		requestSelectedClipExport(): void {
 			dispatchRoot(env, 'requestSelectedClipExport', {
 				id: `export:${Date.now().toString(36)}:${++exportSequence}`,
@@ -71,24 +56,12 @@ export const createEditorHarnessAdapter = (
 				initiatedBy: getRootNodeId(env),
 			})
 		},
-		getSessionRootNodeId(): string | null {
-			return getRootNodeId(env)
-		},
 		getCachedExportUrl(exportId: string): string | null {
 			const cached = env.export.cachedResults.get(exportId)
 			return cached?.downloadUrl ?? null
 		},
-		togglePlayback(): void {
-			dispatchRoot(env, 'togglePlayback')
-		},
 		setCursor(value: number): void {
 			dispatchRoot(env, 'setCursor', value)
-		},
-		tickPlayback(deltaSeconds: number): void {
-			dispatchRoot(env, 'tickPlayback', { deltaSeconds })
-		},
-		zoomTimeline(delta: number): void {
-			dispatchRoot(env, 'zoomTimeline', { delta })
 		},
 	})
 }
