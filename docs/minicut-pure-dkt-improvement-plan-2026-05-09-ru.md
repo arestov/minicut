@@ -869,6 +869,16 @@ rg -n "_node_id|_nodeId" src/video-editor/app src/dkt-react-sync
 
 Такой порядок минимизирует риск: сначала чинятся явные мелочи, затем import как более локальный side-effect pipeline, затем export как более сложный pipeline, потом cleanup traversal и debug.
 
+## Что вышло неудачно при реализации
+
+Промежуточная попытка переноса import flow получилась архитектурно неудачной: `editorHarnessAdapter.requestImportFiles` после `dispatchRoot('requestImportFiles', ...)` дополнительно сам создавал runtime task и запускал `executeImportFilesTask`. Формально тяжелая файловая логика уже жила в executor, но orchestration снова оказался в page/UI adapter boundary. Это противоречило цели плана: React/page action layer должен только положить `File[]` в page-side handle и отправить DKT intent.
+
+Причина ошибки была не в необходимости fallback, а в неправильном DKT walker flow. В `SessionRoot.requestImportFiles` первый шаг отправлял payload в `Project.requestImportFiles`, но не forward-ил его через `$output`; следующий шаг `$fx_handleInputFiles` получал `null` вместо `{ inputBatchHandleId }`, поэтому `IMPORT_FILES_REQUEST` не публиковался. Правильный fix: первый step пишет одновременно в inline project action и в `$output`, а второй step уже строит `$fx_handleInputFiles` payload из forwarded input.
+
+Также выяснилась отдельная DKT-деталь по `Project.importResource`: inline-subwalker `addClip` может менять payload следующего шага. Поэтому шаги, которым нужно сохранить исходное import decision payload, должны явно forward-ить его через `$output` object slot. Это лучше, чем полагаться на порядок шагов или скрытое mutable состояние.
+
+Итоговое правило для дальнейших миграций: если после DKT action нужен `$fx_*` executor, нельзя добавлять page-side fallback в adapter. Сначала нужно проверить, что предыдущий saga step действительно пишет `$output`, и добавить regression test на соответствующий transport message (`IMPORT_FILES_REQUEST`, `EXPORT_REQUEST` и т.п.).
+
 ## Критерии готовности
 
 Pure DKT improvement можно считать выполненным, когда:
