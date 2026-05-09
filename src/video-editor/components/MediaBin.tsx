@@ -4,11 +4,15 @@ import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
+import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRuntime'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
+import { useScope } from '../../dkt-react-sync/hooks/useScope'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../render/registryTypes'
 import { Button, IconButton } from './ControlPrimitives'
+
+const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
 
 const isPreviewableUrl = (url: string): boolean =>
 	url.startsWith('blob:') || url.startsWith('/') || url.startsWith('./') || url.startsWith('http') || url.startsWith('data:')
@@ -205,6 +209,77 @@ const ProjectMediaList = ({
 	)
 }
 
+const useImportFiles = () => {
+	const dispatch = useActions()
+	const scope = useScope()
+	const runtime = useReactScopeRuntime()
+	const { media, transfers, lifecycle, resourceChunkSize } = useVideoEditor()
+
+	return useCallback(async (files: FileList | File[]) => {
+		const ownerPeerId = transfers.getPeerId()
+		for (const file of Array.from(files)) {
+			const kind = media.getFileKind(file)
+			if (!kind) continue
+
+			const objectUrl = media.createObjectUrl(file)
+			if (!objectUrl) continue
+			lifecycle.registerObjectUrl(objectUrl, 'import')
+
+			let duration = 0
+			try {
+				duration = await media.getImportedResourceDuration(objectUrl, kind)
+			} catch {
+				duration = 0
+			}
+
+			const sourceResourceId = createSourceId('resource')
+
+			dispatch('importResource', {
+				sourceResourceId,
+				name: file.name,
+				kind,
+				url: objectUrl,
+				mime: file.type || 'application/octet-stream',
+				duration,
+				size: file.size,
+				source: {
+					kind: 'local',
+					ownerPeerId: typeof ownerPeerId === 'string' && ownerPeerId.length > 0 ? ownerPeerId : null,
+				},
+				status: 'ready',
+				data: {
+					status: 'ready',
+					chunkSize: resourceChunkSize,
+					chunks: {},
+					ranges: { loaded: [[0, file.size]], requested: [] },
+					loadedBytes: file.size,
+				},
+			})
+
+			if (kind === 'video' && scope) {
+				const attrs = runtime.readAttrs(scope, ['timelineDuration']) as { timelineDuration?: unknown }
+				const isTimelineEmpty = typeof attrs.timelineDuration !== 'number' || attrs.timelineDuration <= 0
+				if (isTimelineEmpty) {
+					dispatch('addEmbeddedAudioToTimeline', { sourceResourceId })
+				}
+			}
+
+			transfers.manager.registerLocalResource(sourceResourceId, file, {
+				objectUrl,
+				kind,
+				mime: file.type || 'application/octet-stream',
+				duration,
+				size: file.size,
+				chunkSize: resourceChunkSize,
+				ownerPeerId,
+				sourceKind: 'local',
+				fallbackUrl: objectUrl,
+				name: file.name,
+			})
+		}
+	}, [dispatch, scope, runtime, media, transfers, lifecycle, resourceChunkSize])
+}
+
 const MediaBinPanel = ({
 	activeProjectId,
 	children,
@@ -224,7 +299,7 @@ const MediaBinPanel = ({
 	setViewMode: (value: 'list' | 'grid') => void
 	viewMode: 'list' | 'grid'
 }) => {
-	const { actions } = useVideoEditor()
+	const importFiles = useImportFiles()
 
 	return (
 		<section className="ve-panel ve-media-bin" aria-label="Media bin">
@@ -241,7 +316,7 @@ const MediaBinPanel = ({
 						disabled={!activeProjectId}
 						onChange={(event) => {
 							if (event.currentTarget.files) {
-								actions.importFiles(event.currentTarget.files)
+								importFiles(event.currentTarget.files)
 								event.currentTarget.value = ''
 							}
 						}}

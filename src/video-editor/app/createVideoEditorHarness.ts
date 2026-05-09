@@ -376,7 +376,7 @@ export const createVideoEditorHarness = (
 		platform,
 	}
 
-	const actions = createEditorHarnessAdapter(env, { resourceChunkSize })
+	const actions = createEditorHarnessAdapter(env)
 
 	const subscribeToExportRequests = (): (() => void) => {
 		if (!pageRuntime || !dktPort) {
@@ -506,6 +506,10 @@ export const createVideoEditorHarness = (
 		pageRuntime,
 		actions,
 		resourceTransfers$: resourceTransferManager.transfers$,
+		resourceChunkSize,
+		media: env.media,
+		transfers: env.transfers,
+		lifecycle: env.lifecycle,
 		// TESTING AND DEBUG ONLY — queue snapshot for fx task diagnostics.
 		debugDumpRuntimeTasksTesting: () => runtimeTasks.debugDumpTasksTesting(),
 		
