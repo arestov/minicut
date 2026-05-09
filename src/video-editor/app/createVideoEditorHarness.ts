@@ -201,15 +201,6 @@ export const createVideoEditorHarness = (
 
 		let disposeProjectResources = EMPTY_CLEANUP
 		let disposeActiveProject = EMPTY_CLEANUP
-		let runtimeReadyTimeout: ReturnType<typeof setTimeout> | null = null
-		let projectRefreshInterval: ReturnType<typeof setInterval> | null = null
-
-		const clearProjectRefreshInterval = (): void => {
-			if (projectRefreshInterval !== null) {
-				globalThis.clearInterval(projectRefreshInterval)
-				projectRefreshInterval = null
-			}
-		}
 
 		const syncActiveProjectResources = () => {
 			const rootScope = pageRuntime.getRootScope()
@@ -225,17 +216,10 @@ export const createVideoEditorHarness = (
 			const activeProjectScope = pageRuntime.readOne(rootScope, 'activeProject')
 			const fallbackProjectScope = activeProjectScope ?? projectScopes[0] ?? null
 			disposeProjectResources()
-			clearProjectRefreshInterval()
+
 			if (!fallbackProjectScope) {
 				resourceTransferManager.syncResources([])
-				if (runtimeReadyTimeout === null) {
-					// TODO: phase5 (cleanup) — migrate from retry-polling to event-driven readiness signal or explicit initialization callback.
-					// Currently: 500ms retry if activeProject not available on startup. Consider race condition in runtime initialization.
-					runtimeReadyTimeout = globalThis.setTimeout(() => {
-						runtimeReadyTimeout = null
-						syncActiveProjectResources()
-					}, 500)
-				}
+				// Phase 5: no polling fallback. Rely on subscribeRootScope to re-trigger when activeProject becomes available.
 				return
 			}
 
@@ -277,10 +261,8 @@ export const createVideoEditorHarness = (
 					unlisten()
 				}
 			}
-			// TODO: phase5 (cleanup) — replace 500ms refresh polling with pure event-driven model.
-			// Currently subscribeMany fires on resource changes, but 500ms polling added as safety net for edge cases.
-			// If edge cases are real, document them; if not, remove polling and rely on subscription alone.
-			projectRefreshInterval = globalThis.setInterval(syncResources, 500)
+			// Phase 5 (cleanup): pure event-driven model via subscribeMany.
+			// No 500ms polling fallback — rely on subscription callbacks for all resource updates.
 			syncResources()
 		}
 
@@ -290,11 +272,6 @@ export const createVideoEditorHarness = (
 		syncActiveProjectResources()
 
 		return () => {
-			if (runtimeReadyTimeout !== null) {
-				globalThis.clearTimeout(runtimeReadyTimeout)
-				runtimeReadyTimeout = null
-			}
-			clearProjectRefreshInterval()
 			disposeProjectResources()
 			disposeActiveProject()
 		}
