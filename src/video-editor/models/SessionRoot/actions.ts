@@ -1,5 +1,7 @@
 import { PROJECT_CREATION_SHAPE } from '../Project'
 import { buildPreviewBuffer, type PreviewBuffer, type PreviewStructure } from '../../read-model/previewComps'
+import type { ExportProgressState } from '../../app/exportProgressState'
+import { clampProgressPercent } from '../../app/exportProgressState'
 
 /** Inline session state patch type – replaces legacy EditorSessionState from domain/types. */
 type SessionStateFields = {
@@ -8,6 +10,7 @@ type SessionStateFields = {
 	selectedEntityId: string | null
 	cursor: number
 	isPlaying: boolean
+	exportProgress: ExportProgressState | null
 	timelineZoom: number
 	activeInspectorTab: 'edit' | 'color' | 'audio' | 'export'
 	previewBuffer: PreviewBuffer | null
@@ -47,6 +50,7 @@ export type DktSessionActionName =
 	| 'splitSelectedClip'
 	| 'startPreviewBuffer'
 	| 'clearPreviewBuffer'
+	| 'setExportProgress'
 
 export type DktSessionActionPatch = Partial<Pick<SessionStateFields,
 	| 'activeProjectId'
@@ -81,6 +85,63 @@ const asObject = (value: unknown): Record<string, unknown> | null =>
 
 const asString = (value: unknown): string | null => typeof value === 'string' && value ? value : null
 const asNumber = (value: unknown, fallback: number): number => typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+const normalizeExportRange = (value: unknown): ExportProgressState['range'] | null => {
+	if (!value || typeof value !== 'object') {
+		return null
+	}
+	const range = value as { type?: unknown; clipId?: unknown }
+	if (range.type === 'project') {
+		return { type: 'project' }
+	}
+	if (range.type === 'clip' && typeof range.clipId === 'string' && range.clipId) {
+		return { type: 'clip', clipId: range.clipId }
+	}
+	return null
+}
+
+const normalizeExportStage = (value: unknown): ExportProgressState['stage'] | null => {
+	if (
+		value === 'idle'
+		|| value === 'queued'
+		|| value === 'rendering'
+		|| value === 'finalizing'
+		|| value === 'done'
+		|| value === 'error'
+	) {
+		return value
+	}
+	return null
+}
+
+const reduceSessionSetExportProgressAction = (payload: unknown): Pick<SessionStateFields, 'exportProgress'> => {
+	if (payload === null) {
+		return { exportProgress: null }
+	}
+
+	const value = asObject(payload)
+	const range = normalizeExportRange(value?.range)
+	const stage = normalizeExportStage(value?.stage)
+	if (!value || !range || !stage) {
+		return { exportProgress: null }
+	}
+
+	const progressFallback = stage === 'done' ? 100 : 0
+	return {
+		exportProgress: {
+			id: asString(value.id) ?? `export:${Date.now().toString(36)}`,
+			range,
+			stage,
+			progress: clampProgressPercent(value.progress, progressFallback),
+			updatedAt: asNumber(value.updatedAt, Date.now()),
+			initiatedBy: asString(value.initiatedBy),
+			fileName: asString(value.fileName) ?? undefined,
+			size: typeof value.size === 'number' && Number.isFinite(value.size) ? value.size : undefined,
+			frameCount: typeof value.frameCount === 'number' && Number.isFinite(value.frameCount) ? value.frameCount : undefined,
+			error: asString(value.error) ?? undefined,
+		},
+	}
+}
 
 const normalizeInitialTrack = (value: unknown) => {
 	const track = asObject(value)
@@ -464,6 +525,13 @@ export const sessionZoomTimelineAction = {
 	],
 } as const satisfies DktActionDescriptor
 
+export const sessionSetExportProgressAction = {
+	to: {
+		exportProgress: ['exportProgress'],
+	},
+	fn: reduceSessionSetExportProgressAction,
+} as const satisfies DktActionDescriptor
+
 export const sessionDeleteSelectedClipAction = [
 	{
 		to: ['<< selectedClip', { action: 'removeSelf', inline_subwalker: true }],
@@ -548,4 +616,5 @@ export const dktSessionActions = {
 		},
 		fn: () => ({ previewBuffer: null }),
 	} as const satisfies DktActionDescriptor,
+	setExportProgress: sessionSetExportProgressAction,
 } as const satisfies Record<DktSessionActionName, DktActionDefinition>

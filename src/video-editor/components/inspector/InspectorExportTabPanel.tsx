@@ -1,16 +1,25 @@
 import { Download } from 'lucide-react'
-import { useState } from 'react'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
+import { useRootAttrs } from '../../../dkt-react-sync/hooks/useRootAttrs'
 import { useVideoEditor } from '../../app/VideoEditorContext'
+import { formatExportProgress, isExportRunning, type ExportProgressState } from '../../app/exportProgressState'
 import { IconButton } from '../ControlPrimitives'
 import { InspectorSection } from './InspectorSection'
-import { formatExportProgress, type ExportStatus } from './types'
+
+const parseExportProgress = (value: unknown): ExportProgressState | null =>
+	value && typeof value === 'object' && 'stage' in value ? value as ExportProgressState : null
 
 export const InspectorExportTabPanel = () => {
-	const [exportStatus, setExportStatus] = useState<ExportStatus>({ state: 'idle' })
 	const { actions } = useVideoEditor()
 	const { sourceClipId, name } = useAttrs(['sourceClipId', 'name']) as { sourceClipId?: unknown; name?: unknown }
+	const rootAttrs = useRootAttrs(['exportProgress']) as { exportProgress?: unknown }
 	const clipId = typeof sourceClipId === 'string' ? sourceClipId : null
+	const exportProgress = parseExportProgress(rootAttrs.exportProgress)
+	const clipExport = clipId && exportProgress?.range.type === 'clip' && exportProgress.range.clipId === clipId
+		? exportProgress
+		: null
+	const isClipExportRunning = isExportRunning(clipExport)
+	const clipExportLabel = clipExport ? formatExportProgress(clipExport) : 'queued 0%'
 
 	return (
 		<div className="ve-inspector-tab-panel" role="tabpanel" aria-label="Export inspector">
@@ -21,27 +30,19 @@ export const InspectorExportTabPanel = () => {
 					icon={Download}
 					label="Queue clip export"
 					variant="default"
-					disabled={exportStatus.state === 'rendering' || !clipId}
+					disabled={isClipExportRunning || !clipId}
 					onClick={() => {
-						if (!clipId) {
-							setExportStatus({ state: 'error', message: 'Select a clip before exporting.' })
-							return
+						if (clipId) {
+							void actions.queueClipExportById(clipId)
 						}
-						setExportStatus({ state: 'rendering', progress: { stage: 'queued', progress: 0 } })
-						actions.queueClipExportById(clipId, (progress) => {
-							setExportStatus((current) => current.state === 'rendering' ? { state: 'rendering', progress } : current)
-						}).then((result) => {
-							setExportStatus(result ? { state: 'ready', result } : { state: 'error', message: 'Select a clip before exporting.' })
-						}).catch((error: unknown) => {
-							setExportStatus({ state: 'error', message: error instanceof Error ? error.message : String(error) })
-						})
 					}}
 				>
-					{exportStatus.state === 'rendering' ? `Rendering ${formatExportProgress(exportStatus.progress)}` : 'Queue clip export'}
+					{isClipExportRunning ? `Rendering ${clipExportLabel}` : 'Queue clip export'}
 				</IconButton>
-				{exportStatus.state === 'rendering' ? <p className="ve-preview__summary" aria-live="polite">Rendering export file for {String(name)}: {formatExportProgress(exportStatus.progress)}</p> : null}
-				{exportStatus.state === 'ready' ? <p className="ve-preview__summary" role="status">Export ready: {exportStatus.result.frameCount} frames · {exportStatus.result.size} bytes{exportStatus.result.downloadUrl ? <> · <a href={exportStatus.result.downloadUrl} download={exportStatus.result.fileName}>Download file</a></> : null}</p> : null}
-				{exportStatus.state === 'error' ? <p className="ve-preview__summary" role="status">Export failed: {exportStatus.message}</p> : null}
+				{isClipExportRunning ? <p className="ve-preview__summary" aria-live="polite">Rendering export file for {String(name)}: {clipExportLabel}</p> : null}
+				{clipExport?.stage === 'done' ? <p className="ve-preview__summary" role="status">Export ready: {clipExport.frameCount ?? 0} frames · {clipExport.size ?? 0} bytes{clipExport.fileName ? ` · ${clipExport.fileName}` : ''}</p> : null}
+				{clipExport?.stage === 'error' ? <p className="ve-preview__summary" role="status">Export failed: {clipExport.error ?? 'Unknown error'}</p> : null}
+				{!clipId ? <p className="ve-preview__summary" role="status">Select a clip before exporting.</p> : null}
 			</InspectorSection>
 		</div>
 	)

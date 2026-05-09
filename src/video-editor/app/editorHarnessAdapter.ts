@@ -2,10 +2,12 @@ import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandl
 import { getAttrsShape } from '../../dkt-react-sync/shape/autoShapes'
 import type { ExportProgressEvent, ExportRenderResult, ExportRange } from '../render/exportRenderer'
 import type { ExportPlan } from '../render/renderPlan'
+import { clampProgressPercent } from './exportProgressState'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { CreateEditorHarnessAdapterOptions, VideoEditorHarnessActions } from './actionRuntimeTypes'
 
 let projectSequence = 0
+let exportSequence = 0
 
 const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
 
@@ -180,9 +182,28 @@ const queueExport = async (
 	range: ExportRange,
 	onProgress?: (event: ExportProgressEvent) => void,
 ): Promise<ExportRenderResult | null> => {
+	const exportId = `export:${Date.now().toString(36)}:${++exportSequence}`
+	const initiatedBy = env.transfers.getPeerId()
+	const setExportProgress = (payload: Record<string, unknown>): void => {
+		dispatchRoot(env, 'setExportProgress', {
+			id: exportId,
+			range,
+			initiatedBy,
+			updatedAt: Date.now(),
+			...payload,
+		})
+	}
+
+	setExportProgress({ stage: 'queued', progress: 0 })
+
 	const projectScope = getActiveProjectScope(env)
 	const runtimeSnapshot = env.pageRuntime?.getSnapshot() ?? null
 	if (!projectScope || !env.pageRuntime) {
+		setExportProgress({
+			stage: 'error',
+			progress: 0,
+			error: 'Missing active project scope',
+		})
 		pushExportDebug('missing-project-scope', {
 			range,
 			runtimeSnapshot,
@@ -205,6 +226,11 @@ const queueExport = async (
 	}
 	const plan = computedAttrs.exportPlan
 	if (!plan || !plan.projectId) {
+		setExportProgress({
+			stage: 'error',
+			progress: 0,
+			error: 'Missing export plan',
+		})
 		pushExportDebug('missing-export-plan', {
 			range,
 			runtimeSnapshot,
@@ -219,6 +245,14 @@ const queueExport = async (
 	}
 
 	try {
+		const handleProgress = (event: ExportProgressEvent): void => {
+			onProgress?.(event)
+			setExportProgress({
+				stage: event.stage,
+				progress: clampProgressPercent(event.progress * 100, 0),
+			})
+		}
+
 		pushExportDebug('render-start', {
 			range,
 			projectId: plan.projectId,
@@ -230,12 +264,19 @@ const queueExport = async (
 			range,
 			projectId: plan.projectId,
 		})
-		const result = await env.export.render({ plan, range, format: 'video-webm' }, onProgress)
+		const result = await env.export.render({ plan, range, format: 'video-webm' }, handleProgress)
 		const downloadUrl = env.media.createObjectUrl(result.blob)
 		if (downloadUrl) {
 			env.lifecycle.registerObjectUrl(downloadUrl, 'export')
 			result.downloadUrl = downloadUrl
 		}
+		setExportProgress({
+			stage: 'done',
+			progress: 100,
+			fileName: result.fileName,
+			size: result.size,
+			frameCount: result.frameCount,
+		})
 		pushExportDebug('render-done', {
 			range,
 			projectId: plan.projectId,
@@ -253,6 +294,11 @@ const queueExport = async (
 		})
 		return result
 	} catch (error) {
+		setExportProgress({
+			stage: 'error',
+			progress: 0,
+			error: error instanceof Error ? error.message : String(error),
+		})
 		pushExportDebug('render-failed', {
 			range,
 			projectId: plan.projectId,
