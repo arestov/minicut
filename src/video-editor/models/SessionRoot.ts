@@ -32,7 +32,6 @@ export const EditorSessionRoot = model({
 		isPlaying: ['input', false],
 		previewBuffer: ['input', null as PreviewBuffer | null],
 		exportRequest: ['input', null as ExportRequestState | null],
-		exportRequestIntent: ['input', null as ExportRequestState | null],
 		exportProgress: ['input', null as ExportProgressState | null],
 		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
 		timelineTool: ['input', 'select'],
@@ -97,31 +96,25 @@ export const EditorSessionRoot = model({
 			],
 		},
 		out: {
-			requestExport: {
+			$fx_requestExport: {
 				api: ['exportRuntime'],
-				trigger: ['exportRequestIntent'],
-				require: ['exportRequestIntent'],
 				create_when: { api_inits: true },
 				fn: (api: unknown, state: unknown) => {
 					const runtime = api as { requestExport?: (payload: unknown) => void } | null
-					const taskPayload = (state as { payload?: unknown } | null)?.payload
-					const intentFromTask = taskPayload && typeof taskPayload === 'object' ? taskPayload : null
-					const intentFromState = (state as { exportRequestIntent?: unknown } | null)?.exportRequestIntent
-					const intent = intentFromTask || intentFromState
-					if (!runtime || typeof runtime.requestExport !== 'function' || !intent || typeof intent !== 'object') {
-						debugExport('skip requestExport effect', {
+					const payload = (state as { payload?: unknown } | null)?.payload
+					if (!runtime || typeof runtime.requestExport !== 'function' || !payload || typeof payload !== 'object') {
+						debugExport('skip $fx_requestExport effect', {
 							hasRuntime: Boolean(runtime && typeof runtime.requestExport === 'function'),
-							hasIntentFromTask: Boolean(intentFromTask),
-							hasIntentFromState: Boolean(intentFromState && typeof intentFromState === 'object'),
+							hasPayload: Boolean(payload),
 						})
 						return
 					}
 
-					debugExport('requestExport effect -> runtime', {
-						id: (intent as { id?: unknown }).id,
-						range: (intent as { range?: unknown }).range,
+					debugExport('$fx_requestExport effect -> runtime', {
+						id: (payload as { id?: unknown }).id,
+						range: (payload as { range?: unknown }).range,
 					})
-					runtime.requestExport(intent)
+					runtime.requestExport(payload)
 				},
 			},
 		},

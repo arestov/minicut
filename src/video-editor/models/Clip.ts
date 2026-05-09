@@ -3,7 +3,6 @@ import { EFFECT_CREATION_SHAPE } from './Effect'
 import { mergeEffectFilters } from '../render/colorPipeline'
 import type { EffectRenderInstruction } from '../render/colorPipeline'
 import type { PreviewClipSource, ResolvedAnimatedScalar } from '../read-model/previewComps'
-import type { ExportProgressState } from '../app/exportProgressState'
 import {
 	clipSetAudioAction,
 	clipSetFadeAction,
@@ -50,7 +49,6 @@ export const Clip = model({
 		splitOriginalDuration: ['input', null],
 		crop: ['input', null],
 		colorAdjustments: ['input', null],
-		exportRequestIntent: ['input', null as { id: string; clipId: string; initiatedBy: string | null } | null],
 		renderInterval: ['comp', ['start', 'duration'], (start: unknown, duration: unknown) => {
 			const s = typeof start === 'number' && Number.isFinite(start) ? start : 0
 			const d = typeof duration === 'number' && Number.isFinite(duration) ? Math.max(0, duration) : 0
@@ -61,7 +59,6 @@ export const Clip = model({
 			crop: crop && typeof crop === 'object' ? crop : null,
 		})],
 		effectStackSummary: ['input', null],
-		exportProgress: ['input', null as ExportProgressState | null],
 		clipRenderData: ['comp', [
 			'sourceClipId', 'sourceResourceId', 'sourceResourceName', 'mediaKind', 'name', 'color',
 			'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'opacity', 'transform', 'audio',
@@ -128,28 +125,6 @@ export const Clip = model({
 		resource: ['input', { linking: '<< resource << #' }],
 		track: ['input', { linking: '<< track << #' }],
 		project: ['input', { linking: '<< project << #' }],
-	},
-	effects: {
-		api: {
-			exportRuntime: [['_node_id'], ['#exportRuntime'], (api: unknown) => api],
-		},
-		out: {
-			requestClipExport: {
-				api: ['exportRuntime'],
-				trigger: ['exportRequestIntent'],
-				require: ['exportRequestIntent'],
-				create_when: { api_inits: true },
-				fn: (api: unknown, state: unknown) => {
-					const runtime = api as { requestClipExport?: (payload: unknown) => void } | null
-					const intent = (state as { exportRequestIntent?: unknown } | null)?.exportRequestIntent
-					if (!runtime || typeof runtime.requestClipExport !== 'function' || !intent || typeof intent !== 'object') {
-						return
-					}
-
-					runtime.requestClipExport(intent)
-				},
-			},
-		},
 	},
 	actions: {
 		updateOpacity: {
@@ -502,58 +477,6 @@ export const Clip = model({
 					splitOriginalDuration: ['splitOriginalDuration'],
 				},
 				fn: () => ({ splitOriginalDuration: null }),
-			},
-		],
-		setExportProgress: {
-			to: {
-				exportProgress: ['exportProgress'],
-			},
-			fn: (payload: unknown) => {
-				const p = payload as { stage?: unknown; progress?: unknown; message?: unknown } | null
-				if (!p || typeof p !== 'object') return '$noop'
-				return {
-					exportProgress: {
-						stage: typeof p.stage === 'string' ? p.stage : 'idle',
-						progress: typeof p.progress === 'number' ? Math.max(0, Math.min(100, p.progress)) : 0,
-						message: typeof p.message === 'string' ? p.message : undefined,
-					},
-				}
-			},
-		},
-		requestClipExport: [
-			{
-				to: {
-					exportRequestIntent: ['exportRequestIntent'],
-					exportProgress: ['exportProgress'],
-				},
-				fn: [
-					['$noop', 'sourceClipId'] as const,
-					(payload: unknown, noop: unknown, sourceClipId: unknown) => {
-						const value = payload as { id?: unknown; clipId?: unknown; initiatedBy?: unknown } | null
-						const fromPayloadClipId = typeof value?.clipId === 'string' ? value.clipId : null
-						const clipId = typeof sourceClipId === 'string' ? sourceClipId : fromPayloadClipId
-						if (!clipId) {
-							return noop
-						}
-						const exportId = typeof value?.id === 'string' && value.id
-							? value.id
-							: `export:${Date.now().toString(36)}`
-						const initiatedBy = typeof value?.initiatedBy === 'string' ? value.initiatedBy : null
-
-						return {
-							exportRequestIntent: {
-								id: exportId,
-								clipId,
-								initiatedBy,
-							},
-							exportProgress: {
-								stage: 'queued',
-								progress: 0,
-								message: undefined,
-							},
-						}
-					},
-				],
 			},
 		],
 	},

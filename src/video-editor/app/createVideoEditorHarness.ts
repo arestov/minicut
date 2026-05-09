@@ -386,20 +386,6 @@ export const createVideoEditorHarness = (
 		const inFlightRequestIds = new Set<string>()
 		const handledRequestIds = new Set<string>()
 
-		const tryStartFromRootAttr = () => {
-			const rootScope = pageRuntime.getRootScope()
-			if (!rootScope) {
-				return
-			}
-			const attrs = pageRuntime.readAttrs(rootScope, ['exportRequest']) as { exportRequest?: unknown }
-			const request = parseExportRequest(attrs.exportRequest)
-			if (!request) {
-				return
-			}
-			debugExport('root attr exportRequest observed', { id: request.id })
-			startRequest(request)
-		}
-
 		const startRequest = (request: ExportRequestState): void => {
 			if (!request) {
 				return
@@ -503,12 +489,9 @@ export const createVideoEditorHarness = (
 			debugExport('channel export request observed', { id: request.id })
 			startRequest(request)
 		}) ?? EMPTY_CLEANUP
-		const unlistenRootExportRequest = pageRuntime.subscribeRootAttrs(['exportRequest'], tryStartFromRootAttr)
-		tryStartFromRootAttr()
 
 		return () => {
 			unlistenExportRequest()
-			unlistenRootExportRequest()
 			inFlightRequestIds.clear()
 			handledRequestIds.clear()
 		}

@@ -13,7 +13,6 @@ type SessionStateFields = {
 	cursor: number
 	isPlaying: boolean
 	exportRequest: ExportRequestState | null
-	exportRequestIntent: ExportRequestState | null
 	exportProgress: ExportProgressState | null
 	timelineZoom: number
 	activeInspectorTab: 'edit' | 'color' | 'audio' | 'export'
@@ -590,7 +589,6 @@ export const sessionRequestProjectExportAction = [
 		{
 			to: {
 				exportRequest: ['exportRequest'],
-				exportRequestIntent: ['exportRequestIntent'],
 				exportProgress: ['exportProgress'],
 				exportFxPayload: ['$output'],
 			},
@@ -623,7 +621,6 @@ export const sessionRequestProjectExportAction = [
 					}
 					return {
 						exportRequest: request,
-						exportRequestIntent: request,
 						exportProgress: createQueuedProgressState(id, range, initiatedBy),
 						exportFxPayload: request,
 					}
@@ -645,7 +642,6 @@ export const sessionRequestClipExportAction = [
 		{
 			to: {
 				exportRequest: ['exportRequest'],
-				exportRequestIntent: ['exportRequestIntent'],
 				exportProgress: ['exportProgress'],
 				exportFxPayload: ['$output'],
 			},
@@ -691,7 +687,6 @@ export const sessionRequestClipExportAction = [
 					}
 					return {
 						exportRequest: request,
-						exportRequestIntent: request,
 						exportProgress: createQueuedProgressState(id, range, initiatedBy),
 						exportFxPayload: request,
 					}
@@ -713,7 +708,6 @@ export const sessionRequestSelectedClipExportAction = [
 		{
 			to: {
 				exportRequest: ['exportRequest'],
-				exportRequestIntent: ['exportRequestIntent'],
 				exportProgress: ['exportProgress'],
 				exportFxPayload: ['$output'],
 			},
@@ -748,7 +742,6 @@ export const sessionRequestSelectedClipExportAction = [
 					}
 					return {
 						exportRequest: request,
-						exportRequestIntent: request,
 						exportProgress: createQueuedProgressState(id, range, initiatedBy),
 						exportFxPayload: request,
 					}
