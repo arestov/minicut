@@ -35,8 +35,7 @@ export const createMiniCutPageSyncRuntime = ({
 }): PageSyncRuntime => {
   const store = createSyncStore(createEmptyPageRuntimeSnapshot())
   const rootAttrsCache = new Map<string, RootAttrsCacheEntry>()
-  const exportRequestListeners = new Set<(payload: unknown) => void>()
-  const importFilesRequestListeners = new Set<(payload: unknown) => void>()
+  const runtimeTaskRequestListeners = new Map<`$fx_${string}`, Set<(payload: unknown) => void>>()
   const debugMessageLog: unknown[] = []
   let pendingDumpResolve: ((result: unknown) => void) | null = null
   const pendingIdleResolves = new Map<string, {
@@ -69,6 +68,16 @@ export const createMiniCutPageSyncRuntime = ({
     }
     clearTimeout(pending.timeoutId)
     pendingIdleResolves.delete(requestId)
+  }
+
+  const emitRuntimeTaskRequest = (fxName: `$fx_${string}`, payload: unknown) => {
+    const listeners = runtimeTaskRequestListeners.get(fxName)
+    if (!listeners) {
+      return
+    }
+    for (const listener of listeners) {
+      listener(payload)
+    }
   }
 
   const syncReceiver = new ReactSyncReceiver({
@@ -252,15 +261,11 @@ export const createMiniCutPageSyncRuntime = ({
         return
       }
       case DKT_MSG.EXPORT_REQUEST: {
-        for (const listener of exportRequestListeners) {
-          listener(message.payload)
-        }
+        emitRuntimeTaskRequest('$fx_renderExport', message.payload)
         return
       }
       case DKT_MSG.IMPORT_FILES_REQUEST: {
-        for (const listener of importFilesRequestListeners) {
-          listener(message.payload)
-        }
+        emitRuntimeTaskRequest('$fx_handleInputFiles', message.payload)
         return
       }
       case DKT_MSG.SYNC_HANDLE: {
@@ -356,16 +361,18 @@ export const createMiniCutPageSyncRuntime = ({
     subscribe: store.subscribe,
     subscribeRootAttrs: (attrNames, listener) =>
       syncReceiver.subscribeRootAttrs(attrNames, listener),
-    subscribeExportRequests(listener) {
-      exportRequestListeners.add(listener)
-      return () => {
-        exportRequestListeners.delete(listener)
+    subscribeRuntimeTaskRequests(fxName, listener) {
+      let listeners = runtimeTaskRequestListeners.get(fxName)
+      if (!listeners) {
+        listeners = new Set()
+        runtimeTaskRequestListeners.set(fxName, listeners)
       }
-    },
-    subscribeImportFilesRequests(listener) {
-      importFilesRequestListeners.add(listener)
+      listeners.add(listener)
       return () => {
-        importFilesRequestListeners.delete(listener)
+        listeners.delete(listener)
+        if (listeners.size === 0) {
+          runtimeTaskRequestListeners.delete(fxName)
+        }
       }
     },
     destroy() {
@@ -378,8 +385,7 @@ export const createMiniCutPageSyncRuntime = ({
       syncReceiver.destroy()
       shapeRegistry.destroy()
       rootAttrsCache.clear()
-      exportRequestListeners.clear()
-      importFilesRequestListeners.clear()
+      runtimeTaskRequestListeners.clear()
       for (const { timeoutId } of pendingIdleResolves.values()) {
         clearTimeout(timeoutId)
       }

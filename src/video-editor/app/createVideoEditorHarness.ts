@@ -332,7 +332,7 @@ export const createVideoEditorHarness = (
 			return EMPTY_CLEANUP
 		}
 
-		const unlistenExportRequest = pageRuntime.subscribeExportRequests?.((payload) => {
+		const unlistenExportRequest = pageRuntime.subscribeRuntimeTaskRequests?.(PROJECT_RENDER_EXPORT_FX, (payload) => {
 			const { request, queueKey } = parseExportChannelPayload(payload)
 			if (!request) {
 				debugExport('channel export request ignored: invalid payload', payload)
@@ -370,7 +370,7 @@ export const createVideoEditorHarness = (
 			return EMPTY_CLEANUP
 		}
 
-		const unlistenImportRequest = pageRuntime.subscribeImportFilesRequests?.((payload) => {
+		const unlistenImportRequest = pageRuntime.subscribeRuntimeTaskRequests?.(PROJECT_IMPORT_FILES_FX, (payload) => {
 			startImportFilesTask(payload)
 		}) ?? EMPTY_CLEANUP
 

@@ -31,6 +31,5 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
   getRootAttrs(attrNames: readonly string[]): Record<string, unknown>
   subscribe(listener: () => void): () => void
   subscribeRootAttrs(attrNames: readonly string[], listener: () => void): () => void
-  subscribeExportRequests?(listener: (payload: unknown) => void): () => void
-  subscribeImportFilesRequests?(listener: (payload: unknown) => void): () => void
+  subscribeRuntimeTaskRequests?(fxName: `$fx_${string}`, listener: (payload: unknown) => void): () => void
 }

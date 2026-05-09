@@ -136,7 +136,7 @@ export const createExportCompletionTracker = (
 		checkProgressResolvers()
 	})
 
-	const unlistenRequest = pageRuntime.subscribeExportRequests?.((payload) => {
+	const unlistenRequest = pageRuntime.subscribeRuntimeTaskRequests?.('$fx_renderExport', (payload) => {
 		const request = parseExportRequest(payload)
 		if (!request) return
 
