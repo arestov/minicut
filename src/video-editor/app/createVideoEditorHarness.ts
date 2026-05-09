@@ -525,14 +525,12 @@ export const createVideoEditorHarness = (
 
 		const unlistenRootScope = pageRuntime.subscribeRootScope(tryStartPendingRequest)
 		const unlistenExportRequest = pageRuntime.subscribeRootAttrs(['exportRequest'], tryStartPendingRequest)
-		const pollId = globalThis.setInterval(tryStartPendingRequest, 120)
 		tryStartPendingRequest()
 
 		return () => {
 			unlistenRootScope()
 			unlistenExportRequest()
 			unmountRequestShape()
-			globalThis.clearInterval(pollId)
 			inFlightRequestIds.clear()
 			handledRequestIds.clear()
 		}
