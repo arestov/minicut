@@ -39,13 +39,14 @@ export interface EditorLifecyclePort {
 }
 
 export interface EditorRuntimeTaskPort {
+	putRuntimeRef(value: unknown): string
 	dispatchTask(
 		fxName: `$fx_${string}`,
 		payload?: DispatchRuntimeTaskPayload,
 		options?: DispatchRuntimeTaskOptions,
 	): RuntimeTaskDescriptor
-	consumeRuntimeRef(runtimeRefId: string): unknown
-	deleteRuntimeRef(runtimeRefId: string): void
+	consumeRuntimeRef(runtimeHandleId: string): unknown
+	deleteRuntimeRef(runtimeHandleId: string): void
 	completeTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
 	failTask(task: Pick<RuntimeTaskDescriptor, 'taskId' | 'intentKey'>): void
 }

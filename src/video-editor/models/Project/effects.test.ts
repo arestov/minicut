@@ -11,7 +11,7 @@ describe('Project model effects', () => {
 
 		expect(task.payload.data).toEqual({ projectId: 'project:1', addToTimelineWhenEmpty: true })
 		expect(isProjectImportFilesEffectData(task.payload.data)).toBe(true)
-		expect(tasks.consumeRuntimeRef(String(task.payload.inputBatchHandleId))).toEqual([file])
+		expect(tasks.consumeRuntimeRef(String(task.payload.runtimeHandleId))).toEqual([file])
 	})
 
 	it('keeps export blob handles behind runtime refs', () => {
@@ -20,6 +20,6 @@ describe('Project model effects', () => {
 		const task = tasks.dispatchTask(EXPORT_BLOB_URL_FX, createExportBlobUrlEffectPayload(blob, { projectId: 'project:1', clipId: 'clip:1' }))
 
 		expect(task.payload.data).toEqual({ projectId: 'project:1', clipId: 'clip:1' })
-		expect(tasks.consumeRuntimeRef(String(task.payload.inputBatchHandleId))).toBe(blob)
+		expect(tasks.consumeRuntimeRef(String(task.payload.runtimeHandleId))).toBe(blob)
 	})
 })

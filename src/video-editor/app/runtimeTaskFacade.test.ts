@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
 
 describe('createRuntimeTaskFacade', () => {
-	it('stores runtimeRef as inputBatchHandleId and consumes it once', () => {
+	it('stores runtimeRef as runtimeHandleId and consumes it once', () => {
 		const tasks = createRuntimeTaskFacade()
 		const file = new File(['a'], 'a.txt', { type: 'text/plain' })
 
@@ -11,13 +11,13 @@ describe('createRuntimeTaskFacade', () => {
 			data: { source: 'input' },
 		})
 
-		expect(task.payload.inputBatchHandleId).toBeDefined()
+		expect(task.payload.runtimeHandleId).toBeDefined()
 		expect(task.payload.data).toEqual({ source: 'input' })
 
-		const firstConsume = tasks.consumeRuntimeRef(String(task.payload.inputBatchHandleId))
+		const firstConsume = tasks.consumeRuntimeRef(String(task.payload.runtimeHandleId))
 		expect(firstConsume).toEqual([file])
 
-		const secondConsume = tasks.consumeRuntimeRef(String(task.payload.inputBatchHandleId))
+		const secondConsume = tasks.consumeRuntimeRef(String(task.payload.runtimeHandleId))
 		expect(secondConsume).toBeUndefined()
 	})
 
@@ -37,8 +37,8 @@ describe('createRuntimeTaskFacade', () => {
 		})
 
 		expect(second.dropped).toBe(true)
-		expect(second.payload.inputBatchHandleId).toBeUndefined()
-		expect(tasks.consumeRuntimeRef(String(first.payload.inputBatchHandleId))).toBeTruthy()
+		expect(second.payload.runtimeHandleId).toBeUndefined()
+		expect(tasks.consumeRuntimeRef(String(first.payload.runtimeHandleId))).toBeTruthy()
 	})
 
 	it('releases replaced runtimeRef for replace-last queue policy', () => {
@@ -57,8 +57,8 @@ describe('createRuntimeTaskFacade', () => {
 		})
 
 		expect(second.replacedTaskId).toBe(first.taskId)
-		expect(tasks.consumeRuntimeRef(String(first.payload.inputBatchHandleId))).toBeUndefined()
-		expect(tasks.consumeRuntimeRef(String(second.payload.inputBatchHandleId))).toBeTruthy()
+		expect(tasks.consumeRuntimeRef(String(first.payload.runtimeHandleId))).toBeUndefined()
+		expect(tasks.consumeRuntimeRef(String(second.payload.runtimeHandleId))).toBeTruthy()
 	})
 
 	it('provides debug queue dump with active, completed, failed and dropped counters', () => {

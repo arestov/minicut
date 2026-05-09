@@ -34,7 +34,7 @@ export const executeImportFilesTask = async ({
 	if (task.dropped) {
 		return
 	}
-	const inputBatchHandleId = task.payload.inputBatchHandleId
+	const inputBatchHandleId = task.payload.runtimeHandleId
 	if (typeof inputBatchHandleId !== 'string' || !inputBatchHandleId) {
 		return
 	}

@@ -14,7 +14,7 @@ export interface RuntimeTaskDescriptor {
 	taskId: string
 	fxName: `$fx_${string}`
 	payload: {
-		inputBatchHandleId?: string
+		runtimeHandleId?: string
 		data?: unknown
 	}
 	queuePolicy: RuntimeTaskQueuePolicy
@@ -80,14 +80,14 @@ export const createRuntimeTaskFacade = () => {
 		return runtimeRefId
 	}
 
-	const consumeRuntimeRef = (runtimeRefId: string): unknown => {
-		const entry = runtimeRefs.get(runtimeRefId)
-		runtimeRefs.delete(runtimeRefId)
+	const consumeRuntimeRef = (runtimeHandleId: string): unknown => {
+		const entry = runtimeRefs.get(runtimeHandleId)
+		runtimeRefs.delete(runtimeHandleId)
 		return entry?.value
 	}
 
-	const deleteRuntimeRef = (runtimeRefId: string): void => {
-		runtimeRefs.delete(runtimeRefId)
+	const deleteRuntimeRef = (runtimeHandleId: string): void => {
+		runtimeRefs.delete(runtimeHandleId)
 	}
 
 	const releaseTaskRuntimeRef = (taskId: string): void => {
@@ -163,7 +163,7 @@ export const createRuntimeTaskFacade = () => {
 			taskId,
 			fxName,
 			payload: {
-				...(runtimeRefId ? { inputBatchHandleId: runtimeRefId } : {}),
+				...(runtimeRefId ? { runtimeHandleId: runtimeRefId } : {}),
 				...(payload.data !== undefined ? { data: payload.data } : {}),
 			},
 			queuePolicy,
@@ -244,6 +244,7 @@ export const createRuntimeTaskFacade = () => {
 
 	return {
 		dispatchTask,
+		putRuntimeRef,
 		consumeRuntimeRef,
 		deleteRuntimeRef,
 		completeTask,

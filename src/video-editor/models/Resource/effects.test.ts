@@ -31,6 +31,6 @@ describe('Resource model effects', () => {
 		}))
 
 		expect(task.payload.data).toMatchObject({ resourceId: 'resource:1', sourceKind: 'local' })
-		expect(tasks.consumeRuntimeRef(String(task.payload.inputBatchHandleId))).toBe(file)
+		expect(tasks.consumeRuntimeRef(String(task.payload.runtimeHandleId))).toBe(file)
 	})
 })
