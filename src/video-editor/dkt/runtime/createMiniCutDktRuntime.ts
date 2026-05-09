@@ -95,6 +95,11 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 							clearTimeout: globalThis.clearTimeout.bind(globalThis),
 							Date: globalThis.Date,
 						},
+						exportRuntime: {
+							requestClipExport: (payload: unknown) => {
+								void dispatchScopedAction('requestClipExport', payload, null).catch(() => undefined)
+							},
+						},
 					},
 				})
 				return { runtime, appModel: inited.app_model }

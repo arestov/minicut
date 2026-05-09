@@ -50,6 +50,7 @@ export const Clip = model({
 		splitOriginalDuration: ['input', null],
 		crop: ['input', null],
 		colorAdjustments: ['input', null],
+		exportRequestIntent: ['input', null as { id: string; clipId: string; initiatedBy: string } | null],
 		renderInterval: ['comp', ['start', 'duration'], (start: unknown, duration: unknown) => {
 			const s = typeof start === 'number' && Number.isFinite(start) ? start : 0
 			const d = typeof duration === 'number' && Number.isFinite(duration) ? Math.max(0, duration) : 0
@@ -127,6 +128,28 @@ export const Clip = model({
 		resource: ['input', { linking: '<< resource << #' }],
 		track: ['input', { linking: '<< track << #' }],
 		project: ['input', { linking: '<< project << #' }],
+	},
+	effects: {
+		api: {
+			exportRuntime: [['_node_id'], ['#exportRuntime'], (api: unknown) => api],
+		},
+		out: {
+			requestClipExport: {
+				api: ['exportRuntime'],
+				trigger: ['exportRequestIntent'],
+				require: ['exportRequestIntent'],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as { requestClipExport?: (payload: unknown) => void } | null
+					const intent = (state as { exportRequestIntent?: unknown } | null)?.exportRequestIntent
+					if (!runtime || typeof runtime.requestClipExport !== 'function' || !intent || typeof intent !== 'object') {
+						return
+					}
+
+					runtime.requestClipExport(intent)
+				},
+			},
+		},
 	},
 	actions: {
 		updateOpacity: {
@@ -500,15 +523,37 @@ export const Clip = model({
 		requestClipExport: [
 			{
 				to: {
+					exportRequestIntent: ['exportRequestIntent'],
 					exportProgress: ['exportProgress'],
 				},
-				fn: () => ({
-					exportProgress: {
-						stage: 'queued',
-						progress: 0,
-						message: undefined,
+				fn: [
+					['$noop', 'sourceClipId'] as const,
+					(payload: unknown, noop: unknown, sourceClipId: unknown) => {
+						const value = payload as { id?: unknown; clipId?: unknown; initiatedBy?: unknown } | null
+						const fromPayloadClipId = typeof value?.clipId === 'string' ? value.clipId : null
+						const clipId = typeof sourceClipId === 'string' ? sourceClipId : fromPayloadClipId
+						if (!clipId) {
+							return noop
+						}
+						const exportId = typeof value?.id === 'string' && value.id
+							? value.id
+							: `export:${Date.now().toString(36)}`
+						const initiatedBy = typeof value?.initiatedBy === 'string' ? value.initiatedBy : 'local'
+
+						return {
+							exportRequestIntent: {
+								id: exportId,
+								clipId,
+								initiatedBy,
+							},
+							exportProgress: {
+								stage: 'queued',
+								progress: 0,
+								message: undefined,
+							},
+						}
 					},
-				}),
+				],
 			},
 		],
 	},
