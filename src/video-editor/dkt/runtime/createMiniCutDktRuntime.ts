@@ -74,7 +74,47 @@ const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
 export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => {
 	let bootPromise: Promise<{ runtime: RuntimeLike; appModel: RuntimeModelLike }> | null = null
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>()
+	const activeTransports = new Set<DomSyncTransportLike<MiniCutDktTransportMessage>>()
+	const publishedExportRequestIds = new Set<string>()
 	const enabled = options.enabled === true
+
+	const logRuntime = (message: string, details?: unknown) => {
+		for (const transport of activeTransports) {
+			transport.send({
+				type: DKT_MSG.RUNTIME_LOG,
+				message: { channel: 'export-request', message, details },
+			})
+		}
+		if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ === true) {
+			console.info('[minicut:dkt-worker:export]', message, details)
+		}
+	}
+
+	const publishExportRequest = (payload: unknown) => {
+		const requestId = (payload as { id?: unknown } | null)?.id
+		logRuntime('publishExportRequest:attempt', {
+			requestId,
+			transports: activeTransports.size,
+		})
+		if (typeof requestId === 'string' && requestId) {
+			if (publishedExportRequestIds.has(requestId)) {
+				logRuntime('publishExportRequest:deduped', { requestId })
+				return
+			}
+			publishedExportRequestIds.add(requestId)
+		}
+
+		for (const transport of activeTransports) {
+			transport.send({
+				type: DKT_MSG.EXPORT_REQUEST,
+				payload,
+			})
+		}
+		logRuntime('publishExportRequest:sent', {
+			requestId,
+			transports: activeTransports.size,
+		})
+	}
 
 	const bootstrapApp = async () => {
 		if (!enabled) {
@@ -96,6 +136,12 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 							Date: globalThis.Date,
 						},
 						exportRuntime: {
+							requestExport: (payload: unknown) => {
+								logRuntime('exportRuntime.requestExport', {
+									requestId: (payload as { id?: unknown } | null)?.id,
+								})
+								publishExportRequest(payload)
+							},
 							requestClipExport: (payload: unknown) => {
 								void dispatchScopedAction('requestClipExport', payload, null).catch(() => undefined)
 							},
@@ -174,6 +220,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		let destroyed = false
 		let stream: ReturnType<typeof createWorkerStream> | null = null
 		let activeSessionKey = 'minicut-local'
+		activeTransports.add(transport)
 
 		const sendError = (error: unknown, requestId?: string): void => {
 			transport.send({
@@ -226,6 +273,17 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 					destroy()
 					return
 				case DKT_MSG.DISPATCH_ACTION:
+					if (
+						message.actionName === 'requestProjectExport'
+						|| message.actionName === 'requestSelectedClipExport'
+						|| message.actionName === 'requestClipExport'
+					) {
+						logRuntime('dispatch export action', {
+							actionName: message.actionName,
+							requestId: (message.payload as { id?: unknown } | null)?.id,
+							scopeNodeId: message.scopeNodeId ?? null,
+						})
+					}
 					await dispatchScopedAction(message.actionName, message.payload, message.scopeNodeId, activeSessionKey)
 					if (message.requestId) {
 						transport.send({ type: DKT_MSG.RUNTIME_READY, requestId: message.requestId, rootNodeId: null })
@@ -269,6 +327,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 				return
 			}
 			destroyed = true
+			activeTransports.delete(transport)
 			unlisten()
 			void bootstrapApp().then((app) => {
 				if (app && stream) {

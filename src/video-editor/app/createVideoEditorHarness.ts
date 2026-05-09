@@ -1,12 +1,11 @@
 import { createMiniCutPageSyncRuntime } from '../dkt/runtime/createMiniCutPageSyncRuntime'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import type { ExportRenderer } from '../render/exportRenderer'
-import type { ExportPlan } from '../render/renderPlan'
 import type { ResourceAttrs } from '../render/registryTypes'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
-import type { ExportRequestState } from './exportRequestState'
+import { parseExportRequest, type ExportRequestState } from './exportRequestState'
 import {
 	AUTH_EXT_CHANNEL,
 	AUTH_EXT_EVENT,
@@ -24,44 +23,11 @@ type DktResourceAttrs = ResourceAttrs & { sourceResourceId: string }
 
 const EMPTY_CLEANUP = () => {}
 
-const asExportRequestState = (value: unknown): ExportRequestState | null => {
-	if (!value || typeof value !== 'object') {
-		return null
+const debugExport = (message: string, details?: unknown) => {
+	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
+		return
 	}
-
-	const raw = value as Record<string, unknown>
-	const id = typeof raw.id === 'string' && raw.id ? raw.id : null
-	if (!id) {
-		return null
-	}
-
-	const rawRange = raw.range && typeof raw.range === 'object' ? raw.range as Record<string, unknown> : null
-	const range = rawRange?.type === 'clip' && typeof rawRange.clipId === 'string' && rawRange.clipId
-		? { type: 'clip' as const, clipId: rawRange.clipId }
-		: { type: 'project' as const }
-
-	const rawPlan = raw.plan && typeof raw.plan === 'object' ? raw.plan as Record<string, unknown> : null
-	if (!rawPlan) {
-		return null
-	}
-
-	const plan: ExportPlan = {
-		projectId: typeof rawPlan.projectId === 'string' && rawPlan.projectId ? rawPlan.projectId : 'project:export',
-		fps: typeof rawPlan.fps === 'number' && Number.isFinite(rawPlan.fps) ? rawPlan.fps : 30,
-		width: typeof rawPlan.width === 'number' && Number.isFinite(rawPlan.width) ? rawPlan.width : 1920,
-		height: typeof rawPlan.height === 'number' && Number.isFinite(rawPlan.height) ? rawPlan.height : 1080,
-		duration: typeof rawPlan.duration === 'number' && Number.isFinite(rawPlan.duration) ? rawPlan.duration : 0,
-		clipSources: Array.isArray(rawPlan.clipSources) ? rawPlan.clipSources as ExportPlan['clipSources'] : [],
-	}
-
-	return {
-		id,
-		range,
-		format: raw.format === 'video-webm' ? 'video-webm' : 'video-webm',
-		plan,
-		requestedAt: typeof raw.requestedAt === 'number' && Number.isFinite(raw.requestedAt) ? raw.requestedAt : Date.now(),
-		initiatedBy: typeof raw.initiatedBy === 'string' && raw.initiatedBy ? raw.initiatedBy : null,
-	}
+	console.info('[minicut:export:harness]', message, details)
 }
 
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
@@ -396,27 +362,21 @@ export const createVideoEditorHarness = (
 		const inFlightRequestIds = new Set<string>()
 		const handledRequestIds = new Set<string>()
 
-		const readExportRequest = () => {
+		const tryStartFromRootAttr = () => {
 			const rootScope = pageRuntime.getRootScope()
 			if (!rootScope) {
-				return null
+				return
 			}
 			const attrs = pageRuntime.readAttrs(rootScope, ['exportRequest']) as { exportRequest?: unknown }
-			if (attrs.exportRequest == null) {
-				return null
-			}
-			const request = asExportRequestState(attrs.exportRequest)
+			const request = parseExportRequest(attrs.exportRequest)
 			if (!request) {
-				return null
+				return
 			}
-			if (inFlightRequestIds.has(request.id) || handledRequestIds.has(request.id)) {
-				return null
-			}
-			return { request, rootScope }
+			debugExport('root attr exportRequest observed', { id: request.id })
+			startRequest(request)
 		}
 
-		const startRequest = (snapshot: { request: ExportRequestState; rootScope: ReactSyncScopeHandle }): void => {
-			const { request, rootScope } = snapshot
+		const startRequest = (request: ExportRequestState): void => {
 			if (!request) {
 				return
 			}
@@ -449,7 +409,7 @@ export const createVideoEditorHarness = (
 						...(typeof extra?.size === 'number' ? { size: extra.size } : {}),
 						...(typeof extra?.frameCount === 'number' ? { frameCount: extra.frameCount } : {}),
 						...(extra?.error ? { error: extra.error } : {}),
-					}, rootScope)
+					}, null)
 				}
 
 				try {
@@ -495,31 +455,28 @@ export const createVideoEditorHarness = (
 					const message = error instanceof Error ? error.message : 'Export failed'
 					setProgress('error', 0, { error: message })
 				} finally {
-					dktPort.dispatch('consumeExportRequest', { id: request.id }, rootScope)
+					dktPort.dispatch('consumeExportRequest', { id: request.id }, null)
 					handledRequestIds.add(request.id)
 					inFlightRequestIds.delete(request.id)
 				}
 			})()
 		}
 
-		const tryStartPendingRequest = () => {
-			const snapshot = readExportRequest()
-			if (!snapshot) {
+		const unlistenExportRequest = pageRuntime.subscribeExportRequests?.((payload) => {
+			const request = parseExportRequest(payload)
+			if (!request) {
+				debugExport('channel export request ignored: invalid payload', payload)
 				return
 			}
-			startRequest(snapshot)
-		}
-
-		const unlistenRootScope = pageRuntime.subscribeRootScope(tryStartPendingRequest)
-		// Phase 5 cleanup (done): removed setInterval polling fallback in favor of pure event-driven model.
-		// subscribeRootAttrs(['exportRequest']) reliably triggers callback on every exportRequest change.
-		// No polling needed; if subscription becomes unreliable, the root cause must be fixed, not masked by polling.
-		const unlistenExportRequest = pageRuntime.subscribeRootAttrs(['exportRequest'], tryStartPendingRequest)
-		tryStartPendingRequest()
+			debugExport('channel export request observed', { id: request.id })
+			startRequest(request)
+		}) ?? EMPTY_CLEANUP
+		const unlistenRootExportRequest = pageRuntime.subscribeRootAttrs(['exportRequest'], tryStartFromRootAttr)
+		tryStartFromRootAttr()
 
 		return () => {
-			unlistenRootScope()
 			unlistenExportRequest()
+			unlistenRootExportRequest()
 			inFlightRequestIds.clear()
 			handledRequestIds.clear()
 		}

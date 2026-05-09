@@ -35,6 +35,7 @@ export const createMiniCutPageSyncRuntime = ({
 }): PageSyncRuntime => {
   const store = createSyncStore(createEmptyPageRuntimeSnapshot())
   const rootAttrsCache = new Map<string, RootAttrsCacheEntry>()
+  const exportRequestListeners = new Set<(payload: unknown) => void>()
   const debugMessageLog: unknown[] = []
   let pendingDumpResolve: ((result: unknown) => void) | null = null
 
@@ -235,6 +236,12 @@ export const createMiniCutPageSyncRuntime = ({
         console.error('[minicut:dkt-runtime:error]', message.message)
         return
       }
+      case DKT_MSG.EXPORT_REQUEST: {
+        for (const listener of exportRequestListeners) {
+          listener(message.payload)
+        }
+        return
+      }
       case DKT_MSG.SYNC_HANDLE: {
         handleSyncMessage(message)
         return
@@ -301,6 +308,12 @@ export const createMiniCutPageSyncRuntime = ({
     subscribe: store.subscribe,
     subscribeRootAttrs: (attrNames, listener) =>
       syncReceiver.subscribeRootAttrs(attrNames, listener),
+    subscribeExportRequests(listener) {
+      exportRequestListeners.add(listener)
+      return () => {
+        exportRequestListeners.delete(listener)
+      }
+    },
     destroy() {
       const sessionKey = store.getSnapshot().sessionKey
       if (sessionKey) {
@@ -311,6 +324,7 @@ export const createMiniCutPageSyncRuntime = ({
       syncReceiver.destroy()
       shapeRegistry.destroy()
       rootAttrsCache.clear()
+      exportRequestListeners.clear()
     },
   }
 }

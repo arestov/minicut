@@ -8,6 +8,13 @@ import { dktSessionActions } from './SessionRoot/actions'
 
 const DEFAULT_PREVIEW_STRUCTURE: PreviewStructure = { clipSources: [] }
 
+const debugExport = (message: string, details?: unknown) => {
+	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
+		return
+	}
+	console.info('[minicut:export:session-root]', message, details)
+}
+
 export const EditorSessionRoot = model({
 	extends: BaseSessionRoot,
 	model_name: 'minicut_session_root',
@@ -25,6 +32,7 @@ export const EditorSessionRoot = model({
 		isPlaying: ['input', false],
 		previewBuffer: ['input', null as PreviewBuffer | null],
 		exportRequest: ['input', null as ExportRequestState | null],
+		exportRequestIntent: ['input', null as ExportRequestState | null],
 		exportProgress: ['input', null as ExportProgressState | null],
 		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
 		timelineTool: ['input', 'select'],
@@ -79,6 +87,44 @@ export const EditorSessionRoot = model({
 				ordinal: index + 1,
 			}
 		}],
+	},
+	effects: {
+		api: {
+			exportRuntime: [
+				['_node_id'] as const,
+				['#exportRuntime'] as const,
+				(exportRuntime: unknown) => exportRuntime,
+			],
+		},
+		out: {
+			requestExport: {
+				api: ['exportRuntime'],
+				trigger: ['exportRequestIntent'],
+				require: ['exportRequestIntent'],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as { requestExport?: (payload: unknown) => void } | null
+					const taskPayload = (state as { payload?: unknown } | null)?.payload
+					const intentFromTask = taskPayload && typeof taskPayload === 'object' ? taskPayload : null
+					const intentFromState = (state as { exportRequestIntent?: unknown } | null)?.exportRequestIntent
+					const intent = intentFromTask || intentFromState
+					if (!runtime || typeof runtime.requestExport !== 'function' || !intent || typeof intent !== 'object') {
+						debugExport('skip requestExport effect', {
+							hasRuntime: Boolean(runtime && typeof runtime.requestExport === 'function'),
+							hasIntentFromTask: Boolean(intentFromTask),
+							hasIntentFromState: Boolean(intentFromState && typeof intentFromState === 'object'),
+						})
+						return
+					}
+
+					debugExport('requestExport effect -> runtime', {
+						id: (intent as { id?: unknown }).id,
+						range: (intent as { range?: unknown }).range,
+					})
+					runtime.requestExport(intent)
+				},
+			},
+		},
 	},
 	rels: {
 		activeProject: ['input', { linking: '<< project << #' }],

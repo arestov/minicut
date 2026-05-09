@@ -13,6 +13,7 @@ type SessionStateFields = {
 	cursor: number
 	isPlaying: boolean
 	exportRequest: ExportRequestState | null
+	exportRequestIntent: ExportRequestState | null
 	exportProgress: ExportProgressState | null
 	timelineZoom: number
 	activeInspectorTab: 'edit' | 'color' | 'audio' | 'export'
@@ -585,133 +586,181 @@ export const sessionSetExportProgressAction = {
 	fn: reduceSessionSetExportProgressAction,
 } as const satisfies DktActionDescriptor
 
-export const sessionRequestProjectExportAction = {
-	to: {
-		exportRequest: ['exportRequest'],
-		exportProgress: ['exportProgress'],
-	},
-	fn: [
-		[
-			'< @one:sourceProjectId < activeProject',
-			'< @one:fps < activeProject',
-			'< @one:width < activeProject',
-			'< @one:height < activeProject',
-			'< @one:duration < activeProject',
-			'< @all:clipRenderData < activeProject.tracks.clips',
-		] as const,
-		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown) => {
-			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
-			if (!plan) {
-				return '$noop'
-			}
-			const value = asObject(payload)
-			const initiatedBy = asString(value?.initiatedBy)
-			const id = asString(value?.id) ?? createExportRequestId()
-			const range: ExportProgressState['range'] = { type: 'project' }
-			return {
-				exportRequest: {
-					id,
-					range,
-					format: 'video-webm',
-					plan,
-					requestedAt: Date.now(),
-					initiatedBy,
+export const sessionRequestProjectExportAction = [
+		{
+			to: {
+				exportRequest: ['exportRequest'],
+				exportRequestIntent: ['exportRequestIntent'],
+				exportProgress: ['exportProgress'],
+				exportFxPayload: ['$output'],
+			},
+			fn: [
+				[
+					'< @one:sourceProjectId < activeProject',
+					'< @one:fps < activeProject',
+					'< @one:width < activeProject',
+					'< @one:height < activeProject',
+					'< @one:duration < activeProject',
+					'< @all:clipRenderData < activeProject.tracks.clips',
+				] as const,
+				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown) => {
+					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+					if (!plan) {
+						return '$noop'
+					}
+					const value = asObject(payload)
+					const initiatedBy = asString(value?.initiatedBy)
+					const id = asString(value?.id) ?? createExportRequestId()
+					const range: ExportProgressState['range'] = { type: 'project' }
+					const request = {
+						id,
+						range,
+						format: 'video-webm' as const,
+						plan,
+						requestedAt: Date.now(),
+						initiatedBy,
+					}
+					return {
+						exportRequest: request,
+						exportRequestIntent: request,
+						exportProgress: createQueuedProgressState(id, range, initiatedBy),
+						exportFxPayload: request,
+					}
 				},
-				exportProgress: createQueuedProgressState(id, range, initiatedBy),
-			}
+			],
 		},
-	],
-} as const satisfies DktActionDescriptor
+		{
+			to: ['$fx_requestExport', { intent: 'call', drop_when_api_not_ready: false }],
+			fn: (payload: unknown) => {
+				if (!payload || typeof payload !== 'object') {
+					return '$noop'
+				}
+				return payload
+			},
+		},
+	] as const satisfies DktActionDefinition
 
-export const sessionRequestClipExportAction = {
-	to: {
-		exportRequest: ['exportRequest'],
-		exportProgress: ['exportProgress'],
-	},
-	fn: [
-		[
-			'< @one:sourceProjectId < activeProject',
-			'< @one:fps < activeProject',
-			'< @one:width < activeProject',
-			'< @one:height < activeProject',
-			'< @one:duration < activeProject',
-			'< @all:clipRenderData < activeProject.tracks.clips',
-			'< @all:sourceClipId < activeProject.tracks.clips',
-		] as const,
-		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown) => {
-			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
-			if (!plan) {
-				return '$noop'
-			}
+export const sessionRequestClipExportAction = [
+		{
+			to: {
+				exportRequest: ['exportRequest'],
+				exportRequestIntent: ['exportRequestIntent'],
+				exportProgress: ['exportProgress'],
+				exportFxPayload: ['$output'],
+			},
+			fn: [
+				[
+					'< @one:sourceProjectId < activeProject',
+					'< @one:fps < activeProject',
+					'< @one:width < activeProject',
+					'< @one:height < activeProject',
+					'< @one:duration < activeProject',
+					'< @all:clipRenderData < activeProject.tracks.clips',
+					'< @all:sourceClipId < activeProject.tracks.clips',
+				] as const,
+				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown) => {
+					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+					if (!plan) {
+						return '$noop'
+					}
 
-			const value = asObject(payload)
-			const clipId = asString(value?.clipId)
-			if (!clipId) {
-				return '$noop'
-			}
-			const normalizedClipIds = Array.isArray(clipIds)
-				? clipIds.filter((entry): entry is string => typeof entry === 'string')
-				: []
-			if (!normalizedClipIds.includes(clipId)) {
-				return '$noop'
-			}
+					const value = asObject(payload)
+					const clipId = asString(value?.clipId)
+					if (!clipId) {
+						return '$noop'
+					}
+					const normalizedClipIds = Array.isArray(clipIds)
+						? clipIds.filter((entry): entry is string => typeof entry === 'string')
+						: []
+					if (!normalizedClipIds.includes(clipId)) {
+						return '$noop'
+					}
 
-			const initiatedBy = asString(value?.initiatedBy)
-			const id = asString(value?.id) ?? createExportRequestId()
-			const range: ExportProgressState['range'] = { type: 'clip', clipId }
-			return {
-				exportRequest: {
-					id,
-					range,
-					format: 'video-webm',
-					plan,
-					requestedAt: Date.now(),
-					initiatedBy,
+					const initiatedBy = asString(value?.initiatedBy)
+					const id = asString(value?.id) ?? createExportRequestId()
+					const range: ExportProgressState['range'] = { type: 'clip', clipId }
+					const request = {
+						id,
+						range,
+						format: 'video-webm' as const,
+						plan,
+						requestedAt: Date.now(),
+						initiatedBy,
+					}
+					return {
+						exportRequest: request,
+						exportRequestIntent: request,
+						exportProgress: createQueuedProgressState(id, range, initiatedBy),
+						exportFxPayload: request,
+					}
 				},
-				exportProgress: createQueuedProgressState(id, range, initiatedBy),
-			}
+			],
 		},
-	],
-} as const satisfies DktActionDescriptor
+		{
+			to: ['$fx_requestExport', { intent: 'call', drop_when_api_not_ready: false }],
+			fn: (payload: unknown) => {
+				if (!payload || typeof payload !== 'object') {
+					return '$noop'
+				}
+				return payload
+			},
+		},
+	] as const satisfies DktActionDefinition
 
-export const sessionRequestSelectedClipExportAction = {
-	to: {
-		exportRequest: ['exportRequest'],
-		exportProgress: ['exportProgress'],
-	},
-	fn: [
-		[
-			'< @one:sourceProjectId < activeProject',
-			'< @one:fps < activeProject',
-			'< @one:width < activeProject',
-			'< @one:height < activeProject',
-			'< @one:duration < activeProject',
-			'< @all:clipRenderData < activeProject.tracks.clips',
-			'< @one:sourceClipId < selectedClip',
-		] as const,
-		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown) => {
-			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
-			const clipId = asString(selectedClipId)
-			if (!plan || !clipId) {
-				return '$noop'
-			}
-			const initiatedBy = asString(asObject(payload)?.initiatedBy)
-			const id = asString(asObject(payload)?.id) ?? createExportRequestId()
-			const range: ExportProgressState['range'] = { type: 'clip', clipId }
-			return {
-				exportRequest: {
-					id,
-					range,
-					format: 'video-webm',
-					plan,
-					requestedAt: Date.now(),
-					initiatedBy,
+export const sessionRequestSelectedClipExportAction = [
+		{
+			to: {
+				exportRequest: ['exportRequest'],
+				exportRequestIntent: ['exportRequestIntent'],
+				exportProgress: ['exportProgress'],
+				exportFxPayload: ['$output'],
+			},
+			fn: [
+				[
+					'< @one:sourceProjectId < activeProject',
+					'< @one:fps < activeProject',
+					'< @one:width < activeProject',
+					'< @one:height < activeProject',
+					'< @one:duration < activeProject',
+					'< @all:clipRenderData < activeProject.tracks.clips',
+					'< @one:sourceClipId < selectedClip',
+				] as const,
+				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown) => {
+					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+					const clipId = asString(selectedClipId)
+					if (!plan || !clipId) {
+						return '$noop'
+					}
+					const initiatedBy = asString(asObject(payload)?.initiatedBy)
+					const id = asString(asObject(payload)?.id) ?? createExportRequestId()
+					const range: ExportProgressState['range'] = { type: 'clip', clipId }
+					const request = {
+						id,
+						range,
+						format: 'video-webm' as const,
+						plan,
+						requestedAt: Date.now(),
+						initiatedBy,
+					}
+					return {
+						exportRequest: request,
+						exportRequestIntent: request,
+						exportProgress: createQueuedProgressState(id, range, initiatedBy),
+						exportFxPayload: request,
+					}
 				},
-				exportProgress: createQueuedProgressState(id, range, initiatedBy),
-			}
+			],
 		},
-	],
-} as const satisfies DktActionDescriptor
+		{
+			to: ['$fx_requestExport', { intent: 'call', drop_when_api_not_ready: false }],
+			fn: (payload: unknown) => {
+				if (!payload || typeof payload !== 'object') {
+					return '$noop'
+				}
+				return payload
+			},
+		},
+	] as const satisfies DktActionDefinition
 
 export const sessionConsumeExportRequestAction = {
 	to: {
