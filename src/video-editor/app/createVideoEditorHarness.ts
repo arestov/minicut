@@ -1,11 +1,12 @@
 import { createMiniCutPageSyncRuntime } from '../dkt/runtime/createMiniCutPageSyncRuntime'
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from '../domain/resourceData'
 import type { ExportRenderer } from '../render/exportRenderer'
+import type { ExportPlan } from '../render/renderPlan'
 import type { ResourceAttrs } from '../render/registryTypes'
 import type { EditorAuthorityClient } from '../worker/authorityClient'
 import { createResourceTransferManager } from '../media/resourceTransferManager'
 import { createRuntimeTaskFacade } from './runtimeTaskFacade'
-import { parseExportRequest } from './exportRequestState'
+import type { ExportRequestState } from './exportRequestState'
 import {
 	AUTH_EXT_CHANNEL,
 	AUTH_EXT_EVENT,
@@ -22,6 +23,46 @@ import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandl
 type DktResourceAttrs = ResourceAttrs & { sourceResourceId: string }
 
 const EMPTY_CLEANUP = () => {}
+
+const asExportRequestState = (value: unknown): ExportRequestState | null => {
+	if (!value || typeof value !== 'object') {
+		return null
+	}
+
+	const raw = value as Record<string, unknown>
+	const id = typeof raw.id === 'string' && raw.id ? raw.id : null
+	if (!id) {
+		return null
+	}
+
+	const rawRange = raw.range && typeof raw.range === 'object' ? raw.range as Record<string, unknown> : null
+	const range = rawRange?.type === 'clip' && typeof rawRange.clipId === 'string' && rawRange.clipId
+		? { type: 'clip' as const, clipId: rawRange.clipId }
+		: { type: 'project' as const }
+
+	const rawPlan = raw.plan && typeof raw.plan === 'object' ? raw.plan as Record<string, unknown> : null
+	if (!rawPlan) {
+		return null
+	}
+
+	const plan: ExportPlan = {
+		projectId: typeof rawPlan.projectId === 'string' && rawPlan.projectId ? rawPlan.projectId : 'project:export',
+		fps: typeof rawPlan.fps === 'number' && Number.isFinite(rawPlan.fps) ? rawPlan.fps : 30,
+		width: typeof rawPlan.width === 'number' && Number.isFinite(rawPlan.width) ? rawPlan.width : 1920,
+		height: typeof rawPlan.height === 'number' && Number.isFinite(rawPlan.height) ? rawPlan.height : 1080,
+		duration: typeof rawPlan.duration === 'number' && Number.isFinite(rawPlan.duration) ? rawPlan.duration : 0,
+		clipSources: Array.isArray(rawPlan.clipSources) ? rawPlan.clipSources as ExportPlan['clipSources'] : [],
+	}
+
+	return {
+		id,
+		range,
+		format: raw.format === 'video-webm' ? 'video-webm' : 'video-webm',
+		plan,
+		requestedAt: typeof raw.requestedAt === 'number' && Number.isFinite(raw.requestedAt) ? raw.requestedAt : Date.now(),
+		initiatedBy: typeof raw.initiatedBy === 'string' && raw.initiatedBy ? raw.initiatedBy : null,
+	}
+}
 
 const getFileKind = (file: File): 'video' | 'audio' | 'image' | null => {
 	if (file.type.startsWith('video/')) {
@@ -280,7 +321,7 @@ export const createVideoEditorHarness = (
 			}
 			const localPeerId = env.transfers.getPeerId()
 			const targetPeerId = typeof payload.targetPeerId === 'string' ? payload.targetPeerId : null
-			if (targetPeerId !== null && targetPeerId !== localPeerId) {
+			if (targetPeerId !== null && localPeerId !== null && targetPeerId !== localPeerId) {
 				return
 			}
 			const fileName = typeof payload.fileName === 'string' && payload.fileName
@@ -356,7 +397,7 @@ export const createVideoEditorHarness = (
 				return null
 			}
 			const attrs = pageRuntime.readAttrs(rootScope, ['exportRequest']) as { exportRequest?: unknown }
-			const request = parseExportRequest(attrs.exportRequest)
+			const request = asExportRequestState(attrs.exportRequest)
 			if (!request) {
 				return null
 			}
@@ -366,22 +407,20 @@ export const createVideoEditorHarness = (
 			return { request, rootScope }
 		}
 
-		const startRequest = (requestId: string): void => {
+		const startRequest = (snapshot: { request: ExportRequestState; rootScope: ReactSyncScopeHandle }): void => {
+			const { request, rootScope } = snapshot
+			if (!request) {
+				return
+			}
+			const requestId = request.id
 			if (inFlightRequestIds.has(requestId) || handledRequestIds.has(requestId)) {
 				return
 			}
 			inFlightRequestIds.add(requestId)
 
 			void (async () => {
-				const snapshot = readExportRequest()
-				if (!snapshot || snapshot.request.id !== requestId) {
-					inFlightRequestIds.delete(requestId)
-					return
-				}
-
-				const { request, rootScope } = snapshot
 				const localPeerId = env.transfers.getPeerId()
-				if (request.initiatedBy && request.initiatedBy !== localPeerId) {
+				if (request.initiatedBy && localPeerId && request.initiatedBy !== localPeerId) {
 					inFlightRequestIds.delete(request.id)
 					return
 				}
@@ -455,21 +494,23 @@ export const createVideoEditorHarness = (
 			})()
 		}
 
-		const unlisten = pageRuntime.subscribeRootScope(() => {
+		const tryStartPendingRequest = () => {
 			const snapshot = readExportRequest()
 			if (!snapshot) {
 				return
 			}
-			startRequest(snapshot.request.id)
-		})
-
-		const snapshot = readExportRequest()
-		if (snapshot) {
-			startRequest(snapshot.request.id)
+			startRequest(snapshot)
 		}
 
+		const unlistenRootScope = pageRuntime.subscribeRootScope(tryStartPendingRequest)
+		const unlistenExportRequest = pageRuntime.subscribeRootAttrs(['exportRequest'], tryStartPendingRequest)
+		const pollId = globalThis.setInterval(tryStartPendingRequest, 120)
+		tryStartPendingRequest()
+
 		return () => {
-			unlisten()
+			unlistenRootScope()
+			unlistenExportRequest()
+			globalThis.clearInterval(pollId)
 			inFlightRequestIds.clear()
 			handledRequestIds.clear()
 		}

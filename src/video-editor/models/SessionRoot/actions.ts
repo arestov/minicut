@@ -592,7 +592,6 @@ export const sessionRequestProjectExportAction = {
 	},
 	fn: [
 		[
-			'$noop',
 			'< @one:sourceProjectId < activeProject',
 			'< @one:fps < activeProject',
 			'< @one:width < activeProject',
@@ -600,10 +599,10 @@ export const sessionRequestProjectExportAction = {
 			'< @one:duration < activeProject',
 			'< @all:clipRenderData < activeProject.tracks.clips',
 		] as const,
-		(payload: unknown, noop: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown) => {
+		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown) => {
 			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
 			if (!plan) {
-				return noop as '$noop'
+				return '$noop'
 			}
 			const value = asObject(payload)
 			const initiatedBy = asString(value?.initiatedBy)
@@ -631,7 +630,6 @@ export const sessionRequestClipExportAction = {
 	},
 	fn: [
 		[
-			'$noop',
 			'< @one:sourceProjectId < activeProject',
 			'< @one:fps < activeProject',
 			'< @one:width < activeProject',
@@ -640,22 +638,22 @@ export const sessionRequestClipExportAction = {
 			'< @all:clipRenderData < activeProject.tracks.clips',
 			'< @all:sourceClipId < activeProject.tracks.clips',
 		] as const,
-		(payload: unknown, noop: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown) => {
+		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown) => {
 			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
 			if (!plan) {
-				return noop as '$noop'
+				return '$noop'
 			}
 
 			const value = asObject(payload)
 			const clipId = asString(value?.clipId)
 			if (!clipId) {
-				return noop as '$noop'
+				return '$noop'
 			}
 			const normalizedClipIds = Array.isArray(clipIds)
 				? clipIds.filter((entry): entry is string => typeof entry === 'string')
 				: []
 			if (!normalizedClipIds.includes(clipId)) {
-				return noop as '$noop'
+				return '$noop'
 			}
 
 			const initiatedBy = asString(value?.initiatedBy)
@@ -683,7 +681,6 @@ export const sessionRequestSelectedClipExportAction = {
 	},
 	fn: [
 		[
-			'$noop',
 			'< @one:sourceProjectId < activeProject',
 			'< @one:fps < activeProject',
 			'< @one:width < activeProject',
@@ -692,11 +689,11 @@ export const sessionRequestSelectedClipExportAction = {
 			'< @all:clipRenderData < activeProject.tracks.clips',
 			'< @one:sourceClipId < selectedClip',
 		] as const,
-		(payload: unknown, noop: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown) => {
+		(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown) => {
 			const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
 			const clipId = asString(selectedClipId)
 			if (!plan || !clipId) {
-				return noop as '$noop'
+				return '$noop'
 			}
 			const initiatedBy = asString(asObject(payload)?.initiatedBy)
 			const id = asString(asObject(payload)?.id) ?? createExportRequestId()
@@ -721,15 +718,15 @@ export const sessionConsumeExportRequestAction = {
 		exportRequest: ['exportRequest'],
 	},
 	fn: [
-		['$noop', 'exportRequest'] as const,
-		(payload: unknown, noop: unknown, exportRequest: unknown) => {
+		['exportRequest'] as const,
+		(payload: unknown, exportRequest: unknown) => {
 			const current = asObject(exportRequest)
 			if (!current) {
-				return noop as '$noop'
+				return '$noop'
 			}
 			const payloadId = asString((payload as { id?: unknown } | null)?.id) ?? asString(payload)
 			if (payloadId && payloadId !== asString(current.id)) {
-				return noop as '$noop'
+				return '$noop'
 			}
 			return { exportRequest: null }
 		},
