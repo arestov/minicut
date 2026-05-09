@@ -978,6 +978,7 @@ await expect(page.getByText(projectTitle)).toBeVisible()
 ### Уже сделано
 
 - Добавлен общий P2P helper слой в `tests/integration/p2pTestHelpers.ts`: запуск изолированных комнат, ожидания runtime readiness, transfer activity/ready, чтение debug state, cleanup через единый сценарий.
+- Добавлен test-only `waitForRuntimeSettled()` handshake поверх DKT worker/page sync transport и проброшен в debug bridge.
 - P2P smoke specs переведены на более явные доменные ожидания: роль peer, project count, transfer ready/activity, reconnect/failover state.
 - Убрана часть фиксированных стабилизирующих waits из P2P сценариев и заменена на `expect.poll`.
 - Добавлены DKT invariant helpers в `src/video-editor/dkt/test/projectGraphAssertions.ts`.
@@ -992,8 +993,6 @@ await expect(page.getByText(projectTitle)).toBeVisible()
 
 ### Что осталось сделать
 
-- Реализовать `waitForRuntimeSettled()` для browser/P2P тестов поверх DKT runtime/page sync transport. Это главный оставшийся пробел в ожиданиях вычислений.
-- После добавления `waitForRuntimeSettled()` пройтись по P2P helpers/specs и заменить чтение debug graph/state после debug actions на explicit settled wait.
 - Разделить большой `tests/integration/video-editor.spec.ts` на тематические файлы. Сейчас он все еще смешивает user flows, layout, media playback, export/debug checks и поэтому остается дорогим и сложным для диагностики.
 - Добавить быстрые jsdom/component happy-path тесты там, где browser E2E сейчас проверяет обычное UI-поведение без настоящей browser/system границы.
 - Доработать accessibility roles/labels в компонентах, где тесты все еще вынуждены использовать CSS selectors.
@@ -1002,4 +1001,4 @@ await expect(page.getByText(projectTitle)).toBeVisible()
 
 ### Риск, который стоит закрыть первым
 
-Самый важный оставшийся риск - смешение `runtime ready` и `runtime settled` в browser/P2P тестах. Уже сделанная стабилизация уменьшила флейки transfer-сценариев, но без явного DKT idle handshake тесты, которые читают внутренний graph после debug actions, все еще могут иногда видеть промежуточное состояние. Поэтому следующий технический шаг должен быть именно `WAIT_IDLE`/`IDLE` handshake и `waitForRuntimeSettled()` в debug bridge.
+Самый важный оставшийся риск - смешение `runtime ready` и `runtime settled` в browser/P2P тестах для новых прямых debug-действий. Уже сделанная стабилизация закрыла основной путь через `dispatchCreateProject`, но если появятся новые прямые `dispatchRootAction`/`dispatchProjectAction` вызовы, их тоже нужно завершать явным settled wait перед чтением внутреннего graph/state.
