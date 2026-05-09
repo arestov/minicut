@@ -914,17 +914,50 @@ Peer B: exportProgress.initiatedBy === myPeerId ❌ (не равны)
 - утечки test-helper в production bundle: искать импорты `*.testing.ts` через `rg "\.testing" src/video-editor/app`.
 - если debug API пропал: проверить инициализацию `__MINICUT_P2P_DEBUG__` в browser и cleanup на unmount.
 
-### Phase 5. Внешние orchestrators cleanup
+### Phase 5. Event-driven cleanup + remove polling fallbacks
 
-1. `createVideoEditorHarness.ts`
-- `subscribeToResourceScopes`: вынести `setTimeout` retry (500ms) и `setInterval` refresh (500ms) в runtime task/executor слой или событийный механизм синхронизации.
-2. Зафиксировать правило:
-- Любой новый polling (`while + setTimeout`, `setInterval` refresh) в `src/video-editor/app/**` допускается только в файлах `*.testing.ts` или в явном runtime task executor с документированной причиной.
+**Контекст**: Phase 3 вводит `subscribeRootAttrs(['exportRequest'], callback)` для event-driven экспорта. Polling как fallback был добавлен в commit fae0e00 (`setInterval(tryStartPendingRequest, 120)`), но позже удален в commit 7b30e8b как часть рефактора. Phase 5 — это финальная очистка всех polling fallback'ов и переход на полностью event-driven модель.
 
-Подсказки для дебага проблем на шаге:
+**Tasks**:
 
-- регресс по transfer/resource sync: `window.__MINICUT_P2P_DEBUG__.getResourceTransfers()`.
-- пропажа ресурсов в timeline после cleanup polling: `harness.inspect.activeProject().resources` + `messages`.
+1. **Export request subscription: удалить polling fallback**
+   - ✅ Уже done в commit 7b30e8b: `setInterval(tryStartPendingRequest, 120)` удален.
+   - ✅ Причина: `subscribeRootAttrs(['exportRequest'], callback)` теперь надежно ловит все обновления.
+   - Верифицировать: `npm run test:video-editor` + `npm run repl:playwright` — экспорт срабатывает без задержек.
+   - Reference: [createVideoEditorHarness.ts](createVideoEditorHarness.ts#L505-L513) `subscribeToExportRequests()`.
+
+2. **Resource scope subscription: вынести polling в event-driven**
+   - `subscribeToResourceScopes()` в `createVideoEditorHarness.ts` использует `setInterval(syncResources, 500)` для refresh resources.
+   - TODO: заменить на `subscribeRootAttrs(['activeProject'], ...)` или event-driven attachment point для resources.
+   - Альтернатива: если polling необходим для retry-logic, перенести в явный runtime task executor с документацией причины.
+   - Верифицировать: медиа ресурсы синхронизируются без задержек, `npm run repl:playwright` не показывает "missing resource" race conditions.
+
+3. **Debug polling: переместить в `.testing.ts` helpers**
+   - `VideoEditorHarnessApp.tsx`: debug flow `dispatchCreateProject` с `await waitForProjectReady()` polling.
+   - `src/video-editor/app/runtimeTaskFacade.ts`: `debugDumpTasksTesting()` уже правильно помечен как test helper.
+   - TODO: создать `src/video-editor/app/testing/debugPolling.testing.ts` и перенести `waitForProjectReady`, `waitForRuntimeReady`, `waitForPeerId` туда.
+   - Верифицировать: `npm run build` не включает test файлы, production bundle не содержит polling кода.
+
+4. **Зафиксировать правило на future**:
+   - Любой новый polling (`while + setTimeout`, `setInterval` refresh) в `src/video-editor/app/**` допускается **только** в файлах `*.testing.ts` с явным комментарием о причине.
+   - Production adapter должен быть 100% event-driven (subscribe callbacks, никаких busy-wait loop'ов).
+
+**Подсказки для дебага проблем на шаге**:
+
+- Если ресурсы не синхронизируются: проверить, что `subscribeRootAttrs` срабатывает при каждом обновлении `activeProject`.
+  ```
+  window.__MINICUT_P2P_DEBUG__.getResourceTransfers() // показать состояние transfer-менеджера
+  ```
+- Если export срабатывает с задержкой после удаления polling: проверить, что `exportRequest` attr обновляется корректно.
+  ```
+  harness.inspect.root().exportRequest // посмотреть текущий запрос
+  harness.inspect.messages() // проверить dispatch последовательность
+  ```
+- Пропажа ресурсов в timeline после cleanup: 
+  ```
+  harness.inspect.activeProject().resources // проверить что ресурсы в графе
+  harness.inspect.activeProject().tracks.clips // проверить что clips видят ресурсы
+  ```
 
 ## Фаза 0.5. Подготовка debug helper-инструментов
 

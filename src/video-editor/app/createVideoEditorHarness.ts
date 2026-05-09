@@ -19,7 +19,6 @@ import {
 import { createEditorHarnessAdapter } from './editorHarnessAdapter'
 import type { EditorActionEnvironment, EditorDktScopePort } from './editorActionEnvironment'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
-import { getAttrsShape } from '../../dkt-react-sync/shape/autoShapes'
 
 type DktResourceAttrs = ResourceAttrs & { sourceResourceId: string }
 
@@ -235,6 +234,8 @@ export const createVideoEditorHarness = (
 			if (!fallbackProjectScope) {
 				resourceTransferManager.syncResources([])
 				if (runtimeReadyTimeout === null) {
+					// TODO: phase5 (cleanup) — migrate from retry-polling to event-driven readiness signal or explicit initialization callback.
+					// Currently: 500ms retry if activeProject not available on startup. Consider race condition in runtime initialization.
 					runtimeReadyTimeout = globalThis.setTimeout(() => {
 						runtimeReadyTimeout = null
 						syncActiveProjectResources()
@@ -281,6 +282,9 @@ export const createVideoEditorHarness = (
 					unlisten()
 				}
 			}
+			// TODO: phase5 (cleanup) — replace 500ms refresh polling with pure event-driven model.
+			// Currently subscribeMany fires on resource changes, but 500ms polling added as safety net for edge cases.
+			// If edge cases are real, document them; if not, remove polling and rely on subscription alone.
 			projectRefreshInterval = globalThis.setInterval(syncResources, 500)
 			syncResources()
 		}
@@ -391,22 +395,6 @@ export const createVideoEditorHarness = (
 
 		const inFlightRequestIds = new Set<string>()
 		const handledRequestIds = new Set<string>()
-		let mountedRequestScope: ReactSyncScopeHandle | null = null
-		let unmountRequestShape = EMPTY_CLEANUP
-
-		const ensureExportRequestShape = () => {
-			const rootScope = pageRuntime.getRootScope()
-			if (!rootScope || rootScope === mountedRequestScope) {
-				return
-			}
-			unmountRequestShape()
-			unmountRequestShape = EMPTY_CLEANUP
-			mountedRequestScope = rootScope
-			const shape = getAttrsShape(['exportRequest'])
-			if (shape) {
-				unmountRequestShape = pageRuntime.mountShape(rootScope, shape)
-			}
-		}
 
 		const readExportRequest = () => {
 			const rootScope = pageRuntime.getRootScope()
@@ -515,7 +503,6 @@ export const createVideoEditorHarness = (
 		}
 
 		const tryStartPendingRequest = () => {
-			ensureExportRequestShape()
 			const snapshot = readExportRequest()
 			if (!snapshot) {
 				return
@@ -524,13 +511,15 @@ export const createVideoEditorHarness = (
 		}
 
 		const unlistenRootScope = pageRuntime.subscribeRootScope(tryStartPendingRequest)
+		// Phase 5 cleanup (done): removed setInterval polling fallback in favor of pure event-driven model.
+		// subscribeRootAttrs(['exportRequest']) reliably triggers callback on every exportRequest change.
+		// No polling needed; if subscription becomes unreliable, the root cause must be fixed, not masked by polling.
 		const unlistenExportRequest = pageRuntime.subscribeRootAttrs(['exportRequest'], tryStartPendingRequest)
 		tryStartPendingRequest()
 
 		return () => {
 			unlistenRootScope()
 			unlistenExportRequest()
-			unmountRequestShape()
 			inFlightRequestIds.clear()
 			handledRequestIds.clear()
 		}
