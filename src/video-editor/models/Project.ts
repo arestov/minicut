@@ -5,16 +5,12 @@ import { TRACK_CREATION_SHAPE } from './Track'
 import {
 	normalizeResourceCreationAttrs,
 	normalizeTrackCreationAttrs,
-	getResourceKind,
 	reduceHandleInit,
 	reduceRenameProject,
 	reduceSetProjectFormat,
 	reduceSetProjectDuration,
 	reduceAddTrack,
-	reduceImportResourceCreate,
-	reduceImportResourceToVideo,
-	reduceImportResourceToAudio,
-	reduceImportResourceToEmbeddedAudio,
+	reduceImportResourceCreateOnly,
 	reduceRequestImportFiles,
 	reduceSetImportProgress,
 	reduceSetTracks,
@@ -36,6 +32,11 @@ export const PROJECT_CREATION_SHAPE = {
 } as const
 
 const asNumber = (value: unknown, fallback: number): number => typeof value === 'number' ? value : fallback
+
+const RESOURCE_INPUT_BASE_REL_SHAPE = {
+	linking: '<< resource << #',
+	many: false,
+} as const
 
 export const Project = model({
 	model_name: 'minicut_project',
@@ -189,90 +190,21 @@ export const Project = model({
 			},
 			fn: reduceSetImportProgress,
 		},
-		importResource: [
-			{
-				to: {
-					resource: ['<< resource << #', {
-						method: 'at_end',
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: RESOURCE_CREATION_SHAPE,
-					}],
-					resources: ['<< resources', {
-						method: 'at_end',
-						can_use_refs: true,
-					}],
-					$output: ['$output'],
-				},
-				fn: [
-					['<< @all:tracks.clips'] as const,
-					reduceImportResourceCreate,
-				],
+		importResource: {
+			to: {
+				resource: ['<< resource << #', {
+					method: 'at_end',
+					can_create: true,
+					can_hold_refs: true,
+					creation_shape: RESOURCE_CREATION_SHAPE,
+				}],
+				resources: ['<< resources', {
+					method: 'at_end',
+					can_use_refs: true,
+				}],
 			},
-			{
-				when: [
-					[] as const,
-					(payload: unknown) => {
-						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: unknown } | null
-						const kind = value?.resource && typeof value.resource === 'object'
-							? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0])
-							: null
-						return value?.shouldAddEmbeddedAudio === true && kind === 'video'
-					},
-				],
-				to: {
-					embeddedAudioClip: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
-					$output: ['$output'],
-				},
-				fn: [
-					['$noop', '< @one:appendStart < primaryAudioTrack', '<< @all:resources'] as const,
-					(payload: unknown, noop: unknown, audioTrackAppendStart: unknown, resources: unknown) => ({
-						embeddedAudioClip: reduceImportResourceToEmbeddedAudio(payload, noop, Array.isArray(resources) ? resources : [], audioTrackAppendStart),
-						$output: payload,
-					}),
-				],
-			},
-			{
-				when: [
-					[] as const,
-					(payload: unknown) => (payload as { shouldAddToTimeline?: unknown } | null)?.shouldAddToTimeline === true,
-				],
-				to: {
-					videoClip: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
-					$output: ['$output'],
-				},
-				fn: [
-					['$noop', '<< @all:resources', '< @one:appendStart < primaryVideoTrack'] as const,
-					(payload: unknown, noop: unknown, resources: unknown, videoAppendStart: unknown) => ({
-						videoClip: reduceImportResourceToVideo(payload, noop, Array.isArray(resources) ? resources : [], videoAppendStart),
-						$output: payload,
-					}),
-				],
-			},
-			{
-				when: [
-					[] as const,
-					(payload: unknown) => {
-						const value = payload as { shouldAddToTimeline?: unknown; resource?: unknown } | null
-						const kind = value?.resource && typeof value.resource === 'object'
-							? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0])
-							: null
-						return value?.shouldAddToTimeline === true && kind === 'audio'
-					},
-				],
-				to: {
-					audioClip: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
-					$output: ['$output'],
-				},
-				fn: [
-					['$noop', '<< @all:resources', '< @one:appendStart < primaryAudioTrack'] as const,
-					(payload: unknown, noop: unknown, resources: unknown, audioAppendStart: unknown) => ({
-						audioClip: reduceImportResourceToAudio(payload, noop, Array.isArray(resources) ? resources : [], audioAppendStart),
-						$output: payload,
-					}),
-				],
-			},
-		],
+			fn: reduceImportResourceCreateOnly,
+		},
 		setTracks: {
 			to: {
 				tracks: ['<< tracks', { method: 'set_many' }],
@@ -289,7 +221,7 @@ export const Project = model({
 			{
 				to: {
 					clip: ['*'],
-					tracks: ['<< tracks', { action: 'removeClip', inline_subwalker: true }],
+					tracks: ['<< tracks', { action: 'removeClip', sub_flow: true }],
 					$output: ['$output'],
 				},
 				fn: [
@@ -298,12 +230,13 @@ export const Project = model({
 				],
 			},
 			{
-				to: ['<< tracks', { action: 'acceptClipIfTarget', inline_subwalker: true }],
+				to: ['<< tracks', { action: 'acceptClipIfTarget', sub_flow: true }],
 				fn: reduceMoveClipToTrackPayload,
 			},
 		],
 		addResourceToTimeline: [
 			{
+				input_base_rel_shape: RESOURCE_INPUT_BASE_REL_SHAPE,
 				to: {
 					clip: ['<< clip << #', {
 						method: 'at_end',
@@ -323,7 +256,7 @@ export const Project = model({
 				fn: [
 					[
 						'$noop',
-						'<< @all:resources',
+						'<<<< $input_id',
 						'<< @one:primaryVideoTrack',
 						'<< @one:primaryAudioTrack',
 						'< @one:appendStart < primaryVideoTrack',
@@ -335,15 +268,18 @@ export const Project = model({
 		],
 		addEmbeddedAudioToTimeline: [
 			{
+				input_base_rel_shape: {
+					resourceId: RESOURCE_INPUT_BASE_REL_SHAPE,
+				},
 				when: [
 					[] as const,
 					(payload: unknown) => typeof (payload as { resourceId?: unknown } | null)?.resourceId === 'string',
 				],
-				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
+				to: ['<< primaryAudioTrack', { action: 'addClip', sub_flow: true }],
 				fn: [
 					[
 						'$noop',
-						'<< @all:resources',
+						'<<<< $input_id:resourceId',
 						'< @one:appendStart < primaryAudioTrack',
 						'< @all:resourceId < primaryAudioTrack.clips.clipRenderData',
 					] as const,
@@ -353,7 +289,7 @@ export const Project = model({
 		],
 		addTextClipToVideoTrack: [
 			{
-				to: ['<< primaryVideoTrack', { action: 'addTextClip', inline_subwalker: true }],
+				to: ['<< primaryVideoTrack', { action: 'addTextClip', sub_flow: true }],
 				fn: reduceAddTextClipToVideoTrack,
 			},
 		],

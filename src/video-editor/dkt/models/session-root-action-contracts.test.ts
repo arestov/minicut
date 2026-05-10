@@ -139,6 +139,47 @@ describe('SessionRoot action contracts', () => {
 		await expectProjectGraphInvariants(harness.ctx)
 	})
 
+	it('importResourceIntoActiveProject creates a resource on the active project', async () => {
+		const harness = await createActionContractHarness()
+		const beforeResourceIds = await readNodeIds(harness.ctx, harness.project, 'resources')
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'importResourceIntoActiveProject', {
+			name: 'Session Imported Video',
+			kind: 'video',
+			url: 'https://example.invalid/session-imported-video.webm',
+			mime: 'video/webm',
+			duration: 5,
+			size: 500,
+			source: { kind: 'local' },
+			status: 'ready',
+			data: { status: 'ready' },
+		})
+
+		const resources = await harness.ctx.queryRel(harness.project, 'resources')
+		const createdResource = resources.find((resource) => harness.ctx.getAttr(resource, 'name') === 'Session Imported Video')
+		expect(createdResource?._node_id).toBeTruthy()
+		expect(await readNodeIds(harness.ctx, harness.project, 'resources')).toHaveLength(beforeResourceIds.length + 1)
+		await expectProjectGraphInvariants(harness.ctx)
+	})
+
+	it('setActiveProjectImportProgress forwards progress to active project', async () => {
+		const harness = await createActionContractHarness()
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'setActiveProjectImportProgress', {
+			taskId: 'input-batch:session-progress',
+			stage: 'processing',
+			processed: 1,
+			total: 2,
+		})
+
+		expect(harness.ctx.getAttr(harness.project, 'activeImportTaskId')).toBe('input-batch:session-progress')
+		expect(harness.ctx.getAttr(harness.project, 'importProgress')).toEqual({
+			stage: 'processing',
+			processed: 1,
+			total: 2,
+		})
+	})
+
 	it('nudgeSelectedClip moves the selected clip by the requested delta', async () => {
 		const harness = await createActionContractHarness()
 		const selectedClipId = String(harness.videoClip._node_id)

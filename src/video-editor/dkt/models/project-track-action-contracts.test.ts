@@ -1,8 +1,51 @@
 import { describe, expect, it } from 'vitest'
 import { createActionContractHarness, dispatchAndSettle, readNodeIds } from './action-contract-test-harness'
 import { expectProjectGraphInvariants } from '../test/projectGraphAssertions'
+import { bootDktModels } from '../testingInit'
 
 describe('Project action contracts', () => {
+	it('importResource creates only a resource when the timeline is empty', async () => {
+		const ctx = await bootDktModels()
+
+		await ctx.lockToRead(async () => {
+			await ctx.sessionRoot.dispatch('createProject', {
+				title: 'Empty Timeline Import',
+			})
+		})
+
+		const project = (await ctx.queryRel(ctx.sessionRoot, 'activeProject'))[0]
+		expect(project).toBeTruthy()
+		const tracks = await ctx.queryRel(project!, 'tracks')
+		const videoTrack = tracks.find((track) => ctx.getAttr(track, 'kind') === 'video')
+		const audioTrack = tracks.find((track) => ctx.getAttr(track, 'kind') === 'audio')
+		expect(videoTrack).toBeTruthy()
+		expect(audioTrack).toBeTruthy()
+
+		await ctx.lockToRead(async () => {
+			await project!.dispatch('importResource', {
+				name: 'Auto Video Resource',
+				kind: 'video',
+				url: 'https://example.invalid/auto-video.webm',
+				mime: 'video/webm',
+				duration: 5,
+				size: 500,
+				source: { kind: 'local' },
+				status: 'ready',
+				data: { status: 'ready' },
+			})
+		})
+
+		const resources = await ctx.queryRel(project!, 'resources')
+		const createdResource = resources.find((resource) => ctx.getAttr(resource, 'name') === 'Auto Video Resource')
+		expect(createdResource?._node_id).toBeTruthy()
+
+		const videoClips = await ctx.queryRel(videoTrack!, 'clips')
+		const audioClips = await ctx.queryRel(audioTrack!, 'clips')
+		expect(videoClips).toHaveLength(0)
+		expect(audioClips).toHaveLength(0)
+		await expectProjectGraphInvariants(ctx)
+	})
+
 	it('renameProject, setProjectFormat, and setProjectDuration update project attrs', async () => {
 		const harness = await createActionContractHarness()
 
@@ -19,6 +62,21 @@ describe('Project action contracts', () => {
 		expect(harness.ctx.getAttr(harness.project, 'width')).toBe(1280)
 		expect(harness.ctx.getAttr(harness.project, 'height')).toBe(720)
 		expect(harness.ctx.getAttr(harness.project, 'duration')).toBe(27)
+	})
+
+	it('requestImportFiles marks project import progress as queued', async () => {
+		const harness = await createActionContractHarness()
+
+		await dispatchAndSettle(harness.ctx, harness.project, 'requestImportFiles', {
+			inputBatchHandleId: 'input-batch:test',
+		})
+
+		expect(harness.ctx.getAttr(harness.project, 'activeImportTaskId')).toBe('input-batch:test')
+		expect(harness.ctx.getAttr(harness.project, 'importProgress')).toEqual({
+			stage: 'queued',
+			processed: 0,
+			total: 0,
+		})
 	})
 
 	it('addTrack creates a new track and setTracks can replace the project track list', async () => {

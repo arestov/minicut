@@ -426,15 +426,24 @@ export const createVideoEditorHarness = (
 			syncImportState()
 		}
 
-		const disposeActiveProject = pageRuntime.subscribeRootScope(() => {
+		let disposeActiveProjectRel = EMPTY_CLEANUP
+		const resubscribeActiveProjectRel = () => {
+			disposeActiveProjectRel()
+			disposeActiveProjectRel = EMPTY_CLEANUP
+			const rootScope = pageRuntime.getRootScope()
+			if (rootScope) {
+				disposeActiveProjectRel = pageRuntime.subscribeOne(rootScope, 'activeProject', syncActiveProjectImportState)
+			}
 			syncActiveProjectImportState()
-		})
+		}
+		const disposeRootScope = pageRuntime.subscribeRootScope(resubscribeActiveProjectRel)
 
-		syncActiveProjectImportState()
+		resubscribeActiveProjectRel()
 
 		return () => {
 			disposeProjectImportState()
-			disposeActiveProject()
+			disposeActiveProjectRel()
+			disposeRootScope()
 		}
 	}
 

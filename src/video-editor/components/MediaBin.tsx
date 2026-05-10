@@ -1,10 +1,11 @@
 import { Grid2X2, List, Plus, Search, Type, Upload } from 'lucide-react'
 import { useCallback, useContext, useEffect, useState } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
+import { One } from '../../dkt-react-sync/components/One'
 import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
-import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
+import { useScope } from '../../dkt-react-sync/hooks/useScope'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import { useVideoEditor } from '../app/VideoEditorContext'
 import type { ResourceAttrs } from '../render/registryTypes'
@@ -65,7 +66,7 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const url = String(resourceAttrs.url)
 	const totalBytes = Number(resourceAttrs.size ?? 0)
 	const statusLabel = totalBytes > 0 ? `${Math.round(totalBytes / 1024)} KB` : null
-	const durationLabel = resourceAttrs.duration != null ? `${duration.toFixed(1)}s` : '—'
+	const durationLabel = resourceAttrs.duration != null ? `${duration.toFixed(1)}s` : '-'
 
 	return (
 		<li className="ve-resource-row">
@@ -206,16 +207,19 @@ const ProjectMediaList = ({
 	)
 }
 
-const useImportFiles = () => {
+const useProjectImportFiles = () => {
 	const { actions } = useVideoEditor()
+	const projectScope = useScope()
 	return useCallback((files: FileList | File[]) => {
-		actions.requestImportFiles(files)
-	}, [actions])
+		if (projectScope) {
+			actions.importFilesIntoProject(files, projectScope)
+		}
+	}, [actions, projectScope])
 }
 
 const MediaBinPanel = ({
-	activeProjectId,
 	children,
+	importFiles,
 	kindFilter,
 	query,
 	setKindFilter,
@@ -223,8 +227,8 @@ const MediaBinPanel = ({
 	setViewMode,
 	viewMode,
 }: {
-	activeProjectId: string | null
 	children: React.ReactNode
+	importFiles?: (files: FileList | File[]) => void
 	kindFilter: ResourceAttrs['kind'] | 'all'
 	query: string
 	setKindFilter: (value: ResourceAttrs['kind'] | 'all') => void
@@ -232,29 +236,33 @@ const MediaBinPanel = ({
 	setViewMode: (value: 'list' | 'grid') => void
 	viewMode: 'list' | 'grid'
 }) => {
-	const importFiles = useImportFiles()
-
 	return (
 		<section className="ve-panel ve-media-bin" aria-label="Media bin">
 			<div className="ve-panel__header">
 				<h2>Media bin</h2>
-				<label className="ve-import-button">
-					<Upload size={14} aria-hidden="true" />
-					<span>Import</span>
-					<input
-						type="file"
-						aria-label="Import media files"
-						accept="video/*,image/*,audio/*"
-						multiple
-						disabled={!activeProjectId}
-						onChange={(event) => {
-							if (event.currentTarget.files) {
-								importFiles(event.currentTarget.files)
-								event.currentTarget.value = ''
-							}
-						}}
-					/>
-				</label>
+				{importFiles ? (
+					<label className="ve-import-button">
+						<Upload size={14} aria-hidden="true" />
+						<span>Import</span>
+						<input
+							type="file"
+							aria-label="Import media files"
+							accept="video/*,image/*,audio/*"
+							multiple
+							onChange={(event) => {
+								if (event.currentTarget.files) {
+									importFiles(event.currentTarget.files)
+									event.currentTarget.value = ''
+								}
+							}}
+						/>
+					</label>
+				) : (
+					<button className="ve-import-button" type="button" disabled>
+						<Upload size={14} aria-hidden="true" />
+						<span>Import</span>
+					</button>
+				)}
 			</div>
 			<div className="ve-media-controls" aria-label="Media filters">
 				<label className="ve-search-field">
@@ -303,11 +311,21 @@ const MediaBinPanel = ({
 	)
 }
 
-const MediaBinEmptyState = () => {
+type MediaBinViewState = {
+	kindFilter: ResourceAttrs['kind'] | 'all'
+	normalizedQuery: string
+	query: string
+	setKindFilter: (value: ResourceAttrs['kind'] | 'all') => void
+	setQuery: (value: string) => void
+	setViewMode: (value: 'list' | 'grid') => void
+	viewMode: 'list' | 'grid'
+}
+
+const MediaBinEmptyState = (props: Omit<MediaBinViewState, 'normalizedQuery'>) => {
 	const { actions } = useVideoEditor()
 
 	return (
-		<>
+		<MediaBinPanel {...props}>
 			<div className="ve-media-count">0 of 0 assets</div>
 			<div className="ve-media-bin__body">
 				<div className="ve-empty-state">
@@ -315,7 +333,17 @@ const MediaBinEmptyState = () => {
 					<button type="button" onClick={() => actions.createProject()}>New project</button>
 				</div>
 			</div>
-		</>
+		</MediaBinPanel>
+	)
+}
+
+const MediaBinProject = (props: MediaBinViewState) => {
+	const importFiles = useProjectImportFiles()
+
+	return (
+		<MediaBinPanel {...props} importFiles={importFiles}>
+			<ProjectMediaList kindFilter={props.kindFilter} normalizedQuery={props.normalizedQuery} viewMode={props.viewMode} />
+		</MediaBinPanel>
 	)
 }
 
@@ -324,28 +352,21 @@ export const MediaBin = () => {
 	const [kindFilter, setKindFilter] = useState<ResourceAttrs['kind'] | 'all'>('all')
 	const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 	const normalizedQuery = query.trim().toLowerCase()
-	// activeProjectId lives on session scope; read via root hook (we're inside ActiveProjectScope)
-	const rootAttrs = useRootAttrs(['activeProjectId']) as { activeProjectId?: unknown }
-	const activeProjectId = typeof rootAttrs.activeProjectId === 'string' ? rootAttrs.activeProjectId : null
+	const viewState = {
+		kindFilter,
+		normalizedQuery,
+		query,
+		setKindFilter,
+		setQuery,
+		setViewMode,
+		viewMode,
+	}
 
 	return (
-		<MediaBinPanel
-			activeProjectId={activeProjectId}
-			kindFilter={kindFilter}
-			query={query}
-			setKindFilter={setKindFilter}
-			setQuery={setQuery}
-			setViewMode={setViewMode}
-			viewMode={viewMode}
-		>
-			{activeProjectId
-				? <ProjectMediaList kindFilter={kindFilter} normalizedQuery={normalizedQuery} viewMode={viewMode} />
-				: <MediaBinEmptyState />
-			}
-		</MediaBinPanel>
+		<One rel="activeProject" fallback={<MediaBinEmptyState {...viewState} />}>
+			<MediaBinProject {...viewState} />
+		</One>
 	)
 }
-
-
 
 

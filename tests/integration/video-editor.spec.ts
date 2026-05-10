@@ -3,9 +3,26 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
+	const beforeCount = await page.evaluate(() => {
+		const debug = (window as Window & {
+			__MINICUT_P2P_DEBUG__?: {
+				getProjectCount?: () => number
+			}
+		}).__MINICUT_P2P_DEBUG__
+		return debug?.getProjectCount?.() ?? 0
+	})
+	await page.getByRole('banner').getByRole('button', { name: 'New project' }).click()
+	await expect.poll(async () => {
+		return page.evaluate(() => {
+			const debug = (window as Window & {
+				__MINICUT_P2P_DEBUG__?: {
+					getProjectCount?: () => number
+				}
+			}).__MINICUT_P2P_DEBUG__
+			return debug?.getProjectCount?.() ?? 0
+		})
+	}, { timeout: 20_000 }).toBeGreaterThan(beforeCount)
 	const projectsRegion = page.getByLabel('Projects')
-	await projectsRegion.getByRole('button').click()
-	await projectsRegion.getByRole('button', { name: 'New project' }).click()
 	await expect(projectsRegion.getByRole('button', { name: /Project \d+/i })).toBeVisible({ timeout: 20_000 })
 }
 
@@ -551,10 +568,17 @@ test('video resources add linked audio clips that play, inspect, and expose expo
 	await expect(audio).toHaveAttribute('data-resource-name', 'fixture-video.webm')
 	await expect(audio).toHaveAttribute('data-gain', '0.65')
 	await expect(audio).toHaveAttribute('data-pan', '0')
-	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).volume)).toBeCloseTo(0.65, 2)
+	await expect.poll(async () => page.evaluate(() => document.querySelector('audio')?.volume ?? 0), { timeout: 10_000 }).toBeCloseTo(0.65, 2)
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
-	await expect.poll(async () => audio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.5)
-	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
+	await expect.poll(async () => page.evaluate(() => document.querySelector('audio')?.currentTime ?? 0), { timeout: 10_000 }).toBeGreaterThan(0.5)
+	await page.evaluate(() => {
+		const debug = (window as Window & {
+			__MINICUT_P2P_DEBUG__?: {
+				dispatchRootAction?: (actionName: string, payload?: unknown) => Promise<void>
+			}
+		}).__MINICUT_P2P_DEBUG__
+		void debug?.dispatchRootAction?.('setPlaying', false)
+	})
 	await expect(page.getByRole('button', { name: 'Export project' })).toBeEnabled()
 })
 

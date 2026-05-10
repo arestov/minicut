@@ -34,7 +34,7 @@ const dispatchImportProgress = (
 	projectScope: ReactSyncScopeHandle,
 	payload: { taskId: string; stage: 'processing' | 'done' | 'error'; processed: number; total: number; error?: string },
 ): void => {
-	env.dkt?.dispatch('setImportProgress', payload, projectScope)
+	env.dkt?.dispatch('setActiveProjectImportProgress', payload, env.pageRuntime?.getRootScope() ?? projectScope)
 }
 
 const resolveImportedResourceNodeId = (
@@ -56,12 +56,59 @@ const resolveImportedResourceNodeId = (
 	return null
 }
 
+const wait = (ms: number): Promise<void> => new Promise((resolve) => {
+	setTimeout(resolve, ms)
+})
+
+const waitForImportedResourceNodeId = async (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+	url: string,
+): Promise<string | null> => {
+	for (let attempt = 0; attempt < 50; attempt += 1) {
+		const resourceId = resolveImportedResourceNodeId(env, projectScope, url)
+		if (resourceId) {
+			return resourceId
+		}
+		await wait(20)
+	}
+	return null
+}
+
+const projectTimelineHasClips = (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+): boolean => {
+	const tracks = env.pageRuntime?.readMany(projectScope, 'tracks')
+	if (!Array.isArray(tracks)) {
+		return false
+	}
+	return tracks.some((trackScope) => {
+		const clips = env.pageRuntime?.readMany(trackScope, 'clips')
+		return Array.isArray(clips) && clips.length > 0
+	})
+}
+
+const waitForProjectTimelineClips = async (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+): Promise<void> => {
+	for (let attempt = 0; attempt < 50; attempt += 1) {
+		if (projectTimelineHasClips(env, projectScope)) {
+			return
+		}
+		await wait(20)
+	}
+}
+
 export const executeImportFilesTask = async ({
 	task,
 	env,
+	projectScope: providedProjectScope,
 }: {
 	task: RuntimeTaskDescriptor
 	env: EditorActionEnvironment
+	projectScope?: ReactSyncScopeHandle | null
 }): Promise<void> => {
 	if (task.dropped) {
 		return
@@ -79,7 +126,7 @@ export const executeImportFilesTask = async ({
 		return
 	}
 
-	const projectScope = getActiveProjectScope(env)
+	const projectScope = providedProjectScope ?? getActiveProjectScope(env)
 	if (!projectScope || !env.dkt) {
 		env.tasks.completeTask(task)
 		return
@@ -130,7 +177,7 @@ export const executeImportFilesTask = async ({
 
 			const mime = file.type || 'application/octet-stream'
 
-			env.dkt.dispatch('importResource', {
+			env.dkt.dispatch('importResourceIntoActiveProject', {
 				name: file.name,
 				kind,
 				url: objectUrl,
@@ -149,10 +196,9 @@ export const executeImportFilesTask = async ({
 					ranges: { loaded: [[0, file.size]], requested: [] },
 					loadedBytes: file.size,
 				},
-			}, projectScope)
-			await env.pageRuntime?.waitForRuntimeSettled?.()
+			}, env.pageRuntime?.getRootScope() ?? projectScope)
 
-			const resourceId = resolveImportedResourceNodeId(env, projectScope, objectUrl)
+			const resourceId = await waitForImportedResourceNodeId(env, projectScope, objectUrl)
 			if (!resourceId) {
 				processed += 1
 				dispatchImportProgress(env, projectScope, {
@@ -162,6 +208,14 @@ export const executeImportFilesTask = async ({
 					total: fileList.length,
 				})
 				continue
+			}
+
+			if (!projectTimelineHasClips(env, projectScope)) {
+				env.dkt.dispatch('addActiveProjectResourceToTimeline', resourceId, env.pageRuntime?.getRootScope() ?? projectScope)
+				if (kind === 'video') {
+					env.dkt.dispatch('addActiveProjectEmbeddedAudioToTimeline', { resourceId }, env.pageRuntime?.getRootScope() ?? projectScope)
+				}
+				await waitForProjectTimelineClips(env, projectScope)
 			}
 
 			env.transfers.manager.registerLocalResource(resourceId, file, {

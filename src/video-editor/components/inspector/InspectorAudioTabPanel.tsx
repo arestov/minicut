@@ -6,8 +6,17 @@ import { useOne } from '../../../dkt-react-sync/hooks/useOne'
 import { InspectorSection } from './InspectorSection'
 import type { ClipRenderAttrs, ResourceRenderAttrs } from './types'
 
-const InspectorAudioControls = ({ attrs, resourceKind }: { attrs: ClipRenderAttrs; resourceKind: unknown }) => {
-	const dispatch = useActions()
+type ClipDispatch = ReturnType<typeof useActions>
+
+const InspectorAudioControls = ({
+	attrs,
+	dispatch,
+	resourceKind,
+}: {
+	attrs: ClipRenderAttrs
+	dispatch: ClipDispatch
+	resourceKind: unknown
+}) => {
 	const selectedMediaKind = attrs.mediaKind ?? resourceKind
 	const isAudioClip = selectedMediaKind === 'audio'
 	const audio = attrs.audio
@@ -25,23 +34,24 @@ const InspectorAudioControls = ({ attrs, resourceKind }: { attrs: ClipRenderAttr
 	)
 }
 
-const InspectorAudioControlsWithResource = ({ attrs }: { attrs: ClipRenderAttrs }) => {
+const InspectorAudioControlsWithResource = ({ attrs, dispatch }: { attrs: ClipRenderAttrs; dispatch: ClipDispatch }) => {
 	const resourceAttrs = useAttrs(['kind']) as ResourceRenderAttrs
 
-	return <InspectorAudioControls attrs={attrs} resourceKind={resourceAttrs.kind ?? 'image'} />
+	return <InspectorAudioControls attrs={attrs} dispatch={dispatch} resourceKind={resourceAttrs.kind ?? 'image'} />
 }
 
 export const InspectorAudioTabPanel = () => {
+	const clipDispatch = useActions()
 	const attrs = useAttrs(['audio', 'mediaKind']) as ClipRenderAttrs
 	const resourceScope = useOne('resource')
 
 	if (!resourceScope) {
-		return <InspectorAudioControls attrs={attrs} resourceKind="image" />
+		return <InspectorAudioControls attrs={attrs} dispatch={clipDispatch} resourceKind="image" />
 	}
 
 	return (
 		<ScopeContext.Provider value={resourceScope}>
-			<InspectorAudioControlsWithResource attrs={attrs} />
+			<InspectorAudioControlsWithResource attrs={attrs} dispatch={clipDispatch} />
 		</ScopeContext.Provider>
 	)
 }

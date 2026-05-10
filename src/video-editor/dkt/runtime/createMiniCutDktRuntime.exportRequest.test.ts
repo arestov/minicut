@@ -51,11 +51,73 @@ const requestDebugDump = async (memory: ReturnType<typeof createMemoryTransport>
 }
 
 const waitForIdle = async (memory: ReturnType<typeof createMemoryTransport>): Promise<void> => {
-	memory.emit({ type: DKT_MSG.WAIT_IDLE, requestId: `idle:${Date.now()}` })
-	await waitFor(() => memory.sent.some((message) => message.type === DKT_MSG.IDLE))
+	const requestId = `idle:${Date.now()}:${Math.random().toString(36).slice(2)}`
+	memory.emit({ type: DKT_MSG.WAIT_IDLE, requestId })
+	await waitFor(() => memory.sent.some((message) => message.type === DKT_MSG.IDLE && message.requestId === requestId))
+}
+
+const waitForProjectImportProgress = async (
+	memory: ReturnType<typeof createMemoryTransport>,
+	projectNodeId: string,
+) => {
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		const dump = await requestDebugDump(memory)
+		const project = dump.runtimeModels.find((entry) => entry.nodeId === projectNodeId)
+		if (project?.attrs.importProgress) {
+			return project
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10))
+	}
+	throw new Error('Timed out waiting for project import progress')
 }
 
 describe('createMiniCutDktRuntime export request channel', () => {
+	it('applies root-dispatched active project import progress through worker runtime', async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true })
+		const memory = createMemoryTransport()
+		const connection = runtime.connect(memory.transport)
+
+		memory.emit({ type: DKT_MSG.BOOTSTRAP, sessionKey: 'session:worker-import-progress' })
+		await waitFor(() => memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_READY))
+
+		memory.emit({
+			type: DKT_MSG.DISPATCH_ACTION,
+			actionName: 'createProject',
+			payload: { title: 'Worker import progress project' },
+			scopeNodeId: null,
+		})
+		await waitForIdle(memory)
+
+		const beforeDump = await requestDebugDump(memory)
+		const sessionRoot = beforeDump.runtimeModels.find((entry) => entry.modelName === 'minicut_session_root')
+		const projectNodeId = sessionRoot?.rels.activeProject
+		if (typeof projectNodeId !== 'string') {
+			throw new Error('Expected active project node id')
+		}
+
+		memory.emit({
+			type: DKT_MSG.DISPATCH_ACTION,
+			actionName: 'setActiveProjectImportProgress',
+			payload: {
+				taskId: 'input-batch:worker-progress',
+				stage: 'processing',
+				processed: 1,
+				total: 2,
+			},
+			scopeNodeId: null,
+		})
+		await waitForIdle(memory)
+
+		const project = await waitForProjectImportProgress(memory, projectNodeId)
+		expect(project?.attrs.importProgress).toEqual({
+			stage: 'processing',
+			processed: 1,
+			total: 2,
+		})
+
+		connection.destroy()
+	})
+
 	it('publishes dkt:export-request directly after requestProjectExport action', async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true })
 		const memory = createMemoryTransport()

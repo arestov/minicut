@@ -143,6 +143,14 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 				const runtime = prepareAppRuntime({
 					sync_sender: true,
 					warnUnexpectedAttrs: true,
+					onError(error: unknown) {
+						for (const transport of activeTransports) {
+							transport.send({
+								type: DKT_MSG.RUNTIME_ERROR,
+								message: error instanceof Error ? error.stack || error.message : String(error),
+							})
+						}
+					},
 				}) as RuntimeLike
 				const inited = await runtime.start({
 					App: MiniCutAppRoot,
@@ -242,6 +250,7 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		let destroyed = false
 		let stream: ReturnType<typeof createWorkerStream> | null = null
 		let activeSessionKey = 'minicut-local'
+		let messageQueue = Promise.resolve()
 		activeTransports.add(transport)
 
 		const sendError = (error: unknown, requestId?: string): void => {
@@ -365,7 +374,9 @@ export const createMiniCutDktRuntime = (options: { enabled?: boolean } = {}) => 
 		}
 
 		const unlisten = transport.listen((message: MiniCutDktTransportMessage) => {
-			Promise.resolve(handleMessage(message)).catch((error) => sendError(error, 'requestId' in message ? message.requestId : undefined))
+			messageQueue = messageQueue
+				.then(() => handleMessage(message))
+				.catch((error) => sendError(error, 'requestId' in message ? message.requestId : undefined))
 		})
 
 		// Subscribe to disconnect event and clear export progress

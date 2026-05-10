@@ -164,13 +164,13 @@ export const VideoEditorApp = () => {
 			<PlaybackLoop />
 			<Toolbar />
 			<main className="ve-main">
-				<ActiveProjectScope>
-					<div
-						ref={mainTopRef}
-						className={`ve-main__top${showColorScopes ? ' ve-main__top--scopes' : ''}`}
-						style={{ '--ve-inspector-width': `${inspectorWidth}px` } as CSSProperties}
-					>
-						<MediaBin />
+				<div
+					ref={mainTopRef}
+					className={`ve-main__top${showColorScopes ? ' ve-main__top--scopes' : ''}`}
+					style={{ '--ve-inspector-width': `${inspectorWidth}px` } as CSSProperties}
+				>
+					<MediaBin />
+					<ActiveProjectScope>
 						<PreviewPanel mediaElementRegistry={mediaElementRegistryRef.current} />
 						<div
 							role="separator"
@@ -188,7 +188,9 @@ export const VideoEditorApp = () => {
 							onMouseDown={handleResizeMouseDown}
 						/>
 						<Inspector mediaElementRegistry={mediaElementRegistryRef.current} />
-					</div>
+					</ActiveProjectScope>
+				</div>
+				<ActiveProjectScope>
 					<TimelineView />
 				</ActiveProjectScope>
 			</main>

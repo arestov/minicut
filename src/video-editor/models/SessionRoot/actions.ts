@@ -1,4 +1,6 @@
 import { PROJECT_CREATION_SHAPE } from '../Project'
+import { RESOURCE_CREATION_SHAPE } from '../Resource'
+import { normalizeResourceCreationAttrs } from '../Project/actions'
 import { buildPreviewBuffer, PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS, type PreviewBuffer, type PreviewClipSource, type PreviewStructure } from '../../read-model/previewComps'
 import type { ExportRequestState } from '../../app/exportRequestState'
 import type { ExportProgressState } from '../../app/exportProgressState'
@@ -46,6 +48,10 @@ export type DktSessionActionName =
 	| 'tickPlayback'
 	| 'addTextClipToTimeline'
 	| 'requestImportFiles'
+	| 'setActiveProjectImportProgress'
+	| 'importResourceIntoActiveProject'
+	| 'addActiveProjectResourceToTimeline'
+	| 'addActiveProjectEmbeddedAudioToTimeline'
 	| 'syncSelectedClipRel'
 	| 'togglePlayback'
 	| 'zoomTimeline'
@@ -404,7 +410,7 @@ export const sessionCreateProjectAction = [
 		],
 	},
 	{
-		to: ['<< activeProject', { action: 'handleInit', inline_subwalker: true }],
+		to: ['<< activeProject', { action: 'handleInit', sub_flow: true }],
 		fn: () => ({}),
 	},
 ] as const satisfies DktActionDefinition
@@ -416,49 +422,41 @@ export const sessionHandleInitAction = [
 			pendingProjectInit: ['pendingProjectInit'],
 			selectedEntityId: ['selectedEntityId'],
 			cursor: ['cursor'],
+			createdProject: ['<< $root.project << #', {
+				method: 'at_end',
+				can_create: true,
+				can_hold_refs: true,
+				creation_shape: PROJECT_CREATION_SHAPE,
+			}],
+			activeProject: ['<< activeProject', {
+				method: 'set_one',
+				can_use_refs: true,
+			}],
 		},
 		fn: [
-			['activeProjectId'] as const,
-			(payload: unknown, activeProjectId: unknown) => {
+			['activeProjectId', '< @all:title < pioneer.project'] as const,
+			(payload: unknown, activeProjectId: unknown, projectTitles: unknown) => {
 				if (typeof activeProjectId === 'string' && activeProjectId) {
 					return { pendingProjectInit: null }
 				}
 
-				const pendingProjectInit = createProjectSeedPayload(payload)
+				const seed = createProjectSeedPayload(payload, undefined, projectTitles)
 				return {
 					activeProjectId: null,
-					pendingProjectInit,
+					pendingProjectInit: seed,
 					selectedEntityId: null,
 					cursor: 0,
+					createdProject: {
+						attrs: seed,
+						hold_ref_id: 'createdProject',
+					},
+					activeProject: { use_ref_id: 'createdProject' },
 				}
 			},
 		],
 	},
 	{
-		to: ['<< pioneer', { action: 'createProjectModel', inline_subwalker: true }],
-		when_deps: ['pendingProjectInit'] as const,
-		when_fn: (_payload: unknown, pendingProjectInit: unknown) => Boolean(pendingProjectInit && typeof pendingProjectInit === 'object'),
-		fn: [
-			['pendingProjectInit'] as const,
-			(_payload: unknown, pendingProjectInit: unknown) => pendingProjectInit as Record<string, unknown>,
-		],
-	},
-	{
-		to: {
-			activeProject: ['<< activeProject', { method: 'set_one' }],
-		},
-		fn: [
-			['<< @all:pioneer.project', 'activeProjectId'] as const,
-			(_payload: unknown, projects: unknown, activeProjectId: unknown) => {
-				if (typeof activeProjectId !== 'string' || !activeProjectId) return { activeProject: null }
-				const modelList = Array.isArray(projects) ? projects : []
-				const found = modelList.find((item) => asString((item as { _node_id?: unknown } | null)?._node_id) === activeProjectId)
-				return { activeProject: found ?? null }
-			},
-		],
-	},
-	{
-		to: ['<< activeProject', { action: 'handleInit', inline_subwalker: true }],
+		to: ['<< activeProject', { action: 'handleInit', sub_flow: true }],
 		when_deps: ['pendingProjectInit'] as const,
 		when_fn: (_payload: unknown, pendingProjectInit: unknown) => Boolean(pendingProjectInit && typeof pendingProjectInit === 'object'),
 		fn: () => ({}),
@@ -642,7 +640,7 @@ export const sessionClearExportProgressAction = {
 export const sessionRequestImportFilesAction = [
 	{
 		to: {
-			projectImport: ['<< activeProject', { action: 'requestImportFiles', inline_subwalker: true }],
+			projectImport: ['<< activeProject', { action: 'requestImportFiles' }],
 			importFxPayload: ['$output'],
 		},
 		fn: (payload: unknown) => ({
@@ -669,6 +667,43 @@ export const sessionRequestImportFilesAction = [
 		],
 	},
 ] as const satisfies DktActionDefinition
+
+export const sessionSetActiveProjectImportProgressAction = [{
+	to: ['<< activeProject', { action: 'setImportProgress', sub_flow: true }],
+	fn: (payload: unknown) => payload as Record<string, unknown>,
+}] as const satisfies DktActionDefinition
+
+export const sessionImportResourceIntoActiveProjectAction = {
+	to: {
+		resource: ['<< resource << #', {
+			method: 'at_end',
+			can_create: true,
+			can_hold_refs: true,
+			creation_shape: RESOURCE_CREATION_SHAPE,
+		}],
+		projectResource: ['<< activeProject.resources', {
+			method: 'at_end',
+			can_use_refs: true,
+		}],
+	},
+	fn: (payload: unknown) => ({
+		resource: {
+			attrs: normalizeResourceCreationAttrs(payload),
+			hold_ref_id: 'activeProjectImportResource',
+		},
+		projectResource: { use_ref_id: 'activeProjectImportResource' },
+	}),
+} as const satisfies DktActionDescriptor
+
+export const sessionAddActiveProjectResourceToTimelineAction = [{
+	to: ['<< activeProject', { action: 'addResourceToTimeline' }],
+	fn: (payload: unknown) => payload as Record<string, unknown>,
+}] as const satisfies DktActionDefinition
+
+export const sessionAddActiveProjectEmbeddedAudioToTimelineAction = [{
+	to: ['<< activeProject', { action: 'addEmbeddedAudioToTimeline' }],
+	fn: (payload: unknown) => payload as Record<string, unknown>,
+}] as const satisfies DktActionDefinition
 
 export const sessionRequestProjectExportAction = [
 		{
@@ -875,7 +910,7 @@ export const sessionConsumeExportRequestAction = {
 
 export const sessionDeleteSelectedClipAction = [
 	{
-		to: ['<< selectedClip', { action: 'removeSelf', inline_subwalker: true }],
+		to: ['<< selectedClip', { action: 'removeSelf', sub_flow: true }],
 		fn: () => ({}),
 	},
 	{
@@ -904,7 +939,7 @@ export const sessionNudgeSelectedClipAction = [
 
 export const sessionSplitSelectedClipAction = [
 	{
-		to: ['<< selectedClip', { action: 'splitSelfAt', inline_subwalker: true }],
+		to: ['<< selectedClip', { action: 'splitSelfAt', sub_flow: true }],
 		fn: [
 			['cursor'] as const,
 			(_payload: unknown, cursor: unknown) => {
@@ -949,6 +984,10 @@ export const dktSessionActions = {
 	zoomTimeline: sessionZoomTimelineAction,
 	nudgeSelectedClip: sessionNudgeSelectedClipAction,
 	requestImportFiles: sessionRequestImportFilesAction,
+	setActiveProjectImportProgress: sessionSetActiveProjectImportProgressAction,
+	importResourceIntoActiveProject: sessionImportResourceIntoActiveProjectAction,
+	addActiveProjectResourceToTimeline: sessionAddActiveProjectResourceToTimelineAction,
+	addActiveProjectEmbeddedAudioToTimeline: sessionAddActiveProjectEmbeddedAudioToTimelineAction,
 	deleteSelectedClip: sessionDeleteSelectedClipAction,
 	splitSelectedClip: sessionSplitSelectedClipAction,
 	startPreviewBuffer: {

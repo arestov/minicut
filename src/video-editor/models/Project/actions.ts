@@ -102,16 +102,6 @@ export const getResourceKind = (resource: ResourceLike): string =>
 		? getResourceAttr(resource, 'kind') as string
 		: 'video'
 
-export const findResourceById = (resources: unknown[], resourceId: string): ResourceLike | null => {
-	if (!Array.isArray(resources)) return null
-	return (resources.find((resource) => getNodeId(resource) === resourceId) as ResourceLike | undefined) ?? null
-}
-
-// TODO(remove): replace this node-id lookup with a pure $input_id model-ref handoff
-// once DKT action deps expose the resolved transient base as a reducer argument.
-const resolveResourceModelForClipPayload = (resources: unknown[], resourceId: unknown): ResourceLike | null =>
-	typeof resourceId === 'string' ? findResourceById(resources, resourceId) : null
-
 export const createTimelineClipPayload = (
 	noop: unknown,
 	resource: ResourceLike,
@@ -250,17 +240,84 @@ export const reduceImportResourceCreate = (payload: unknown, clips: unknown[]) =
 		resource: { attrs, hold_ref_id: 'newResource' },
 		resources: { use_ref_id: 'newResource' },
 		$output: {
-			resource: { use_ref_id: 'newResource' },
+			rels: {
+				resource: { use_ref_id: 'newResource' },
+			},
 			shouldAddToTimeline,
 			shouldAddEmbeddedAudio: shouldAddToTimeline && attrs.kind === 'video',
 		},
 	}
 }
 
+export const reduceImportResourceCreateOnly = (payload: unknown) => {
+	const attrs = normalizeResourceCreationAttrs(payload)
+	return {
+		resource: { attrs, hold_ref_id: 'newResource' },
+		resources: { use_ref_id: 'newResource' },
+	}
+}
+
+export const reduceImportResource = (
+	payload: unknown,
+	noop: unknown,
+	clips: unknown[],
+	videoTrack: unknown,
+	audioTrack: unknown,
+	videoTrackAppendStart: unknown,
+	audioTrackAppendStart: unknown,
+) => {
+	const attrs = normalizeResourceCreationAttrs(payload)
+	const hasTimelineClips = Array.isArray(clips) && clips.some((entry) => {
+		if (Array.isArray(entry)) {
+			return entry.length > 0
+		}
+		return Boolean(entry)
+	})
+	const shouldAddToTimeline = !hasTimelineClips
+	const kind = getResourceKind(attrs)
+	const result: Record<string, unknown> = {
+		resource: { attrs, hold_ref_id: 'newResource' },
+		resources: { use_ref_id: 'newResource' },
+	}
+
+	if (!shouldAddToTimeline) {
+		return result
+	}
+
+	if (kind !== 'audio' && videoTrack && typeof videoTrack === 'object') {
+		result.videoClip = {
+			attrs: createTimelineClipAttrs(
+				attrs,
+				{},
+				typeof videoTrackAppendStart === 'number' ? videoTrackAppendStart : 0,
+			),
+			rels: { track: videoTrack, resource: { use_ref_id: 'newResource' } },
+			hold_ref_id: 'importVideoClip',
+		}
+		result.videoClips = { use_ref_id: 'importVideoClip' }
+	}
+
+	if ((kind === 'audio' || kind === 'video') && audioTrack && typeof audioTrack === 'object') {
+		result.audioClip = {
+			attrs: createTimelineClipAttrs(
+				attrs,
+				kind === 'video' ? { name: 'Embedded audio', mediaKind: 'audio' } : {},
+				typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0,
+			),
+			rels: { track: audioTrack, resource: { use_ref_id: 'newResource' } },
+			hold_ref_id: 'importAudioClip',
+		}
+		result.audioClips = { use_ref_id: 'importAudioClip' }
+	}
+
+	return result
+}
+
 const resolveOutputResource = (payload: unknown): ResourceLike | null => {
-	const value = payload as { resource?: unknown } | null
-	if (value?.resource && typeof value.resource === 'object') {
-		return value.resource as ResourceLike
+	const value = payload as { resource?: unknown; rels?: { resource?: unknown } } | null
+	const resource = value?.rels?.resource ?? value?.resource
+	if (resource && typeof resource === 'object') {
+		return resource as ResourceLike
 	}
 	return null
 }
@@ -299,6 +356,84 @@ export const reduceImportResourceToEmbeddedAudio = (payload: unknown, noop: unkn
 		return noop
 	}
 	return createEmbeddedAudioClipPayload(noop, resource, typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
+}
+
+const createTimelineClipTargetResult = (
+	noop: unknown,
+	resource: ResourceLike,
+	track: unknown,
+	holdRefId: string,
+	appendStart: unknown,
+	overrides: Partial<{
+		name: string
+		mediaKind: string
+	}> = {},
+) => {
+	if (!track || typeof track !== 'object' || !getNodeId(resource)) {
+		return noop
+	}
+	return {
+		clip: {
+			attrs: createTimelineClipAttrs(resource, overrides, typeof appendStart === 'number' ? appendStart : 0),
+			rels: { track, resource },
+			hold_ref_id: holdRefId,
+		},
+		clips: { use_ref_id: holdRefId },
+	}
+}
+
+export const reduceImportResourceToEmbeddedAudioTarget = (
+	payload: unknown,
+	noop: unknown,
+	audioTrack: unknown,
+	audioTrackAppendStart: unknown,
+) => {
+	const value = payload as { shouldAddEmbeddedAudio?: unknown } | null
+	if (value?.shouldAddEmbeddedAudio !== true) {
+		return noop
+	}
+	const resource = resolveOutputResource(payload)
+	if (!resource || getResourceKind(resource) !== 'video') {
+		return noop
+	}
+	return createTimelineClipTargetResult(noop, resource, audioTrack, 'importEmbeddedAudioClip', audioTrackAppendStart, {
+		name: 'Embedded audio',
+		mediaKind: 'audio',
+	})
+}
+
+export const reduceImportResourceToVideoTarget = (
+	payload: unknown,
+	noop: unknown,
+	videoTrack: unknown,
+	videoTrackAppendStart: unknown,
+) => {
+	const value = payload as { shouldAddToTimeline?: unknown } | null
+	if (value?.shouldAddToTimeline !== true) {
+		return noop
+	}
+	const resource = resolveOutputResource(payload)
+	if (!resource || getResourceKind(resource) === 'audio') {
+		return noop
+	}
+	return createTimelineClipTargetResult(noop, resource, videoTrack, 'importVideoClip', videoTrackAppendStart)
+}
+
+export const reduceImportResourceToAudioTarget = (
+	payload: unknown,
+	noop: unknown,
+	audioTrack: unknown,
+	audioTrackAppendStart: unknown,
+) => {
+	const value = payload as { shouldAddToTimeline?: unknown } | null
+	if (value?.shouldAddToTimeline !== true) {
+		return noop
+	}
+	const resource = resolveOutputResource(payload)
+	if (!resource || getResourceKind(resource) !== 'audio') {
+		return noop
+	}
+	return createTimelineClipTargetResult(noop, resource, audioTrack, 'importAudioClip', audioTrackAppendStart)
 }
 
 export const reduceRequestImportFiles = (payload: unknown) => {
@@ -391,20 +526,19 @@ export const reduceMoveClipToTrackContext = (
 export const reduceMoveClipToTrackPayload = (payload: unknown) => payload
 
 export const reduceAddResourceToTimeline = (
-	payload: unknown,
+	_payload: unknown,
 	noop: unknown,
-	resources: unknown[],
+	resource: unknown,
 	videoTrack: unknown,
 	audioTrack: unknown,
 	videoTrackAppendStart: unknown,
 	audioTrackAppendStart: unknown,
 ) => {
-	const resourceId = typeof payload === 'string' ? payload : (payload as { resourceId?: unknown } | null)?.resourceId
-	const resource = resolveResourceModelForClipPayload(Array.isArray(resources) ? resources : [], resourceId)
-	if (!resource) {
+	if (!resource || typeof resource !== 'object') {
 		return noop
 	}
-	const kind = getResourceKind(resource)
+	const resolvedResource = resource as ResourceLike
+	const kind = getResourceKind(resolvedResource)
 	const targetTrack = kind === 'audio' ? audioTrack : videoTrack
 	const start = kind === 'audio'
 		? (typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
@@ -412,13 +546,13 @@ export const reduceAddResourceToTimeline = (
 			typeof videoTrackAppendStart === 'number' ? videoTrackAppendStart : 0,
 			typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0,
 		)
-	if (!getNodeId(resource)) {
+	if (!getNodeId(resolvedResource)) {
 		return noop
 	}
 	const result = {
 		clip: {
-			attrs: createTimelineClipAttrs(resource, {}, start),
-			rels: { track: targetTrack, resource },
+			attrs: createTimelineClipAttrs(resolvedResource, {}, start),
+			rels: { track: targetTrack, resource: resolvedResource },
 			hold_ref_id: 'timelineClip',
 		},
 	}
@@ -431,7 +565,7 @@ export const reduceAddResourceToTimeline = (
 export const reduceAddEmbeddedAudio = (
 	payload: unknown,
 	noop: unknown,
-	resources: unknown[],
+	resource: unknown,
 	audioTrackAppendStart: unknown,
 	audioClipResourceIds?: unknown[],
 ) => {
@@ -442,11 +576,10 @@ export const reduceAddEmbeddedAudio = (
 	if (Array.isArray(audioClipResourceIds) && audioClipResourceIds.includes(resourceId)) {
 		return noop
 	}
-	const resource = resolveResourceModelForClipPayload(Array.isArray(resources) ? resources : [], resourceId)
-	if (!resource) {
+	if (!resource || typeof resource !== 'object') {
 		return noop
 	}
-	return createEmbeddedAudioClipPayload(noop, resource, typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
+	return createEmbeddedAudioClipPayload(noop, resource as ResourceLike, typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
 }
 
 export const reduceAddTextClipToVideoTrack = (payload: unknown) => payload

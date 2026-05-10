@@ -1,6 +1,8 @@
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { VideoEditorHarnessActions } from './actionRuntimeTypes'
+import { executeImportFilesTask } from './importFilesTaskExecutor'
+import { PROJECT_IMPORT_FILES_FX } from '../models/Project/effects'
 
 let exportSequence = 0
 
@@ -13,6 +15,14 @@ const getRootNodeId = (env: EditorActionEnvironment): string | null => {
 
 const dispatchRoot = (env: EditorActionEnvironment, actionName: string, payload?: unknown): void => {
 	env.dkt?.dispatch(actionName, payload, getRootScope(env))
+}
+
+const stageImportFiles = (env: EditorActionEnvironment, files: FileList | File[]): string | null => {
+	const fileList = Array.from(files)
+	if (fileList.length === 0) {
+		return null
+	}
+	return env.tasks.putRuntimeRef(fileList)
 }
 
 export const createEditorHarnessAdapter = (
@@ -37,12 +47,34 @@ export const createEditorHarnessAdapter = (
 				},
 			})
 		},
-		requestImportFiles(files: FileList | File[]): void {
-			const fileList = Array.from(files)
-			if (fileList.length === 0) {
+		stageImportFiles(files: FileList | File[]): string | null {
+			return stageImportFiles(env, files)
+		},
+		importFilesIntoProject(files: FileList | File[], projectScope: ReactSyncScopeHandle): void {
+			const inputBatchHandleId = stageImportFiles(env, files)
+			if (!inputBatchHandleId) {
 				return
 			}
-			const inputBatchHandleId = env.tasks.putRuntimeRef(fileList)
+			const task = env.tasks.dispatchTask(PROJECT_IMPORT_FILES_FX, {
+				data: {
+					projectId: projectScope._nodeId,
+					inputBatchHandleId,
+					addToTimelineWhenEmpty: true,
+				},
+			}, {
+				queuePolicy: 'queue-all',
+				intentKey: `${PROJECT_IMPORT_FILES_FX}:${inputBatchHandleId}`,
+			})
+			if (task.dropped) {
+				return
+			}
+			void executeImportFilesTask({ task, env, projectScope })
+		},
+		requestImportFiles(files: FileList | File[]): void {
+			const inputBatchHandleId = stageImportFiles(env, files)
+			if (!inputBatchHandleId) {
+				return
+			}
 			dispatchRoot(env, 'requestImportFiles', { inputBatchHandleId })
 		},
 		requestSelectedClipExport(): void {
