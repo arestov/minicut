@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createActionContractHarness, dispatchAndSettle, readSourceIds } from './action-contract-test-harness'
+import { createActionContractHarness, dispatchAndSettle, findBySourceId, readSourceIds } from './action-contract-test-harness'
 
 describe('Project action contracts', () => {
 	it('renameProject, setProjectFormat, and setProjectDuration update project attrs', async () => {
@@ -49,6 +49,9 @@ describe('Project action contracts', () => {
 
 	it('importResource creates a resource and addResourceToTimeline routes it to the video track', async () => {
 		const harness = await createActionContractHarness()
+		const videoAppendStartBefore = harness.ctx.getAttr(harness.videoTrack, 'appendStart')
+		const audioAppendStartBefore = harness.ctx.getAttr(harness.audioTrack, 'appendStart')
+		const audioClipIdsBefore = await readSourceIds(harness.ctx, harness.audioTrack, 'clips', 'sourceClipId')
 
 		await dispatchAndSettle(harness.ctx, harness.project, 'importResource', {
 			sourceResourceId: 'res:project-video',
@@ -72,6 +75,15 @@ describe('Project action contracts', () => {
 
 		const clipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
 		expect(clipIds).toContain('res:project-video:clip')
+
+		const createdClip = await findBySourceId(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId', 'res:project-video:clip')
+		expect(createdClip).toBeTruthy()
+		expect(harness.ctx.getAttr(createdClip!, 'sourceResourceId')).toBe('res:project-video')
+		expect(harness.ctx.getAttr(createdClip!, 'start')).toBe(videoAppendStartBefore)
+		expect(harness.ctx.getAttr(createdClip!, 'duration')).toBe(5)
+		expect(harness.ctx.getAttr(harness.videoTrack, 'appendStart')).toBe(Number(videoAppendStartBefore) + 5)
+		expect(harness.ctx.getAttr(harness.audioTrack, 'appendStart')).toBe(audioAppendStartBefore)
+		expect(await readSourceIds(harness.ctx, harness.audioTrack, 'clips', 'sourceClipId')).toEqual(audioClipIdsBefore)
 	})
 
 	it('addTextClipToVideoTrack creates a text clip and a text node in the root graph', async () => {
@@ -154,6 +166,19 @@ describe('Track action contracts', () => {
 			sourceClipId: 'clip:track-temp-2',
 		})
 		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).not.toContain('clip:track-temp-2')
+	})
+
+	it('removeClip and removeClipBySourceId are idempotent for missing clips', async () => {
+		const harness = await createActionContractHarness()
+		const beforeClipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
+
+		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClip', { clipId: 'clip-node:missing' })
+		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClip', { clipId: 'clip-node:missing' })
+		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).toEqual(beforeClipIds)
+
+		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClipBySourceId', { sourceClipId: 'clip:missing' })
+		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClipBySourceId', { sourceClipId: 'clip:missing' })
+		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).toEqual(beforeClipIds)
 	})
 
 	it('setClips replaces the clip relation list in the requested order', async () => {
