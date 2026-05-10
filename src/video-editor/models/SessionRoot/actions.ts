@@ -696,12 +696,12 @@ export const sessionImportResourceIntoActiveProjectAction = {
 } as const satisfies DktActionDescriptor
 
 export const sessionAddActiveProjectResourceToTimelineAction = [{
-	to: ['<< activeProject', { action: 'addResourceToTimeline' }],
+	to: ['<< activeProject', { action: 'addResourceToTimeline', sub_flow: true }],
 	fn: (payload: unknown) => payload as Record<string, unknown>,
 }] as const satisfies DktActionDefinition
 
 export const sessionAddActiveProjectEmbeddedAudioToTimelineAction = [{
-	to: ['<< activeProject', { action: 'addEmbeddedAudioToTimeline' }],
+	to: ['<< activeProject', { action: 'addEmbeddedAudioToTimeline', sub_flow: true }],
 	fn: (payload: unknown) => payload as Record<string, unknown>,
 }] as const satisfies DktActionDefinition
 

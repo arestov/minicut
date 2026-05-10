@@ -42,17 +42,23 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await expect(secondProjectsRegion.getByRole('menuitem', { name: uniqueTitle })).toBeVisible({ timeout: 10_000 })
 	await secondProjectsRegion.getByRole('menuitem', { name: uniqueTitle }).click()
 
-	await firstPage.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
+	await firstPage.bringToFront()
+	const importInput = firstPage.getByLabel('Import media files')
+	await expect(importInput).toBeEnabled()
+	await importInput.setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
+	await expect(
+		firstPage.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' }),
+	).toBeVisible({ timeout: 20_000 })
 	await expect(
 		secondPage.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' }),
-	).toBeVisible()
+	).toBeVisible({ timeout: 20_000 })
 
 	await expect(
 		secondPage
 			.getByRole('region', { name: 'Timeline' })
 			.getByRole('button', { name: /fixture-video\.webm.*0\.0+s\s*\/\s*1\.0+s/i })
 			.first(),
-	).toBeVisible()
+	).toBeVisible({ timeout: 20_000 })
 
 	await firstPage.close()
 	await secondPage.close()

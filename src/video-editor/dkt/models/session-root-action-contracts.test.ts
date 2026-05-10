@@ -162,6 +162,49 @@ describe('SessionRoot action contracts', () => {
 		await expectProjectGraphInvariants(harness.ctx)
 	})
 
+	it('active project timeline forwarding creates video and embedded audio clips', async () => {
+		const harness = await createActionContractHarness()
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'importResourceIntoActiveProject', {
+			name: 'Session Forwarded Video',
+			kind: 'video',
+			url: 'https://example.invalid/session-forwarded-video.webm',
+			mime: 'video/webm',
+			duration: 5,
+			size: 500,
+			source: { kind: 'local' },
+			status: 'ready',
+			data: { status: 'ready' },
+		})
+
+		const importedResource = (await harness.ctx.queryRel(harness.project, 'resources')).find(
+			(resource) => harness.ctx.getAttr(resource, 'name') === 'Session Forwarded Video',
+		)
+		expect(importedResource?._node_id).toBeTruthy()
+
+		const beforeVideoClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		const beforeAudioClipIds = await readNodeIds(harness.ctx, harness.audioTrack, 'clips')
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			'addActiveProjectResourceToTimeline',
+			String(importedResource!._node_id),
+		)
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			'addActiveProjectEmbeddedAudioToTimeline',
+			{ resourceId: String(importedResource!._node_id) },
+		)
+
+		const afterVideoClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		const afterAudioClipIds = await readNodeIds(harness.ctx, harness.audioTrack, 'clips')
+		expect(afterVideoClipIds.length).toBe(beforeVideoClipIds.length + 1)
+		expect(afterAudioClipIds.length).toBe(beforeAudioClipIds.length + 1)
+		await expectProjectGraphInvariants(harness.ctx)
+	})
+
 	it('setActiveProjectImportProgress forwards progress to active project', async () => {
 		const harness = await createActionContractHarness()
 

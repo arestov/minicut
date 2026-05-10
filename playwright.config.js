@@ -5,6 +5,7 @@ export default defineConfig({
 	testIgnore: ['**/p2p-*.spec.ts'],
 	fullyParallel: true,
 	timeout: 30_000,
+	globalSetup: './tests/integration/playwright-vite-global-setup.mjs',
 	use: {
 		baseURL: 'http://127.0.0.1:4174',
 		trace: 'on-first-retry',
@@ -14,22 +15,6 @@ export default defineConfig({
 		{
 			name: 'chromium',
 			use: { browserName: 'chromium' },
-		},
-	],
-	webServer: [
-		{
-			command: 'npm --prefix backend run dev:test',
-			url: 'http://127.0.0.1:8787/api/health',
-			reuseExistingServer: !process.env.CI,
-			stdout: 'pipe',
-			stderr: 'pipe',
-		},
-		{
-			command: 'npm start',
-			url: 'http://127.0.0.1:4174',
-			reuseExistingServer: !process.env.CI,
-			stdout: 'pipe',
-			stderr: 'pipe',
 		},
 	],
 })

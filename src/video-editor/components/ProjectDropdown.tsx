@@ -19,10 +19,10 @@ interface ProjectAttrs {
 
 const ProjectItem = ({ activeProjectId, onSelect }: ProjectItemProps) => {
 	const { actions } = useVideoEditor()
+	const projectScope = useContext(ScopeContext)
 	const projectAttrs = useAttrs(['title', 'updatedAt']) as ProjectAttrs
 	const resources = useMany('resources')
-	const projectScopes = useMany('$self')
-	const projectId = projectScopes[0]?._nodeId ?? null
+	const projectId = projectScope?._nodeId ?? null
 	const projectTitle = String(projectAttrs.title ?? 'Project')
 	const projectVersion = Number(projectAttrs.updatedAt ?? 1) || 1
 	const isActive = projectId === activeProjectId
@@ -168,4 +168,3 @@ export const ProjectDropdown = () => {
 		</div>
 	)
 }
-
