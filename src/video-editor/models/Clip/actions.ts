@@ -321,7 +321,7 @@ export const reduceMoveBy = (payload: unknown, start: unknown) => {
 	const patch = reduceTimelineMoveByAction(payload, {
 		start: typeof start === 'number' ? start : 0,
 	})
-	return patch ?? '$noop'
+	return patch ?? {}
 }
 
 export const reduceTrim = (payload: unknown, start: unknown, inPoint: unknown, duration: unknown) => {
@@ -347,7 +347,7 @@ export const reduceSplitAt = (payload: unknown, start: unknown, _inPoint: unknow
 		start: typeof start === 'number' ? start : 0,
 		duration: typeof duration === 'number' ? duration : 0,
 	})
-	return patch ?? '$noop'
+	return patch ?? {}
 }
 
 export const reduceAddEffect = (payload: unknown) => {

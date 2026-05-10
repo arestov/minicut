@@ -555,7 +555,7 @@ export const sessionSetActiveInspectorTabAction = {
 	to: {
 		activeInspectorTab: ['activeInspectorTab'],
 	},
-	fn: (payload: unknown) => reduceSessionSetActiveInspectorTabAction(payload) ?? '$noop',
+	fn: (payload: unknown) => reduceSessionSetActiveInspectorTabAction(payload) ?? {},
 } as const satisfies DktActionDescriptor
 
 export const sessionSetPlayingAction = {
@@ -887,7 +887,7 @@ export const sessionNudgeSelectedClipAction = [
 				: (payload as { delta?: unknown } | null)?.delta
 			return typeof delta === 'number' && Number.isFinite(delta) && delta !== 0
 				? { delta }
-				: '$noop'
+				: {}
 		},
 	},
 ] as const satisfies DktActionDefinition
@@ -899,7 +899,7 @@ export const sessionSplitSelectedClipAction = [
 			['cursor'] as const,
 			(_payload: unknown, cursor: unknown) => {
 				const time = typeof cursor === 'number' && Number.isFinite(cursor) ? roundToHundredths(cursor) : null
-				if (time === null) return '$noop'
+				if (time === null) return {}
 				return { time }
 			},
 		],
