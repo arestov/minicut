@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createActionContractHarness, dispatchAndSettle, readNodeIds } from './action-contract-test-harness'
+import { expectProjectGraphInvariants } from '../test/projectGraphAssertions'
 
 describe('Project action contracts', () => {
 	it('renameProject, setProjectFormat, and setProjectDuration update project attrs', async () => {
@@ -41,6 +42,7 @@ describe('Project action contracts', () => {
 
 		const reorderedTrackIds = await readNodeIds(harness.ctx, harness.project, 'tracks')
 		expect(reorderedTrackIds).toEqual([String(fxTrack!._node_id), String(harness.videoTrack._node_id)])
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('importResource creates a resource and addResourceToTimeline routes it to the video track', async () => {
@@ -91,6 +93,7 @@ describe('Project action contracts', () => {
 		expect(harness.ctx.getAttr(harness.videoTrack, 'appendStart')).toBe(Number(videoAppendStartBefore) + 5)
 		expect(harness.ctx.getAttr(harness.audioTrack, 'appendStart')).toBe(audioAppendStartBefore)
 		expect(await readNodeIds(harness.ctx, harness.audioTrack, 'clips')).toEqual(audioClipIdsBefore)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('addTextClipToVideoTrack creates a text clip and a text node in the root graph', async () => {
@@ -145,6 +148,7 @@ describe('Project action contracts', () => {
 
 		const textModels = await harness.ctx.queryRel(harness.ctx.appModel, 'text')
 		expect(textModels.some((text) => harness.ctx.getAttr(text, 'content') === 'Project text')).toBe(true)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 })
 
@@ -182,6 +186,7 @@ describe('Track action contracts', () => {
 			clipId: tempClip!._node_id,
 		})
 		expect((await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).includes(String(tempClip!._node_id))).toBe(false)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('removeClip is idempotent for missing clips', async () => {
@@ -215,5 +220,6 @@ describe('Track action contracts', () => {
 		const trackClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 		expect(trackClipIds[0]).toBe(String(secondClip._node_id))
 		expect(trackClipIds[1]).toBe(String(firstClip._node_id))
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 })

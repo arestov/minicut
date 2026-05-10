@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createActionContractHarness, dispatchAndSettle } from './action-contract-test-harness'
+import { expectProjectGraphInvariants } from '../test/projectGraphAssertions'
 
 describe('Text action contracts', () => {
 	it('setTextContent, setTextStyle, setTextBox, and setClip update the text node', async () => {
@@ -56,6 +57,7 @@ describe('Text action contracts', () => {
 		const textClipRel = await harness.ctx.queryRel(text, 'clip')
 		expect(textClipRel).toHaveLength(1)
 		expect(textClipRel[0]).toBe(harness.videoClip)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 })
 
@@ -105,6 +107,7 @@ describe('Effect action contracts', () => {
 		const effectProjectRel = await harness.ctx.queryRel(effect, 'project')
 		expect(effectProjectRel).toHaveLength(1)
 		expect(effectProjectRel[0]).toBe(harness.project)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 })
 
@@ -148,5 +151,6 @@ describe('Resource action contracts', () => {
 		const resourceClipsRel = await harness.ctx.queryRel(harness.videoResource, 'clips')
 		expect(resourceClipsRel).toHaveLength(1)
 		expect(resourceClipsRel[0]).toBe(harness.videoClip)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 })

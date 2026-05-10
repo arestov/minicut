@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createActionContractHarness, dispatchAndSettle, readNodeIds } from './action-contract-test-harness'
+import { expectProjectGraphInvariants } from '../test/projectGraphAssertions'
 
 const createTempClip = async () => {
 	const harness = await createActionContractHarness()
@@ -136,7 +137,7 @@ describe('Clip action contracts', () => {
 		expect(harness.ctx.getAttr(effects[1], 'name')).toBe('Tint B')
 		const firstEffectClip = await harness.ctx.queryRel(effects[0], 'clip')
 		expect(firstEffectClip).toHaveLength(1)
-		expect(firstEffectClip[0]).toBe(clip)
+		expect(firstEffectClip[0]?._node_id).toBe(clip._node_id)
 
 		await dispatchAndSettle(harness.ctx, clip, 'reorderEffect', {
 			effectId: effects[0]._node_id,
@@ -160,19 +161,19 @@ describe('Clip action contracts', () => {
 		expect(harness.ctx.getAttr(nextEffects[0], 'name')).toBe('Tint B')
 		const resourceRel = await harness.ctx.queryRel(clip, 'resource')
 		expect(resourceRel).toHaveLength(1)
-		expect(resourceRel[0]).toBe(harness.imageResource)
+		expect(resourceRel[0]?._node_id).toBe(harness.imageResource._node_id)
 
 		const textRel = await harness.ctx.queryRel(clip, 'text')
 		expect(textRel).toHaveLength(1)
-		expect(textRel[0]).toBe(text)
+		expect(textRel[0]?._node_id).toBe(text._node_id)
 
 		const trackRel = await harness.ctx.queryRel(clip, 'track')
 		expect(trackRel).toHaveLength(1)
-		expect(trackRel[0]).toBe(harness.audioTrack)
+		expect(trackRel[0]?._node_id).toBe(harness.audioTrack._node_id)
 
 		const projectRel = await harness.ctx.queryRel(clip, 'project')
 		expect(projectRel).toHaveLength(1)
-		expect(projectRel[0]).toBe(harness.project)
+		expect(projectRel[0]?._node_id).toBe(harness.project._node_id)
 	})
 
 	it('removeEffect and reorderEffect are no-ops for missing effect ids', async () => {
@@ -197,6 +198,7 @@ describe('Clip action contracts', () => {
 
 		const afterEffects = await harness.ctx.queryRel(clip, 'effects')
 		expect(afterEffects.map((effect) => effect._node_id)).toEqual(beforeEffectIds)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('removeSelf removes the clip from its parent track', async () => {
@@ -206,5 +208,6 @@ describe('Clip action contracts', () => {
 
 		const clipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 		expect(clipIds).not.toContain(String(clip._node_id))
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 })

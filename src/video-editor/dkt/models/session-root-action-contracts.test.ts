@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from '../../models/sessionZoom'
 import { createActionContractHarness, dispatchAndSettle, findByNodeId, readNodeIds } from './action-contract-test-harness'
+import { expectProjectGraphInvariants } from '../test/projectGraphAssertions'
 
 describe('SessionRoot action contracts', () => {
 	it('bootstraps exactly one project and does not duplicate on repeated handleInit', async () => {
@@ -30,6 +31,7 @@ describe('SessionRoot action contracts', () => {
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'activeProjectId')).toBe(activeProject!._node_id)
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBeNull()
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'cursor')).toBe(0)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('selectEntity resolves selectedClip and summary from the current graph', async () => {
@@ -134,6 +136,7 @@ describe('SessionRoot action contracts', () => {
 		const textModels = await harness.ctx.queryRel(harness.ctx.appModel, 'text')
 		expect(textModels.length).toBe(beforeTextCount + 1)
 		expect(textModels.some((text) => harness.ctx.getAttr(text, 'content') === 'Session text')).toBe(true)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('nudgeSelectedClip moves the selected clip by the requested delta', async () => {
@@ -144,6 +147,7 @@ describe('SessionRoot action contracts', () => {
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'nudgeSelectedClip', { delta: 0.5 })
 
 		expect(harness.ctx.getAttr(harness.videoClip, 'start')).toBe(1.5)
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('nudgeSelectedClip ignores invalid deltas and missing selections', async () => {
@@ -181,6 +185,7 @@ describe('SessionRoot action contracts', () => {
 		expect(harness.ctx.getAttr(rightClip!, 'in')).toBe(2)
 		const rightClipResource = await harness.ctx.queryRel(rightClip!, 'resource')
 		expect(rightClipResource).toEqual([harness.videoResource])
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('splitSelectedClip clones text node for text clips and keeps bidirectional rels', async () => {
@@ -232,6 +237,7 @@ describe('SessionRoot action contracts', () => {
 		expect(rightTextClipRel).toEqual([rightClip!])
 		const leftTextClipRel = await harness.ctx.queryRel(leftTextBeforeSplit, 'clip')
 		expect(leftTextClipRel).toEqual([textClip!])
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('splitSelectedClip is a no-op without a selected clip or a valid split point', async () => {
@@ -258,6 +264,7 @@ describe('SessionRoot action contracts', () => {
 		const afterDeleteIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 		expect(afterDeleteIds).not.toContain(selectedClipId)
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBeNull()
+		await expectProjectGraphInvariants(harness.ctx)
 	})
 
 	it('deleteSelectedClip clears stale selection without removing unrelated clips', async () => {

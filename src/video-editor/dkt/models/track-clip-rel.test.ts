@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bootDktModels } from '../testingInit'
+import { expectProjectGraphInvariants } from '../test/projectGraphAssertions'
 
 const setupProjectAndTrack = async () => {
 	const ctx = await bootDktModels()
@@ -41,6 +42,7 @@ describe('Track self-rel: addClip', () => {
 		const trackRel = await ctx.queryRel(clip, 'track')
 		expect(trackRel).toHaveLength(1)
 		expect(trackRel[0]).toBe(videoTrack)
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('addClip with multiple clips keeps track rel for every clip', async () => {
@@ -66,6 +68,7 @@ describe('Track self-rel: addClip', () => {
 			expect(trackRel).toHaveLength(1)
 			expect(trackRel[0]).toBe(videoTrack)
 		}
+		await expectProjectGraphInvariants(ctx)
 	})
 })
 
@@ -115,6 +118,7 @@ describe('Track self-rel: addTextClip', () => {
 		const textClipRel = await ctx.queryRel(textNode, 'clip')
 		expect(textClipRel).toHaveLength(1)
 		expect(textClipRel[0]).toBe(clip)
+		await expectProjectGraphInvariants(ctx)
 	})
 })
 
@@ -152,5 +156,6 @@ describe('Track self-rel: splitClipAt', () => {
 		const trackRel = await ctx.queryRel(rightClip!, 'track')
 		expect(trackRel).toHaveLength(1)
 		expect(trackRel[0]).toBe(videoTrack)
+		await expectProjectGraphInvariants(ctx)
 	})
 })

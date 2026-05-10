@@ -61,13 +61,6 @@ export const expectProjectGraphInvariants = async (ctx: DktTestContext): Promise
 	const seenClipIds = new Set<string>()
 	const seenResourceIds = new Set<string>()
 
-	const projectIds = new Set<string>([
-		activeProject!._node_id!,
-		...tracks.map((track) => track._node_id!).filter(Boolean),
-		...resources.map((resource) => resource._node_id!).filter(Boolean),
-		...flatClips.map((clip) => clip._node_id!).filter(Boolean),
-	])
-
 	for (const track of tracks) {
 		expect(ctx.getAttr(track, 'kind')).toMatch(/^(video|audio)$/)
 		expect(Number(ctx.getAttr(track, 'appendStart'))).toBeGreaterThanOrEqual(0)
@@ -86,7 +79,8 @@ export const expectProjectGraphInvariants = async (ctx: DktTestContext): Promise
 
 		for (const clip of trackClips) {
 			const trackRelModels = await ctx.queryRel(clip, 'track')
-			expect(trackRelModels).toEqual([track])
+			expect(trackRelModels).toHaveLength(1)
+			expect(trackRelModels[0]?._node_id).toBe(track._node_id)
 		}
 	}
 
@@ -111,7 +105,9 @@ export const expectProjectGraphInvariants = async (ctx: DktTestContext): Promise
 		if (mediaKind === 'text') {
 			expect(textRel).toHaveLength(1)
 			const textNode = textRel[0]
-			expect(await ctx.queryRel(textNode, 'clip')).toEqual([clip])
+			const textClipRel = await ctx.queryRel(textNode, 'clip')
+			expect(textClipRel).toHaveLength(1)
+			expect(textClipRel[0]?._node_id).toBe(clip._node_id)
 			expect(resourceRel).toHaveLength(0)
 			expect(clipRenderData?.resourceId ?? null).toBeNull()
 		}
@@ -129,8 +125,13 @@ export const expectProjectGraphInvariants = async (ctx: DktTestContext): Promise
 
 		const effects = await ctx.queryRel(clip, 'effects')
 		for (const effect of effects) {
-			expect(projectIds.has(effect._node_id!)).toBe(true)
-			expect(await ctx.queryRel(effect, 'clip')).toEqual([clip])
+			const effectClipRel = await ctx.queryRel(effect, 'clip')
+			expect(effectClipRel).toHaveLength(1)
+			expect(effectClipRel[0]?._node_id).toBe(clip._node_id)
+			const effectProjectRel = await ctx.queryRel(effect, 'project')
+			if (effectProjectRel.length > 0) {
+				expect(effectProjectRel[0]?._node_id).toBe(activeProject!._node_id)
+			}
 		}
 	}
 

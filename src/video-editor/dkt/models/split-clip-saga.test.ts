@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bootDktModels } from '../testingInit'
+import { expectProjectGraphInvariants } from '../test/projectGraphAssertions'
 
 const setupWithClip = async (duration: number) => {
 	const ctx = await bootDktModels()
@@ -42,6 +43,7 @@ describe('Clip.splitSelfAt saga: full 3-step chain', () => {
 		})
 
 		expect(ctx.getAttr(clip, 'duration')).toBe(1)
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('step 2: creates right-split clip on the track', async () => {
@@ -59,6 +61,7 @@ describe('Clip.splitSelfAt saga: full 3-step chain', () => {
 		expect(rightClip).toBeTruthy()
 		expect(ctx.getAttr(rightClip!, 'start')).toBe(1)
 		expect(ctx.getAttr(rightClip!, 'duration')).toBe(1)
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('step 3: clears splitOriginalDuration scratch attr after split', async () => {
@@ -69,6 +72,7 @@ describe('Clip.splitSelfAt saga: full 3-step chain', () => {
 		})
 
 		expect(ctx.getAttr(clip, 'splitOriginalDuration')).toBeNull()
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('right-split clip has track rel set (regression guard for the null-track bug)', async () => {
@@ -86,6 +90,7 @@ describe('Clip.splitSelfAt saga: full 3-step chain', () => {
 		const trackRel = await ctx.queryRel(rightClip!, 'track')
 		expect(trackRel).toHaveLength(1)
 		expect(trackRel[0]).toBe(videoTrack)
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('split outside clip bounds returns noop and clip is untouched', async () => {
@@ -98,6 +103,7 @@ describe('Clip.splitSelfAt saga: full 3-step chain', () => {
 		expect(ctx.getAttr(clip, 'duration')).toBe(2)
 		const clipsAfter = await ctx.queryRel(videoTrack, 'clips')
 		expect(clipsAfter).toHaveLength(1)
+		await expectProjectGraphInvariants(ctx)
 	})
 })
 
@@ -127,6 +133,7 @@ describe('SessionRoot.splitSelectedClip E2E', () => {
 		expect(rightClip).toBeTruthy()
 		expect(ctx.getAttr(rightClip!, 'duration')).toBe(2)
 		expect(ctx.getAttr(rightClip!, 'start')).toBe(2)
+		await expectProjectGraphInvariants(ctx)
 	})
 })
 
@@ -141,6 +148,7 @@ describe('SessionRoot selected clip edit actions', () => {
 		})
 
 		expect(ctx.getAttr(clip, 'start')).toBe(0.5)
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('deleteSelectedClip removes the selected clip and clears selection', async () => {
@@ -158,6 +166,7 @@ describe('SessionRoot selected clip edit actions', () => {
 		const clipIds = clipsAfter.map((entry) => String(entry._node_id))
 		expect(clipIds).not.toContain(selectedClipId)
 		expect(ctx.getAttr(ctx.sessionRoot, 'selectedEntityId')).toBeNull()
+		await expectProjectGraphInvariants(ctx)
 	})
 
 	it('removeSelf removes the clip from its parent track', async () => {
@@ -171,5 +180,6 @@ describe('SessionRoot selected clip edit actions', () => {
 		const clipsAfter = await ctx.queryRel(videoTrack, 'clips')
 		const clipIds = clipsAfter.map((entry) => String(entry._node_id))
 		expect(clipIds).not.toContain(clipId)
+		await expectProjectGraphInvariants(ctx)
 	})
 })
