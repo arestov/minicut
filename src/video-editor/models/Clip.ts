@@ -342,6 +342,7 @@ export const CLIP_CREATION_SHAPE = {
 	attrs: ['name', 'color', 'mediaKind', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
 	rels: {
 		track: {},
+		resource: {},
 		text: {},
 		effects: {},
 	},

@@ -21,6 +21,7 @@ const asObject = <Value extends object>(value: unknown): Value | null =>
 
 type ResourceLike = {
 	_node_id?: unknown
+	states?: Record<string, unknown>
 	name?: unknown
 	kind?: unknown
 	url?: unknown
@@ -59,14 +60,22 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 const asNumberFallback = (value: unknown, fallback: number): number =>
 	typeof value === 'number' ? value : fallback
 
+const getResourceAttr = (resource: ResourceLike, key: keyof Omit<ResourceLike, '_node_id' | 'states'>): unknown => {
+	const stateValue = resource.states?.[key]
+	if (stateValue !== undefined) {
+		return stateValue
+	}
+	return resource[key]
+}
+
 const getNodeId = (value: unknown): string | null =>
 	value && typeof value === 'object' && typeof (value as { _node_id?: unknown })._node_id === 'string'
 		? (value as { _node_id: string })._node_id
 		: null
 
-const getResourceKind = (resource: ResourceLike): string =>
-	resource.kind === 'audio' || resource.kind === 'image' || resource.kind === 'text'
-		? resource.kind
+export const getResourceKind = (resource: ResourceLike): string =>
+	getResourceAttr(resource, 'kind') === 'audio' || getResourceAttr(resource, 'kind') === 'image' || getResourceAttr(resource, 'kind') === 'text'
+		? getResourceAttr(resource, 'kind') as string
 		: 'video'
 
 export const findResourceById = (resources: unknown[], resourceId: string): ResourceLike | null => {
@@ -87,10 +96,10 @@ const findResourceByAttrs = (resources: unknown[], attrs: Record<string, unknown
 		if (!item || typeof item !== 'object') continue
 		const resource = item as ResourceLike
 		if (
-			(name === null || resource.name === name)
-			&& (url === null || resource.url === url)
-			&& (mime === null || resource.mime === mime)
-			&& (duration === null || resource.duration === duration)
+			(name === null || getResourceAttr(resource, 'name') === name)
+			&& (url === null || getResourceAttr(resource, 'url') === url)
+			&& (mime === null || getResourceAttr(resource, 'mime') === mime)
+			&& (duration === null || getResourceAttr(resource, 'duration') === duration)
 		) {
 			return resource
 		}
@@ -115,16 +124,16 @@ export const createTimelineClipPayload = (
 	return {
 		resource,
 		resourceId,
-		name: overrides.name ?? (typeof resource.name === 'string' ? resource.name : 'Clip'),
+		name: overrides.name ?? (typeof getResourceAttr(resource, 'name') === 'string' ? getResourceAttr(resource, 'name') as string : 'Clip'),
 		mediaKind: overrides.mediaKind ?? getResourceKind(resource),
 		start: typeof appendStart === 'number' ? appendStart : 0,
 		in: 0,
-		duration: typeof resource.duration === 'number' ? resource.duration : 0,
+		duration: typeof getResourceAttr(resource, 'duration') === 'number' ? getResourceAttr(resource, 'duration') as number : 0,
 	}
 }
 
 export const createEmbeddedAudioClipPayload = (noop: unknown, resource: ResourceLike, appendStart?: number) => {
-	if (resource.kind !== 'video') {
+	if (getResourceAttr(resource, 'kind') !== 'video') {
 		return noop
 	}
 	return createTimelineClipPayload(noop, resource, {

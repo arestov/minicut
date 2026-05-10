@@ -48,4 +48,7 @@ export const Text = model({
 
 export const TEXT_CREATION_SHAPE = {
 	attrs: ['content', 'style', 'box'],
+	rels: {
+		clip: {},
+	},
 } as const

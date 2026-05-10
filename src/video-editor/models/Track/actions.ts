@@ -129,12 +129,11 @@ export const reduceAddTextClip = (payload: unknown, self: unknown) => {
 	return {
 		clip: {
 			attrs: { ...clipAttrs, mediaKind: 'text' },
-			rels: { track: self, text: { use_ref_id: 'newTextNode' } },
+			rels: { track: self },
 			hold_ref_id: 'newTextClip',
 		},
 		text: {
 			attrs: textAttrs,
-			rels: { clip: { use_ref_id: 'newTextClip' } },
 			hold_ref_id: 'newTextNode',
 		},
 		clips: { use_ref_id: 'newTextClip' },

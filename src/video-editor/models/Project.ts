@@ -5,6 +5,7 @@ import {
 	normalizeResourceCreationAttrs,
 	normalizeTrackCreationAttrs,
 	findResourceById,
+	getResourceKind,
 	createTimelineClipPayload,
 	createEmbeddedAudioClipPayload,
 	reduceHandleInit,
@@ -282,8 +283,11 @@ export const Project = model({
 				when: [
 					[] as const,
 					(payload: unknown) => {
-						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: { kind?: unknown } } | null
-						return value?.shouldAddEmbeddedAudio === true && value?.resource?.kind === 'video'
+						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: unknown; resourceAttrs?: { kind?: unknown } } | null
+						const kind = typeof value?.resourceAttrs?.kind === 'string'
+							? value.resourceAttrs.kind
+							: (value?.resource && typeof value.resource === 'object' ? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0]) : null)
+						return value?.shouldAddEmbeddedAudio === true && kind === 'video'
 					},
 				],
 				to: {
@@ -319,8 +323,11 @@ export const Project = model({
 				when: [
 					[] as const,
 					(payload: unknown) => {
-						const value = payload as { shouldAddToTimeline?: unknown; resource?: { kind?: unknown } } | null
-						return value?.shouldAddToTimeline === true && value?.resource?.kind === 'audio'
+						const value = payload as { shouldAddToTimeline?: unknown; resource?: unknown; resourceAttrs?: { kind?: unknown } } | null
+						const kind = typeof value?.resourceAttrs?.kind === 'string'
+							? value.resourceAttrs.kind
+							: (value?.resource && typeof value.resource === 'object' ? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0]) : null)
+						return value?.shouldAddToTimeline === true && kind === 'audio'
 					},
 				],
 				to: {
@@ -356,7 +363,7 @@ export const Project = model({
 						const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
 						if (typeof resourceId !== 'string') return false
 						const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
-						return resource != null && resource.kind !== 'audio'
+						return resource != null && getResourceKind(resource) !== 'audio'
 					},
 				],
 				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
@@ -372,7 +379,7 @@ export const Project = model({
 						const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
 						if (typeof resourceId !== 'string') return false
 						const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
-						return resource != null && resource.kind === 'audio'
+						return resource != null && getResourceKind(resource) === 'audio'
 					},
 				],
 				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],

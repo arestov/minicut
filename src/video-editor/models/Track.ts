@@ -76,12 +76,14 @@ export const Track = model({
 					method: 'at_end',
 					can_create: true,
 					can_hold_refs: true,
+					can_use_refs: true,
 					creation_shape: CLIP_CREATION_SHAPE,
 				}],
 				text: ['<< text << #', {
 					method: 'at_end',
 					can_create: true,
 					can_hold_refs: true,
+					can_use_refs: true,
 					creation_shape: TEXT_CREATION_SHAPE,
 				}],
 				clips: ['<< clips', {
