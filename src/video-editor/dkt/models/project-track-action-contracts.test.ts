@@ -76,6 +76,16 @@ describe('Project action contracts', () => {
 		expect(createdClip).toBeTruthy()
 		const resourceRel = await harness.ctx.queryRel(createdClip!, 'resource')
 		expect(resourceRel).toEqual([projectVideoResource])
+		const clipRenderData = harness.ctx.getAttr(createdClip!, 'clipRenderData') as {
+			id?: unknown
+			resourceId?: unknown
+			resourceUrl?: unknown
+			mime?: unknown
+		} | null
+		expect(clipRenderData?.id).toBe(createdClip!._node_id)
+		expect(clipRenderData?.resourceId).toBe(projectVideoResource!._node_id)
+		expect(clipRenderData?.resourceUrl).toBe('https://example.invalid/project-video.webm')
+		expect(clipRenderData?.mime).toBe('video/webm')
 		expect(harness.ctx.getAttr(createdClip!, 'start')).toBe(videoAppendStartBefore)
 		expect(Number(harness.ctx.getAttr(createdClip!, 'duration'))).toBeGreaterThan(0)
 		expect(harness.ctx.getAttr(harness.videoTrack, 'appendStart')).toBe(Number(videoAppendStartBefore) + 5)
@@ -102,6 +112,36 @@ describe('Project action contracts', () => {
 
 		const clipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 		expect(clipIds.length).toBe(beforeClipIds.length + 1)
+		const createdClip = (await harness.ctx.queryRel(harness.videoTrack, 'clips')).find(
+			(clip) => !beforeClipIds.includes(String(clip._node_id)),
+		)
+		expect(createdClip).toBeTruthy()
+		const createdClipTextRel = await harness.ctx.queryRel(createdClip!, 'text')
+		expect(createdClipTextRel).toHaveLength(1)
+		const createdTextNode = createdClipTextRel[0]
+		expect(harness.ctx.getAttr(createdTextNode, 'content')).toBe('Project text')
+		const createdTextClipRel = await harness.ctx.queryRel(createdTextNode, 'clip')
+		expect(createdTextClipRel).toEqual([createdClip!])
+
+		const createdClipRenderData = harness.ctx.getAttr(createdClip!, 'clipRenderData') as {
+			id?: unknown
+			resourceId?: unknown
+			text?: { content?: unknown; style?: unknown; box?: unknown } | null
+		} | null
+		expect(createdClipRenderData?.id).toBe(createdClip!._node_id)
+		expect(createdClipRenderData?.resourceId ?? null).toBeNull()
+		expect(createdClipRenderData?.text?.content).toBe('Project text')
+		expect(createdClipRenderData?.text?.style).toEqual({
+			fontFamily: 'Inter',
+			fontSize: 40,
+			color: '#ffffff',
+		})
+		expect(createdClipRenderData?.text?.box).toEqual({
+			x: 0.1,
+			y: 0.1,
+			width: 0.6,
+			height: 0.2,
+		})
 
 		const textModels = await harness.ctx.queryRel(harness.ctx.appModel, 'text')
 		expect(textModels.some((text) => harness.ctx.getAttr(text, 'content') === 'Project text')).toBe(true)

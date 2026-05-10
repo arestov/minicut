@@ -106,6 +106,15 @@ describe('Track self-rel: addTextClip', () => {
 		const trackRel = await ctx.queryRel(clip, 'track')
 		expect(trackRel).toHaveLength(1)
 		expect(trackRel[0]).toBe(videoTrack)
+
+		const textRel = await ctx.queryRel(clip, 'text')
+		expect(textRel).toHaveLength(1)
+		const textNode = textRel[0]
+		expect(ctx.getAttr(textNode, 'content')).toBe('Hello World')
+
+		const textClipRel = await ctx.queryRel(textNode, 'clip')
+		expect(textClipRel).toHaveLength(1)
+		expect(textClipRel[0]).toBe(clip)
 	})
 })
 

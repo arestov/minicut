@@ -183,6 +183,57 @@ describe('SessionRoot action contracts', () => {
 		expect(rightClipResource).toEqual([harness.videoResource])
 	})
 
+	it('splitSelectedClip clones text node for text clips and keeps bidirectional rels', async () => {
+		const harness = await createActionContractHarness()
+		await dispatchAndSettle(harness.ctx, harness.project, 'addTextClipToVideoTrack', {
+			name: 'Split Text',
+			mediaKind: 'text',
+			start: 10,
+			in: 0,
+			duration: 4,
+			text: {
+				content: 'Split me',
+				style: { fontFamily: 'Inter', fontSize: 24, color: '#ffffff' },
+				box: { x: 0.2, y: 0.2, width: 0.4, height: 0.2 },
+			},
+		})
+
+		const textClip = (await harness.ctx.queryRel(harness.videoTrack, 'clips')).find(
+			(clip) => harness.ctx.getAttr(clip, 'name') === 'Split Text',
+		)
+		expect(textClip).toBeTruthy()
+
+		const leftTextRelBeforeSplit = await harness.ctx.queryRel(textClip!, 'text')
+		expect(leftTextRelBeforeSplit).toHaveLength(1)
+		const leftTextBeforeSplit = leftTextRelBeforeSplit[0]
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', String(textClip!._node_id))
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'setCursor', 12)
+		const beforeClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'splitSelectedClip')
+
+		const afterClips = await harness.ctx.queryRel(harness.videoTrack, 'clips')
+		const rightClip = afterClips.find((clip) => !beforeClipIds.includes(String(clip._node_id)))
+		expect(rightClip).toBeTruthy()
+		expect(harness.ctx.getAttr(rightClip!, 'mediaKind')).toBe('text')
+
+		const leftTextRel = await harness.ctx.queryRel(textClip!, 'text')
+		expect(leftTextRel).toEqual([leftTextBeforeSplit])
+
+		const rightTextRel = await harness.ctx.queryRel(rightClip!, 'text')
+		expect(rightTextRel).toHaveLength(1)
+		const rightText = rightTextRel[0]
+		expect(rightText._node_id).not.toBe(leftTextBeforeSplit._node_id)
+		expect(harness.ctx.getAttr(rightText, 'content')).toBe('Split me')
+		expect(harness.ctx.getAttr(rightText, 'style')).toEqual(harness.ctx.getAttr(leftTextBeforeSplit, 'style'))
+		expect(harness.ctx.getAttr(rightText, 'box')).toEqual(harness.ctx.getAttr(leftTextBeforeSplit, 'box'))
+
+		const rightTextClipRel = await harness.ctx.queryRel(rightText, 'clip')
+		expect(rightTextClipRel).toEqual([rightClip!])
+		const leftTextClipRel = await harness.ctx.queryRel(leftTextBeforeSplit, 'clip')
+		expect(leftTextClipRel).toEqual([textClip!])
+	})
+
 	it('splitSelectedClip is a no-op without a selected clip or a valid split point', async () => {
 		const harness = await createActionContractHarness()
 		const selectedClipId = String(harness.videoClip._node_id)
