@@ -415,15 +415,17 @@ export const reduceAddResourceToTimeline = (
 	if (!getNodeId(resource)) {
 		return noop
 	}
-	return {
+	const result = {
 		clip: {
 			attrs: createTimelineClipAttrs(resource, {}, start),
 			rels: { track: targetTrack, resource },
 			hold_ref_id: 'timelineClip',
 		},
-		videoClips: kind === 'audio' ? noop : { use_ref_id: 'timelineClip' },
-		audioClips: kind === 'audio' ? { use_ref_id: 'timelineClip' } : noop,
 	}
+
+	return kind === 'audio'
+		? { ...result, audioClips: { use_ref_id: 'timelineClip' } }
+		: { ...result, videoClips: { use_ref_id: 'timelineClip' } }
 }
 
 export const reduceAddEmbeddedAudio = (
