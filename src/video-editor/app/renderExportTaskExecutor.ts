@@ -32,6 +32,22 @@ const resolveExportPlanClipSources = (
 	}
 }
 
+const validateRenderableClipSources = (plan: ExportPlan): void => {
+	for (const clipSource of plan.clipSources) {
+		if (clipSource.resourceKind === 'text') {
+			continue
+		}
+		if (typeof clipSource.resourceId !== 'string' || !clipSource.resourceId) {
+			throw new Error(`Export clip ${clipSource.id || '<unknown>'} is missing resourceId`)
+		}
+		if (typeof clipSource.resourceUrl !== 'string' || !clipSource.resourceUrl.trim()) {
+			throw new Error(
+				`Export clip ${clipSource.id || '<unknown>'} (${clipSource.resourceId}) is missing resourceUrl after resolve`,
+			)
+		}
+	}
+}
+
 const getRequestFromTask = (task: RuntimeTaskDescriptor): ExportRequestState | null => {
 	if (!task.payload || typeof task.payload !== 'object') {
 		return null
@@ -84,6 +100,7 @@ export const executeRenderExportTask = async ({
 			request.plan,
 			(resourceId, fallbackUrl) => env.transfers.resolveResourceUrl(resourceId, fallbackUrl),
 		)
+		validateRenderableClipSources(resolvedPlan)
 
 		const result = await env.export.renderer.render(
 			{
