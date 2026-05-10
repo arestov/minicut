@@ -1,5 +1,4 @@
 import { model } from 'dkt/model.js'
-import { reduceTextBoxAction, reduceTextContentAction, reduceTextStyleAction } from './Text/actions'
 import { reduceTextContentAction, reduceSetTextStyle, reduceSetTextBox, reduceSetClipRef } from './Text/actions'
 import { defaultTextBox, defaultTextStyle } from './Text/defaults'
 

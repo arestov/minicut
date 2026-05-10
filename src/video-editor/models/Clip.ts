@@ -26,7 +26,6 @@ import {
 	reduceTrim,
 	reduceResize,
 	reduceSplitAt,
-	reduceAddEffect,
 	reduceSetResource,
 	reduceSetText,
 	reduceSetTrack,
@@ -199,7 +198,15 @@ export const Clip = model({
 					can_use_refs: true,
 				}],
 			},
-			fn: reduceAddEffect,
+			fn: [['<<<<'] as const, (payload: unknown, self: unknown) => {
+				const attrs = normalizeEffectCreationAttrs(payload)
+				return attrs
+					? {
+						effect: { attrs, rels: { clip: self }, hold_ref_id: 'newEffect' },
+						effects: { use_ref_id: 'newEffect' },
+					}
+					: '$noop'
+			}],
 		},
 		setResource: {
 			to: {
@@ -345,5 +352,7 @@ export const CLIP_CREATION_SHAPE = {
 	attrs: ['sourceClipId', 'sourceResourceId', 'sourceResourceName', 'sourceTextId', 'name', 'color', 'mediaKind', 'start', 'in', 'duration', 'fadeIn', 'fadeOut', 'audio', 'opacity', 'transform'],
 	rels: {
 		track: {},
+		text: {},
+		effects: {},
 	},
 } as const

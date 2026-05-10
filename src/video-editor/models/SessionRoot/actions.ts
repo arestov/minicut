@@ -912,16 +912,19 @@ export const dktSessionActions = {
 	selectEntity: sessionSelectEntityAction,
 		addTextClipToTimeline: [
 			{
-				to: ['<< activeProject', { action: 'addTextClipToVideoTrack', inline_subwalker: true }],
+				to: ['<< activeProject', { action: 'addTextClipToVideoTrack', sub_flow: true }],
 				fn: (payload: unknown) => payload as Record<string, unknown>,
 			},
 			{
 				to: {
 					selectedEntityId: ['selectedEntityId'],
 				},
-				fn: (payload: unknown) => ({
-					selectedEntityId: (payload as { sourceClipId?: string } | null)?.sourceClipId ?? null,
-				}),
+				fn: [
+					['sourceClipId'] as const,
+					(_payload: unknown, sourceClipId: unknown) => ({
+						selectedEntityId: typeof sourceClipId === 'string' ? sourceClipId : null,
+					}),
+				],
 			},
 		],
 	setActiveProject: sessionSetActiveProjectAction,

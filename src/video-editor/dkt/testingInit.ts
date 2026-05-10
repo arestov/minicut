@@ -71,12 +71,16 @@ export type DktTestContext = {
 	findByAttr: typeof findByAttr
 }
 
+export type BootDktModelsOptions = {
+	interfaces?: Record<string, unknown>
+}
+
 /**
  * Bootstrap the MiniCut DKT model graph for unit tests.
  * No sync_sender, no JSDOM, no transport — pure DKT model layer.
  * Follows Linkcraft's testingInit pattern for proper error handling and flow settling.
  */
-export const bootDktModels = async (): Promise<DktTestContext> => {
+export const bootDktModels = async (options: BootDktModelsOptions = {}): Promise<DktTestContext> => {
 	const runtime = prepareAppRuntime({
 		sync_sender: false,
 		proxies: false,
@@ -93,7 +97,7 @@ export const bootDktModels = async (): Promise<DktTestContext> => {
 
 	const inited = await runtime.start({
 		App: MiniCutAppRoot,
-		interfaces: {},
+		interfaces: options.interfaces ?? {},
 	})
 
 	const appModel = inited.app_model
