@@ -202,6 +202,543 @@ Recommendation: cover render-tree actions first with DKT model/runtime integrati
 - CI command includes the new action coverage test file under `npm run test:video-editor`.
 - The matrix in this document is updated from `partial`/`gap` to `covered` only after tests exist.
 
+## Revised Implementation Plan
+
+This section narrows the full matrix into an implementation plan that is easier
+to execute and maintain. The document above remains the coverage audit. The
+implementation below is the recommended way to turn it into tests.
+
+### Coverage Grouping
+
+Do not create one giant test file that covers every action in the system. Group
+tests by model scope and by the kind of contract they protect:
+
+1. **SessionRoot action contracts**
+   - user-level editor state: active project, selected entity, inspector tab,
+     cursor, playback, timeline zoom;
+   - forwarding actions from root/session UI to project or selected clip;
+   - import/export request state and `$fx_*` payloads.
+
+2. **Project action contracts**
+   - project metadata and format;
+   - default track creation;
+   - resource import graph;
+   - add-resource-to-timeline routing between video/audio tracks;
+   - text clip creation from project scope.
+
+3. **Track action contracts**
+   - track attrs: name, muted, locked;
+   - clip list mutations;
+   - clip creation;
+   - split-right creation;
+   - idempotent removal by node id and by `sourceClipId`.
+
+4. **Clip action contracts**
+   - timeline edits: move, trim, resize, split;
+   - clip edit attrs: opacity, fade, audio, transform, media kind;
+   - full `splitSelfAt` saga;
+   - `removeSelf`;
+   - effect list actions.
+
+5. **Effect/Text/Resource focused contracts**
+   - only actions that are used by the render tree or are needed by graph
+     invariants;
+   - relation setters get focused tests only when they protect a real boundary:
+     render data, parent/child graph consistency, or a previous regression.
+
+6. **Thin UI dispatch wiring**
+   - small React tests after model/runtime behavior is covered;
+   - verify that visible controls dispatch the intended action from the intended
+     scope;
+   - do not duplicate graph-state assertions already covered by model tests.
+
+### Files To Create
+
+Create focused files instead of a single `render-tree-action-coverage.test.ts`:
+
+```text
+src/video-editor/dkt/models/session-root-action-contracts.test.ts
+src/video-editor/dkt/models/project-action-contracts.test.ts
+src/video-editor/dkt/models/track-action-contracts.test.ts
+src/video-editor/dkt/models/clip-action-contracts.test.ts
+src/video-editor/dkt/models/effect-text-resource-contracts.test.ts
+src/video-editor/dkt/models/action-contract-test-harness.ts
+```
+
+Optional UI wiring tests, added only after the model/runtime layer is green:
+
+```text
+src/video-editor/components/__tests__/timeline-dispatch-wiring.test.tsx
+src/video-editor/components/__tests__/inspector-dispatch-wiring.test.tsx
+src/video-editor/components/__tests__/toolbar-dispatch-wiring.test.tsx
+src/video-editor/components/__tests__/media-bin-dispatch-wiring.test.tsx
+```
+
+Do not add browser Playwright files for action coverage. Browser tests should
+stay focused on real browser/system boundaries: media playback, export,
+layout, P2P, download behavior.
+
+### Shared Harness Shape
+
+Create `src/video-editor/dkt/models/action-contract-test-harness.ts`.
+
+The harness should wrap `bootDktModels()` and expose deterministic graph setup
+for action tests:
+
+```ts
+type ActionContractHarness = {
+  ctx: DktTestContext
+  sessionRoot: ModelHandle
+  project: ModelHandle
+  videoTrack: ModelHandle
+  audioTrack: ModelHandle
+  videoClip: ModelHandle
+  audioClip: ModelHandle
+  imageResource: ModelHandle
+  videoResource: ModelHandle
+  audioResource: ModelHandle
+  textClip?: ModelHandle
+  text?: ModelHandle
+  effect?: ModelHandle
+  exportRequests: unknown[]
+  importRequests: unknown[]
+}
+```
+
+Required helpers:
+
+```ts
+export const createActionContractHarness = async (options?: {
+  withText?: boolean
+  withEffect?: boolean
+  interfaces?: Record<string, unknown>
+}): Promise<ActionContractHarness>
+
+export const dispatchAndSettle = async (
+  ctx: DktTestContext,
+  scope: ModelHandle,
+  actionName: string,
+  payload?: unknown,
+) => {
+  await ctx.lockToRead(async () => {
+    await scope.dispatch(actionName, payload)
+  })
+}
+
+export const readSourceIds = async (
+  ctx: DktTestContext,
+  scope: ModelHandle,
+  relName: string,
+  sourceAttr: string,
+): Promise<string[]>
+
+export const findBySourceId = async (
+  ctx: DktTestContext,
+  scope: ModelHandle,
+  relName: string,
+  sourceAttr: string,
+  sourceId: string,
+): Promise<ModelHandle | null>
+```
+
+The harness must use deterministic ids:
+
+```text
+project: coverage-project
+video track: coverage-project:track:video
+audio track: coverage-project:track:audio
+video resource: res:video
+audio resource: res:audio
+image resource: res:image
+video clip: clip:video
+audio clip: clip:audio
+text clip: clip:text
+text: text:main
+effect: effect:grade
+```
+
+### Test Environment
+
+Use the node DKT test environment for all action contract files.
+
+Command while implementing:
+
+```bash
+cmd /c npm.cmd run test:video-editor:node -- src/video-editor/dkt/models/session-root-action-contracts.test.ts
+```
+
+Broader command:
+
+```bash
+cmd /c npm.cmd run test:video-editor:node -- src/video-editor/dkt/models/*action-contracts.test.ts
+```
+
+Configuration:
+
+- config: `vitest.video-editor.node.config.js`;
+- environment: `node`;
+- no React;
+- no Testing Library;
+- no browser APIs;
+- no jsdom;
+- no real file IO;
+- no WebCodecs/canvas/export rendering.
+
+Bootstrap requirements:
+
+- use `bootDktModels()` from `src/video-editor/dkt/testingInit.ts`;
+- keep `sync_sender: false`;
+- keep `proxies: false`;
+- keep `warnUnexpectedAttrs: false`;
+- expose fake `interfaces` only for `$fx_*` action tests.
+
+Required `bootDktModels` extension:
+
+```ts
+export const bootDktModels = async (options: {
+  interfaces?: Record<string, unknown>
+} = {}): Promise<DktTestContext> => {
+  const inited = await runtime.start({
+    App: MiniCutAppRoot,
+    interfaces: options.interfaces ?? {},
+  })
+
+  // existing setup
+}
+```
+
+Dispatch rule:
+
+- every mutation must go through `ctx.lockToRead`;
+- reads happen only after `lockToRead` resolves;
+- if an action depends on computed rels produced by a previous action, split
+  the scenario into two `dispatchAndSettle` calls.
+
+Example:
+
+```ts
+await dispatchAndSettle(ctx, sessionRoot, 'selectEntity', 'clip:video')
+await dispatchAndSettle(ctx, sessionRoot, 'splitSelectedClip')
+
+const clips = await readSourceIds(ctx, videoTrack, 'clips', 'sourceClipId')
+expect(clips).toContain('clip:video')
+expect(clips).toHaveLength(2)
+```
+
+### What Each File Should Test
+
+#### `session-root-action-contracts.test.ts`
+
+Test public session/root behavior used by render-tree controls:
+
+- `createProject`
+  - creates a project;
+  - sets `activeProject`;
+  - clears `selectedEntityId`;
+  - resets `cursor`;
+  - default video/audio tracks exist.
+
+- `setActiveProject`
+  - switches active project;
+  - clears selection and cursor;
+  - does not delete other projects.
+
+- `selectEntity`
+  - sets `selectedEntityId`;
+  - resolves `selectedClip` when id points to a clip;
+  - clearing selection empties `selectedClip`.
+
+- `setActiveInspectorTab`
+  - accepts valid tabs;
+  - invalid tab is a no-op.
+
+- `setCursor`
+  - clamps below zero;
+  - rounds according to the cursor contract.
+
+- `setPlaying` / `togglePlayback`
+  - update `isPlaying` predictably.
+
+- `setTimelineZoom` / `zoomTimeline`
+  - clamp to min/max;
+  - delta updates are relative.
+
+- `addTextClipToTimeline`
+  - forwards to active project/video track;
+  - creates clip + text;
+  - selects the new clip.
+
+- `nudgeSelectedClip`
+  - selected clip receives `moveBy`;
+  - no selected clip is a no-op;
+  - invalid delta is a no-op.
+
+- `splitSelectedClip`
+  - selected clip receives full `splitSelfAt` saga;
+  - right clip appears on the same track;
+  - no selected clip is a no-op.
+
+- `deleteSelectedClip`
+  - removes selected clip from parent track;
+  - clears selection;
+  - missing selected target clears selection without graph damage.
+
+- import/export request actions
+  - model state first: `exportRequest`, `exportProgress`, import request attrs;
+  - fake effect API call second;
+  - invalid payloads do not call fake APIs.
+
+#### `project-action-contracts.test.ts`
+
+Test project graph and routing:
+
+- `handleInit`
+  - creates exactly one default video track and one default audio track;
+  - second dispatch does not duplicate tracks.
+
+- `renameProject`, `setProjectFormat`, `setProjectDuration`
+  - valid payload mutates expected attrs;
+  - invalid payload preserves previous attrs.
+
+- `addTrack`
+  - creates track;
+  - appends it to `tracks`;
+  - child track has project rel.
+
+- `importResource`
+  - creates resource with source id, kind, duration/name metadata;
+  - appends resource to project;
+  - resource has project rel;
+  - invalid payload is no-op.
+
+- `addResourceToTimeline`
+  - video/image resources route to video track;
+  - audio resources route to audio track;
+  - new clip starts at that track's current `appendStart`;
+  - `appendStart` becomes max clip end after dispatch;
+  - missing resource is no-op.
+
+- `addTextClipToVideoTrack`
+  - creates text clip and text node;
+  - connects clip -> text and text -> clip if supported;
+  - appends clip to primary video track.
+
+- `setTracks`, `setResources`
+  - replace rel lists with supplied refs;
+  - invalid payloads are no-op.
+
+#### `track-action-contracts.test.ts`
+
+Test track-local mutations:
+
+- `renameTrack`, `setTrackMuted`, `setTrackLocked`
+  - update attrs;
+  - invalid payloads are no-op.
+
+- `addClip`
+  - appends clip;
+  - sets clip attrs;
+  - sets clip `track` rel;
+  - invalid payload no-ops.
+
+- `addTextClip`
+  - creates clip + text node;
+  - appends clip;
+  - sets clip `track` rel.
+
+- `splitClipAt`
+  - creates right clip;
+  - preserves source resource/text mapping;
+  - right `start`, `in`, `duration` follow split invariant;
+  - right clip has parent track rel;
+  - out-of-bounds split is no-op.
+
+- `setClips`
+  - replaces clip rel list.
+
+- `removeClip`
+  - removes by node id;
+  - missing id is idempotent.
+
+- `removeClipBySourceId`
+  - removes by `sourceClipId`;
+  - missing id is idempotent;
+  - dispatch does not throw when source id dependency list is empty.
+
+#### `clip-action-contracts.test.ts`
+
+Test clip behavior and sagas:
+
+- basic attrs
+  - `rename`, `color`, `updateOpacity`, `setMediaKind`;
+  - valid payload updates state;
+  - invalid payload no-ops or normalizes according to current contract.
+
+- edit attrs
+  - `setFade`, `setAudio`, `setTimelineAttrs`, `setTransform`;
+  - clamp/merge/preserve omitted fields where intended.
+
+- timeline edits
+  - `moveBy` rounds and clamps;
+  - `trim` preserves the opposite edge;
+  - `resize` mirrors trim behavior;
+  - `splitAt` shrinks the left clip only and does not create right clip.
+
+- full saga
+  - `splitSelfAt` shrinks left clip;
+  - creates right clip on track;
+  - right clip keeps resource/source/text/effect-relevant mapping;
+  - `splitOriginalDuration` is cleared;
+  - out-of-bounds split is no-op.
+
+- deletion
+  - `removeSelf` removes from parent track;
+  - missing parent track is no-op and does not damage unrelated graph.
+
+- effects
+  - `addEffect` creates/appends effect;
+  - `removeEffect` removes existing effect;
+  - missing effect is no-op;
+  - `reorderEffect` changes order without losing ids.
+
+- relation setters
+  - test only `setResource`, `setText`, `setTrack`, `setProject`, `setEffects`
+    when a render/computed invariant depends on them.
+
+#### `effect-text-resource-contracts.test.ts`
+
+Keep this file focused. It should not become a mechanical setter suite.
+
+Effect:
+
+- `setEffectEnabled`;
+- `setEffectAmount`;
+- `setEffectParams`;
+- `setEffectColor`;
+- relation actions only when render data depends on them.
+
+Text:
+
+- `setTextContent`;
+- `setTextStyle`;
+- `setTextBox`;
+- `setClip` only if clip/text graph invariant depends on it.
+
+Resource:
+
+- `renameResource`;
+- `setResourceStatus`;
+- `setResourceAttrs`;
+- `requestAddToTimeline` if it is a render-tree path;
+- `setProject` and `setClips` only through graph invariant cases.
+
+### Assertion Style
+
+Prefer domain helpers over loose expectations:
+
+```ts
+expect(clipsAfter).toHaveLength(clipsBefore.length + 1)
+expectClipTiming(ctx, rightClip, {
+  start: splitTime,
+  in: before.in + left.duration,
+  duration: before.duration - left.duration,
+})
+expectSameSourceMapping(ctx, beforeClip, rightClip)
+await expectProjectGraphInvariants(ctx)
+```
+
+Avoid:
+
+```ts
+expect(clipsAfter.length).toBeGreaterThanOrEqual(2)
+const right = clipsAfter.find((clip) => ctx.getAttr(clip, 'start') === 1)
+```
+
+That allows extra clips and identifies the right split by a value that can
+coincidentally match.
+
+For relation assertions, check both directions when the graph contract requires
+it:
+
+```ts
+expect(await readSourceIds(ctx, videoTrack, 'clips', 'sourceClipId'))
+  .toContain('clip:video')
+
+expect(await readSourceIds(ctx, videoClip, 'track', 'sourceTrackId'))
+  .toEqual(['coverage-project:track:video'])
+```
+
+For `$fx_*` assertions:
+
+1. assert model state;
+2. assert fake API call count;
+3. assert fake API payload;
+4. assert invalid/no-target cases do not call fake API.
+
+### UI Dispatch Wiring Layer
+
+Add UI dispatch tests only after the model/runtime files are green.
+
+These tests should verify:
+
+- control is reachable via role/label;
+- user interaction uses `userEvent`;
+- the expected action name is dispatched;
+- the scope is correct.
+
+They should not assert final graph behavior. Example:
+
+```ts
+it('split button dispatches splitSelectedClip from session scope', async () => {
+  const user = userEvent.setup()
+  const runtime = createMockVideoEditorRuntime()
+
+  render(<TimelineView />, { wrapper: runtime.Provider })
+
+  await user.click(screen.getByRole('button', { name: 'Split selected clip' }))
+
+  expect(runtime.dispatches).toContainEqual({
+    scope: 'session',
+    action: 'splitSelectedClip',
+    payload: undefined,
+  })
+})
+```
+
+### Implementation Order
+
+1. Add `action-contract-test-harness.ts`.
+2. Add shared assertions for clip timing, split invariant, source mapping, graph
+   integrity, and rel source ids.
+3. Implement `track-action-contracts.test.ts` for `addClip`, `addTextClip`,
+   `splitClipAt`, `removeClipBySourceId`.
+4. Implement `clip-action-contracts.test.ts` for timeline edits,
+   `splitSelfAt`, `removeSelf`, effects.
+5. Implement `session-root-action-contracts.test.ts` for selected clip
+   forwarding: nudge, split, delete.
+6. Implement `project-action-contracts.test.ts` for resource import and
+   timeline routing.
+7. Add import/export fake interface tests to `session-root-action-contracts`.
+8. Add focused `effect-text-resource-contracts.test.ts`.
+9. Add negative/idempotency cases for destructive and forwarding actions.
+10. Add thin UI dispatch tests only for controls that remain unprotected by
+    existing component tests.
+
+### Completion Criteria For This Plan
+
+- Every action directly used by render-tree UI has model/runtime behavior
+  coverage or an explicit note that it is UI-only/local state.
+- Every forwarding action has at least one test that proves the target rel path,
+  `sub_flow`, refs, and final graph state.
+- Every destructive action has an idempotency/missing-target test.
+- Import/export request actions assert fake effect payloads without running
+  real executors.
+- Relation setters are not mechanically tested unless they protect graph
+  consistency or render/computed behavior.
+- No action contract test uses React, browser APIs, Playwright, or CSS
+  selectors.
+- UI dispatch tests stay thin and do not duplicate DKT graph assertions.
+
 ## Implementation Checklist
 
 ### Test Environment
