@@ -294,4 +294,20 @@ describe('Track action contracts', () => {
 		expect(await readNodeIds(harness.ctx, harness.videoClip, 'track')).toEqual([targetTrackId])
 		await expectProjectGraphInvariants(harness.ctx)
 	})
+
+	it('moveClipToTrack accepts clip/track model references in payload', async () => {
+		const harness = await createActionContractHarness()
+		const clipId = String(harness.videoClip._node_id)
+		const targetTrackId = String(harness.audioTrack._node_id)
+
+		await dispatchAndSettle(harness.ctx, harness.project, 'moveClipToTrack', {
+			clip: harness.videoClip,
+			targetTrack: harness.audioTrack,
+		})
+
+		expect(await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).not.toContain(clipId)
+		expect(await readNodeIds(harness.ctx, harness.audioTrack, 'clips')).toContain(clipId)
+		expect(await readNodeIds(harness.ctx, harness.videoClip, 'track')).toEqual([targetTrackId])
+		await expectProjectGraphInvariants(harness.ctx)
+	})
 })

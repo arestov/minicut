@@ -38,6 +38,17 @@ const RESOURCE_INPUT_BASE_REL_SHAPE = {
 	many: false,
 } as const
 
+const MOVE_CLIP_INPUT_BASE_REL_SHAPE = {
+	clipId: {
+		any: true,
+		many: false,
+	},
+	targetTrackId: {
+		any: true,
+		many: false,
+	},
+} as const
+
 export const Project = model({
 	model_name: 'minicut_project',
 	attrs: {
@@ -219,13 +230,18 @@ export const Project = model({
 		},
 		moveClipToTrack: [
 			{
+				input_base_rel_shape: MOVE_CLIP_INPUT_BASE_REL_SHAPE,
 				to: {
 					clip: ['*'],
 					tracks: ['<< tracks', { action: 'removeClip', sub_flow: true }],
 					$output: ['$output'],
 				},
 				fn: [
-					['$noop', '<< @all:tracks', '<< @all:tracks.clips'] as const,
+					[
+						'$noop',
+						'<<<< $input_id:clipId',
+						'<<<< $input_id:targetTrackId',
+					] as const,
 					reduceMoveClipToTrackContext,
 				],
 			},

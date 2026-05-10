@@ -16,6 +16,8 @@ export type ProjectSetImportProgressPayload = {
 export type ProjectMoveClipToTrackPayload = {
 	clipId?: unknown
 	targetTrackId?: unknown
+	clip?: unknown
+	targetTrack?: unknown
 }
 
 const asString = (value: unknown): string | null => typeof value === 'string' ? value : null
@@ -32,10 +34,6 @@ type ResourceLike = {
 	url?: unknown
 	mime?: unknown
 	duration?: unknown
-}
-
-type TrackLike = {
-	_node_id?: unknown
 }
 
 export const normalizeTrackCreationAttrs = (payload: unknown) => {
@@ -81,21 +79,6 @@ const getNodeId = (value: unknown): string | null =>
 	value && typeof value === 'object' && typeof (value as { _node_id?: unknown })._node_id === 'string'
 		? (value as { _node_id: string })._node_id
 		: null
-
-const flattenModelList = (value: unknown): unknown[] => {
-	if (!Array.isArray(value)) {
-		return []
-	}
-	const result: unknown[] = []
-	for (const item of value) {
-		if (Array.isArray(item)) {
-			result.push(...flattenModelList(item))
-		} else if (item) {
-			result.push(item)
-		}
-	}
-	return result
-}
 
 export const getResourceKind = (resource: ResourceLike): string =>
 	getResourceAttr(resource, 'kind') === 'audio' || getResourceAttr(resource, 'kind') === 'image' || getResourceAttr(resource, 'kind') === 'text'
@@ -492,25 +475,18 @@ export const reduceSetResources = (payload: unknown) => {
 export const reduceMoveClipToTrackContext = (
 	payload: unknown,
 	noop: unknown,
-	tracks: unknown[],
-	trackClips: unknown,
+	resolvedClip: unknown,
+	resolvedTargetTrack: unknown,
 ) => {
 	const value = payload as ProjectMoveClipToTrackPayload | null
-	const clipId = typeof value?.clipId === 'string' ? value.clipId : null
-	const targetTrackId = typeof value?.targetTrackId === 'string' ? value.targetTrackId : null
-	if (!clipId || !targetTrackId) {
-		return noop
-	}
-
-	const trackList = Array.isArray(tracks) ? tracks : []
-	const targetTrack = trackList.find((track) => getNodeId(track) === targetTrackId) as TrackLike | undefined
-	if (!targetTrack) {
-		return noop
-	}
-
-	const clip = flattenModelList(trackClips).find((candidate) => getNodeId(candidate) === clipId) ?? null
-
-	if (!clip) {
+	const clip = resolvedClip && typeof resolvedClip === 'object'
+		? resolvedClip
+		: value?.clip
+	const targetTrack = resolvedTargetTrack && typeof resolvedTargetTrack === 'object'
+		? resolvedTargetTrack
+		: value?.targetTrack
+	const clipId = getNodeId(clip)
+	if (!clip || typeof clip !== 'object' || !targetTrack || typeof targetTrack !== 'object' || !clipId) {
 		return noop
 	}
 
@@ -518,8 +494,8 @@ export const reduceMoveClipToTrackContext = (
 		clip: {
 			[clipId]: { rels: { track: targetTrack } },
 		},
-		tracks: { clipId },
-		$output: { clip, targetTrack, targetTrackId },
+		tracks: { clip },
+		$output: { clip, targetTrack },
 	}
 }
 
