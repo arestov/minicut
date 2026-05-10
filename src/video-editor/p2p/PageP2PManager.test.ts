@@ -203,18 +203,8 @@ beforeEach(() => {
 		"RTCPeerConnection",
 		MockRTCPeerConnection as unknown as typeof RTCPeerConnection,
 	);
-	vi.stubGlobal(
-		"RTCSessionDescription",
-		class {
-			constructor(_value: unknown) {}
-		},
-	);
-	vi.stubGlobal(
-		"RTCIceCandidate",
-		class {
-			constructor(_value: unknown) {}
-		},
-	);
+	vi.stubGlobal("RTCSessionDescription", class {});
+	vi.stubGlobal("RTCIceCandidate", class {});
 	vi.stubGlobal(
 		"SharedWorker",
 		MockSharedWorker as unknown as typeof SharedWorker,

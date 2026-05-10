@@ -118,7 +118,9 @@ const getCanvasClipSources = (
 	}));
 };
 
-const getCanvasSceneKey = (clips: readonly PreviewCanvasClipSource[]): string =>
+const _getCanvasSceneKey = (
+	clips: readonly PreviewCanvasClipSource[],
+): string =>
 	clips
 		.map((clip) =>
 			[
@@ -346,7 +348,7 @@ const usePreviewCanvasRenderer = (
 		"fallback",
 	);
 	const canvasSceneClips = getCanvasClipSources(structure, frame);
-	const canvasSceneKey = getCanvasSceneKey(canvasSceneClips);
+	const _canvasSceneKey = _getCanvasSceneKey(canvasSceneClips);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -379,7 +381,7 @@ const usePreviewCanvasRenderer = (
 			type: "setScene",
 			clips: canvasSceneClips,
 		});
-	}, [canvasSceneKey]);
+	}, [canvasSceneClips]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -409,7 +411,7 @@ const usePreviewCanvasRenderer = (
 			frame.cursor,
 			frame.renderedClips,
 		);
-	}, [frame.cursor]);
+	}, [frame.cursor, frame.renderedClips]);
 
 	return { canvasRef, renderMode };
 };
@@ -648,11 +650,7 @@ const BeforeVideoSnapshotLayer = ({
 			className="ve-renderer__layer ve-renderer__layer--video ve-renderer__layer--before-snapshot"
 			style={getLayerStyle({ ...clip, opacity, transform }, [])}
 		>
-			<canvas
-				ref={canvasRef}
-				className="ve-renderer__before-snapshot"
-				aria-hidden="true"
-			/>
+			<canvas ref={canvasRef} className="ve-renderer__before-snapshot" />
 		</div>
 	);
 };
@@ -735,6 +733,8 @@ const AudioClipElement = ({
 			data-resource-name={clip.resourceName}
 			data-gain={audio.gain}
 			data-pan={audio.pan}
+			aria-hidden="true"
+			tabIndex={-1}
 			preload="metadata"
 			onLoadedMetadata={(event) =>
 				seekMediaElement(
@@ -747,7 +747,14 @@ const AudioClipElement = ({
 					onClipMediaError?.(clip.resourceId);
 				}
 			}}
-		/>
+		>
+			<track
+				kind="captions"
+				label="Captions"
+				srcLang="en"
+				src="data:text/vtt,WEBVTT%0A%0A"
+			/>
+		</audio>
 	);
 };
 
@@ -795,7 +802,7 @@ export const RendererStage = ({
 	const isSplitCompare = compareMode === "split" && visualLayers.length > 0;
 
 	return (
-		<div className="ve-renderer" aria-label="Renderer stage">
+		<section className="ve-renderer" aria-label="Renderer stage">
 			<div className="ve-renderer__safe-area">
 				<canvas
 					ref={canvasRef}
@@ -820,7 +827,7 @@ export const RendererStage = ({
 					))
 				)}
 				{isSplitCompare ? (
-					<div
+					<section
 						className="ve-renderer__compare"
 						aria-label="Split compare preview"
 					>
@@ -845,7 +852,7 @@ export const RendererStage = ({
 						<span className="ve-renderer__compare-label ve-renderer__compare-label--after">
 							After
 						</span>
-					</div>
+					</section>
 				) : null}
 				<div className="ve-renderer__audio-elements" aria-hidden="true">
 					{frame.audioRenderedClips.map((clip) =>
@@ -866,6 +873,6 @@ export const RendererStage = ({
 					)}
 				</div>
 			</div>
-		</div>
+		</section>
 	);
 };

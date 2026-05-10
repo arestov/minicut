@@ -36,7 +36,6 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 		(message: MiniCutDktTransportMessage) => void
 	>();
 	#isDestroyed = false;
-	#loadFailed = false;
 
 	constructor(options: DktSharedWorkerAuthorityClientOptions = {}) {
 		this.#onError = options.onError;
@@ -53,7 +52,6 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 		this.#worker.onerror = (event) => {
 			console.error(event.message, event);
 			const error = new Error("DKT SharedWorker failed to load");
-			this.#loadFailed = true;
 			this.#onError?.(error);
 		};
 		this.#worker.port.onmessage = (

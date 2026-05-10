@@ -15,8 +15,7 @@ export const useRootAttrs = (
 	fields: readonly string[],
 ): Record<string, unknown> => {
 	const runtime = useReactScopeRuntime();
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const normalizedFields = useMemo(() => normalizeFields(fields), fields);
+	const normalizedFields = useMemo(() => normalizeFields(fields), [fields]);
 
 	const rootScope = useSyncExternalStore(
 		runtime.subscribeRootScope.bind(runtime),

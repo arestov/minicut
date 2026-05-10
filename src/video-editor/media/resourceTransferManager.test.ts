@@ -97,7 +97,7 @@ const sendChunk = (
 };
 
 const defaultResourceAttrs = (
-	resourceId: string,
+	_resourceId: string,
 	attrs: Partial<ResourceAttrs> = {},
 ): ResourceAttrs =>
 	({

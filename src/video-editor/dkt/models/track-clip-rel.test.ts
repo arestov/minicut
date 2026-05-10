@@ -155,7 +155,10 @@ describe("Track self-rel: splitClipAt", () => {
 		);
 		expect(rightClip).toBeTruthy();
 
-		const trackRel = await ctx.queryRel(rightClip!, "track");
+		if (!rightClip) {
+			throw new Error("Right clip not found");
+		}
+		const trackRel = await ctx.queryRel(rightClip, "track");
 		expect(trackRel).toHaveLength(1);
 		expect(trackRel[0]).toBe(videoTrack);
 		await expectProjectGraphInvariants(ctx);

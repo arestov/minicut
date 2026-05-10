@@ -19,7 +19,10 @@ describe("Project action contracts", () => {
 
 		const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 		expect(project).toBeTruthy();
-		const tracks = await ctx.queryRel(project!, "tracks");
+		if (!project) {
+			throw new Error("Expected project");
+		}
+		const tracks = await ctx.queryRel(project, "tracks");
 		const videoTrack = tracks.find(
 			(track) => ctx.getAttr(track, "kind") === "video",
 		);
@@ -28,9 +31,12 @@ describe("Project action contracts", () => {
 		);
 		expect(videoTrack).toBeTruthy();
 		expect(audioTrack).toBeTruthy();
+		if (!videoTrack || !audioTrack) {
+			throw new Error("Expected default tracks");
+		}
 
 		await ctx.lockToRead(async () => {
-			await project!.dispatch("importResource", {
+			await project.dispatch("importResource", {
 				name: "Auto Video Resource",
 				kind: "video",
 				url: "https://example.invalid/auto-video.webm",
@@ -43,14 +49,14 @@ describe("Project action contracts", () => {
 			});
 		});
 
-		const resources = await ctx.queryRel(project!, "resources");
+		const resources = await ctx.queryRel(project, "resources");
 		const createdResource = resources.find(
 			(resource) => ctx.getAttr(resource, "name") === "Auto Video Resource",
 		);
 		expect(createdResource?._node_id).toBeTruthy();
 
-		const videoClips = await ctx.queryRel(videoTrack!, "clips");
-		const audioClips = await ctx.queryRel(audioTrack!, "clips");
+		const videoClips = await ctx.queryRel(videoTrack, "clips");
+		const audioClips = await ctx.queryRel(audioTrack, "clips");
 		expect(videoClips).toHaveLength(0);
 		expect(audioClips).toHaveLength(0);
 		await expectProjectGraphInvariants(ctx);
@@ -124,9 +130,12 @@ describe("Project action contracts", () => {
 			(track) => harness.ctx.getAttr(track, "name") === "FX",
 		);
 		expect(fxTrack).toBeTruthy();
+		if (!fxTrack) {
+			throw new Error("Expected FX track");
+		}
 
 		await dispatchAndSettle(harness.ctx, harness.project, "setTracks", {
-			tracks: [fxTrack!, harness.videoTrack],
+			tracks: [fxTrack, harness.videoTrack],
 		});
 
 		const reorderedTrackIds = await readNodeIds(
@@ -135,7 +144,7 @@ describe("Project action contracts", () => {
 			"tracks",
 		);
 		expect(reorderedTrackIds).toEqual([
-			String(fxTrack!._node_id),
+			String(fxTrack._node_id),
 			String(harness.videoTrack._node_id),
 		]);
 		await expectProjectGraphInvariants(harness.ctx);
@@ -175,12 +184,15 @@ describe("Project action contracts", () => {
 				harness.ctx.getAttr(resource, "name") === "Project Video Resource",
 		);
 		expect(projectVideoResource?._node_id).toBeTruthy();
+		if (!projectVideoResource) {
+			throw new Error("expected project video resource");
+		}
 
 		await dispatchAndSettle(
 			harness.ctx,
 			harness.project,
 			"addResourceToTimeline",
-			projectVideoResource!._node_id,
+			projectVideoResource._node_id,
 		);
 
 		const clips = await harness.ctx.queryRel(harness.videoTrack, "clips");
@@ -194,10 +206,13 @@ describe("Project action contracts", () => {
 					Number(harness.ctx.getAttr(a, "start")),
 			)[0];
 		expect(createdClip).toBeTruthy();
-		const resourceRel = await harness.ctx.queryRel(createdClip!, "resource");
+		if (!createdClip) {
+			throw new Error("expected created clip");
+		}
+		const resourceRel = await harness.ctx.queryRel(createdClip, "resource");
 		expect(resourceRel).toEqual([projectVideoResource]);
 		const clipRenderData = harness.ctx.getAttr(
-			createdClip!,
+			createdClip,
 			"clipRenderData",
 		) as {
 			id?: unknown;
@@ -205,17 +220,17 @@ describe("Project action contracts", () => {
 			resourceUrl?: unknown;
 			mime?: unknown;
 		} | null;
-		expect(clipRenderData?.id).toBe(createdClip!._node_id);
-		expect(clipRenderData?.resourceId).toBe(projectVideoResource!._node_id);
+		expect(clipRenderData?.id).toBe(createdClip._node_id);
+		expect(clipRenderData?.resourceId).toBe(projectVideoResource._node_id);
 		expect(clipRenderData?.resourceUrl).toBe(
 			"https://example.invalid/project-video.webm",
 		);
 		expect(clipRenderData?.mime).toBe("video/webm");
-		expect(harness.ctx.getAttr(createdClip!, "start")).toBe(
+		expect(harness.ctx.getAttr(createdClip, "start")).toBe(
 			videoAppendStartBefore,
 		);
 		expect(
-			Number(harness.ctx.getAttr(createdClip!, "duration")),
+			Number(harness.ctx.getAttr(createdClip, "duration")),
 		).toBeGreaterThan(0);
 		expect(harness.ctx.getAttr(harness.videoTrack, "appendStart")).toBe(
 			Number(videoAppendStartBefore) + 5,
@@ -261,7 +276,10 @@ describe("Project action contracts", () => {
 			await harness.ctx.queryRel(harness.videoTrack, "clips")
 		).find((clip) => !beforeClipIds.includes(String(clip._node_id)));
 		expect(createdClip).toBeTruthy();
-		const createdClipTextRel = await harness.ctx.queryRel(createdClip!, "text");
+		if (!createdClip) {
+			throw new Error("expected created clip");
+		}
+		const createdClipTextRel = await harness.ctx.queryRel(createdClip, "text");
 		expect(createdClipTextRel).toHaveLength(1);
 		const createdTextNode = createdClipTextRel[0];
 		expect(harness.ctx.getAttr(createdTextNode, "content")).toBe(
@@ -271,17 +289,17 @@ describe("Project action contracts", () => {
 			createdTextNode,
 			"clip",
 		);
-		expect(createdTextClipRel).toEqual([createdClip!]);
+		expect(createdTextClipRel).toEqual([createdClip]);
 
 		const createdClipRenderData = harness.ctx.getAttr(
-			createdClip!,
+			createdClip,
 			"clipRenderData",
 		) as {
 			id?: unknown;
 			resourceId?: unknown;
 			text?: { content?: unknown; style?: unknown; box?: unknown } | null;
 		} | null;
-		expect(createdClipRenderData?.id).toBe(createdClip!._node_id);
+		expect(createdClipRenderData?.id).toBe(createdClip._node_id);
 		expect(createdClipRenderData?.resourceId ?? null).toBeNull();
 		expect(createdClipRenderData?.text?.content).toBe("Project text");
 		expect(createdClipRenderData?.text?.style).toEqual({
@@ -352,13 +370,16 @@ describe("Track action contracts", () => {
 			await harness.ctx.queryRel(harness.videoTrack, "clips")
 		).find((clip) => harness.ctx.getAttr(clip, "name") === "Track Temp");
 		expect(tempClip).toBeTruthy();
+		if (!tempClip) {
+			throw new Error("expected temp clip");
+		}
 
 		await dispatchAndSettle(harness.ctx, harness.videoTrack, "removeClip", {
-			clipId: tempClip!._node_id,
+			clipId: tempClip._node_id,
 		});
 		expect(
 			(await readNodeIds(harness.ctx, harness.videoTrack, "clips")).includes(
-				String(tempClip!._node_id),
+				String(tempClip._node_id),
 			),
 		).toBe(false);
 		await expectProjectGraphInvariants(harness.ctx);

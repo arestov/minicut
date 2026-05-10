@@ -95,7 +95,10 @@ describe("Path", () => {
 			const scopedDispatch = useActions();
 
 			return (
-				<button onClick={() => scopedDispatch("rename", { name: "Project B" })}>
+				<button
+					type="button"
+					onClick={() => scopedDispatch("rename", { name: "Project B" })}
+				>
 					{String(attrs.name)}
 				</button>
 			);

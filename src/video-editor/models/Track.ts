@@ -2,9 +2,6 @@ import { model } from "dkt/model.js";
 import { CLIP_CREATION_SHAPE } from "./Clip";
 import { TEXT_CREATION_SHAPE } from "./Text";
 import {
-	normalizeClipCreationAttrs,
-	normalizeRightSplitClipAttrs,
-	normalizeTextCreationAttrs,
 	reduceAcceptClipIfTarget,
 	reduceAddClip,
 	reduceAddTextClip,
@@ -15,7 +12,6 @@ import {
 	reduceSetTrackLocked,
 	reduceSetTrackMuted,
 	reduceSplitClipAt,
-	removeClipRef,
 } from "./Track/actions";
 import { reduceTrackAppendStart } from "./Track/comps";
 

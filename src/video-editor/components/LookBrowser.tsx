@@ -20,7 +20,7 @@ export const LookBrowser = ({
 	const canAdjustIntensity = activeLook !== null && activeLook.id !== "clean";
 
 	return (
-		<div className="ve-look-browser" aria-label="Look Browser">
+		<section className="ve-look-browser" aria-label="Look Browser">
 			<div className="ve-look-browser__header">
 				<strong>Look Browser</strong>
 				<span className="ve-status-pill">
@@ -68,6 +68,6 @@ export const LookBrowser = ({
 					</small>
 				)}
 			</label>
-		</div>
+		</section>
 	);
 };

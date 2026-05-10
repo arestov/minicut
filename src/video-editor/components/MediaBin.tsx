@@ -54,10 +54,7 @@ const ResourceThumbnail = ({
 	}
 
 	return (
-		<div
-			className={`ve-resource-thumb ve-resource-thumb--${kind}`}
-			aria-label={`${kind} thumbnail`}
-		>
+		<div className={`ve-resource-thumb ve-resource-thumb--${kind}`}>
 			<span>{kind}</span>
 		</div>
 	);
@@ -331,7 +328,7 @@ const MediaBinPanel = ({
 					</button>
 				)}
 			</div>
-			<div className="ve-media-controls" aria-label="Media filters">
+			<section className="ve-media-controls" aria-label="Media filters">
 				<label className="ve-search-field">
 					<Search size={14} aria-hidden="true" />
 					<span className="ve-sr-only">Search media</span>
@@ -358,7 +355,7 @@ const MediaBinPanel = ({
 					<option value="image">Images</option>
 					<option value="audio">Audio</option>
 				</select>
-				<div className="ve-segmented-control" aria-label="Media view">
+				<div className="ve-segmented-control">
 					<IconButton
 						type="button"
 						icon={List}
@@ -376,7 +373,7 @@ const MediaBinPanel = ({
 						onClick={() => setViewMode("grid")}
 					/>
 				</div>
-			</div>
+			</section>
 			{children}
 		</section>
 	);

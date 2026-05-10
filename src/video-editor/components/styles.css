@@ -414,10 +414,6 @@ button:disabled {
 	min-height: 560px;
 }
 
-.ve-main__top--scopes + .ve-timeline {
-	height: var(--ve-color-timeline-height);
-}
-
 .ve-panel-resizer {
 	position: relative;
 	z-index: 3;
@@ -512,6 +508,10 @@ button:disabled {
 
 .ve-timeline {
 	width: 100%;
+}
+
+.ve-main__top--scopes + .ve-timeline {
+	height: var(--ve-color-timeline-height);
 }
 
 .ve-timeline > .ve-panel__header {
@@ -643,7 +643,7 @@ button:disabled {
 .ve-timeline__time {
 	border-radius: 6px;
 	background: #18181b;
-	color: #ffffff !important;
+	color: #ffffff;
 	font-variant-numeric: tabular-nums;
 	font-weight: 600;
 	padding: 5px 8px;

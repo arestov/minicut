@@ -17,8 +17,11 @@ describe("frame palette suggestions", () => {
 		expect(palette?.textColor).toMatch(/^#[0-9a-f]{6}$/);
 		expect(palette?.backgroundColor).toMatch(/^#[0-9a-f]{6}$/);
 		expect(palette?.accentColor).toMatch(/^#[0-9a-f]{6}$/);
+		if (!palette) {
+			throw new Error("Expected palette");
+		}
 		expect(
-			getContrastRatio(palette!.textColor, palette!.backgroundColor),
+			getContrastRatio(palette.textColor, palette.backgroundColor),
 		).toBeGreaterThanOrEqual(4.5);
 	});
 

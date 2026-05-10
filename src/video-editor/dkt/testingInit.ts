@@ -25,6 +25,11 @@ type AnyModel = {
 	start_page?: unknown;
 };
 
+type RuntimeWithCallsFlow = {
+	calls_flow?: AnyModel;
+	whenAllReady?: (fn: () => void) => void;
+};
+
 /**
  * Query a rel on a model. Returns [] when rel is empty/null.
  */
@@ -107,7 +112,8 @@ export const bootDktModels = async (
 	});
 
 	const appModel = inited.app_model;
-	const flow = inited.flow || (runtime as any).calls_flow;
+	const runtimeWithCallsFlow = runtime as RuntimeWithCallsFlow;
+	const flow = inited.flow || runtimeWithCallsFlow.calls_flow;
 
 	/**
 	 * Wait for the entire DKT flow queue to empty.
@@ -117,7 +123,7 @@ export const bootDktModels = async (
 	const computed = async (): Promise<void> => {
 		if (runtime.whenAllReady) {
 			return new Promise<void>((resolve) =>
-				runtime.whenAllReady!(() => resolve()),
+				runtime.whenAllReady(() => resolve()),
 			);
 		}
 		if (flow?.whenReady) {

@@ -44,9 +44,7 @@ const ClipGradeBadge = () => {
 	};
 
 	return attrs.kind === "color-correction" && attrs.enabled !== false ? (
-		<span className="ve-clip__badge" aria-label="Color grade enabled">
-			Grade
-		</span>
+		<span className="ve-clip__badge">Grade</span>
 	) : null;
 };
 
@@ -185,6 +183,7 @@ export const ClipItem = ({
 	return (
 		<button
 			type="button"
+			aria-pressed={selected}
 			className={`ve-clip${selected ? " is-selected" : ""}`}
 			data-tool={activeTool}
 			style={{
@@ -195,6 +194,25 @@ export const ClipItem = ({
 			onClick={(event) => {
 				if (activeTool === "split") {
 					splitAtPointer(event.clientX, event.currentTarget);
+					return;
+				}
+
+				if (activeTool !== "hand") {
+					selectClip();
+				}
+			}}
+			onKeyDown={(event) => {
+				if (event.key !== "Enter" && event.key !== " ") {
+					return;
+				}
+
+				event.preventDefault();
+				if (activeTool === "split") {
+					splitAtPointer(
+						event.currentTarget.getBoundingClientRect().left +
+							event.currentTarget.getBoundingClientRect().width / 2,
+						event.currentTarget,
+					);
 					return;
 				}
 
@@ -243,7 +261,8 @@ export const ClipItem = ({
 				setDragPreviewDeltaPx(0);
 			}}
 		>
-			<span
+			<button
+				type="button"
 				className="ve-clip__resize-handle ve-clip__resize-handle--start"
 				aria-label="Resize clip start"
 				onClick={(event) => event.stopPropagation()}
@@ -274,7 +293,8 @@ export const ClipItem = ({
 				{name} | {formatSeconds(start)} / {formatSeconds(duration)} | opacity{" "}
 				{formatPercent(opacity)}
 			</small>
-			<span
+			<button
+				type="button"
 				className="ve-clip__resize-handle ve-clip__resize-handle--end"
 				aria-label="Resize clip end"
 				onClick={(event) => event.stopPropagation()}

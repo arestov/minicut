@@ -58,6 +58,9 @@ describe("SessionRoot: createProject behavior contract", () => {
 		});
 		const projectA = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 		expect(projectA?._node_id).toBeTruthy();
+		if (!projectA) {
+			throw new Error("Expected project A");
+		}
 
 		await ctx.lockToRead(async () => {
 			await ctx.sessionRoot.dispatch("createProject", { title: "Project B" });
@@ -68,11 +71,11 @@ describe("SessionRoot: createProject behavior contract", () => {
 		await ctx.lockToRead(async () => {
 			await ctx.sessionRoot.dispatch("selectEntity", "clip:temp");
 			await ctx.sessionRoot.dispatch("setCursor", 3.5);
-			await ctx.sessionRoot.dispatch("setActiveProject", projectA!._node_id);
+			await ctx.sessionRoot.dispatch("setActiveProject", projectA._node_id);
 		});
 
 		expect(ctx.getAttr(ctx.sessionRoot, "activeProjectId")).toBe(
-			projectA!._node_id,
+			projectA._node_id,
 		);
 		expect(ctx.getAttr(ctx.sessionRoot, "selectedEntityId")).toBeNull();
 		expect(ctx.getAttr(ctx.sessionRoot, "cursor")).toBe(0);

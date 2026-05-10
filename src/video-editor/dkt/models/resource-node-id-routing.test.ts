@@ -35,8 +35,11 @@ describe("resource node-id routing", () => {
 		const imageClip = videoClips.find(
 			(clip) => !beforeVideoClipIds.includes(String(clip._node_id)),
 		);
+		if (!imageClip) {
+			throw new Error("Expected image clip");
+		}
 		expect(
-			(await imageHarness.ctx.queryRel(imageClip!, "resource"))[0]?._node_id,
+			(await imageHarness.ctx.queryRel(imageClip, "resource"))[0]?._node_id,
 		).toBe(imageHarness.imageResource._node_id);
 		await expectProjectGraphInvariants(imageHarness.ctx);
 
@@ -71,8 +74,11 @@ describe("resource node-id routing", () => {
 		const audioClip = audioClips.find(
 			(clip) => !beforeAudioClipIds.includes(String(clip._node_id)),
 		);
+		if (!audioClip) {
+			throw new Error("Expected audio clip");
+		}
 		expect(
-			(await audioHarness.ctx.queryRel(audioClip!, "resource"))[0]?._node_id,
+			(await audioHarness.ctx.queryRel(audioClip, "resource"))[0]?._node_id,
 		).toBe(audioHarness.audioResource._node_id);
 		await expectProjectGraphInvariants(audioHarness.ctx);
 	});

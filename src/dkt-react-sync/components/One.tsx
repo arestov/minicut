@@ -20,7 +20,7 @@ const ReadyGate = ({
 	fallback: React.ReactNode;
 }) => {
 	const attrs = useAttrs([attrName]);
-	return attrs[attrName] != null ? <>{children}</> : <>{fallback}</>;
+	return attrs[attrName] != null ? children : fallback;
 };
 
 export const One = ({

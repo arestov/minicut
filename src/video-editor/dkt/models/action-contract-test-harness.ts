@@ -23,7 +23,7 @@ type HarnessOptions = {
 };
 
 const resolveModelByNodeId = async (
-	ctx: DktTestContext,
+	_ctx: DktTestContext,
 	scope: ModelHandle,
 	relName: string,
 	nodeId: string,
@@ -48,7 +48,7 @@ export const dispatchAndSettle = async (
 };
 
 export const readNodeIds = async (
-	ctx: DktTestContext,
+	_ctx: DktTestContext,
 	scope: ModelHandle,
 	relName: string,
 ): Promise<string[]> => {
@@ -57,7 +57,7 @@ export const readNodeIds = async (
 };
 
 export const findByNodeId = async (
-	ctx: DktTestContext,
+	_ctx: DktTestContext,
 	scope: ModelHandle,
 	relName: string,
 	nodeId: string,

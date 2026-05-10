@@ -1,8 +1,6 @@
 import { model } from "dkt/model.js";
 import { CLIP_CREATION_SHAPE } from "./Clip";
 import {
-	normalizeResourceCreationAttrs,
-	normalizeTrackCreationAttrs,
 	reduceAddEmbeddedAudio,
 	reduceAddResourceToTimeline,
 	reduceAddTextClipToVideoTrack,

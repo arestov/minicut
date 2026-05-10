@@ -2,13 +2,7 @@ import { model } from "dkt/model.js";
 import { SessionRoot as BaseSessionRoot } from "dkt-all/libs/provoda/bwlev/SessionRoot.js";
 import type { ExportProgressState } from "../app/exportProgressState";
 import type { ExportRequestState } from "../app/exportRequestState";
-import {
-	createPreviewFrame,
-	lookupPreviewBufferFrame,
-	type PreviewBuffer,
-	type PreviewFrame,
-	type PreviewStructure,
-} from "../read-model/previewComps";
+import type { PreviewBuffer } from "../read-model/previewComps";
 import { dktSessionActions } from "./SessionRoot/actions";
 import {
 	reducePreviewFrame,

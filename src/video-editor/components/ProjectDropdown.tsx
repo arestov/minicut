@@ -30,7 +30,6 @@ const ProjectItem = ({ activeProjectId, onSelect }: ProjectItemProps) => {
 	return (
 		<li role="none">
 			<button
-				role="menuitem"
 				type="button"
 				className={isActive ? "is-active" : ""}
 				onClick={() => {
@@ -39,7 +38,6 @@ const ProjectItem = ({ activeProjectId, onSelect }: ProjectItemProps) => {
 					}
 					onSelect();
 				}}
-				aria-pressed={isActive}
 			>
 				<span className="ve-project-list__title">
 					{projectTitle}
@@ -110,7 +108,7 @@ const ProjectDropdownMenu = ({
 			{projectScopes.length === 0 ? (
 				<p className="ve-empty ve-project-dropdown__empty">No projects yet.</p>
 			) : (
-				<ul role="menu" className="ve-project-list ve-project-dropdown__list">
+				<ul className="ve-project-list ve-project-dropdown__list">
 					{projectScopes.map((projectScope) => (
 						<ScopeContext.Provider
 							key={projectScope._nodeId}
@@ -161,7 +159,7 @@ export const ProjectDropdown = () => {
 	const close = () => setIsOpen(false);
 
 	return (
-		<div aria-label="Projects" className="ve-project-dropdown">
+		<section aria-label="Projects" className="ve-project-dropdown">
 			<Button
 				type="button"
 				className="ve-project-dropdown__trigger"
@@ -198,6 +196,6 @@ export const ProjectDropdown = () => {
 					/>
 				</One>
 			) : null}
-		</div>
+		</section>
 	);
 };

@@ -135,7 +135,10 @@ const PreviewTransport = ({
 	isPlaying: boolean;
 	onTogglePlayback: () => void;
 }) => (
-	<div className="ve-preview-transport" aria-label="Preview transport status">
+	<section
+		className="ve-preview-transport"
+		aria-label="Preview transport status"
+	>
 		<div>
 			<Timer size={15} aria-hidden="true" />
 			<PreviewCursorReadout frame={frame} />
@@ -153,7 +156,7 @@ const PreviewTransport = ({
 				onTogglePlayback={onTogglePlayback}
 			/>
 		</div>
-	</div>
+	</section>
 );
 
 export const PreviewPanel = ({
@@ -188,7 +191,7 @@ export const PreviewPanel = ({
 		<section className="ve-panel ve-preview-panel" aria-label="Preview panel">
 			<div className="ve-panel__header">
 				<h2>Preview</h2>
-				<div className="ve-preview-tools" aria-label="Preview color tools">
+				<section className="ve-preview-tools" aria-label="Preview color tools">
 					<Button
 						type="button"
 						variant={compareMode === "split" ? "default" : "secondary"}
@@ -198,7 +201,7 @@ export const PreviewPanel = ({
 					>
 						Split compare
 					</Button>
-				</div>
+				</section>
 			</div>
 			<PreviewStage
 				frame={frame}

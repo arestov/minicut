@@ -11,8 +11,7 @@ const EMPTY_ATTRS = Object.freeze({}) as Record<string, unknown>;
 export const useAttrs = (fields: readonly string[]) => {
 	const runtime = useReactScopeRuntime();
 	const scope = useScope();
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const normalizedFields = useMemo(() => normalizeFields(fields), fields);
+	const normalizedFields = useMemo(() => normalizeFields(fields), [fields]);
 	const shape = getAttrsShape(normalizedFields);
 	const resolvedScope = scope ?? runtime.getRootScope();
 

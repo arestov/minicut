@@ -36,10 +36,7 @@ export const TrackLabel = () => {
 				<strong>{trackName}</strong>
 				<small>{trackKind}</small>
 			</div>
-			<div
-				className="ve-track-row__controls"
-				aria-label={`${trackName} controls`}
-			>
+			<div className="ve-track-row__controls">
 				<IconButton
 					type="button"
 					icon={Volume2}

@@ -352,7 +352,7 @@ const getClipSampleFrame = (
 	return { frame: createFallbackFrame(clip), sampled: false };
 };
 
-const getPixel = (
+const _getPixel = (
 	frame: RgbaSampleFrame,
 	pixelIndex: number,
 ): [number, number, number, number] => {

@@ -107,7 +107,10 @@ export const TextAppearancePanel = ({
 					</select>
 				</label>
 			</div>
-			<div className="ve-text-color-feedback" aria-label="Text color feedback">
+			<section
+				className="ve-text-color-feedback"
+				aria-label="Text color feedback"
+			>
 				<span
 					className={`ve-status-pill ve-status-pill--${textContrast.status}`}
 				>
@@ -124,12 +127,12 @@ export const TextAppearancePanel = ({
 				>
 					Fix contrast
 				</Button>
-			</div>
+			</section>
 			<FramePaletteAction
 				status={paletteStatus}
 				onGenerate={onGenerateFramePalette}
 			/>
-			<div className="ve-oklch-panel" aria-label="Advanced OKLCH controls">
+			<section className="ve-oklch-panel" aria-label="Advanced OKLCH controls">
 				<div className="ve-oklch-panel__header">
 					<strong>Advanced OKLCH controls</strong>
 					<span>Lightness, chroma, hue</span>
@@ -144,7 +147,7 @@ export const TextAppearancePanel = ({
 					value={textBackgroundColor}
 					onChange={(value) => onStyleChange({ backgroundColor: value })}
 				/>
-			</div>
+			</section>
 		</>
 	);
 };

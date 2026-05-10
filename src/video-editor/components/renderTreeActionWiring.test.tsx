@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReactScopeRuntimeContext } from "../../dkt-react-sync/context/ReactScopeRuntimeContext";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
+import type { ReactScopeRuntime } from "../../dkt-react-sync/runtime/ReactScopeRuntime";
+import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 
 const useVideoEditorMock = vi.fn();
 const useRootAttrsMock = vi.fn();
@@ -44,7 +46,7 @@ import { InspectorEditTabPanel } from "./inspector/InspectorEditTabPanel";
 import { TimelineView } from "./TimelineView";
 import { Toolbar } from "./Toolbar";
 
-type TestScope = { _nodeId: string };
+type TestScope = ReactSyncScopeHandle;
 
 type RecordedDispatch = {
 	scopeId: string | null;
@@ -69,8 +71,8 @@ const renderWithScope = (ui: ReactNode, scope: TestScope) => {
 	const { dispatches, runtime } = createDispatchRecordingRuntime();
 
 	const result = render(
-		<ReactScopeRuntimeContext.Provider value={runtime as any}>
-			<ScopeContext.Provider value={scope as any}>{ui}</ScopeContext.Provider>
+		<ReactScopeRuntimeContext.Provider value={runtime as ReactScopeRuntime}>
+			<ScopeContext.Provider value={scope}>{ui}</ScopeContext.Provider>
 		</ReactScopeRuntimeContext.Provider>,
 	);
 

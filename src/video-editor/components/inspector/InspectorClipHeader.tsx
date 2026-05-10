@@ -26,7 +26,7 @@ const ClipHeaderPreview = ({
 	const canPreview = isPreviewableResourceUrl(url);
 
 	return (
-		<div
+		<section
 			className="ve-inspector-thumb"
 			style={{ borderColor: color }}
 			aria-label="Clip preview"
@@ -43,7 +43,7 @@ const ClipHeaderPreview = ({
 			{!canPreview || (kind !== "image" && kind !== "video") ? (
 				<span>{kind === "audio" ? "AUD" : "CLIP"}</span>
 			) : null}
-		</div>
+		</section>
 	);
 };
 

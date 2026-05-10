@@ -189,7 +189,7 @@ const ColorCorrectionControls = ({
 			isCancelled = true;
 			worker.terminate();
 		};
-	}, [effectId, lookIntensity, mediaElementRegistry]);
+	}, [lookIntensity, mediaElementRegistry]);
 
 	return (
 		<>
@@ -211,7 +211,7 @@ const ColorCorrectionControls = ({
 					Press and hold: Before
 				</Button>
 			</div>
-			<div className="ve-color-grade-presets" aria-label="Grade presets">
+			<section className="ve-color-grade-presets" aria-label="Grade presets">
 				{colorGradePresets.map((preset) => (
 					<Button
 						key={preset.id}
@@ -229,7 +229,7 @@ const ColorCorrectionControls = ({
 						{preset.label}
 					</Button>
 				))}
-			</div>
+			</section>
 			<LookBrowser
 				activeLookId={activeLookId}
 				intensity={lookIntensity}
@@ -370,7 +370,7 @@ export const InspectorColorTabPanel = ({
 						}
 					/>
 				</label>
-				<div className="ve-swatch-grid" aria-label="Color presets">
+				<div className="ve-swatch-grid">
 					{[
 						"#2563eb",
 						"#16a34a",

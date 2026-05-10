@@ -220,14 +220,14 @@ export const installMiniCutDebugBridgeTesting = (
 			};
 
 			const getRels = (node: GraphNode | null): Record<string, unknown> => {
-				if (!node || !node.rels || typeof node.rels !== "object") {
+				if (!node?.rels || typeof node.rels !== "object") {
 					return {};
 				}
 				return node.rels as Record<string, unknown>;
 			};
 
 			const getAttrs = (node: GraphNode | null): Record<string, unknown> => {
-				if (!node || !node.attrs || typeof node.attrs !== "object") {
+				if (!node?.attrs || typeof node.attrs !== "object") {
 					return {};
 				}
 				return node.attrs as Record<string, unknown>;

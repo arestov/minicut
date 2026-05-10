@@ -21,8 +21,11 @@ describe("clip action reducer contracts", () => {
 			const patch = reduceTimelineMoveByAction({ delta }, { start });
 
 			expect(patch).not.toBeNull();
+			if (!patch) {
+				throw new Error("Expected patch");
+			}
 			expect(patch?.start).toBeGreaterThanOrEqual(0);
-			expect(isTenthsAligned(patch!.start)).toBe(true);
+			expect(isTenthsAligned(patch.start)).toBe(true);
 		}
 
 		expect(reduceTimelineMoveByAction({ delta: -1.2 }, { start: 0.2 })).toEqual(
@@ -43,9 +46,12 @@ describe("clip action reducer contracts", () => {
 			const patch = reduceTimelineTrimAction({ edge: "start", delta }, attrs);
 
 			expect(patch).not.toBeNull();
-			const nextStart = patch!.start ?? attrs.start;
-			const nextDuration = patch!.duration ?? attrs.duration;
-			const nextIn = patch!.in ?? attrs.in;
+			if (!patch) {
+				throw new Error("Expected patch");
+			}
+			const nextStart = patch.start ?? attrs.start;
+			const nextDuration = patch.duration ?? attrs.duration;
+			const nextIn = patch.in ?? attrs.in;
 
 			expect(nextStart).toBeGreaterThanOrEqual(0);
 			expect(nextDuration).toBeGreaterThanOrEqual(0.5);

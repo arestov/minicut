@@ -294,7 +294,7 @@ export const reduceImportResourceCreateOnly = (payload: unknown) => {
 
 export const reduceImportResource = (
 	payload: unknown,
-	noop: unknown,
+	_noop: unknown,
 	clips: unknown[],
 	videoTrack: unknown,
 	audioTrack: unknown,
@@ -369,7 +369,7 @@ const resolveOutputResource = (payload: unknown): ResourceLike | null => {
 export const reduceImportResourceToVideo = (
 	payload: unknown,
 	noop: unknown,
-	resources: unknown[],
+	_resources: unknown[],
 	appendStart: unknown,
 ) => {
 	const value = payload as { shouldAddToTimeline?: unknown } | null;
@@ -391,7 +391,7 @@ export const reduceImportResourceToVideo = (
 export const reduceImportResourceToAudio = (
 	payload: unknown,
 	noop: unknown,
-	resources: unknown[],
+	_resources: unknown[],
 	appendStart: unknown,
 ) => {
 	const value = payload as { shouldAddToTimeline?: unknown } | null;
@@ -413,7 +413,7 @@ export const reduceImportResourceToAudio = (
 export const reduceImportResourceToEmbeddedAudio = (
 	payload: unknown,
 	noop: unknown,
-	resources: unknown[],
+	_resources: unknown[],
 	audioTrackAppendStart: unknown,
 ) => {
 	const value = payload as { shouldAddEmbeddedAudio?: unknown } | null;

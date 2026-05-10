@@ -16,6 +16,10 @@ export type DefinedReactShape = Readonly<ReactShapeSpec> & {
 	readonly id: string;
 };
 
+type ShapeMetaComponent<P = object> = ComponentType<P> & {
+	[SHAPE_META]?: DefinedReactShape;
+};
+
 export const defineShape = (shape: ReactShapeSpec): DefinedReactShape => {
 	const normalized: DefinedReactShape = Object.freeze({
 		attrs: Object.freeze([...(shape.attrs ?? [])]),
@@ -28,7 +32,7 @@ export const defineShape = (shape: ReactShapeSpec): DefinedReactShape => {
 	return normalized;
 };
 
-export const shapeOf = <T extends ComponentType<any>>(
+export const shapeOf = <P, T extends ComponentType<P>>(
 	component: T,
 	shape: DefinedReactShape,
 ) => {
@@ -38,10 +42,7 @@ export const shapeOf = <T extends ComponentType<any>>(
 	});
 
 	const WrappedComponent = (props: ComponentProps<T>) =>
-		createElement(MountedShape, {
-			shape,
-			children: createElement(component as ComponentType<any>, props),
-		});
+		createElement(MountedShape, { shape }, createElement(component, props));
 
 	WrappedComponent.displayName =
 		component.displayName || component.name || "ShapedComponent";
@@ -54,9 +55,5 @@ export const shapeOf = <T extends ComponentType<any>>(
 	return WrappedComponent as unknown as T;
 };
 
-export const getShapeOf = (component: ComponentType<any>) =>
-	(
-		component as ComponentType<any> & {
-			[SHAPE_META]?: DefinedReactShape;
-		}
-	)[SHAPE_META] ?? null;
+export const getShapeOf = <P>(component: ComponentType<P>) =>
+	(component as ShapeMetaComponent<P>)[SHAPE_META] ?? null;

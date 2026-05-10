@@ -17,6 +17,7 @@ describe("useActions", () => {
 			const dispatch = useActions();
 			return (
 				<button
+					type="button"
 					onClick={() => dispatch("renameProject", { title: "Project B" })}
 				>
 					Rename

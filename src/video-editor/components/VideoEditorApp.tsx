@@ -207,13 +207,7 @@ export const VideoEditorApp = () => {
 						<PreviewPanel
 							mediaElementRegistry={mediaElementRegistryRef.current}
 						/>
-						<div
-							role="separator"
-							aria-label="Resize preview and inspector panels"
-							aria-orientation="vertical"
-							aria-valuemin={inspectorWidthMin}
-							aria-valuemax={inspectorWidthMax}
-							aria-valuenow={Math.round(inspectorWidth)}
+						<hr
 							className={`ve-panel-resizer${isResizingInspector ? " is-dragging" : ""}`}
 							tabIndex={0}
 							onPointerDown={handleResizePointerDown}

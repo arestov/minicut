@@ -41,8 +41,12 @@ describe("ReactSyncReceiver", () => {
 		expect(attrs1).toBe(attrs2);
 		expect(attrs1.name).toBe("Project 1");
 
-		const scopes1 = receiver.readManyScopes(receiver.getRootScope()!, "tracks");
-		const scopes2 = receiver.readManyScopes(receiver.getRootScope()!, "tracks");
+		const rootScope = receiver.getRootScope();
+		if (!rootScope) {
+			throw new Error("Expected root scope");
+		}
+		const scopes1 = receiver.readManyScopes(rootScope, "tracks");
+		const scopes2 = receiver.readManyScopes(rootScope, "tracks");
 		expect(scopes1).toBe(scopes2);
 		expect(scopes1.map((scope) => scope._nodeId)).toEqual([
 			"track-1",
@@ -123,7 +127,10 @@ describe("ReactSyncReceiver", () => {
 			["clip-1", "clip-2"],
 		]);
 
-		const scope = receiver.getRootScope()!;
+		const scope = receiver.getRootScope();
+		if (!scope) {
+			throw new Error("Expected root scope");
+		}
 		const first = receiver.readManyScopes(scope, "clips");
 		receiver.handleSync(SYNCR_TYPES.UPDATE, [
 			1,

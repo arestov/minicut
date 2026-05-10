@@ -61,8 +61,11 @@ describe("Clip.splitSelfAt saga: full 3-step chain", () => {
 			(c) => String(c._node_id) !== originalClipId,
 		);
 		expect(rightClip).toBeTruthy();
-		expect(ctx.getAttr(rightClip!, "start")).toBe(1);
-		expect(ctx.getAttr(rightClip!, "duration")).toBe(1);
+		if (!rightClip) {
+			throw new Error("Right clip not found");
+		}
+		expect(ctx.getAttr(rightClip, "start")).toBe(1);
+		expect(ctx.getAttr(rightClip, "duration")).toBe(1);
 		await expectProjectGraphInvariants(ctx);
 	});
 
@@ -91,7 +94,10 @@ describe("Clip.splitSelfAt saga: full 3-step chain", () => {
 		);
 		expect(rightClip).toBeTruthy();
 
-		const trackRel = await ctx.queryRel(rightClip!, "track");
+		if (!rightClip) {
+			throw new Error("Right clip not found");
+		}
+		const trackRel = await ctx.queryRel(rightClip, "track");
 		expect(trackRel).toHaveLength(1);
 		expect(trackRel[0]).toBe(videoTrack);
 		await expectProjectGraphInvariants(ctx);
@@ -132,15 +138,21 @@ describe("SessionRoot.splitSelectedClip E2E", () => {
 			(c) => String(c._node_id) === selectedClipId,
 		);
 		expect(leftClip).toBeTruthy();
-		expect(ctx.getAttr(leftClip!, "duration")).toBe(2);
-		expect(ctx.getAttr(leftClip!, "start")).toBe(0);
+		if (!leftClip) {
+			throw new Error("Left clip not found");
+		}
+		expect(ctx.getAttr(leftClip, "duration")).toBe(2);
+		expect(ctx.getAttr(leftClip, "start")).toBe(0);
 
 		const rightClip = clipsAfter.find(
 			(c) => String(c._node_id) !== selectedClipId,
 		);
 		expect(rightClip).toBeTruthy();
-		expect(ctx.getAttr(rightClip!, "duration")).toBe(2);
-		expect(ctx.getAttr(rightClip!, "start")).toBe(2);
+		if (!rightClip) {
+			throw new Error("Right clip not found");
+		}
+		expect(ctx.getAttr(rightClip, "duration")).toBe(2);
+		expect(ctx.getAttr(rightClip, "start")).toBe(2);
 		await expectProjectGraphInvariants(ctx);
 	});
 });

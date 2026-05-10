@@ -260,7 +260,7 @@ type ImportFilesFxPayload = {
 	addToTimelineWhenEmpty: true;
 };
 
-const normalizeInitialTrack = (value: unknown) => {
+const _normalizeInitialTrack = (value: unknown) => {
 	const track = asObject(value);
 	const kind = track?.kind === "audio" ? "audio" : "video";
 	return {
@@ -272,7 +272,7 @@ const normalizeInitialTrack = (value: unknown) => {
 	};
 };
 
-const createDefaultTracks = () => [
+const _createDefaultTracks = () => [
 	{
 		kind: "video",
 		name: "V1",

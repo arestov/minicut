@@ -156,7 +156,7 @@ export const createMiniCutDktRuntime = (
 		logRuntime("clearExportProgressInAllSessions:start", {
 			sessionCount: sessionRootPromises.size,
 		});
-		for (const [sessionKey, sessionRootPromise] of sessionRootPromises) {
+		for (const [sessionKey, _sessionRootPromise] of sessionRootPromises) {
 			try {
 				await dispatchScopedAction("clearExportProgress", {}, null, sessionKey);
 				logRuntime("clearExportProgressInAllSessions:cleared", { sessionKey });

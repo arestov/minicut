@@ -16,10 +16,13 @@ export const FramePaletteAction = ({
 	status: FramePaletteStatus;
 	onGenerate: () => void;
 }) => (
-	<div className="ve-text-color-feedback" aria-label="Frame palette feedback">
+	<section
+		className="ve-text-color-feedback"
+		aria-label="Frame palette feedback"
+	>
 		<span className="ve-status-pill">{framePaletteStatusLabel[status]}</span>
 		<Button type="button" variant="secondary" onClick={onGenerate}>
 			Generate palette from frame
 		</Button>
-	</div>
+	</section>
 );

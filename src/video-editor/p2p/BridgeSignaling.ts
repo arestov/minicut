@@ -37,7 +37,7 @@ export const createDoSignalingFactory = (
 	return ({ roomId, peerId, events }) => {
 		let destroyed = false;
 		const knownPeers = new Set<string>();
-		let connected = false;
+		let _connected = false;
 		let connectedNotified = false;
 		let lastLeaderEpoch = -1;
 		let retryCount = 0;
@@ -89,7 +89,7 @@ export const createDoSignalingFactory = (
 			}
 
 			ws = null;
-			connected = false;
+			_connected = false;
 			scheduleRetry();
 		};
 
@@ -177,7 +177,7 @@ export const createDoSignalingFactory = (
 						}
 					}
 
-					connected = true;
+					_connected = true;
 					retryCount = 0;
 					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch);
 					if (!connectedNotified) {

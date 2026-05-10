@@ -57,9 +57,12 @@ export const expectProjectGraphInvariants = async (
 	const activeProject =
 		(await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0] ?? null;
 	expect(activeProject, "expected active project").toBeTruthy();
+	if (!activeProject) {
+		throw new Error("expected active project");
+	}
 
-	const tracks = await ctx.queryRel(activeProject!, "tracks");
-	const resources = await ctx.queryRel(activeProject!, "resources");
+	const tracks = await ctx.queryRel(activeProject, "tracks");
+	const resources = await ctx.queryRel(activeProject, "resources");
 	const clips = await Promise.all(
 		tracks.map((track) => ctx.queryRel(track, "clips")),
 	);
@@ -145,7 +148,7 @@ export const expectProjectGraphInvariants = async (
 			expect(effectClipRel[0]?._node_id).toBe(clip._node_id);
 			const effectProjectRel = await ctx.queryRel(effect, "project");
 			if (effectProjectRel.length > 0) {
-				expect(effectProjectRel[0]?._node_id).toBe(activeProject!._node_id);
+				expect(effectProjectRel[0]?._node_id).toBe(activeProject._node_id);
 			}
 		}
 	}

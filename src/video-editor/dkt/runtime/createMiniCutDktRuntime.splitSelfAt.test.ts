@@ -51,13 +51,19 @@ describe("splitSelfAt data flow", () => {
 
 		const left = clips.find((entry) => String(entry._node_id) === clipId);
 		expect(left, "left clip must exist").toBeTruthy();
-		expect(ctx.getAttr(left!, "duration")).toBe(0.5);
-		expect(ctx.getAttr(left!, "start")).toBe(0);
+		if (!left) {
+			throw new Error("left clip must exist");
+		}
+		expect(ctx.getAttr(left, "duration")).toBe(0.5);
+		expect(ctx.getAttr(left, "start")).toBe(0);
 
 		const right = clips.find((entry) => String(entry._node_id) !== clipId);
 		expect(right, "right clip must be auto-created").toBeTruthy();
-		expect(ctx.getAttr(right!, "start")).toBe(0.5);
-		expect(ctx.getAttr(right!, "duration")).toBe(0.5);
+		if (!right) {
+			throw new Error("right clip must be auto-created");
+		}
+		expect(ctx.getAttr(right, "start")).toBe(0.5);
+		expect(ctx.getAttr(right, "duration")).toBe(0.5);
 	});
 
 	it("manual splitClipAt on track creates right clip with correct start/duration", async () => {
@@ -79,7 +85,10 @@ describe("splitSelfAt data flow", () => {
 				!beforeClips.some((before) => before._node_id === clip._node_id),
 		);
 		expect(rightClip).toBeTruthy();
-		expect(ctx.getAttr(rightClip!, "start")).toBe(0.5);
-		expect(ctx.getAttr(rightClip!, "duration")).toBe(0.5);
+		if (!rightClip) {
+			throw new Error("right clip must exist");
+		}
+		expect(ctx.getAttr(rightClip, "start")).toBe(0.5);
+		expect(ctx.getAttr(rightClip, "duration")).toBe(0.5);
 	});
 });

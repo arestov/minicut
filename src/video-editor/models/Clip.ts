@@ -1,15 +1,5 @@
 import { model } from "dkt/model.js";
-import type {
-	PreviewClipSource,
-	ResolvedAnimatedScalar,
-} from "../read-model/previewComps";
-import type { EffectRenderInstruction } from "../render/colorPipeline";
-import { mergeEffectFilters } from "../render/colorPipeline";
 import {
-	clipSetAudioAction,
-	clipSetFadeAction,
-	clipSetTimelineAttrsAction,
-	clipSetTransformAction,
 	defaultClipTransform,
 	normalizeEffectCreationAttrs,
 	reduceClipColorAction,
@@ -349,16 +339,16 @@ export const Clip = model({
 						payload: unknown,
 						noop: unknown,
 						start: unknown,
-						inPoint: unknown,
+						_inPoint: unknown,
 						duration: unknown,
-						name: unknown,
-						color: unknown,
-						mediaKind: unknown,
-						fadeIn: unknown,
-						fadeOut: unknown,
-						audio: unknown,
-						opacity: unknown,
-						transform: unknown,
+						_name: unknown,
+						_color: unknown,
+						_mediaKind: unknown,
+						_fadeIn: unknown,
+						_fadeOut: unknown,
+						_audio: unknown,
+						_opacity: unknown,
+						_transform: unknown,
 					) => {
 						const time = (payload as { time?: unknown } | null)?.time;
 						const s = typeof start === "number" ? start : 0;
@@ -402,7 +392,7 @@ export const Clip = model({
 						name: unknown,
 						color: unknown,
 						mediaKind: unknown,
-						fadeIn: unknown,
+						_fadeIn: unknown,
 						fadeOut: unknown,
 						audio: unknown,
 						opacity: unknown,

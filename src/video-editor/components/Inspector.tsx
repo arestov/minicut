@@ -1,5 +1,4 @@
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
-import { useReactScopeRuntime } from "../../dkt-react-sync/hooks/useReactScopeRuntime";
 import { useRootAttrs } from "../../dkt-react-sync/hooks/useRootAttrs";
 import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
 import { useRootOne } from "../../dkt-react-sync/hooks/useRootOne";
@@ -74,7 +73,6 @@ export const Inspector = ({
 	mediaElementRegistry?: PreviewMediaElementRegistry;
 }) => {
 	const sessionDispatch = useRootDispatch();
-	const runtime = useReactScopeRuntime();
 	const rootAttrs = useRootAttrs([
 		"activeProjectId",
 		"activeInspectorTab",
@@ -83,7 +81,6 @@ export const Inspector = ({
 	]) as {
 		activeProjectId?: unknown;
 		activeInspectorTab?: InspectorTab;
-		selectedEntityId?: unknown;
 		selectedClipTrackPosition?: SelectedClipTrackPosition | null;
 	};
 	const trackPosition = rootAttrs.selectedClipTrackPosition ?? null;
@@ -91,10 +88,6 @@ export const Inspector = ({
 	const activeProjectId =
 		typeof rootAttrs.activeProjectId === "string"
 			? rootAttrs.activeProjectId
-			: null;
-	const selectedEntityId =
-		typeof rootAttrs.selectedEntityId === "string"
-			? rootAttrs.selectedEntityId
 			: null;
 	const setActiveTab = (tab: InspectorTab): void =>
 		sessionDispatch("setActiveInspectorTab", tab);

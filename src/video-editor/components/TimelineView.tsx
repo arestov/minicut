@@ -90,11 +90,7 @@ interface TimelineBodyProps {
 }
 
 const CurrentTimeLabel = ({ cursorSeconds }: { cursorSeconds: number }) => {
-	return (
-		<span className="ve-timeline__time" aria-label="Current time">
-			{cursorSeconds.toFixed(2)}s
-		</span>
-	);
+	return <span className="ve-timeline__time">{cursorSeconds.toFixed(2)}s</span>;
 };
 
 const TimelinePlayhead = ({
@@ -107,7 +103,7 @@ const TimelinePlayhead = ({
 	return (
 		<div
 			className="ve-timeline-playhead"
-			aria-label="Current step"
+			aria-hidden="true"
 			style={{ left: `${cursorSeconds * timelineZoom}px` }}
 		/>
 	);
@@ -136,11 +132,13 @@ const TimelineHeader = ({
 			<div className="ve-timeline__track-actions">
 				<h2>Timeline</h2>
 			</div>
-			<div className="ve-timeline-clip-actions" aria-label="Clip edit actions">
+			<section
+				className="ve-timeline-clip-actions"
+				aria-label="Clip edit actions"
+			>
 				{selectedClipSummary ? (
 					<div
 						className="ve-clip-action-target"
-						aria-label="Selected clip action target"
 						style={{ borderColor: selectedClipSummary.color }}
 					>
 						<span>{selectedClipSummary.resourceName}</span>
@@ -179,12 +177,9 @@ const TimelineHeader = ({
 					onClick={onDeleteSelected}
 					disabled={!hasSelectedClip}
 				/>
-			</div>
-			<div className="ve-timeline__tools" aria-label="Timeline tools">
-				<div
-					className="ve-segmented-control ve-timeline-tool-mode"
-					aria-label="Timeline tool mode"
-				>
+			</section>
+			<section className="ve-timeline__tools" aria-label="Timeline tools">
+				<div className="ve-segmented-control ve-timeline-tool-mode">
 					{timelineTools.map((tool) => (
 						<IconButton
 							key={tool.id}
@@ -232,7 +227,7 @@ const TimelineHeader = ({
 					onClick={() => onZoom(TIMELINE_ZOOM_STEP)}
 					disabled={!canZoomIn}
 				/>
-			</div>
+			</section>
 		</div>
 	);
 };
@@ -261,7 +256,7 @@ const TimelineBody = ({
 			<div className="ve-timeline-sticky-row">
 				<div className="ve-timeline-label-spacer" aria-hidden="true" />
 				<div className="ve-timeline-ruler-row">
-					<div className="ve-timeline-ruler" aria-label="Time ruler">
+					<div className="ve-timeline-ruler">
 						{timelineTicks.map((tick) => (
 							<span key={tick} style={{ left: `${tick * timelineZoom}px` }}>
 								{tick}s
@@ -282,7 +277,7 @@ const TimelineBody = ({
 							</ScopeContext.Provider>
 						))}
 					</div>
-					<div className="ve-track-label-actions" aria-label="Track actions">
+					<div className="ve-track-label-actions">
 						<IconButton
 							type="button"
 							icon={Video}

@@ -80,10 +80,12 @@ describe("createMiniCutPageSyncRuntime", () => {
 		});
 		expect(runtime.getRootScope()?._nodeId).toBe("root");
 		expect(runtime.getRootAttrs(["name"]).name).toBe("Project 1");
+		const rootScope = runtime.getRootScope();
+		if (!rootScope) {
+			throw new Error("Expected root scope");
+		}
 		expect(
-			runtime
-				.readMany(runtime.getRootScope()!, "tracks")
-				.map((scope) => scope._nodeId),
+			runtime.readMany(rootScope, "tracks").map((scope) => scope._nodeId),
 		).toEqual(["track-1"]);
 	});
 
@@ -109,7 +111,10 @@ describe("createMiniCutPageSyncRuntime", () => {
 			payload: { node_id: "root", data: [null, null, null] },
 		});
 
-		const rootScope = runtime.getRootScope()!;
+		const rootScope = runtime.getRootScope();
+		if (!rootScope) {
+			throw new Error("Expected root scope");
+		}
 		const notifications: string[][] = [];
 		const stop = runtime.subscribeMany(rootScope, "tracks", () => {
 			notifications.push(
@@ -142,7 +147,10 @@ describe("createMiniCutPageSyncRuntime", () => {
 
 		emitRootProject(memory.emit);
 
-		const rootScope = runtime.getRootScope()!;
+		const rootScope = runtime.getRootScope();
+		if (!rootScope) {
+			throw new Error("Expected root scope");
+		}
 		const stopShape = runtime.mountShape(rootScope, shape);
 		runtime.getDispatch(rootScope)("rename", { name: "Project 2" });
 		stopShape();
@@ -178,7 +186,10 @@ describe("createMiniCutPageSyncRuntime", () => {
 			transport: memory.transport,
 		});
 
-		const settlePromise = runtime.waitForRuntimeSettled!();
+		const settlePromise = runtime.waitForRuntimeSettled?.();
+		if (!settlePromise) {
+			throw new Error("Expected waitForRuntimeSettled");
+		}
 
 		await expect
 			.poll(

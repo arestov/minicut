@@ -15,7 +15,6 @@ import {
 	resolveExportRange,
 } from "./exportRange";
 import type {
-	ExportBackend,
 	ExportDiagnostics,
 	ExportFormat,
 	ExportFrameSample,
@@ -32,7 +31,6 @@ import {
 import { compileFrameOperationsFromPlan, type ExportPlan } from "./renderPlan";
 
 export type {
-	ExportBackend,
 	ExportDiagnostics,
 	ExportFormat,
 	ExportFrameSample,

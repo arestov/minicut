@@ -40,9 +40,12 @@ describe("SessionRoot action contracts", () => {
 			await harness.ctx.queryRel(harness.sessionRoot, "activeProject")
 		)[0];
 		expect(activeProject).toBeTruthy();
-		expect(harness.ctx.getAttr(activeProject!, "title")).toBe("New Project");
+		if (!activeProject) {
+			throw new Error("Expected active project");
+		}
+		expect(harness.ctx.getAttr(activeProject, "title")).toBe("New Project");
 		expect(harness.ctx.getAttr(harness.sessionRoot, "activeProjectId")).toBe(
-			activeProject!._node_id,
+			activeProject._node_id,
 		);
 		expect(
 			harness.ctx.getAttr(harness.sessionRoot, "selectedEntityId"),
@@ -341,13 +344,13 @@ describe("SessionRoot action contracts", () => {
 			harness.ctx,
 			harness.sessionRoot,
 			"addActiveProjectResourceToTimeline",
-			String(importedResource!._node_id),
+			String(importedResource._node_id),
 		);
 		await dispatchAndSettle(
 			harness.ctx,
 			harness.sessionRoot,
 			"addActiveProjectEmbeddedAudioToTimeline",
-			{ resourceId: String(importedResource!._node_id) },
+			{ resourceId: String(importedResource._node_id) },
 		);
 
 		const afterVideoClipIds = await readNodeIds(
@@ -480,13 +483,13 @@ describe("SessionRoot action contracts", () => {
 			rightNodeIds[0],
 		);
 		expect(rightClip).toBeTruthy();
-		expect(harness.ctx.getAttr(rightClip!, "start")).toBe(3);
-		expect(harness.ctx.getAttr(rightClip!, "duration")).toBe(2);
-		expect(harness.ctx.getAttr(rightClip!, "in")).toBe(2);
-		const rightClipResource = await harness.ctx.queryRel(
-			rightClip!,
-			"resource",
-		);
+		if (!rightClip) {
+			throw new Error("Expected right clip");
+		}
+		expect(harness.ctx.getAttr(rightClip, "start")).toBe(3);
+		expect(harness.ctx.getAttr(rightClip, "duration")).toBe(2);
+		expect(harness.ctx.getAttr(rightClip, "in")).toBe(2);
+		const rightClipResource = await harness.ctx.queryRel(rightClip, "resource");
 		expect(rightClipResource).toEqual([harness.videoResource]);
 		await expectProjectGraphInvariants(harness.ctx);
 	});
@@ -516,10 +519,10 @@ describe("SessionRoot action contracts", () => {
 		).find((clip) => harness.ctx.getAttr(clip, "name") === "Split Text");
 		expect(textClip).toBeTruthy();
 
-		const leftTextRelBeforeSplit = await harness.ctx.queryRel(
-			textClip!,
-			"text",
-		);
+		if (!textClip) {
+			throw new Error("Expected text clip");
+		}
+		const leftTextRelBeforeSplit = await harness.ctx.queryRel(textClip, "text");
 		expect(leftTextRelBeforeSplit).toHaveLength(1);
 		const leftTextBeforeSplit = leftTextRelBeforeSplit[0];
 
@@ -527,7 +530,7 @@ describe("SessionRoot action contracts", () => {
 			harness.ctx,
 			harness.sessionRoot,
 			"selectEntity",
-			String(textClip!._node_id),
+			String(textClip._node_id),
 		);
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "setCursor", 12);
 		const beforeClipIds = await readNodeIds(
@@ -546,12 +549,18 @@ describe("SessionRoot action contracts", () => {
 			(clip) => !beforeClipIds.includes(String(clip._node_id)),
 		);
 		expect(rightClip).toBeTruthy();
-		expect(harness.ctx.getAttr(rightClip!, "mediaKind")).toBe("text");
+		if (!rightClip) {
+			throw new Error("Expected right clip");
+		}
+		expect(harness.ctx.getAttr(rightClip, "mediaKind")).toBe("text");
 
-		const leftTextRel = await harness.ctx.queryRel(textClip!, "text");
+		if (!textClip) {
+			throw new Error("Expected text clip");
+		}
+		const leftTextRel = await harness.ctx.queryRel(textClip, "text");
 		expect(leftTextRel).toEqual([leftTextBeforeSplit]);
 
-		const rightTextRel = await harness.ctx.queryRel(rightClip!, "text");
+		const rightTextRel = await harness.ctx.queryRel(rightClip, "text");
 		expect(rightTextRel).toHaveLength(1);
 		const rightText = rightTextRel[0];
 		expect(rightText._node_id).not.toBe(leftTextBeforeSplit._node_id);
@@ -564,12 +573,12 @@ describe("SessionRoot action contracts", () => {
 		);
 
 		const rightTextClipRel = await harness.ctx.queryRel(rightText, "clip");
-		expect(rightTextClipRel).toEqual([rightClip!]);
+		expect(rightTextClipRel).toEqual([rightClip]);
 		const leftTextClipRel = await harness.ctx.queryRel(
 			leftTextBeforeSplit,
 			"clip",
 		);
-		expect(leftTextClipRel).toEqual([textClip!]);
+		expect(leftTextClipRel).toEqual([textClip]);
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 

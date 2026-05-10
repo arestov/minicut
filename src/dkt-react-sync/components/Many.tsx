@@ -20,7 +20,7 @@ const ReadyGate = ({
 	children: React.ReactNode;
 }) => {
 	const attrs = useAttrs([attrName]);
-	return attrs[attrName] != null ? <>{children}</> : null;
+	return attrs[attrName] != null ? children : null;
 };
 
 export const Many = ({

@@ -92,34 +92,11 @@ const imageSampleFrameCache = new Map<
 const getScopeSampleLocalTime = (clip: RenderedClip, cursor: number): number =>
 	Math.max(0, cursor - clip.start + clip.inPoint);
 
-const quantizeScopeLocalTime = (time: number): number =>
+const _quantizeScopeLocalTime = (time: number): number =>
 	Math.round(time / scopeSampleIntervalSeconds) * scopeSampleIntervalSeconds;
 
 const getVideoSamplerKey = (clip: RenderedClip): string =>
 	`${clip.id}:${clip.resourceUrl}`;
-
-const getScopeSampleKey = (clips: RenderedClip[], cursor: number): string =>
-	clips
-		.map(
-			(clip) =>
-				`${clip.id}:${clip.resourceUrl}:${Math.round(quantizeScopeLocalTime(getScopeSampleLocalTime(clip, cursor)) * 1000)}`,
-		)
-		.join("|");
-
-const getScopeClipKey = (clips: RenderedClip[]): string =>
-	clips
-		.map((clip) =>
-			[
-				clip.id,
-				clip.resourceId,
-				clip.resourceKind,
-				clip.resourceUrl,
-				clip.color,
-				clip.opacity.toFixed(3),
-				clip.filters.join(","),
-			].join(":"),
-		)
-		.join("|");
 
 const drawElementToSampleFrame = (
 	element: CanvasImageSource,
@@ -308,10 +285,6 @@ const usePreviewScopeSamples = (
 		Record<string, RgbaSampleFrame | undefined>
 	>({});
 	const videoSamplersRef = useRef(new Map<string, VideoScopeSampler>());
-	const sampleKey = useMemo(
-		() => getScopeSampleKey(clips, cursor),
-		[clips, cursor],
-	);
 
 	useEffect(
 		() => () => {
@@ -446,7 +419,7 @@ const usePreviewScopeSamples = (
 		return () => {
 			cancelled = true;
 		};
-	}, [sampleKey, mediaElementRegistry]);
+	}, [clips, cursor, mediaElementRegistry]);
 
 	return samples;
 };
@@ -494,7 +467,7 @@ const ScopeDensityCanvas = ({
 			label,
 			durationMs: performance.now() - startedAt,
 		});
-	}, [frame, tint, vectorscopePoints]);
+	}, [frame, tint, vectorscopePoints, label]);
 
 	return (
 		<canvas
@@ -549,7 +522,7 @@ const RgbParadeScopeSection = ({ scopes }: { scopes: PreviewScopeData }) => (
 );
 
 const VectorscopeSection = ({ scopes }: { scopes: PreviewScopeData }) => (
-	<div className="ve-scopes__vectors" aria-label="Vectorscope points">
+	<section className="ve-scopes__vectors" aria-label="Vectorscope points">
 		<ScopeDensityCanvas
 			frame={scopes.vectorscope}
 			tint={vectorscopeTintColor}
@@ -557,7 +530,7 @@ const VectorscopeSection = ({ scopes }: { scopes: PreviewScopeData }) => (
 			className="ve-scope-density--vectors"
 			vectorscopePoints={scopes.vectorscope.points}
 		/>
-	</div>
+	</section>
 );
 
 export const ColorScopesPanel = ({
@@ -588,10 +561,6 @@ export const ColorScopesPanel = ({
 		frame.cursor,
 		mediaElementRegistry,
 	);
-	const scopeClipKey = useMemo(
-		() => getScopeClipKey(resolvedClips),
-		[resolvedClips],
-	);
 	const scopes: PreviewScopeData = useMemo(() => {
 		const startedAt = performance.now();
 		const nextScopes = createPreviewScopeData(resolvedClips, sampleFrames, {
@@ -608,11 +577,11 @@ export const ColorScopesPanel = ({
 			sampleCount: nextScopes.sampleCount,
 		});
 		return nextScopes;
-	}, [scopeClipKey, sampleFrames, mode]);
+	}, [resolvedClips, sampleFrames, mode]);
 	const isEmpty = scopes.clipCount === 0;
 
 	return (
-		<div className="ve-scopes" aria-label="Color scopes">
+		<section className="ve-scopes" aria-label="Color scopes">
 			<div className="ve-scopes__header">
 				<strong>Scopes</strong>
 				<div className="ve-scopes__tabs" role="tablist" aria-label="Scope mode">
@@ -659,6 +628,6 @@ export const ColorScopesPanel = ({
 					<VectorscopeSection scopes={scopes} />
 				) : null}
 			</div>
-		</div>
+		</section>
 	);
 };
