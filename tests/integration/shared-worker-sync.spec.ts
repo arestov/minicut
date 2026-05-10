@@ -21,6 +21,49 @@ const createProjectViaDebugBridge = async (
 	}, title)
 }
 
+type DebugProjectDetails = {
+	projectId?: unknown
+	title?: unknown
+	resources?: Array<{ name?: unknown; kind?: unknown }>
+	tracks?: Array<{
+		kind?: unknown
+		clips?: Array<{ name?: unknown; mediaKind?: unknown }>
+	}>
+}
+
+const getActiveProjectDetails = async (page: import('@playwright/test').Page): Promise<DebugProjectDetails | null> =>
+	page.evaluate(() => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				getActiveProjectDetails?: () => unknown
+			}
+		}).__MINICUT_P2P_DEBUG__
+		return (debug?.getActiveProjectDetails?.() ?? null) as DebugProjectDetails | null
+	})
+
+const expectSyncedImportedVideoProject = async (
+	page: import('@playwright/test').Page,
+	title: string,
+): Promise<void> => {
+	await expect.poll(async () => {
+		const project = await getActiveProjectDetails(page)
+		return {
+			title: project?.title ?? null,
+			hasVideoResource: project?.resources?.some((resource) =>
+				resource.name === 'fixture-video.webm' && resource.kind === 'video',
+			) ?? false,
+			hasVideoClip: project?.tracks?.some((track) =>
+				track.kind === 'video'
+				&& track.clips?.some((clip) => clip.name === 'fixture-video.webm' && clip.mediaKind === 'video'),
+			) ?? false,
+		}
+	}, { timeout: 20_000 }).toEqual({
+		title,
+		hasVideoResource: true,
+		hasVideoClip: true,
+	})
+}
+
 test('shared worker synchronizes project patches across browser pages', async ({ context }) => {
 	const firstPage = await context.newPage()
 	const secondPage = await context.newPage()
@@ -52,13 +95,12 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await expect(
 		secondPage.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' }),
 	).toBeVisible({ timeout: 20_000 })
+	await expectSyncedImportedVideoProject(firstPage, uniqueTitle)
+	await expectSyncedImportedVideoProject(secondPage, uniqueTitle)
 
-	await expect(
-		secondPage
-			.getByRole('region', { name: 'Timeline' })
-			.getByRole('button', { name: /fixture-video\.webm.*0\.0+s\s*\/\s*1\.0+s/i })
-			.first(),
-	).toBeVisible({ timeout: 20_000 })
+	const secondTimeline = secondPage.getByRole('region', { name: 'Timeline' })
+	await expect(secondTimeline.getByRole('button', { name: /fixture-video\.webm.*0\.0+s\s*\/\s*1\.0+s/i }).first()).toBeVisible({ timeout: 20_000 })
+	await expect(secondTimeline.getByRole('button', { name: /Embedded audio.*0\.0+s\s*\/\s*1\.0+s/i }).first()).toBeVisible({ timeout: 20_000 })
 
 	await firstPage.close()
 	await secondPage.close()
