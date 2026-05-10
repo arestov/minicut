@@ -2,6 +2,26 @@
 
 Date: 2026-05-10
 
+## Current Status
+
+The action matrix is implemented as focused model/runtime contract files, not as
+one large `render-tree-action-coverage.test.ts` file. The earlier single-file
+matrix idea is superseded by:
+
+- `src/video-editor/dkt/models/session-root-action-contracts.test.ts`
+- `src/video-editor/dkt/models/project-track-action-contracts.test.ts`
+- `src/video-editor/dkt/models/clip-action-contracts.integration.test.ts`
+- `src/video-editor/dkt/models/text-effect-resource-action-contracts.test.ts`
+- `src/video-editor/dkt/models/track-clip-rel.test.ts`
+- `src/video-editor/dkt/models/split-clip-saga.test.ts`
+- `src/video-editor/dkt/models/addResourceToTimeline-appendStart.test.ts`
+- `src/video-editor/dkt/models/resource-node-id-routing.test.ts`
+- thin UI wiring: `src/video-editor/components/renderTreeActionWiring.test.tsx`
+
+For graph mutations, these tests should use `expectProjectGraphInvariants(ctx)`
+as the post-condition gate. New tests should route identity through DKT `_node_id`
+or model refs, not through `source*Id` compatibility fields.
+
 ## Render Tree
 
 ```mermaid
@@ -79,7 +99,10 @@ flowchart TD
 - Relation setter actions such as `Clip.setResource`, `Clip.setText`, `Effect.setEffectProject`, and `Resource.setClips` are mostly covered indirectly, not with focused unit tests.
 - `Track.renameTrack`, `setTrackMuted`, and `setTrackLocked` have reducer logic but should get explicit unit tests if track controls become editable UI.
 
-## Full Action Coverage Plan
+## Historical Full Action Coverage Plan
+
+The section below is the original audit/plan. Treat it as historical context.
+The active implementation shape is the focused-file matrix listed above.
 
 Recommendation: cover render-tree actions first with DKT model/runtime integration tests, not UI/jsdom tests. The contract that matters is: dispatch action -> DKT flow/sub-flow/effect request runs -> final attrs/rels/output state are correct. UI tests should be a smaller second layer that only verifies buttons dispatch the intended action.
 
@@ -102,7 +125,8 @@ Recommendation: cover render-tree actions first with DKT model/runtime integrati
 
 ### 2. Create A Single Action Matrix Test File
 
-- Add `src/video-editor/dkt/models/render-tree-action-coverage.test.ts`.
+- Superseded: do not add one large `src/video-editor/dkt/models/render-tree-action-coverage.test.ts`.
+- Use the focused files listed in Current Status.
 - Structure it by scope, not by UI component:
   - `SessionRoot actions`
   - `Project actions`
@@ -141,7 +165,7 @@ Recommendation: cover render-tree actions first with DKT model/runtime integrati
 - `requestImportFiles`: stores import request/progress state expected by import executor.
 - `setImportProgress`: normalizes progress and clears invalid/null state as intended.
 - `importResource`: creates resource, appends to `resources`, emits `$output` for downstream add-to-timeline flow.
-- `addResourceToTimeline`: finds resource by `sourceResourceId`, chooses video/audio track, creates clip with correct `sourceResourceId`, kind, start, and duration.
+- `addResourceToTimeline`: resolves resource by DKT `_node_id`, chooses video/audio track, creates clip with correct resource rel, kind, start, and duration.
 - `addTextClipToVideoTrack`: creates text clip and text node on primary video track.
 - `addClipToVideoTrack`, `addClipToAudioTrack`: route clips to the correct primary track.
 - `setTracks`, `setResources`: replace rel lists with supplied refs and tolerate invalid payloads.
