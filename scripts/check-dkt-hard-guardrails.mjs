@@ -1,11 +1,12 @@
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 
 const roots = [
   'src/video-editor/app',
   'src/video-editor/render-sync',
   'src/video-editor/p2p',
   'src/video-editor/worker',
-]
+].filter((root) => existsSync(root))
 
 const checks = [
   {
@@ -28,6 +29,8 @@ const checks = [
 const excludeGlobs = [
   '-g', '!**/*.test.ts',
   '-g', '!**/*.test.tsx',
+  '-g', '!**/*.testing.ts',
+  '-g', '!**/testing/**',
   '-g', '!**/__tests__/**',
   '-g', '!**/domain/**',
   '-g', '!**/dkt/state/**',

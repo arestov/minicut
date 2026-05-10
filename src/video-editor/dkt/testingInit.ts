@@ -2,7 +2,7 @@
  * DKT-model test helper for MiniCut.
  *
  * Usage:
- *   const { appModel, sessionRoot, computed, lockToRead, queryRel, getAttr, findBySourceId } = await bootDktModels()
+ *   const { appModel, sessionRoot, computed, lockToRead, queryRel, getAttr } = await bootDktModels()
  *
  * Follows the pattern from Linkcraft dkt/test/testingInit.js:
  *   - prepareAppRuntime + runtime.start
