@@ -22,17 +22,16 @@ type HarnessOptions = {
 	interfaces?: Record<string, unknown>
 }
 
-const resolveModelBySourceId = async (
+const resolveModelByNodeId = async (
 	ctx: DktTestContext,
 	scope: ModelHandle,
 	relName: string,
-	sourceAttr: string,
-	sourceId: string,
+	nodeId: string,
 ): Promise<ModelHandle> => {
 	const models = await queryRel(scope, relName)
-	const match = models.find((model) => getAttr(model, sourceAttr) === sourceId)
+	const match = models.find((model) => model?._node_id === nodeId)
 	if (!match) {
-		throw new Error(`Expected ${relName} model ${sourceAttr}=${sourceId}`)
+		throw new Error(`Expected ${relName} model _node_id=${nodeId}`)
 	}
 	return match
 }
@@ -48,25 +47,23 @@ export const dispatchAndSettle = async (
 	})
 }
 
-export const readSourceIds = async (
+export const readNodeIds = async (
 	ctx: DktTestContext,
 	scope: ModelHandle,
 	relName: string,
-	sourceAttr: string,
 ): Promise<string[]> => {
 	const models = await queryRel(scope, relName)
-	return models.map((model) => String(getAttr(model, sourceAttr)))
+	return models.map((model) => String(model?._node_id))
 }
 
-export const findBySourceId = async (
+export const findByNodeId = async (
 	ctx: DktTestContext,
 	scope: ModelHandle,
 	relName: string,
-	sourceAttr: string,
-	sourceId: string,
+	nodeId: string,
 ): Promise<ModelHandle | null> => {
 	const models = await queryRel(scope, relName)
-	return models.find((model) => getAttr(model, sourceAttr) === sourceId) ?? null
+	return models.find((model) => model?._node_id === nodeId) ?? null
 }
 
 export const createActionContractHarness = async (options: HarnessOptions = {}): Promise<ActionContractHarness> => {
@@ -97,7 +94,6 @@ export const createActionContractHarness = async (options: HarnessOptions = {}):
 	})
 
 	await dispatchAndSettle(ctx, ctx.sessionRoot, 'createProject', {
-		sourceProjectId: 'coverage-project',
 		title: 'Coverage Project',
 		fps: 30,
 		width: 1920,
@@ -118,7 +114,6 @@ export const createActionContractHarness = async (options: HarnessOptions = {}):
 	}
 
 	await dispatchAndSettle(ctx, project, 'importResource', {
-		sourceResourceId: 'res:video',
 		name: 'Video Resource',
 		kind: 'video',
 		url: 'https://example.invalid/video.webm',
@@ -131,7 +126,6 @@ export const createActionContractHarness = async (options: HarnessOptions = {}):
 	})
 
 	await dispatchAndSettle(ctx, project, 'importResource', {
-		sourceResourceId: 'res:audio',
 		name: 'Audio Resource',
 		kind: 'audio',
 		url: 'https://example.invalid/audio.wav',
@@ -144,7 +138,6 @@ export const createActionContractHarness = async (options: HarnessOptions = {}):
 	})
 
 	await dispatchAndSettle(ctx, project, 'importResource', {
-		sourceResourceId: 'res:image',
 		name: 'Image Resource',
 		kind: 'image',
 		url: 'https://example.invalid/image.png',
@@ -156,9 +149,16 @@ export const createActionContractHarness = async (options: HarnessOptions = {}):
 		data: { status: 'ready' },
 	})
 
+	const resources = await queryRel(project, 'resources')
+	const videoResource = resources.find((resource) => getAttr(resource, 'name') === 'Video Resource')
+	const audioResource = resources.find((resource) => getAttr(resource, 'name') === 'Audio Resource')
+	const imageResource = resources.find((resource) => getAttr(resource, 'name') === 'Image Resource')
+	if (!videoResource || !audioResource || !imageResource) {
+		throw new Error('Expected imported resources')
+	}
+
 	await dispatchAndSettle(ctx, videoTrack, 'addClip', {
-		sourceClipId: 'clip:video',
-		sourceResourceId: 'res:video',
+		resource: videoResource,
 		name: 'Video Clip',
 		mediaKind: 'video',
 		start: 1,
@@ -167,8 +167,7 @@ export const createActionContractHarness = async (options: HarnessOptions = {}):
 	})
 
 	await dispatchAndSettle(ctx, audioTrack, 'addClip', {
-		sourceClipId: 'clip:audio',
-		sourceResourceId: 'res:audio',
+		resource: audioResource,
 		name: 'Audio Clip',
 		mediaKind: 'audio',
 		start: 0,
@@ -176,17 +175,23 @@ export const createActionContractHarness = async (options: HarnessOptions = {}):
 		duration: 3,
 	})
 
+	const videoClip = (await queryRel(videoTrack, 'clips')).find((clip) => getAttr(clip, 'name') === 'Video Clip')
+	const audioClip = (await queryRel(audioTrack, 'clips')).find((clip) => getAttr(clip, 'name') === 'Audio Clip')
+	if (!videoClip || !audioClip) {
+		throw new Error('Expected seeded clips')
+	}
+
 	return {
 		ctx,
 		sessionRoot: ctx.sessionRoot,
 		project,
 		videoTrack,
 		audioTrack,
-		videoResource: await resolveModelBySourceId(ctx, project, 'resources', 'sourceResourceId', 'res:video'),
-		audioResource: await resolveModelBySourceId(ctx, project, 'resources', 'sourceResourceId', 'res:audio'),
-		imageResource: await resolveModelBySourceId(ctx, project, 'resources', 'sourceResourceId', 'res:image'),
-		videoClip: await resolveModelBySourceId(ctx, videoTrack, 'clips', 'sourceClipId', 'clip:video'),
-		audioClip: await resolveModelBySourceId(ctx, audioTrack, 'clips', 'sourceClipId', 'clip:audio'),
+		videoResource: await resolveModelByNodeId(ctx, project, 'resources', String(videoResource._node_id)),
+		audioResource: await resolveModelByNodeId(ctx, project, 'resources', String(audioResource._node_id)),
+		imageResource: await resolveModelByNodeId(ctx, project, 'resources', String(imageResource._node_id)),
+		videoClip: await resolveModelByNodeId(ctx, videoTrack, 'clips', String(videoClip._node_id)),
+		audioClip: await resolveModelByNodeId(ctx, audioTrack, 'clips', String(audioClip._node_id)),
 		exportRequests,
 		importRequests,
 	}

@@ -6,7 +6,6 @@ describe('Text action contracts', () => {
 		const harness = await createActionContractHarness()
 
 		await dispatchAndSettle(harness.ctx, harness.ctx.appModel, 'createTextModel', {
-			sourceTextId: 'text:integration',
 			content: 'Initial text',
 			style: {
 				fontFamily: 'Inter',
@@ -22,7 +21,7 @@ describe('Text action contracts', () => {
 		})
 
 		const text = (await harness.ctx.queryRel(harness.ctx.appModel, 'text')).find(
-			(entry) => harness.ctx.getAttr(entry, 'sourceTextId') === 'text:integration',
+			(entry) => harness.ctx.getAttr(entry, 'content') === 'Initial text',
 		)
 		if (!text) {
 			throw new Error('Expected integration text model')
@@ -65,7 +64,6 @@ describe('Effect action contracts', () => {
 		const harness = await createActionContractHarness()
 
 		await dispatchAndSettle(harness.ctx, harness.ctx.appModel, 'createEffectModel', {
-			sourceEffectId: 'effect:integration',
 			name: 'Initial Effect',
 			kind: 'blur',
 			enabled: true,
@@ -75,7 +73,7 @@ describe('Effect action contracts', () => {
 		})
 
 		const effect = (await harness.ctx.queryRel(harness.ctx.appModel, 'effect')).find(
-			(entry) => harness.ctx.getAttr(entry, 'sourceEffectId') === 'effect:integration',
+			(entry) => harness.ctx.getAttr(entry, 'name') === 'Initial Effect',
 		)
 		if (!effect) {
 			throw new Error('Expected integration effect model')
@@ -117,8 +115,6 @@ describe('Resource action contracts', () => {
 		await dispatchAndSettle(harness.ctx, harness.videoResource, 'renameResource', 'Renamed Resource')
 		await dispatchAndSettle(harness.ctx, harness.videoResource, 'setResourceStatus', 'loading')
 		await dispatchAndSettle(harness.ctx, harness.videoResource, 'setResourceAttrs', {
-			sourceResourceId: 'res:video',
-			sourceProjectId: 'coverage-project',
 			name: 'Resource Attrs',
 			kind: 'video',
 			url: 'https://example.invalid/resource.webm',
@@ -132,7 +128,7 @@ describe('Resource action contracts', () => {
 			data: { status: 'ready' },
 		})
 		await dispatchAndSettle(harness.ctx, harness.videoResource, 'requestAddToTimeline', {
-			resourceId: 'res:video',
+			resourceId: String(harness.videoResource._node_id),
 		})
 		await dispatchAndSettle(harness.ctx, harness.videoResource, 'setProject', { project: harness.project })
 		await dispatchAndSettle(harness.ctx, harness.videoResource, 'setClips', {
@@ -143,7 +139,7 @@ describe('Resource action contracts', () => {
 		expect(harness.ctx.getAttr(harness.videoResource, 'status')).toBe('ready')
 		expect(harness.ctx.getAttr(harness.videoResource, 'duration')).toBe(12)
 		expect(harness.ctx.getAttr(harness.videoResource, 'timelineAddRequest')).toMatchObject({
-			resourceId: 'res:video',
+			resourceId: String(harness.videoResource._node_id),
 		})
 		const resourceProjectRel = await harness.ctx.queryRel(harness.videoResource, 'project')
 		expect(resourceProjectRel).toHaveLength(1)

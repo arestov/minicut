@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createActionContractHarness, dispatchAndSettle, readSourceIds } from './action-contract-test-harness'
+import { createActionContractHarness, dispatchAndSettle, readNodeIds } from './action-contract-test-harness'
 
 const createTempClip = async () => {
 	const harness = await createActionContractHarness()
 
 	await dispatchAndSettle(harness.ctx, harness.videoTrack, 'addClip', {
-		sourceClipId: 'clip:integration-temp',
-		sourceResourceId: 'res:video',
+		resource: harness.videoResource,
 		name: 'Integration Temp',
 		mediaKind: 'video',
 		start: 3,
@@ -15,7 +14,7 @@ const createTempClip = async () => {
 	})
 
 	const clip = (await harness.ctx.queryRel(harness.videoTrack, 'clips')).find(
-		(entry) => harness.ctx.getAttr(entry, 'sourceClipId') === 'clip:integration-temp',
+		(entry) => harness.ctx.getAttr(entry, 'name') === 'Integration Temp',
 	)
 	if (!clip) {
 		throw new Error('Expected integration temp clip')
@@ -43,9 +42,6 @@ describe('Clip action contracts', () => {
 		const harness = await createActionContractHarness()
 
 		await dispatchAndSettle(harness.ctx, harness.videoClip, 'setClipAttrs', {
-			sourceClipId: 'clip:video',
-			sourceResourceId: 'res:video',
-			sourceTextId: null,
 			name: 'Baseline Clip',
 			color: '#334155',
 			mediaKind: 'video',
@@ -96,7 +92,6 @@ describe('Clip action contracts', () => {
 		const { harness, clip } = await createTempClip()
 
 		await dispatchAndSettle(harness.ctx, harness.ctx.appModel, 'createTextModel', {
-			sourceTextId: 'text:integration-temp',
 			content: 'Integration temp text',
 			style: {
 				fontFamily: 'Inter',
@@ -112,7 +107,7 @@ describe('Clip action contracts', () => {
 		})
 
 		const text = (await harness.ctx.queryRel(harness.ctx.appModel, 'text')).find(
-			(entry) => harness.ctx.getAttr(entry, 'sourceTextId') === 'text:integration-temp',
+			(entry) => harness.ctx.getAttr(entry, 'content') === 'Integration temp text',
 		)
 		if (!text) {
 			throw new Error('Expected integration temp text')
@@ -123,14 +118,12 @@ describe('Clip action contracts', () => {
 		await dispatchAndSettle(harness.ctx, clip, 'setTrack', { track: harness.audioTrack })
 		await dispatchAndSettle(harness.ctx, clip, 'setProject', { project: harness.project })
 		await dispatchAndSettle(harness.ctx, clip, 'addEffect', {
-			effectId: 'effect:integration-a',
 			kind: 'blur',
 			name: 'Blur A',
 			enabled: true,
 			amount: 0.25,
 		})
 		await dispatchAndSettle(harness.ctx, clip, 'addEffect', {
-			effectId: 'effect:integration-b',
 			kind: 'tint',
 			name: 'Tint B',
 			enabled: true,
@@ -139,8 +132,8 @@ describe('Clip action contracts', () => {
 
 		const effects = await harness.ctx.queryRel(clip, 'effects')
 		expect(effects).toHaveLength(2)
-		expect(harness.ctx.getAttr(effects[0], 'sourceEffectId')).toBe('effect:integration-a')
-		expect(harness.ctx.getAttr(effects[1], 'sourceEffectId')).toBe('effect:integration-b')
+		expect(harness.ctx.getAttr(effects[0], 'name')).toBe('Blur A')
+		expect(harness.ctx.getAttr(effects[1], 'name')).toBe('Tint B')
 		const firstEffectClip = await harness.ctx.queryRel(effects[0], 'clip')
 		expect(firstEffectClip).toHaveLength(1)
 		expect(firstEffectClip[0]).toBe(clip)
@@ -150,9 +143,9 @@ describe('Clip action contracts', () => {
 			toIndex: 1,
 		})
 		const reorderedEffects = await harness.ctx.queryRel(clip, 'effects')
-		expect(reorderedEffects.map((effect) => harness.ctx.getAttr(effect, 'sourceEffectId'))).toEqual([
-			'effect:integration-b',
-			'effect:integration-a',
+		expect(reorderedEffects.map((effect) => harness.ctx.getAttr(effect, 'name'))).toEqual([
+			'Tint B',
+			'Blur A',
 		])
 
 		await dispatchAndSettle(harness.ctx, clip, 'removeEffect', {
@@ -164,7 +157,7 @@ describe('Clip action contracts', () => {
 
 		const nextEffects = await harness.ctx.queryRel(clip, 'effects')
 		expect(nextEffects).toHaveLength(1)
-		expect(harness.ctx.getAttr(nextEffects[0], 'sourceEffectId')).toBe('effect:integration-b')
+		expect(harness.ctx.getAttr(nextEffects[0], 'name')).toBe('Tint B')
 		const resourceRel = await harness.ctx.queryRel(clip, 'resource')
 		expect(resourceRel).toHaveLength(1)
 		expect(resourceRel[0]).toBe(harness.imageResource)
@@ -186,14 +179,13 @@ describe('Clip action contracts', () => {
 		const { harness, clip } = await createTempClip()
 
 		await dispatchAndSettle(harness.ctx, clip, 'addEffect', {
-			effectId: 'effect:stable',
 			kind: 'blur',
 			name: 'Stable Effect',
 			enabled: true,
 			amount: 0.25,
 		})
 		const beforeEffects = await harness.ctx.queryRel(clip, 'effects')
-		const beforeEffectIds = beforeEffects.map((effect) => harness.ctx.getAttr(effect, 'sourceEffectId'))
+		const beforeEffectIds = beforeEffects.map((effect) => effect._node_id)
 
 		await dispatchAndSettle(harness.ctx, clip, 'reorderEffect', {
 			effectId: 'effect-node:missing',
@@ -204,7 +196,7 @@ describe('Clip action contracts', () => {
 		})
 
 		const afterEffects = await harness.ctx.queryRel(clip, 'effects')
-		expect(afterEffects.map((effect) => harness.ctx.getAttr(effect, 'sourceEffectId'))).toEqual(beforeEffectIds)
+		expect(afterEffects.map((effect) => effect._node_id)).toEqual(beforeEffectIds)
 	})
 
 	it('removeSelf removes the clip from its parent track', async () => {
@@ -212,7 +204,7 @@ describe('Clip action contracts', () => {
 
 		await dispatchAndSettle(harness.ctx, clip, 'removeSelf')
 
-		const clipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		expect(clipIds).not.toContain('clip:integration-temp')
+		const clipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		expect(clipIds).not.toContain(String(clip._node_id))
 	})
 })

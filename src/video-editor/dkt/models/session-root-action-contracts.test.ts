@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from '../../models/sessionZoom'
-import { createActionContractHarness, dispatchAndSettle, findBySourceId, readSourceIds } from './action-contract-test-harness'
+import { createActionContractHarness, dispatchAndSettle, findByNodeId, readNodeIds } from './action-contract-test-harness'
 
 describe('SessionRoot action contracts', () => {
 	it('bootstraps exactly one project and does not duplicate on repeated handleInit', async () => {
@@ -14,40 +14,45 @@ describe('SessionRoot action contracts', () => {
 
 		const projectsAfter = await harness.ctx.queryRel(harness.ctx.appModel, 'project')
 		expect(projectsAfter).toHaveLength(initialProjectCount)
-		expect(typeof harness.ctx.getAttr(projectsAfter[0], 'sourceProjectId')).toBe('string')
+		expect(typeof projectsAfter[0]?._node_id).toBe('string')
 	})
 
 	it('createProject switches active project and clears editor state', async () => {
 		const harness = await createActionContractHarness()
 
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'createProject', {
-			sourceProjectId: 'project:session-root-new',
 			title: 'New Project',
 		})
 
-		expect(harness.ctx.getAttr(harness.sessionRoot, 'activeProjectId')).toBe('project:session-root-new')
+		const activeProject = (await harness.ctx.queryRel(harness.sessionRoot, 'activeProject'))[0]
+		expect(activeProject).toBeTruthy()
+		expect(harness.ctx.getAttr(activeProject!, 'title')).toBe('New Project')
+		expect(harness.ctx.getAttr(harness.sessionRoot, 'activeProjectId')).toBe(activeProject!._node_id)
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBeNull()
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'cursor')).toBe(0)
 	})
 
 	it('selectEntity resolves selectedClip and summary from the current graph', async () => {
 		const harness = await createActionContractHarness()
+		const selectedClipId = String(harness.videoClip._node_id)
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:video')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', selectedClipId)
 
-		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBe('clip:video')
+		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBe(selectedClipId)
 		const selectedClip = (await harness.ctx.queryRel(harness.sessionRoot, 'selectedClip'))[0]
-		expect(harness.ctx.getAttr(selectedClip, 'sourceClipId')).toBe('clip:video')
+		expect(selectedClip?._node_id).toBe(selectedClipId)
 		const summary = harness.ctx.getAttr(harness.sessionRoot, 'selectedClipSummary') as { resourceName?: string } | null
 		expect(summary?.resourceName).toBe('Video Clip')
 	})
 
 	it('setActiveProject resets selection and cursor', async () => {
 		const harness = await createActionContractHarness()
+		const selectedClipId = String(harness.videoClip._node_id)
+		const activeProjectId = String(harness.project._node_id)
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:video')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', selectedClipId)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'setCursor', 3.5)
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'setActiveProject', 'coverage-project')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'setActiveProject', activeProjectId)
 
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBeNull()
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'cursor')).toBe(0)
@@ -108,33 +113,34 @@ describe('SessionRoot action contracts', () => {
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'previewBuffer')).toBeNull()
 	})
 
-	it('addTextClipToTimeline forwards to the project video track and selects the new clip', async () => {
+	it('addTextClipToTimeline forwards to the project video track and creates text node', async () => {
 		const harness = await createActionContractHarness()
+		const beforeClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		const beforeTextCount = (await harness.ctx.queryRel(harness.ctx.appModel, 'text')).length
 
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'addTextClipToTimeline', {
-			sourceClipId: 'clip:text-session',
-			sourceTextId: 'text:session',
 			name: 'Session Text',
 			mediaKind: 'text',
 			start: 6,
 			in: 0,
 			duration: 2,
 			text: {
-				sourceTextId: 'text:session',
 				content: 'Session text',
 			},
 		})
 
-		const ids = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		expect(ids).toContain('clip:text-session')
-		const textIds = await readSourceIds(harness.ctx, harness.ctx.appModel, 'text', 'sourceTextId')
-		expect(textIds).toContain('text:session')
+		const afterClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		expect(afterClipIds.length).toBe(beforeClipIds.length + 1)
+		const textModels = await harness.ctx.queryRel(harness.ctx.appModel, 'text')
+		expect(textModels.length).toBe(beforeTextCount + 1)
+		expect(textModels.some((text) => harness.ctx.getAttr(text, 'content') === 'Session text')).toBe(true)
 	})
 
 	it('nudgeSelectedClip moves the selected clip by the requested delta', async () => {
 		const harness = await createActionContractHarness()
+		const selectedClipId = String(harness.videoClip._node_id)
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:video')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', selectedClipId)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'nudgeSelectedClip', { delta: 0.5 })
 
 		expect(harness.ctx.getAttr(harness.videoClip, 'start')).toBe(1.5)
@@ -142,74 +148,77 @@ describe('SessionRoot action contracts', () => {
 
 	it('nudgeSelectedClip ignores invalid deltas and missing selections', async () => {
 		const harness = await createActionContractHarness()
+		const selectedClipId = String(harness.videoClip._node_id)
 
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'nudgeSelectedClip', { delta: 0.5 })
 		expect(harness.ctx.getAttr(harness.videoClip, 'start')).toBe(1)
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:video')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', selectedClipId)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'nudgeSelectedClip', { delta: Number.NaN })
 		expect(harness.ctx.getAttr(harness.videoClip, 'start')).toBe(1)
 	})
 
-	it('splitSelectedClip creates exactly one right clip with source and track invariants', async () => {
+	it('splitSelectedClip creates exactly one right clip with resource and track invariants', async () => {
 		const harness = await createActionContractHarness()
-		const beforeClips = await harness.ctx.queryRel(harness.videoTrack, 'clips')
-		const beforeSourceIds = beforeClips.map((clip) => String(harness.ctx.getAttr(clip, 'sourceClipId')))
+		const selectedClipId = String(harness.videoClip._node_id)
+		const beforeNodeIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:video')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', selectedClipId)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'setCursor', 3)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'splitSelectedClip')
 
-		const afterClips = await harness.ctx.queryRel(harness.videoTrack, 'clips')
-		const afterSourceIds = afterClips.map((clip) => String(harness.ctx.getAttr(clip, 'sourceClipId')))
-		const rightSourceIds = afterSourceIds.filter((sourceId) => !beforeSourceIds.includes(sourceId))
-		expect(afterClips).toHaveLength(beforeClips.length + 1)
-		expect(rightSourceIds).toHaveLength(1)
+		const afterNodeIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		const rightNodeIds = afterNodeIds.filter((id) => !beforeNodeIds.includes(id))
+		expect(afterNodeIds.length).toBe(beforeNodeIds.length + 1)
+		expect(rightNodeIds).toHaveLength(1)
 		expect(harness.ctx.getAttr(harness.videoClip, 'start')).toBe(1)
 		expect(harness.ctx.getAttr(harness.videoClip, 'duration')).toBe(2)
 
-		const rightClip = await findBySourceId(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId', rightSourceIds[0])
+		const rightClip = await findByNodeId(harness.ctx, harness.videoTrack, 'clips', rightNodeIds[0])
 		expect(rightClip).toBeTruthy()
 		expect(harness.ctx.getAttr(rightClip!, 'start')).toBe(3)
 		expect(harness.ctx.getAttr(rightClip!, 'duration')).toBe(2)
 		expect(harness.ctx.getAttr(rightClip!, 'in')).toBe(2)
-		expect(harness.ctx.getAttr(rightClip!, 'sourceResourceId')).toBe('res:video')
+		const rightClipResource = await harness.ctx.queryRel(rightClip!, 'resource')
+		expect(rightClipResource).toEqual([harness.videoResource])
 	})
 
 	it('splitSelectedClip is a no-op without a selected clip or a valid split point', async () => {
 		const harness = await createActionContractHarness()
-		const beforeSourceIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
+		const selectedClipId = String(harness.videoClip._node_id)
+		const beforeNodeIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'splitSelectedClip')
-		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).toEqual(beforeSourceIds)
+		expect(await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).toEqual(beforeNodeIds)
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:video')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', selectedClipId)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'setCursor', 99)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'splitSelectedClip')
-		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).toEqual(beforeSourceIds)
+		expect(await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).toEqual(beforeNodeIds)
 	})
 
 	it('deleteSelectedClip removes the selected clip and clears selection', async () => {
 		const harness = await createActionContractHarness()
+		const selectedClipId = String(harness.videoClip._node_id)
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:video')
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', selectedClipId)
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'deleteSelectedClip')
 
-		const afterDeleteIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		expect(afterDeleteIds).not.toContain('clip:video')
+		const afterDeleteIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		expect(afterDeleteIds).not.toContain(selectedClipId)
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBeNull()
 	})
 
 	it('deleteSelectedClip clears stale selection without removing unrelated clips', async () => {
 		const harness = await createActionContractHarness()
-		const beforeVideoIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		const beforeAudioIds = await readSourceIds(harness.ctx, harness.audioTrack, 'clips', 'sourceClipId')
+		const beforeVideoIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		const beforeAudioIds = await readNodeIds(harness.ctx, harness.audioTrack, 'clips')
 
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'selectEntity', 'clip:missing')
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, 'deleteSelectedClip')
 
-		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).toEqual(beforeVideoIds)
-		expect(await readSourceIds(harness.ctx, harness.audioTrack, 'clips', 'sourceClipId')).toEqual(beforeAudioIds)
+		expect(await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).toEqual(beforeVideoIds)
+		expect(await readNodeIds(harness.ctx, harness.audioTrack, 'clips')).toEqual(beforeAudioIds)
 		expect(harness.ctx.getAttr(harness.sessionRoot, 'selectedEntityId')).toBeNull()
 	})
 })

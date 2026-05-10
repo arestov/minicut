@@ -22,8 +22,8 @@ export const expectClipTiming = (
 		start: number
 		in: number
 		duration: number
-		sourceClipId: string
-		sourceResourceId: string
+		clipId: string
+		resourceId: string
 		mediaKind: string
 	}>,
 ) => {
@@ -40,11 +40,12 @@ export const expectClipTiming = (
 	if (expected.duration !== undefined) {
 		expect(Number(clipDuration)).toBeCloseTo(expected.duration, 6)
 	}
-	if (expected.sourceClipId !== undefined) {
-		expect(ctx.getAttr(clip, 'sourceClipId')).toBe(expected.sourceClipId)
+	if (expected.clipId !== undefined) {
+		expect(clip?._node_id).toBe(expected.clipId)
 	}
-	if (expected.sourceResourceId !== undefined) {
-		expect(ctx.getAttr(clip, 'sourceResourceId')).toBe(expected.sourceResourceId)
+	if (expected.resourceId !== undefined) {
+		const resourceRel = ctx.getAttr(clip, 'clipRenderData') as { resourceId?: unknown } | null
+		expect(resourceRel?.resourceId).toBe(expected.resourceId)
 	}
 	if (expected.mediaKind !== undefined) {
 		expect(ctx.getAttr(clip, 'mediaKind')).toBe(expected.mediaKind)
@@ -104,9 +105,9 @@ export const expectProjectGraphInvariants = async (ctx: DktTestContext): Promise
 			seenClipIds.add(clipId)
 		}
 
-		const sourceResourceId = ctx.getAttr(clip, 'sourceResourceId')
-		if (typeof sourceResourceId === 'string') {
-			expect(resources.some((resource) => ctx.getAttr(resource, 'sourceResourceId') === sourceResourceId)).toBe(true)
+		const clipRenderData = ctx.getAttr(clip, 'clipRenderData') as { resourceId?: unknown } | null
+		if (typeof clipRenderData?.resourceId === 'string') {
+			expect(resources.some((resource) => resource._node_id === clipRenderData.resourceId)).toBe(true)
 		}
 
 		const effects = await ctx.queryRel(clip, 'effects')
@@ -122,7 +123,7 @@ export const expectProjectGraphInvariants = async (ctx: DktTestContext): Promise
 			expect(seenResourceIds.has(resourceId)).toBe(false)
 			seenResourceIds.add(resourceId)
 		}
-		expect(typeof ctx.getAttr(resource, 'sourceResourceId')).toBe('string')
+		expect(typeof resource._node_id).toBe('string')
 		expect(Number(ctx.getAttr(resource, 'duration'))).toBeGreaterThanOrEqual(0)
 	}
 }
@@ -154,20 +155,20 @@ export const findTrackByKind = async (ctx: DktTestContext, kind: 'video' | 'audi
 	return track
 }
 
-export const findClipBySourceClipId = async (ctx: DktTestContext, sourceClipId: string) => {
+export const findClipById = async (ctx: DktTestContext, clipId: string) => {
 	const { clips } = await readProjectGraph(ctx)
-	const clip = clips.find((item) => ctx.getAttr(item, 'sourceClipId') === sourceClipId)
+	const clip = clips.find((item) => item._node_id === clipId)
 	if (!clip) {
-		throw new Error(`expected clip ${sourceClipId}`)
+		throw new Error(`expected clip ${clipId}`)
 	}
 	return clip
 }
 
-export const findResourceBySourceResourceId = async (ctx: DktTestContext, sourceResourceId: string) => {
+export const findResourceById = async (ctx: DktTestContext, resourceId: string) => {
 	const { resources } = await readProjectGraph(ctx)
-	const resource = resources.find((item) => ctx.getAttr(item, 'sourceResourceId') === sourceResourceId)
+	const resource = resources.find((item) => item._node_id === resourceId)
 	if (!resource) {
-		throw new Error(`expected resource ${sourceResourceId}`)
+		throw new Error(`expected resource ${resourceId}`)
 	}
 	return resource
 }

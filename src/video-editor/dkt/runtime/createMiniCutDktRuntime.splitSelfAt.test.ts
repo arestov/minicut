@@ -1,26 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { bootDktModels } from '../testingInit'
 
-const projectId = 'project:split-debug'
-const videoTrackId = `${projectId}:track:video`
-const clipId = 'clip:split-left'
-
 const setupWithClip = async () => {
 	const ctx = await bootDktModels()
 
 	await ctx.lockToRead(async () => {
-		await ctx.sessionRoot.dispatch('createProject', { sourceProjectId: projectId, title: 'Split relation test project' })
+		await ctx.sessionRoot.dispatch('createProject', { title: 'Split relation test project' })
 	})
 
 	const project = (await ctx.queryRel(ctx.sessionRoot, 'activeProject'))[0]
 	if (!project) throw new Error('No active project')
 	const tracks = await ctx.queryRel(project, 'tracks')
-	const videoTrack = tracks.find((t) => ctx.getAttr(t, 'sourceTrackId') === videoTrackId)
+	const videoTrack = tracks.find((t) => ctx.getAttr(t, 'kind') === 'video')
 	if (!videoTrack) throw new Error('Video track not found')
 
 	await ctx.lockToRead(async () => {
 		await videoTrack.dispatch('addClip', {
-			sourceClipId: clipId,
 			name: 'fixture-video.webm',
 			mediaKind: 'video',
 			start: 0,
@@ -29,8 +24,7 @@ const setupWithClip = async () => {
 		})
 	})
 
-	const clips = await ctx.queryRel(videoTrack, 'clips')
-	const clip = clips.find((c) => ctx.getAttr(c, 'sourceClipId') === clipId)
+	const clip = (await ctx.queryRel(videoTrack, 'clips'))[0]
 	if (!clip) throw new Error('Clip not found')
 
 	return { ctx, project, videoTrack, clip }
@@ -38,7 +32,8 @@ const setupWithClip = async () => {
 
 describe('splitSelfAt data flow', () => {
 	it('splitSelectedClip splits left clip and auto-creates right clip via saga chain', async () => {
-		const { ctx, videoTrack } = await setupWithClip()
+		const { ctx, videoTrack, clip } = await setupWithClip()
+		const clipId = String(clip._node_id)
 
 		await ctx.lockToRead(async () => {
 			await ctx.sessionRoot.dispatch('selectEntity', clipId)
@@ -52,12 +47,12 @@ describe('splitSelfAt data flow', () => {
 		const clips = await ctx.queryRel(videoTrack, 'clips')
 		expect(clips).toHaveLength(2)
 
-		const left = clips.find((c) => ctx.getAttr(c, 'sourceClipId') === clipId)
+		const left = clips.find((entry) => String(entry._node_id) === clipId)
 		expect(left, 'left clip must exist').toBeTruthy()
 		expect(ctx.getAttr(left!, 'duration')).toBe(0.5)
 		expect(ctx.getAttr(left!, 'start')).toBe(0)
 
-		const right = clips.find((c) => ctx.getAttr(c, 'sourceClipId') !== clipId)
+		const right = clips.find((entry) => String(entry._node_id) !== clipId)
 		expect(right, 'right clip must be auto-created').toBeTruthy()
 		expect(ctx.getAttr(right!, 'start')).toBe(0.5)
 		expect(ctx.getAttr(right!, 'duration')).toBe(0.5)
@@ -65,10 +60,10 @@ describe('splitSelfAt data flow', () => {
 
 	it('manual splitClipAt on track creates right clip with correct start/duration', async () => {
 		const { ctx, videoTrack } = await setupWithClip()
+		const beforeClips = await ctx.queryRel(videoTrack, 'clips')
 
 		await ctx.lockToRead(async () => {
 			await videoTrack.dispatch('splitClipAt', {
-				sourceClipId: 'clip:split-right:manual',
 				name: 'fixture-video.webm',
 				mediaKind: 'video',
 				splitTime: 0.5,
@@ -77,10 +72,9 @@ describe('splitSelfAt data flow', () => {
 		})
 
 		const clips = await ctx.queryRel(videoTrack, 'clips')
-		const rightClip = clips.find((c) => ctx.getAttr(c, 'sourceClipId') === 'clip:split-right:manual')
+		const rightClip = clips.find((clip) => !beforeClips.some((before) => before._node_id === clip._node_id))
 		expect(rightClip).toBeTruthy()
 		expect(ctx.getAttr(rightClip!, 'start')).toBe(0.5)
 		expect(ctx.getAttr(rightClip!, 'duration')).toBe(0.5)
 	})
 })
-

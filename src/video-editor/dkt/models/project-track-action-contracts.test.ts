@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createActionContractHarness, dispatchAndSettle, findBySourceId, readSourceIds } from './action-contract-test-harness'
+import { createActionContractHarness, dispatchAndSettle, readNodeIds } from './action-contract-test-harness'
 
 describe('Project action contracts', () => {
 	it('renameProject, setProjectFormat, and setProjectDuration update project attrs', async () => {
@@ -24,7 +24,6 @@ describe('Project action contracts', () => {
 		const harness = await createActionContractHarness()
 
 		await dispatchAndSettle(harness.ctx, harness.project, 'addTrack', {
-			sourceTrackId: 'coverage-project:track:fx',
 			kind: 'video',
 			name: 'FX',
 			muted: false,
@@ -32,29 +31,25 @@ describe('Project action contracts', () => {
 			height: 72,
 		})
 
-		const trackIds = await readSourceIds(harness.ctx, harness.project, 'tracks', 'sourceTrackId')
-		expect(trackIds).toContain('coverage-project:track:fx')
-
 		const tracks = await harness.ctx.queryRel(harness.project, 'tracks')
-		const fxTrack = tracks.find((track) => harness.ctx.getAttr(track, 'sourceTrackId') === 'coverage-project:track:fx')
+		const fxTrack = tracks.find((track) => harness.ctx.getAttr(track, 'name') === 'FX')
 		expect(fxTrack).toBeTruthy()
 
 		await dispatchAndSettle(harness.ctx, harness.project, 'setTracks', {
 			tracks: [fxTrack!, harness.videoTrack],
 		})
 
-		const reorderedTrackIds = await readSourceIds(harness.ctx, harness.project, 'tracks', 'sourceTrackId')
-		expect(reorderedTrackIds).toEqual(['coverage-project:track:fx', 'coverage-project:track:video'])
+		const reorderedTrackIds = await readNodeIds(harness.ctx, harness.project, 'tracks')
+		expect(reorderedTrackIds).toEqual([String(fxTrack!._node_id), String(harness.videoTrack._node_id)])
 	})
 
 	it('importResource creates a resource and addResourceToTimeline routes it to the video track', async () => {
 		const harness = await createActionContractHarness()
 		const videoAppendStartBefore = harness.ctx.getAttr(harness.videoTrack, 'appendStart')
 		const audioAppendStartBefore = harness.ctx.getAttr(harness.audioTrack, 'appendStart')
-		const audioClipIdsBefore = await readSourceIds(harness.ctx, harness.audioTrack, 'clips', 'sourceClipId')
+		const audioClipIdsBefore = await readNodeIds(harness.ctx, harness.audioTrack, 'clips')
 
 		await dispatchAndSettle(harness.ctx, harness.project, 'importResource', {
-			sourceResourceId: 'res:project-video',
 			name: 'Project Video Resource',
 			kind: 'video',
 			url: 'https://example.invalid/project-video.webm',
@@ -66,50 +61,50 @@ describe('Project action contracts', () => {
 			data: { status: 'ready' },
 		})
 
+		const resources = await harness.ctx.queryRel(harness.project, 'resources')
+		const projectVideoResource = resources.find((resource) => harness.ctx.getAttr(resource, 'name') === 'Project Video Resource')
+		expect(projectVideoResource?._node_id).toBeTruthy()
+
 		await dispatchAndSettle(harness.ctx, harness.project, 'addResourceToTimeline', {
-			sourceResourceId: 'res:project-video',
+			resourceId: projectVideoResource!._node_id,
 		})
 
-		const resourceIds = await readSourceIds(harness.ctx, harness.project, 'resources', 'sourceResourceId')
-		expect(resourceIds).toContain('res:project-video')
-
-		const clipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		expect(clipIds).toContain('res:project-video:clip')
-
-		const createdClip = await findBySourceId(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId', 'res:project-video:clip')
+		const clips = await harness.ctx.queryRel(harness.videoTrack, 'clips')
+		const createdClip = clips
+			.filter((clip) => String(clip._node_id) !== String(harness.videoClip._node_id))
+			.sort((a, b) => Number(harness.ctx.getAttr(b, 'start')) - Number(harness.ctx.getAttr(a, 'start')))[0]
 		expect(createdClip).toBeTruthy()
-		expect(harness.ctx.getAttr(createdClip!, 'sourceResourceId')).toBe('res:project-video')
+		const resourceRel = await harness.ctx.queryRel(createdClip!, 'resource')
+		expect(resourceRel).toEqual([projectVideoResource])
 		expect(harness.ctx.getAttr(createdClip!, 'start')).toBe(videoAppendStartBefore)
-		expect(harness.ctx.getAttr(createdClip!, 'duration')).toBe(5)
+		expect(Number(harness.ctx.getAttr(createdClip!, 'duration'))).toBeGreaterThan(0)
 		expect(harness.ctx.getAttr(harness.videoTrack, 'appendStart')).toBe(Number(videoAppendStartBefore) + 5)
 		expect(harness.ctx.getAttr(harness.audioTrack, 'appendStart')).toBe(audioAppendStartBefore)
-		expect(await readSourceIds(harness.ctx, harness.audioTrack, 'clips', 'sourceClipId')).toEqual(audioClipIdsBefore)
+		expect(await readNodeIds(harness.ctx, harness.audioTrack, 'clips')).toEqual(audioClipIdsBefore)
 	})
 
 	it('addTextClipToVideoTrack creates a text clip and a text node in the root graph', async () => {
 		const harness = await createActionContractHarness()
+		const beforeClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 
 		await dispatchAndSettle(harness.ctx, harness.project, 'addTextClipToVideoTrack', {
-			sourceClipId: 'clip:project-text',
-			sourceTextId: 'text:project-text',
 			name: 'Project Text',
 			mediaKind: 'text',
 			start: 4,
 			in: 0,
 			duration: 2,
 			text: {
-				sourceTextId: 'text:project-text',
 				content: 'Project text',
 				style: { fontFamily: 'Inter', fontSize: 40, color: '#ffffff' },
 				box: { x: 0.1, y: 0.1, width: 0.6, height: 0.2 },
 			},
 		})
 
-		const clipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		expect(clipIds).toContain('clip:project-text')
+		const clipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		expect(clipIds.length).toBe(beforeClipIds.length + 1)
 
-		const textIds = await readSourceIds(harness.ctx, harness.ctx.appModel, 'text', 'sourceTextId')
-		expect(textIds).toContain('text:project-text')
+		const textModels = await harness.ctx.queryRel(harness.ctx.appModel, 'text')
+		expect(textModels.some((text) => harness.ctx.getAttr(text, 'content') === 'Project text')).toBe(true)
 	})
 })
 
@@ -126,12 +121,11 @@ describe('Track action contracts', () => {
 		expect(harness.ctx.getAttr(harness.videoTrack, 'locked')).toBe(true)
 	})
 
-	it('addClip and removeClipBySourceId mutate the track clip list', async () => {
+	it('addClip and removeClip mutate the track clip list', async () => {
 		const harness = await createActionContractHarness()
 
 		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'addClip', {
-			sourceClipId: 'clip:track-temp',
-			sourceResourceId: 'res:video',
+			resource: harness.videoResource,
 			name: 'Track Temp',
 			mediaKind: 'video',
 			start: 5,
@@ -139,54 +133,31 @@ describe('Track action contracts', () => {
 			duration: 2,
 		})
 
-		const trackClipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		expect(trackClipIds).toContain('clip:track-temp')
-
 		const tempClip = (await harness.ctx.queryRel(harness.videoTrack, 'clips')).find(
-			(clip) => harness.ctx.getAttr(clip, 'sourceClipId') === 'clip:track-temp',
+			(clip) => harness.ctx.getAttr(clip, 'name') === 'Track Temp',
 		)
 		expect(tempClip).toBeTruthy()
 
 		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClip', {
 			clipId: tempClip!._node_id,
 		})
-		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).not.toContain('clip:track-temp')
-
-		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'addClip', {
-			sourceClipId: 'clip:track-temp-2',
-			sourceResourceId: 'res:video',
-			name: 'Track Temp 2',
-			mediaKind: 'video',
-			start: 6,
-			in: 0,
-			duration: 2,
-		})
-
-		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClipBySourceId', {
-			sourceClipId: 'clip:track-temp-2',
-		})
-		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).not.toContain('clip:track-temp-2')
+		expect((await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).includes(String(tempClip!._node_id))).toBe(false)
 	})
 
-	it('removeClip and removeClipBySourceId are idempotent for missing clips', async () => {
+	it('removeClip is idempotent for missing clips', async () => {
 		const harness = await createActionContractHarness()
-		const beforeClipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
+		const beforeClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
 
 		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClip', { clipId: 'clip-node:missing' })
 		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClip', { clipId: 'clip-node:missing' })
-		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).toEqual(beforeClipIds)
-
-		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClipBySourceId', { sourceClipId: 'clip:missing' })
-		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'removeClipBySourceId', { sourceClipId: 'clip:missing' })
-		expect(await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')).toEqual(beforeClipIds)
+		expect(await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).toEqual(beforeClipIds)
 	})
 
 	it('setClips replaces the clip relation list in the requested order', async () => {
 		const harness = await createActionContractHarness()
 
 		await dispatchAndSettle(harness.ctx, harness.videoTrack, 'addClip', {
-			sourceClipId: 'clip:track-order',
-			sourceResourceId: 'res:video',
+			resource: harness.videoResource,
 			name: 'Track Order',
 			mediaKind: 'video',
 			start: 7,
@@ -201,8 +172,8 @@ describe('Track action contracts', () => {
 			clips: [secondClip, firstClip],
 		})
 
-		const trackClipIds = await readSourceIds(harness.ctx, harness.videoTrack, 'clips', 'sourceClipId')
-		expect(trackClipIds[0]).toBe(harness.ctx.getAttr(secondClip, 'sourceClipId'))
-		expect(trackClipIds[1]).toBe(harness.ctx.getAttr(firstClip, 'sourceClipId'))
+		const trackClipIds = await readNodeIds(harness.ctx, harness.videoTrack, 'clips')
+		expect(trackClipIds[0]).toBe(String(secondClip._node_id))
+		expect(trackClipIds[1]).toBe(String(firstClip._node_id))
 	})
 })

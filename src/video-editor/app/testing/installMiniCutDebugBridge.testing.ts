@@ -323,15 +323,14 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 					kind?: unknown
 				}
 				const clipSummaries = runtime.readMany(trackScope, 'clips').map((clipScope) => {
-					const clipAttrs = runtime.readAttrs(clipScope, ['name', 'mediaKind', 'sourceClipId']) as {
+					const clipAttrs = runtime.readAttrs(clipScope, ['name', 'mediaKind']) as {
 						name?: unknown
 						mediaKind?: unknown
-						sourceClipId?: unknown
 					}
 					return {
 						name: typeof clipAttrs.name === 'string' ? clipAttrs.name : 'Clip',
 						mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : null,
-						sourceClipId: typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null,
+						clipId: clipScope._nodeId ?? null,
 					}
 				})
 				return {
@@ -378,8 +377,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 			}
 			const selectedClip = runtime.readOne(rootScope, 'selectedClip')
 			const clipAttrs = selectedClip
-				? runtime.readAttrs(selectedClip, ['sourceClipId', 'name', 'mediaKind']) as {
-					sourceClipId?: unknown
+				? runtime.readAttrs(selectedClip, ['name', 'mediaKind']) as {
 					name?: unknown
 					mediaKind?: unknown
 				}
@@ -389,7 +387,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 				selectedClipSummary: attrs.selectedClipSummary ?? null,
 				selectedClip: clipAttrs
 					? {
-						sourceClipId: typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null,
+						clipId: selectedClip?._nodeId ?? null,
 						name: typeof clipAttrs.name === 'string' ? clipAttrs.name : null,
 						mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : null,
 					}
@@ -403,11 +401,10 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 				return null
 			}
 
-			const projectAttrs = runtime.readAttrs(projectScope, ['title', 'duration', 'timelineDuration', 'sourceProjectId']) as {
+			const projectAttrs = runtime.readAttrs(projectScope, ['title', 'duration', 'timelineDuration']) as {
 				title?: unknown
 				duration?: unknown
 				timelineDuration?: unknown
-				sourceProjectId?: unknown
 			}
 
 			const tracks = runtime.readMany(projectScope, 'tracks').map((trackScope) => {
@@ -419,21 +416,22 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 					height?: unknown
 				}
 				const clips = runtime.readMany(trackScope, 'clips').map((clipScope) => {
-					const clipAttrs = runtime.readAttrs(clipScope, ['sourceClipId', 'sourceResourceId', 'sourceResourceName', 'name', 'mediaKind', 'start', 'in', 'duration']) as {
-						sourceClipId?: unknown
-						sourceResourceId?: unknown
-						sourceResourceName?: unknown
+					const clipAttrs = runtime.readAttrs(clipScope, ['clipRenderData', 'name', 'mediaKind', 'start', 'in', 'duration']) as {
+						clipRenderData?: unknown
 						name?: unknown
 						mediaKind?: unknown
 						start?: unknown
 						in?: unknown
 						duration?: unknown
 					}
+					const clipRenderData = clipAttrs.clipRenderData && typeof clipAttrs.clipRenderData === 'object'
+						? clipAttrs.clipRenderData as { resourceId?: unknown; resourceName?: unknown }
+						: null
 					return {
 						nodeId: clipScope._nodeId,
-						sourceClipId: typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null,
-						sourceResourceId: typeof clipAttrs.sourceResourceId === 'string' ? clipAttrs.sourceResourceId : null,
-						sourceResourceName: typeof clipAttrs.sourceResourceName === 'string' ? clipAttrs.sourceResourceName : null,
+						clipId: clipScope._nodeId ?? null,
+						resourceId: typeof clipRenderData?.resourceId === 'string' ? clipRenderData.resourceId : null,
+						resourceName: typeof clipRenderData?.resourceName === 'string' ? clipRenderData.resourceName : null,
 						name: typeof clipAttrs.name === 'string' ? clipAttrs.name : 'Clip',
 						mediaKind: typeof clipAttrs.mediaKind === 'string' ? clipAttrs.mediaKind : null,
 						start: typeof clipAttrs.start === 'number' ? clipAttrs.start : null,
@@ -454,8 +452,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 			})
 
 			const resources = runtime.readMany(projectScope, 'resources').map((resourceScope) => {
-				const resourceAttrs = runtime.readAttrs(resourceScope, ['sourceResourceId', 'name', 'kind', 'duration', 'status']) as {
-					sourceResourceId?: unknown
+				const resourceAttrs = runtime.readAttrs(resourceScope, ['name', 'kind', 'duration', 'status']) as {
 					name?: unknown
 					kind?: unknown
 					duration?: unknown
@@ -463,7 +460,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 				}
 				return {
 					nodeId: resourceScope._nodeId,
-					sourceResourceId: typeof resourceAttrs.sourceResourceId === 'string' ? resourceAttrs.sourceResourceId : null,
+					resourceId: resourceScope._nodeId ?? null,
 					name: typeof resourceAttrs.name === 'string' ? resourceAttrs.name : 'Resource',
 					kind: typeof resourceAttrs.kind === 'string' ? resourceAttrs.kind : null,
 					duration: typeof resourceAttrs.duration === 'number' ? resourceAttrs.duration : null,
@@ -473,7 +470,7 @@ export const installMiniCutDebugBridgeTesting = (harness: VideoEditorHarness): (
 
 			return {
 				nodeId: projectScope._nodeId,
-				sourceProjectId: typeof projectAttrs.sourceProjectId === 'string' ? projectAttrs.sourceProjectId : null,
+				projectId: projectScope._nodeId ?? null,
 				title: typeof projectAttrs.title === 'string' ? projectAttrs.title : 'Project',
 				duration: typeof projectAttrs.duration === 'number' ? projectAttrs.duration : null,
 				timelineDuration: typeof projectAttrs.timelineDuration === 'number' ? projectAttrs.timelineDuration : null,
