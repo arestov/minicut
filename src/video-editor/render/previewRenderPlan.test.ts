@@ -1,79 +1,104 @@
-import { describe, expect, it } from 'vitest'
-import type { PreviewFrame, RenderedClip } from '../read-model/previewReadModel'
-import type { EffectRenderInstruction } from './colorPipeline'
-import { compilePreviewRenderPlan, getPreviewOperationValue } from './previewRenderPlan'
+import { describe, expect, it } from "vitest";
+import type {
+	PreviewFrame,
+	RenderedClip,
+} from "../read-model/previewReadModel";
+import type { EffectRenderInstruction } from "./colorPipeline";
+import {
+	compilePreviewRenderPlan,
+	getPreviewOperationValue,
+} from "./previewRenderPlan";
 
-const blurEffect: EffectRenderInstruction = { name: 'Blur', kind: 'blur', enabled: true, amount: 0.25 }
+const blurEffect: EffectRenderInstruction = {
+	name: "Blur",
+	kind: "blur",
+	enabled: true,
+	amount: 0.25,
+};
 
 const createClip = (overrides: Partial<RenderedClip> = {}): RenderedClip => ({
-	id: 'clip:1',
-	resourceId: 'resource:1',
-	name: 'Clip',
-	color: '#2563eb',
-	resourceName: 'source.webm',
-	resourceKind: 'video',
-	resourceUrl: 'blob:source',
-	mime: 'video/webm',
+	id: "clip:1",
+	resourceId: "resource:1",
+	name: "Clip",
+	color: "#2563eb",
+	resourceName: "source.webm",
+	resourceKind: "video",
+	resourceUrl: "blob:source",
+	mime: "video/webm",
 	inPoint: 0.5,
 	start: 1,
 	opacity: 0.8,
 	transform: { x: 10, y: 20, scale: 1.2, rotation: 5 },
 	audio: { gain: 1, pan: 0 },
-	filters: ['brightness(1.1)', 'contrast(1.2)'],
+	filters: ["brightness(1.1)", "contrast(1.2)"],
 	effects: [blurEffect],
 	text: null,
 	...overrides,
-})
+});
 
 const createFrame = (clips: RenderedClip[]): PreviewFrame => ({
 	cursor: 1.5,
 	renderedClips: clips,
-	visualRenderedClips: clips.filter((clip) => clip.resourceKind !== 'audio'),
-	audioRenderedClips: clips.filter((clip) => clip.resourceKind === 'audio'),
+	visualRenderedClips: clips.filter((clip) => clip.resourceKind !== "audio"),
+	audioRenderedClips: clips.filter((clip) => clip.resourceKind === "audio"),
 	activeClipNames: clips.map((clip) => clip.name),
-})
+});
 
-describe('preview render plan', () => {
-	it('serializes visual layer operations for renderer consumption', () => {
-		const plan = compilePreviewRenderPlan(createFrame([createClip()]))
-		const [layer] = plan.visualLayers
+describe("preview render plan", () => {
+	it("serializes visual layer operations for renderer consumption", () => {
+		const plan = compilePreviewRenderPlan(createFrame([createClip()]));
+		const [layer] = plan.visualLayers;
 
-		expect(plan.cursor).toBe(1.5)
-		expect(layer).toMatchObject({ clipId: 'clip:1', resourceKind: 'video', sourceTime: 0.5 })
-		expect(getPreviewOperationValue(layer.operations, 'transform', null)).toMatchObject({ x: 10, y: 20, scale: 1.2, rotation: 5 })
-		expect(getPreviewOperationValue(layer.operations, 'effect', [])).toEqual([
-			{ effectKind: 'blur', enabled: true, operations: [{ type: 'blur', value: 1.5 }] },
-		])
-		expect(getPreviewOperationValue(layer.operations, 'opacity', 1)).toBe(0.8)
-	})
+		expect(plan.cursor).toBe(1.5);
+		expect(layer).toMatchObject({
+			clipId: "clip:1",
+			resourceKind: "video",
+			sourceTime: 0.5,
+		});
+		expect(
+			getPreviewOperationValue(layer.operations, "transform", null),
+		).toMatchObject({ x: 10, y: 20, scale: 1.2, rotation: 5 });
+		expect(getPreviewOperationValue(layer.operations, "effect", [])).toEqual([
+			{
+				effectKind: "blur",
+				enabled: true,
+				operations: [{ type: "blur", value: 1.5 }],
+			},
+		]);
+		expect(getPreviewOperationValue(layer.operations, "opacity", 1)).toBe(0.8);
+	});
 
-	it('serializes text styles so preview tests do not need DOM rendering', () => {
+	it("serializes text styles so preview tests do not need DOM rendering", () => {
 		const textClip = createClip({
 			resourceId: null,
-			resourceKind: 'text',
-			resourceUrl: '',
+			resourceKind: "text",
+			resourceUrl: "",
 			text: {
-				content: 'Title',
+				content: "Title",
 				style: {
-					fontFamily: 'Inter',
+					fontFamily: "Inter",
 					fontSize: 64,
 					fontWeight: 700,
 					lineHeight: 1.1,
 					letterSpacing: 0,
-					color: '#f8fafc',
-					backgroundColor: '#0f172a',
-					align: 'center',
+					color: "#f8fafc",
+					backgroundColor: "#0f172a",
+					align: "center",
 				},
 				box: { width: 760, height: 220 },
 			},
 			filters: [],
 			effects: [],
-		})
-		const [layer] = compilePreviewRenderPlan(createFrame([textClip])).visualLayers
+		});
+		const [layer] = compilePreviewRenderPlan(
+			createFrame([textClip]),
+		).visualLayers;
 
-		expect(getPreviewOperationValue(layer.operations, 'text', null)).toMatchObject({
-			content: 'Title',
-			style: { color: '#f8fafc', backgroundColor: '#0f172a' },
-		})
-	})
-})
+		expect(
+			getPreviewOperationValue(layer.operations, "text", null),
+		).toMatchObject({
+			content: "Title",
+			style: { color: "#f8fafc", backgroundColor: "#0f172a" },
+		});
+	});
+});

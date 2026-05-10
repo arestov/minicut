@@ -1,74 +1,79 @@
-import { useSyncExternalStore } from 'react'
-import { ScopeContext } from '../context/ScopeContext'
-import { useReactScopeRuntime } from '../hooks/useReactScopeRuntime'
-import { useScope } from '../hooks/useScope'
-import { useShape } from '../hooks/useShape'
-import { getRelShape } from '../shape/autoShapes'
-import { useAttrs } from '../hooks/useAttrs'
+import { useSyncExternalStore } from "react";
+import { ScopeContext } from "../context/ScopeContext";
+import { useAttrs } from "../hooks/useAttrs";
+import { useReactScopeRuntime } from "../hooks/useReactScopeRuntime";
+import { useScope } from "../hooks/useScope";
+import { useShape } from "../hooks/useShape";
+import { getRelShape } from "../shape/autoShapes";
 
-const EMPTY_ITEMS = Object.freeze([]) as readonly []
+const EMPTY_ITEMS = Object.freeze([]) as readonly [];
 
 /**
  * Gates rendering of a single item until a specific attr is non-null.
  * Mounted inside each item's ScopeContext so useAttrs reads the right scope.
  */
 const ReadyGate = ({
-  attrName,
-  children,
+	attrName,
+	children,
 }: {
-  attrName: string
-  children: React.ReactNode
+	attrName: string;
+	children: React.ReactNode;
 }) => {
-  const attrs = useAttrs([attrName])
-  return attrs[attrName] != null ? <>{children}</> : null
-}
+	const attrs = useAttrs([attrName]);
+	return attrs[attrName] != null ? <>{children}</> : null;
+};
 
 export const Many = ({
-  rel,
-  item: Item,
-  empty = null,
-  limit,
-  readyAttr,
+	rel,
+	item: Item,
+	empty = null,
+	limit,
+	readyAttr,
 }: {
-  rel: string
-  item: React.ComponentType
-  empty?: React.ReactNode
-  limit?: number
-  /**
-   * When provided, each item is withheld from rendering until this attr
-   * arrives from the worker (i.e. is non-null). Prevents skeleton clips
-   * with default-zero positions from briefly appearing in the timeline.
-   */
-  readyAttr?: string
+	rel: string;
+	item: React.ComponentType;
+	empty?: React.ReactNode;
+	limit?: number;
+	/**
+	 * When provided, each item is withheld from rendering until this attr
+	 * arrives from the worker (i.e. is non-null). Prevents skeleton clips
+	 * with default-zero positions from briefly appearing in the timeline.
+	 */
+	readyAttr?: string;
 }) => {
-  const runtime = useReactScopeRuntime()
-  const scope = useScope()
-  const shape = getRelShape(rel)
+	const runtime = useReactScopeRuntime();
+	const scope = useScope();
+	const shape = getRelShape(rel);
 
-  useShape(shape)
+	useShape(shape);
 
-  const items = useSyncExternalStore(
-    (listener) => (scope ? runtime.subscribeMany(scope, rel, listener) : () => {}),
-    () => (scope ? runtime.readMany(scope, rel) : EMPTY_ITEMS),
-    () => (scope ? runtime.readMany(scope, rel) : EMPTY_ITEMS),
-  )
+	const items = useSyncExternalStore(
+		(listener) =>
+			scope ? runtime.subscribeMany(scope, rel, listener) : () => {},
+		() => (scope ? runtime.readMany(scope, rel) : EMPTY_ITEMS),
+		() => (scope ? runtime.readMany(scope, rel) : EMPTY_ITEMS),
+	);
 
-  const visibleItems = typeof limit === 'number' ? items.slice(0, Math.max(0, limit)) : items
+	const visibleItems =
+		typeof limit === "number" ? items.slice(0, Math.max(0, limit)) : items;
 
-  if (!scope || !visibleItems.length) {
-    return <>{empty}</>
-  }
+	if (!scope || !visibleItems.length) {
+		return <>{empty}</>;
+	}
 
-  return (
-    <>
-      {visibleItems.map((itemScope) => (
-        <ScopeContext.Provider key={itemScope._nodeId} value={itemScope}>
-          {readyAttr
-            ? <ReadyGate attrName={readyAttr}><Item /></ReadyGate>
-            : <Item />
-          }
-        </ScopeContext.Provider>
-      ))}
-    </>
-  )
-}
+	return (
+		<>
+			{visibleItems.map((itemScope) => (
+				<ScopeContext.Provider key={itemScope._nodeId} value={itemScope}>
+					{readyAttr ? (
+						<ReadyGate attrName={readyAttr}>
+							<Item />
+						</ReadyGate>
+					) : (
+						<Item />
+					)}
+				</ScopeContext.Provider>
+			))}
+		</>
+	);
+};

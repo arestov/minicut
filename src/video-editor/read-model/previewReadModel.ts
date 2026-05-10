@@ -6,10 +6,10 @@ export type {
 	RenderedClip,
 	ResolvedAnimatedScalar,
 	TimelineClipInterval,
-} from './previewComps'
+} from "./previewComps";
 
 export {
 	createPreviewFrame,
 	renderPreviewClipSourceAtCursor,
 	renderPreviewStructureAtCursor,
-} from './previewComps'
+} from "./previewComps";

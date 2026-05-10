@@ -1,37 +1,37 @@
-import type { PageRootSnapshot } from '../../../dkt-react-sync/runtime/PageSyncRuntime'
+import type { PageRootSnapshot } from "../../../dkt-react-sync/runtime/PageSyncRuntime";
 
 export const createEmptyPageRuntimeSnapshot = (): PageRootSnapshot => ({
-  booted: false,
-  ready: false,
-  version: 0,
-  rootNodeId: null,
-  sessionId: null,
-  sessionKey: null,
-})
+	booted: false,
+	ready: false,
+	version: 0,
+	rootNodeId: null,
+	sessionId: null,
+	sessionKey: null,
+});
 
 export const createPageRuntimeSnapshotWithVersion = (
-  current: PageRootSnapshot,
-  patch: Partial<PageRootSnapshot>,
+	current: PageRootSnapshot,
+	patch: Partial<PageRootSnapshot>,
 ): PageRootSnapshot => ({
-  ...current,
-  ...patch,
-  version: current.version + 1,
-})
+	...current,
+	...patch,
+	version: current.version + 1,
+});
 
 export const shouldResetPageRuntimeForBootstrap = (
-  current: PageRootSnapshot,
-  options?: {
-    sessionKey?: string | null
-    route?: unknown
-  },
+	current: PageRootSnapshot,
+	options?: {
+		sessionKey?: string | null;
+		route?: unknown;
+	},
 ) => {
-  if (!current.booted) {
-    return false
-  }
+	if (!current.booted) {
+		return false;
+	}
 
-  if (options?.sessionKey && options.sessionKey !== current.sessionKey) {
-    return true
-  }
+	if (options?.sessionKey && options.sessionKey !== current.sessionKey) {
+		return true;
+	}
 
-  return false
-}
+	return false;
+};

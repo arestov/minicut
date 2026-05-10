@@ -1,4 +1,4 @@
-import { createContext } from 'react'
-import type { ReactSyncScopeHandle } from '../scope/ScopeHandle'
+import { createContext } from "react";
+import type { ReactSyncScopeHandle } from "../scope/ScopeHandle";
 
-export const ScopeContext = createContext<ReactSyncScopeHandle | null>(null)
+export const ScopeContext = createContext<ReactSyncScopeHandle | null>(null);

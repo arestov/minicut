@@ -1,136 +1,190 @@
-import { model } from 'dkt/model.js'
-import { SessionRoot as BaseSessionRoot } from 'dkt-all/libs/provoda/bwlev/SessionRoot.js'
-import { TIMELINE_ZOOM_DEFAULT } from './sessionZoom'
-import { createPreviewFrame, lookupPreviewBufferFrame, type PreviewBuffer, type PreviewFrame, type PreviewStructure } from '../read-model/previewComps'
-import type { ExportProgressState } from '../app/exportProgressState'
-import type { ExportRequestState } from '../app/exportRequestState'
-import { dktSessionActions } from './SessionRoot/actions'
-import { reducePreviewFrame, reducePreviewStructure, reduceSelectedClip } from './SessionRoot/comps'
+import { model } from "dkt/model.js";
+import { SessionRoot as BaseSessionRoot } from "dkt-all/libs/provoda/bwlev/SessionRoot.js";
+import type { ExportProgressState } from "../app/exportProgressState";
+import type { ExportRequestState } from "../app/exportRequestState";
+import {
+	createPreviewFrame,
+	lookupPreviewBufferFrame,
+	type PreviewBuffer,
+	type PreviewFrame,
+	type PreviewStructure,
+} from "../read-model/previewComps";
+import { dktSessionActions } from "./SessionRoot/actions";
+import {
+	reducePreviewFrame,
+	reducePreviewStructure,
+	reduceSelectedClip,
+} from "./SessionRoot/comps";
+import { TIMELINE_ZOOM_DEFAULT } from "./sessionZoom";
 
 const debugExport = (message: string, details?: unknown) => {
-	if ((globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown }).__MINICUT_EXPORT_DEBUG__ !== true) {
-		return
+	if (
+		(globalThis as { __MINICUT_EXPORT_DEBUG__?: unknown })
+			.__MINICUT_EXPORT_DEBUG__ !== true
+	) {
+		return;
 	}
-	console.info('[minicut:export:session-root]', message, details)
-}
+	console.info("[minicut:export:session-root]", message, details);
+};
 
 export const EditorSessionRoot = model({
 	extends: BaseSessionRoot,
-	model_name: 'minicut_session_root',
+	model_name: "minicut_session_root",
 	attrs: {
-		sessionKey: ['input', null],
-		route: ['input', null],
-		closedAt: ['input', null],
-		isCommonRoot: ['input', false],
-		tabId: ['input', null],
-		activeProjectId: ['input', null],
-		pendingProjectInit: ['input', null],
-		selectedEntityId: ['input', null],
-		activeInspectorTab: ['input', 'edit'],
-		cursor: ['input', 0],
-		isPlaying: ['input', false],
-		previewBuffer: ['input', null as PreviewBuffer | null],
-		exportRequest: ['input', null as ExportRequestState | null],
-		exportProgress: ['input', null as ExportProgressState | null],
-		timelineZoom: ['input', TIMELINE_ZOOM_DEFAULT],
-		timelineTool: ['input', 'select'],
-		snappingEnabled: ['input', true],
-		previewStructure: ['comp', ['< @one:previewClipSources < activeProject'] as const,
-			reducePreviewStructure],
-		previewFrame: ['comp', ['previewStructure', 'cursor', 'previewBuffer', 'isPlaying'] as const,
-			reducePreviewFrame],
-		selectedClipSummary: ['comp', [
-			'< @one:_node_id < selectedClip',
-			'< @one:color < selectedClip',
-			'< @one:name < selectedClip',
-			'< @one:name < selectedClip.track',
-		] as const, (clipId: unknown, color: unknown, clipName: unknown, trackName: unknown) => {
-			if (typeof clipId !== 'string' || !clipId) return null
-			return {
-				color: typeof color === 'string' && color ? color : '#2563eb',
-				resourceName: typeof clipName === 'string' && clipName ? clipName : 'Clip',
-				trackName: typeof trackName === 'string' && trackName ? trackName : 'Track',
-			}
-		}],
-		selectedClipTrackPosition: ['comp', [
-			'<< @all:activeProject.tracks',
-			'<< @one:selectedClip.track',
-			'< @one:name < selectedClip.track',
-		] as const, (tracks: unknown, selectedTrack: unknown, trackName: unknown) => {
-			if (!selectedTrack) return null
-			const trackList = Array.isArray(tracks) ? tracks : []
-			const index = trackList.indexOf(selectedTrack)
-			if (index === -1) return null
-			return {
-				trackName: typeof trackName === 'string' && trackName
-					? trackName
-					: `Track ${index + 1}`,
-				ordinal: index + 1,
-			}
-		}],
+		sessionKey: ["input", null],
+		route: ["input", null],
+		closedAt: ["input", null],
+		isCommonRoot: ["input", false],
+		tabId: ["input", null],
+		activeProjectId: ["input", null],
+		pendingProjectInit: ["input", null],
+		selectedEntityId: ["input", null],
+		activeInspectorTab: ["input", "edit"],
+		cursor: ["input", 0],
+		isPlaying: ["input", false],
+		previewBuffer: ["input", null as PreviewBuffer | null],
+		exportRequest: ["input", null as ExportRequestState | null],
+		exportProgress: ["input", null as ExportProgressState | null],
+		timelineZoom: ["input", TIMELINE_ZOOM_DEFAULT],
+		timelineTool: ["input", "select"],
+		snappingEnabled: ["input", true],
+		previewStructure: [
+			"comp",
+			["< @one:previewClipSources < activeProject"] as const,
+			reducePreviewStructure,
+		],
+		previewFrame: [
+			"comp",
+			["previewStructure", "cursor", "previewBuffer", "isPlaying"] as const,
+			reducePreviewFrame,
+		],
+		selectedClipSummary: [
+			"comp",
+			[
+				"< @one:_node_id < selectedClip",
+				"< @one:color < selectedClip",
+				"< @one:name < selectedClip",
+				"< @one:name < selectedClip.track",
+			] as const,
+			(
+				clipId: unknown,
+				color: unknown,
+				clipName: unknown,
+				trackName: unknown,
+			) => {
+				if (typeof clipId !== "string" || !clipId) return null;
+				return {
+					color: typeof color === "string" && color ? color : "#2563eb",
+					resourceName:
+						typeof clipName === "string" && clipName ? clipName : "Clip",
+					trackName:
+						typeof trackName === "string" && trackName ? trackName : "Track",
+				};
+			},
+		],
+		selectedClipTrackPosition: [
+			"comp",
+			[
+				"<< @all:activeProject.tracks",
+				"<< @one:selectedClip.track",
+				"< @one:name < selectedClip.track",
+			] as const,
+			(tracks: unknown, selectedTrack: unknown, trackName: unknown) => {
+				if (!selectedTrack) return null;
+				const trackList = Array.isArray(tracks) ? tracks : [];
+				const index = trackList.indexOf(selectedTrack);
+				if (index === -1) return null;
+				return {
+					trackName:
+						typeof trackName === "string" && trackName
+							? trackName
+							: `Track ${index + 1}`,
+					ordinal: index + 1,
+				};
+			},
+		],
 	},
 	effects: {
 		api: {
 			exportRuntime: [
-				['_node_id'] as const,
-				['#exportRuntime'] as const,
+				["_node_id"] as const,
+				["#exportRuntime"] as const,
 				(exportRuntime: unknown) => exportRuntime,
 			],
 			importRuntime: [
-				['_node_id'] as const,
-				['#importRuntime'] as const,
+				["_node_id"] as const,
+				["#importRuntime"] as const,
 				(importRuntime: unknown) => importRuntime,
 			],
 		},
 		out: {
 			$fx_handleInputFiles: {
-				api: ['importRuntime'],
+				api: ["importRuntime"],
 				create_when: { api_inits: true },
 				fn: (api: unknown, state: unknown) => {
-					const runtime = api as { requestImportFiles?: (payload: unknown) => void } | null
-					const payload = (state as { payload?: unknown } | null)?.payload
-					if (!runtime || typeof runtime.requestImportFiles !== 'function' || !payload || typeof payload !== 'object') {
-						return
+					const runtime = api as {
+						requestImportFiles?: (payload: unknown) => void;
+					} | null;
+					const payload = (state as { payload?: unknown } | null)?.payload;
+					if (
+						!runtime ||
+						typeof runtime.requestImportFiles !== "function" ||
+						!payload ||
+						typeof payload !== "object"
+					) {
+						return;
 					}
-					runtime.requestImportFiles(payload)
+					runtime.requestImportFiles(payload);
 				},
 			},
 			$fx_renderExport: {
-				api: ['exportRuntime'],
+				api: ["exportRuntime"],
 				create_when: { api_inits: true },
 				fn: (api: unknown, state: unknown) => {
-					const runtime = api as { requestExport?: (payload: unknown) => void } | null
-					const payload = (state as { payload?: unknown } | null)?.payload
-					const request = payload && typeof payload === 'object'
-						? (payload as { request?: unknown }).request
-						: null
-					if (!runtime || typeof runtime.requestExport !== 'function' || !request || typeof request !== 'object') {
-						debugExport('skip $fx_renderExport effect', {
-							hasRuntime: Boolean(runtime && typeof runtime.requestExport === 'function'),
+					const runtime = api as {
+						requestExport?: (payload: unknown) => void;
+					} | null;
+					const payload = (state as { payload?: unknown } | null)?.payload;
+					const request =
+						payload && typeof payload === "object"
+							? (payload as { request?: unknown }).request
+							: null;
+					if (
+						!runtime ||
+						typeof runtime.requestExport !== "function" ||
+						!request ||
+						typeof request !== "object"
+					) {
+						debugExport("skip $fx_renderExport effect", {
+							hasRuntime: Boolean(
+								runtime && typeof runtime.requestExport === "function",
+							),
 							hasPayload: Boolean(request),
-						})
-						return
+						});
+						return;
 					}
 
-					debugExport('$fx_renderExport effect -> runtime', {
+					debugExport("$fx_renderExport effect -> runtime", {
 						id: (request as { id?: unknown }).id,
 						range: (request as { range?: unknown }).range,
-					})
-					runtime.requestExport(payload)
+					});
+					runtime.requestExport(payload);
 				},
 			},
 		},
 	},
 	rels: {
-		activeProject: ['input', { linking: '<< project << #' }],
-		selectedTrack: ['input', { linking: '<< track << #' }],
-		selectedClip: ['comp', [
-			'<< @all:activeProject.tracks.clips',
-			'selectedEntityId',
-		] as const, reduceSelectedClip, { linking: '<< clip << #' }],
-		selectedResource: ['input', { linking: '<< resource << #' }],
-		selectedText: ['input', { linking: '<< text << #' }],
-		selectedEffect: ['input', { linking: '<< effect << #' }],
+		activeProject: ["input", { linking: "<< project << #" }],
+		selectedTrack: ["input", { linking: "<< track << #" }],
+		selectedClip: [
+			"comp",
+			["<< @all:activeProject.tracks.clips", "selectedEntityId"] as const,
+			reduceSelectedClip,
+			{ linking: "<< clip << #" },
+		],
+		selectedResource: ["input", { linking: "<< resource << #" }],
+		selectedText: ["input", { linking: "<< text << #" }],
+		selectedEffect: ["input", { linking: "<< effect << #" }],
 	},
 	actions: dktSessionActions,
-})
+});

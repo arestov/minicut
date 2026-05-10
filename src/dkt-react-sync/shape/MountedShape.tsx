@@ -1,15 +1,15 @@
-import type { ReactNode } from 'react'
-import { useShape } from '../hooks/useShape'
-import type { DefinedReactShape } from './defineShape'
+import type { ReactNode } from "react";
+import { useShape } from "../hooks/useShape";
+import type { DefinedReactShape } from "./defineShape";
 
 export const MountedShape = ({
-  shape,
-  children,
+	shape,
+	children,
 }: {
-  shape: DefinedReactShape
-  children: ReactNode
+	shape: DefinedReactShape;
+	children: ReactNode;
 }) => {
-  useShape(shape)
+	useShape(shape);
 
-  return <>{children}</>
-}
+	return <>{children}</>;
+};

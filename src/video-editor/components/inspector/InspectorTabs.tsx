@@ -1,9 +1,13 @@
-import { inspectorTabs, type InspectorTab } from './types'
+import { type InspectorTab, inspectorTabs } from "./types";
 
-export const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
-	activeTab: InspectorTab
-	onChange: (tab: InspectorTab) => void
-	disabled?: boolean
+export const InspectorTabs = ({
+	activeTab,
+	onChange,
+	disabled = false,
+}: {
+	activeTab: InspectorTab;
+	onChange: (tab: InspectorTab) => void;
+	disabled?: boolean;
 }) => (
 	<div className="ve-inspector-tabs" role="tablist" aria-label="Inspector tabs">
 		{inspectorTabs.map((tab) => (
@@ -12,7 +16,7 @@ export const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
 				type="button"
 				role="tab"
 				aria-selected={tab.id === activeTab}
-				className={tab.id === activeTab ? 'is-active' : ''}
+				className={tab.id === activeTab ? "is-active" : ""}
 				onClick={() => onChange(tab.id)}
 				disabled={disabled}
 			>
@@ -20,4 +24,4 @@ export const InspectorTabs = ({ activeTab, onChange, disabled = false }: {
 			</button>
 		))}
 	</div>
-)
+);

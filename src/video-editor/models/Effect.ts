@@ -1,101 +1,115 @@
-import { model } from 'dkt/model.js'
+import { model } from "dkt/model.js";
+import type { EffectRenderInstruction } from "../render/colorPipeline";
 import {
 	reduceEffectAmountAction,
 	reduceEffectColorAction,
-} from './Effect/actions'
-import type { EffectRenderInstruction } from '../render/colorPipeline'
-import {
 	reduceEffectEnabledAction,
 	reduceEffectKindAction,
 	reduceEffectNameAction,
 	reduceEffectParamsAction,
 	reduceSetEffectClip,
 	reduceSetEffectProject,
-} from './Effect/actions'
-import { defaultEffectAttrs } from './Effect/defaults'
+} from "./Effect/actions";
+import { defaultEffectAttrs } from "./Effect/defaults";
 
-const _asStr = (v: unknown, fb: string): string => typeof v === 'string' && v ? v : fb
-const _asBool = (v: unknown): boolean => v !== false
-
+const _asStr = (v: unknown, fb: string): string =>
+	typeof v === "string" && v ? v : fb;
+const _asBool = (v: unknown): boolean => v !== false;
 
 export const Effect = model({
-	model_name: 'minicut_effect',
+	model_name: "minicut_effect",
 	attrs: {
-		renderInstruction: ['comp', ['kind', 'name', 'enabled', 'amount', 'params', 'color'] as const,
-			(kind: unknown, name: unknown, enabled: unknown, amount: unknown, params: unknown, color: unknown): EffectRenderInstruction => ({
-				kind: _asStr(kind, 'blur') as EffectRenderInstruction['kind'],
-				name: _asStr(name, 'Effect'),
+		renderInstruction: [
+			"comp",
+			["kind", "name", "enabled", "amount", "params", "color"] as const,
+			(
+				kind: unknown,
+				name: unknown,
+				enabled: unknown,
+				amount: unknown,
+				params: unknown,
+				color: unknown,
+			): EffectRenderInstruction => ({
+				kind: _asStr(kind, "blur") as EffectRenderInstruction["kind"],
+				name: _asStr(name, "Effect"),
 				enabled: _asBool(enabled),
-				...(typeof amount === 'number' && Number.isFinite(amount) ? { amount } : {}),
-				...(params && typeof params === 'object' ? { params: params as Record<string, unknown> } : {}),
-				...(color && typeof color === 'object' ? { color: color as Record<string, unknown> } : {}),
-			})],
-		name: ['input', defaultEffectAttrs.name],
-		kind: ['input', defaultEffectAttrs.kind],
-		enabled: ['input', defaultEffectAttrs.enabled],
-		amount: ['input', defaultEffectAttrs.amount],
-		params: ['input', defaultEffectAttrs.params],
-		color: ['input', defaultEffectAttrs.color],
+				...(typeof amount === "number" && Number.isFinite(amount)
+					? { amount }
+					: {}),
+				...(params && typeof params === "object"
+					? { params: params as Record<string, unknown> }
+					: {}),
+				...(color && typeof color === "object"
+					? { color: color as Record<string, unknown> }
+					: {}),
+			}),
+		],
+		name: ["input", defaultEffectAttrs.name],
+		kind: ["input", defaultEffectAttrs.kind],
+		enabled: ["input", defaultEffectAttrs.enabled],
+		amount: ["input", defaultEffectAttrs.amount],
+		params: ["input", defaultEffectAttrs.params],
+		color: ["input", defaultEffectAttrs.color],
 	},
 	rels: {
-		clip: ['input', { linking: '<< clip << #' }],
-		project: ['input', { linking: '<< project << #' }],
+		clip: ["input", { linking: "<< clip << #" }],
+		project: ["input", { linking: "<< project << #" }],
 	},
 	actions: {
 		setEffectName: {
 			to: {
-				name: ['name'],
+				name: ["name"],
 			},
-			fn: (payload: unknown) => reduceEffectNameAction(payload) ?? '$noop',
+			fn: (payload: unknown) => reduceEffectNameAction(payload) ?? "$noop",
 		},
 		setEffectKind: {
 			to: {
-				kind: ['kind'],
+				kind: ["kind"],
 			},
-			fn: (payload: unknown) => reduceEffectKindAction(payload) ?? '$noop',
+			fn: (payload: unknown) => reduceEffectKindAction(payload) ?? "$noop",
 		},
 		setEffectEnabled: {
 			to: {
-				enabled: ['enabled'],
+				enabled: ["enabled"],
 			},
-			fn: (payload: unknown) => reduceEffectEnabledAction(payload) ?? '$noop',
+			fn: (payload: unknown) => reduceEffectEnabledAction(payload) ?? "$noop",
 		},
 		setEffectAmount: {
 			to: {
-				amount: ['amount'],
+				amount: ["amount"],
 			},
-			fn: (payload: unknown) => reduceEffectAmountAction(payload) ?? '$noop',
+			fn: (payload: unknown) => reduceEffectAmountAction(payload) ?? "$noop",
 		},
 		setEffectParams: {
 			to: {
-				params: ['params'],
+				params: ["params"],
 			},
-			fn: (payload: unknown) => reduceEffectParamsAction(payload) ?? '$noop',
+			fn: (payload: unknown) => reduceEffectParamsAction(payload) ?? "$noop",
 		},
 		setEffectColor: {
 			to: {
-				color: ['color'],
+				color: ["color"],
 			},
-			fn: (payload: unknown) => reduceEffectColorAction(payload) ?? '$noop',
+			fn: (payload: unknown) => reduceEffectColorAction(payload) ?? "$noop",
 		},
 		setEffectClip: {
 			to: {
-				clip: ['<< clip', { method: 'set_one' }],
+				clip: ["<< clip", { method: "set_one" }],
 			},
 			fn: reduceSetEffectClip,
 		},
 		setEffectProject: {
 			to: {
-				project: ['<< project', { method: 'set_one' }],
+				project: ["<< project", { method: "set_one" }],
 			},
 			fn: reduceSetEffectProject,
 		},
 	},
-})
+});
 
 export const EFFECT_CREATION_SHAPE = {
-	attrs: ['name', 'kind', 'enabled', 'amount', 'params', 'color'],
+	attrs: ["name", "kind", "enabled", "amount", "params", "color"],
 	rels: {
 		clip: {},
 	},
-} as const
+} as const;

@@ -11,17 +11,17 @@
  * if (isPartial) return null  // or <SkeletonClip />
  * ```
  */
-import { useAttrs } from './useAttrs'
-import { useScope } from './useScope'
+import { useAttrs } from "./useAttrs";
+import { useScope } from "./useScope";
 
 export const useIsAttrsPartial = (fields: readonly string[]): boolean => {
-  const scope = useScope()
-  const attrs = useAttrs(fields)
+	const scope = useScope();
+	const attrs = useAttrs(fields);
 
-  // If there is no scope the element isn't mounted yet — not a skeleton.
-  if (!scope) {
-    return false
-  }
+	// If there is no scope the element isn't mounted yet — not a skeleton.
+	if (!scope) {
+		return false;
+	}
 
-  return fields.some((field) => attrs[field] == null)
-}
+	return fields.some((field) => attrs[field] == null);
+};

@@ -1,9 +1,9 @@
-export type { VideoEditorHarnessPlatform } from './types'
 export {
-	createBrowserHarnessPlatform,
 	type CreateBrowserHarnessPlatformOptions,
-} from './browserPlatform'
+	createBrowserHarnessPlatform,
+} from "./browserPlatform";
 export {
-	createNodeHarnessPlatform,
 	type CreateNodeHarnessPlatformOptions,
-} from './nodePlatform'
+	createNodeHarnessPlatform,
+} from "./nodePlatform";
+export type { VideoEditorHarnessPlatform } from "./types";

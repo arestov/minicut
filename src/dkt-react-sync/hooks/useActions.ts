@@ -1,9 +1,9 @@
-import { useReactScopeRuntime } from './useReactScopeRuntime'
-import { useScope } from './useScope'
+import { useReactScopeRuntime } from "./useReactScopeRuntime";
+import { useScope } from "./useScope";
 
 export const useActions = () => {
-  const runtime = useReactScopeRuntime()
-  const scope = useScope()
+	const runtime = useReactScopeRuntime();
+	const scope = useScope();
 
-  return runtime.getDispatch(scope)
-}
+	return runtime.getDispatch(scope);
+};

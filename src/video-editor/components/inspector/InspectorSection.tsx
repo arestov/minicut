@@ -1,5 +1,5 @@
-import type { LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 export const InspectorSection = ({
 	title,
@@ -7,10 +7,10 @@ export const InspectorSection = ({
 	icon: Icon,
 	ariaLabel,
 }: {
-	title: string
-	children: ReactNode
-	icon?: LucideIcon
-	ariaLabel?: string
+	title: string;
+	children: ReactNode;
+	icon?: LucideIcon;
+	ariaLabel?: string;
 }) => (
 	<section className="ve-property-section" aria-label={ariaLabel}>
 		<div className="ve-property-section__header">
@@ -19,4 +19,4 @@ export const InspectorSection = ({
 		</div>
 		{children}
 	</section>
-)
+);

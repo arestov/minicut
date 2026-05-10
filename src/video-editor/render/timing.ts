@@ -1,104 +1,127 @@
-import type { AnimatedScalar, EntityId, KeyframeAttrs, ProjectRenderGraph } from './registryTypes'
+import type {
+	AnimatedScalar,
+	EntityId,
+	KeyframeAttrs,
+	ProjectRenderGraph,
+} from "./registryTypes";
 
 export interface ScalarKeyframe extends KeyframeAttrs {
-	time: number
-	value: number
+	time: number;
+	value: number;
 }
 
-type ScalarKeyframeRef = ScalarKeyframe | EntityId
+type ScalarKeyframeRef = ScalarKeyframe | EntityId;
 
 interface KeyframedScalarInput {
-	value: number
-	keyframes?: readonly ScalarKeyframeRef[]
+	value: number;
+	keyframes?: readonly ScalarKeyframeRef[];
 }
 
-export const interpolateLinear = (from: number, to: number, progress: number): number =>
-	from + (to - from) * Math.min(1, Math.max(0, progress))
+export const interpolateLinear = (
+	from: number,
+	to: number,
+	progress: number,
+): number => from + (to - from) * Math.min(1, Math.max(0, progress));
 
 const isScalarKeyframe = (value: ScalarKeyframeRef): value is ScalarKeyframe =>
-	typeof value === 'object' && value !== null && Number.isFinite(value.time) && Number.isFinite(value.value)
+	typeof value === "object" &&
+	value !== null &&
+	Number.isFinite(value.time) &&
+	Number.isFinite(value.value);
 
 export const getScalarKeyframeEntities = (
 	registry: ProjectRenderGraph,
 	scalar: AnimatedScalar,
-): ScalarKeyframe[] => (scalar.keyframes ?? [])
-	.map((keyframeId): ScalarKeyframe | null => {
-		const entity = registry.entitiesById[keyframeId]
-		if (!entity || entity.type !== 'keyframe') {
-			return null
-		}
+): ScalarKeyframe[] =>
+	(scalar.keyframes ?? [])
+		.map((keyframeId): ScalarKeyframe | null => {
+			const entity = registry.entitiesById[keyframeId];
+			if (!entity || entity.type !== "keyframe") {
+				return null;
+			}
 
-		const attrs = entity.attrs as unknown as KeyframeAttrs
-		if (!Number.isFinite(attrs.time) || !Number.isFinite(attrs.value)) {
-			return null
-		}
+			const attrs = entity.attrs as unknown as KeyframeAttrs;
+			if (!Number.isFinite(attrs.time) || !Number.isFinite(attrs.value)) {
+				return null;
+			}
 
-		const keyframe: ScalarKeyframe = { time: attrs.time, value: attrs.value }
-		if (attrs.interpolation !== undefined) {
-			keyframe.interpolation = attrs.interpolation
-		}
-		return keyframe
-	})
-	.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null)
+			const keyframe: ScalarKeyframe = { time: attrs.time, value: attrs.value };
+			if (attrs.interpolation !== undefined) {
+				keyframe.interpolation = attrs.interpolation;
+			}
+			return keyframe;
+		})
+		.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null);
 
 export const evaluateKeyframedScalar = (
 	scalar: KeyframedScalarInput,
 	time: number,
 	resolveKeyframe?: (id: EntityId) => ScalarKeyframe | null,
 ): number => {
-	const keyframes = scalar.keyframes
-		?.map((keyframe): ScalarKeyframe | null => {
-			if (isScalarKeyframe(keyframe)) {
-				return keyframe
-			}
+	const keyframes =
+		scalar.keyframes
+			?.map((keyframe): ScalarKeyframe | null => {
+				if (isScalarKeyframe(keyframe)) {
+					return keyframe;
+				}
 
-			return resolveKeyframe?.(keyframe) ?? null
-		})
-		.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null) ?? []
+				return resolveKeyframe?.(keyframe) ?? null;
+			})
+			.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null) ??
+		[];
 	if (keyframes.length === 0) {
-		return scalar.value
+		return scalar.value;
 	}
 
-	const sorted = [...keyframes].sort((a, b) => a.time - b.time)
+	const sorted = [...keyframes].sort((a, b) => a.time - b.time);
 	if (time <= sorted[0].time) {
-		return sorted[0].value
+		return sorted[0].value;
 	}
 
-	const last = sorted[sorted.length - 1]
+	const last = sorted[sorted.length - 1];
 	if (time >= last.time) {
-		return last.value
+		return last.value;
 	}
 
 	for (let index = 0; index < sorted.length - 1; index += 1) {
-		const from = sorted[index]
-		const to = sorted[index + 1]
+		const from = sorted[index];
+		const to = sorted[index + 1];
 		if (time >= from.time && time <= to.time) {
-			if (from.interpolation === 'hold' || from.time === to.time) {
-				return from.interpolation === 'hold' ? from.value : to.value
+			if (from.interpolation === "hold" || from.time === to.time) {
+				return from.interpolation === "hold" ? from.value : to.value;
 			}
 
-			return interpolateLinear(from.value, to.value, (time - from.time) / (to.time - from.time))
+			return interpolateLinear(
+				from.value,
+				to.value,
+				(time - from.time) / (to.time - from.time),
+			);
 		}
 	}
 
-	return scalar.value
-}
+	return scalar.value;
+};
 
 export const evaluateAnimatedScalar = (
 	registry: ProjectRenderGraph,
 	scalar: AnimatedScalar,
 	time: number,
-): number => evaluateKeyframedScalar(scalar, time, (keyframeId) => {
-	const entity = registry.entitiesById[keyframeId]
-	if (!entity || entity.type !== 'keyframe') {
-		return null
-	}
+): number =>
+	evaluateKeyframedScalar(scalar, time, (keyframeId) => {
+		const entity = registry.entitiesById[keyframeId];
+		if (!entity || entity.type !== "keyframe") {
+			return null;
+		}
 
-	const attrs = entity.attrs as unknown as KeyframeAttrs
-	return Number.isFinite(attrs.time) && Number.isFinite(attrs.value)
-		? { time: attrs.time, value: attrs.value, interpolation: attrs.interpolation }
-		: null
-})
+		const attrs = entity.attrs as unknown as KeyframeAttrs;
+		return Number.isFinite(attrs.time) && Number.isFinite(attrs.value)
+			? {
+					time: attrs.time,
+					value: attrs.value,
+					interpolation: attrs.interpolation,
+				}
+			: null;
+	});
 
 export const evaluateFadeOpacity = (
 	time: number,
@@ -109,17 +132,19 @@ export const evaluateFadeOpacity = (
 	fadeOutDuration = 0,
 ): number => {
 	if (time < clipStart || time >= clipStart + clipDuration) {
-		return 0
+		return 0;
 	}
 
-	const localTime = time - clipStart
-	const fadeInMultiplier = fadeInDuration > 0
-		? Math.min(1, Math.max(0, localTime / fadeInDuration))
-		: 1
-	const fadeOutStart = clipDuration - fadeOutDuration
-	const fadeOutMultiplier = fadeOutDuration > 0 && localTime > fadeOutStart
-		? Math.min(1, Math.max(0, (clipDuration - localTime) / fadeOutDuration))
-		: 1
+	const localTime = time - clipStart;
+	const fadeInMultiplier =
+		fadeInDuration > 0
+			? Math.min(1, Math.max(0, localTime / fadeInDuration))
+			: 1;
+	const fadeOutStart = clipDuration - fadeOutDuration;
+	const fadeOutMultiplier =
+		fadeOutDuration > 0 && localTime > fadeOutStart
+			? Math.min(1, Math.max(0, (clipDuration - localTime) / fadeOutDuration))
+			: 1;
 
-	return baseOpacity * Math.min(fadeInMultiplier, fadeOutMultiplier)
-}
+	return baseOpacity * Math.min(fadeInMultiplier, fadeOutMultiplier);
+};

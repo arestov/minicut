@@ -1,17 +1,17 @@
-import { useEffect } from 'react'
-import { useReactScopeRuntime } from './useReactScopeRuntime'
-import { useScope } from './useScope'
-import type { DefinedReactShape } from '../shape/defineShape'
+import { useEffect } from "react";
+import type { DefinedReactShape } from "../shape/defineShape";
+import { useReactScopeRuntime } from "./useReactScopeRuntime";
+import { useScope } from "./useScope";
 
 export const useShape = (shape: DefinedReactShape | null | undefined) => {
-  const runtime = useReactScopeRuntime()
-  const scope = useScope()
+	const runtime = useReactScopeRuntime();
+	const scope = useScope();
 
-  useEffect(() => {
-    if (!shape || !scope) {
-      return
-    }
+	useEffect(() => {
+		if (!shape || !scope) {
+			return;
+		}
 
-    return runtime.mountShape(scope, shape)
-  }, [runtime, scope, shape])
-}
+		return runtime.mountShape(scope, shape);
+	}, [runtime, scope, shape]);
+};

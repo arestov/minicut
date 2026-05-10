@@ -1,25 +1,25 @@
-import { One } from './One'
+import { One } from "./One";
 
 export const Path = ({
-  rels,
-  children,
-  fallback = null,
+	rels,
+	children,
+	fallback = null,
 }: {
-  rels: readonly string[]
-  children: React.ReactNode
-  fallback?: React.ReactNode
+	rels: readonly string[];
+	children: React.ReactNode;
+	fallback?: React.ReactNode;
 }) => {
-  if (!rels.length) {
-    return <>{children}</>
-  }
+	if (!rels.length) {
+		return <>{children}</>;
+	}
 
-  const [head, ...tail] = rels
+	const [head, ...tail] = rels;
 
-  return (
-    <One rel={head} fallback={fallback}>
-      <Path rels={tail} fallback={fallback}>
-        {children}
-      </Path>
-    </One>
-  )
-}
+	return (
+		<One rel={head} fallback={fallback}>
+			<Path rels={tail} fallback={fallback}>
+				{children}
+			</Path>
+		</One>
+	);
+};

@@ -1,124 +1,148 @@
-import { useEffect, useMemo } from 'react'
-import { VideoEditorProvider } from './VideoEditorContext'
-import { createVideoEditorHarness, type VideoEditorHarness } from './createVideoEditorHarness'
-import { createBrowserHarnessPlatform } from './platform'
-import { VideoEditorApp } from '../components/VideoEditorApp'
-import { DktEditorRoot } from '../ui/dkt/DktEditorRoot'
-import { createDefaultRtcConfig } from '../p2p/PageP2PManager'
-import { resolveRoomUrlState, type RoomUrlResolution } from './roomUrlState'
-import '../components/styles.css'
+import { useEffect, useMemo } from "react";
+import { VideoEditorApp } from "../components/VideoEditorApp";
+import { createDefaultRtcConfig } from "../p2p/PageP2PManager";
+import { DktEditorRoot } from "../ui/dkt/DktEditorRoot";
+import {
+	createVideoEditorHarness,
+	type VideoEditorHarness,
+} from "./createVideoEditorHarness";
+import { createBrowserHarnessPlatform } from "./platform";
+import { type RoomUrlResolution, resolveRoomUrlState } from "./roomUrlState";
+import { VideoEditorProvider } from "./VideoEditorContext";
+import "../components/styles.css";
 
 interface VideoEditorHarnessAppProps {
-	harness?: VideoEditorHarness
-	dktBootstrapOptions?: Parameters<NonNullable<VideoEditorHarness['pageRuntime']>['bootstrap']>[0] | null
+	harness?: VideoEditorHarness;
+	dktBootstrapOptions?:
+		| Parameters<NonNullable<VideoEditorHarness["pageRuntime"]>["bootstrap"]>[0]
+		| null;
 }
 
-const LAST_ROOM_STORAGE_KEY = 'minicut:last-room-id'
+const LAST_ROOM_STORAGE_KEY = "minicut:last-room-id";
 
 const normalizeList = (raw: string | null | undefined): string[] =>
-	String(raw ?? '')
-		.split(',')
+	String(raw ?? "")
+		.split(",")
 		.map((value) => value.trim())
-		.filter((value) => value.length > 0)
+		.filter((value) => value.length > 0);
 
 const resolveSignalUrl = (): string | null => {
-	if (typeof window === 'undefined') {
-		return null
+	if (typeof window === "undefined") {
+		return null;
 	}
 
-	const raw = new URLSearchParams(window.location.search).get('signalUrl')
+	const raw = new URLSearchParams(window.location.search).get("signalUrl");
 	if (!raw) {
-		const envSignalUrl = (import.meta.env as Record<string, unknown>).VITE_MINICUT_SIGNAL_URL
-		if (typeof envSignalUrl !== 'string' || envSignalUrl.length === 0) {
-			return null
+		const envSignalUrl = (import.meta.env as Record<string, unknown>)
+			.VITE_MINICUT_SIGNAL_URL;
+		if (typeof envSignalUrl !== "string" || envSignalUrl.length === 0) {
+			return null;
 		}
 
 		try {
-			return new URL(envSignalUrl, window.location.origin).toString().replace(/\/$/, '')
+			return new URL(envSignalUrl, window.location.origin)
+				.toString()
+				.replace(/\/$/, "");
 		} catch {
-			return null
+			return null;
 		}
 	}
 
 	try {
-		return new URL(raw, window.location.origin).toString().replace(/\/$/, '')
+		return new URL(raw, window.location.origin).toString().replace(/\/$/, "");
 	} catch {
-		return null
+		return null;
 	}
-}
+};
 
 const resolveTurnIceServer = (): RTCIceServer | null => {
-	if (typeof window === 'undefined') {
-		return null
+	if (typeof window === "undefined") {
+		return null;
 	}
 
-	const params = new URLSearchParams(window.location.search)
-	const env = import.meta.env as Record<string, unknown>
-	const queryUrls = params.getAll('turnUrl').flatMap((value) => normalizeList(value))
-	const envUrls = normalizeList(typeof env.VITE_MINICUT_TURN_URLS === 'string' ? env.VITE_MINICUT_TURN_URLS : undefined)
-	const urls = queryUrls.length > 0 ? queryUrls : envUrls
-	const username = params.get('turnUsername')
-		?? (typeof env.VITE_MINICUT_TURN_USERNAME === 'string' ? env.VITE_MINICUT_TURN_USERNAME : null)
-	const credential = params.get('turnCredential')
-		?? (typeof env.VITE_MINICUT_TURN_CREDENTIAL === 'string' ? env.VITE_MINICUT_TURN_CREDENTIAL : null)
+	const params = new URLSearchParams(window.location.search);
+	const env = import.meta.env as Record<string, unknown>;
+	const queryUrls = params
+		.getAll("turnUrl")
+		.flatMap((value) => normalizeList(value));
+	const envUrls = normalizeList(
+		typeof env.VITE_MINICUT_TURN_URLS === "string"
+			? env.VITE_MINICUT_TURN_URLS
+			: undefined,
+	);
+	const urls = queryUrls.length > 0 ? queryUrls : envUrls;
+	const username =
+		params.get("turnUsername") ??
+		(typeof env.VITE_MINICUT_TURN_USERNAME === "string"
+			? env.VITE_MINICUT_TURN_USERNAME
+			: null);
+	const credential =
+		params.get("turnCredential") ??
+		(typeof env.VITE_MINICUT_TURN_CREDENTIAL === "string"
+			? env.VITE_MINICUT_TURN_CREDENTIAL
+			: null);
 
 	if (urls.length === 0 || !username || !credential) {
-		return null
+		return null;
 	}
 
 	return {
 		urls: urls.length === 1 ? urls[0] : urls,
 		username,
 		credential,
-	}
-}
+	};
+};
 
 const resolveBrowserRoom = (): RoomUrlResolution | null => {
-	if (typeof window === 'undefined') {
-		return null
+	if (typeof window === "undefined") {
+		return null;
 	}
 
 	const resolved = resolveRoomUrlState({
 		hash: window.location.hash,
 		lastRoomId: window.localStorage.getItem(LAST_ROOM_STORAGE_KEY),
-	})
-	window.localStorage.setItem(LAST_ROOM_STORAGE_KEY, resolved.roomId)
+	});
+	window.localStorage.setItem(LAST_ROOM_STORAGE_KEY, resolved.roomId);
 	if (resolved.shouldReplace) {
-		window.history.replaceState(window.history.state, '', resolved.canonicalHash)
+		window.history.replaceState(
+			window.history.state,
+			"",
+			resolved.canonicalHash,
+		);
 	}
 
-	return resolved
-}
+	return resolved;
+};
 
 const resolveMediaTransferOptions = (): {
-	chunkSize?: number
-	chunkSendDelayMs?: number
-	headBytes?: number
-	tailBytes?: number
-	playheadWindowSeconds?: number
+	chunkSize?: number;
+	chunkSendDelayMs?: number;
+	headBytes?: number;
+	tailBytes?: number;
+	playheadWindowSeconds?: number;
 } => {
-	if (typeof window === 'undefined') {
-		return {}
+	if (typeof window === "undefined") {
+		return {};
 	}
 
-	const params = new URLSearchParams(window.location.search)
+	const params = new URLSearchParams(window.location.search);
 	const getNumber = (key: string): number | undefined => {
-		const raw = params.get(key)
+		const raw = params.get(key);
 		if (!raw) {
-			return undefined
+			return undefined;
 		}
-		const parsed = Number(raw)
-		return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
-	}
+		const parsed = Number(raw);
+		return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+	};
 
 	return {
-		chunkSize: getNumber('transferChunkSize'),
-		chunkSendDelayMs: getNumber('transferChunkDelayMs'),
-		headBytes: getNumber('transferHeadBytes'),
-		tailBytes: getNumber('transferTailBytes'),
-		playheadWindowSeconds: getNumber('transferPlayheadWindowSeconds'),
-	}
-}
+		chunkSize: getNumber("transferChunkSize"),
+		chunkSendDelayMs: getNumber("transferChunkDelayMs"),
+		headBytes: getNumber("transferHeadBytes"),
+		tailBytes: getNumber("transferTailBytes"),
+		playheadWindowSeconds: getNumber("transferPlayheadWindowSeconds"),
+	};
+};
 
 export const VideoEditorHarnessApp = ({
 	dktBootstrapOptions,
@@ -126,27 +150,31 @@ export const VideoEditorHarnessApp = ({
 }: VideoEditorHarnessAppProps) => {
 	const resolvedDktBootstrapOptions = useMemo(() => {
 		if (dktBootstrapOptions !== undefined) {
-			return dktBootstrapOptions
+			return dktBootstrapOptions;
 		}
 
-		const randomPart = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-			? crypto.randomUUID()
-			: Math.random().toString(36).slice(2)
-		return { sessionKey: `minicut-${randomPart}` }
-	}, [dktBootstrapOptions])
-	const resolvedRoom = useMemo(() => resolveBrowserRoom(), [])
-	const signalUrl = useMemo(() => resolveSignalUrl(), [])
-	const rtcConfig = useMemo(() => createDefaultRtcConfig(resolveTurnIceServer()), [])
-	const mediaTransferOptions = useMemo(() => resolveMediaTransferOptions(), [])
+		const randomPart =
+			typeof crypto !== "undefined" && "randomUUID" in crypto
+				? crypto.randomUUID()
+				: Math.random().toString(36).slice(2);
+		return { sessionKey: `minicut-${randomPart}` };
+	}, [dktBootstrapOptions]);
+	const resolvedRoom = useMemo(() => resolveBrowserRoom(), []);
+	const signalUrl = useMemo(() => resolveSignalUrl(), []);
+	const rtcConfig = useMemo(
+		() => createDefaultRtcConfig(resolveTurnIceServer()),
+		[],
+	);
+	const mediaTransferOptions = useMemo(() => resolveMediaTransferOptions(), []);
 	const ownedHarness = useMemo(() => {
 		if (providedHarness) {
-			return providedHarness
+			return providedHarness;
 		}
 
 		if (!resolvedRoom || !signalUrl) {
 			return createVideoEditorHarness(undefined, {
 				platform: createBrowserHarnessPlatform(),
-			})
+			});
 		}
 
 		const authorityOptions = {
@@ -155,59 +183,73 @@ export const VideoEditorHarnessApp = ({
 				signalUrl,
 				rtcConfig,
 				onSessionLost(reason: string) {
-					console.warn('[minicut:p2p] app observed session loss', {
+					console.warn("[minicut:p2p] app observed session loss", {
 						roomId: resolvedRoom.roomId,
 						reason,
-					})
+					});
 				},
 				onError(error: unknown) {
-					console.warn('[minicut:p2p] app observed p2p error', {
+					console.warn("[minicut:p2p] app observed p2p error", {
 						roomId: resolvedRoom.roomId,
 						error,
-					})
+					});
 				},
 			},
-		}
+		};
 
 		return createVideoEditorHarness(undefined, {
 			mediaTransferOptions,
 			platform: createBrowserHarnessPlatform({ authorityOptions }),
-		})
-	}, [mediaTransferOptions, providedHarness, resolvedRoom, rtcConfig, signalUrl])
+		});
+	}, [
+		mediaTransferOptions,
+		providedHarness,
+		resolvedRoom,
+		rtcConfig,
+		signalUrl,
+	]);
 
 	useEffect(() => {
-		if (typeof window === 'undefined') {
-			return
+		if (typeof window === "undefined") {
+			return;
 		}
 
-		const shouldInstallDebugBridge = import.meta.env.DEV || (window as typeof window & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean }).__MINICUT_ENABLE_DEBUG_BRIDGE__ === true
-		let cancelled = false
-		let cleanup: (() => void) | undefined
+		const shouldInstallDebugBridge =
+			import.meta.env.DEV ||
+			(window as typeof window & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean })
+				.__MINICUT_ENABLE_DEBUG_BRIDGE__ === true;
+		let cancelled = false;
+		let cleanup: (() => void) | undefined;
 
 		if (!shouldInstallDebugBridge) {
-			return
+			return;
 		}
 
-		void import('./testing/installMiniCutDebugBridge.testing').then(({ installMiniCutDebugBridgeTesting }) => {
-			if (cancelled) {
-				return
-			}
-			cleanup = installMiniCutDebugBridgeTesting(ownedHarness)
-		}).catch((error) => {
-			console.warn('[minicut] debug bridge installation failed', error)
-		})
+		void import("./testing/installMiniCutDebugBridge.testing")
+			.then(({ installMiniCutDebugBridgeTesting }) => {
+				if (cancelled) {
+					return;
+				}
+				cleanup = installMiniCutDebugBridgeTesting(ownedHarness);
+			})
+			.catch((error) => {
+				console.warn("[minicut] debug bridge installation failed", error);
+			});
 
 		return () => {
-			cancelled = true
-			cleanup?.()
-		}
-	}, [ownedHarness])
+			cancelled = true;
+			cleanup?.();
+		};
+	}, [ownedHarness]);
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>
-			<DktEditorRoot runtime={ownedHarness.pageRuntime} bootstrapOptions={resolvedDktBootstrapOptions}>
+			<DktEditorRoot
+				runtime={ownedHarness.pageRuntime}
+				bootstrapOptions={resolvedDktBootstrapOptions}
+			>
 				<VideoEditorApp />
 			</DktEditorRoot>
 		</VideoEditorProvider>
-	)
-}
+	);
+};

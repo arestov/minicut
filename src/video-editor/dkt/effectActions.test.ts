@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import { reduceEffectAmountAction, reduceEffectEnabledAction } from '../models/Effect/actions'
+import { describe, expect, it } from "vitest";
+import {
+	reduceEffectAmountAction,
+	reduceEffectEnabledAction,
+} from "../models/Effect/actions";
 
-describe('DKT effect actions', () => {
-	it('reduces concrete effect attrs', () => {
-		expect(reduceEffectAmountAction({ amount: 0.8 })).toEqual({ amount: 0.8 })
-		expect(reduceEffectEnabledAction({ enabled: false })).toEqual({ enabled: false })
-		expect(reduceEffectAmountAction(null)).toBeNull()
-	})
-})
+describe("DKT effect actions", () => {
+	it("reduces concrete effect attrs", () => {
+		expect(reduceEffectAmountAction({ amount: 0.8 })).toEqual({ amount: 0.8 });
+		expect(reduceEffectEnabledAction({ enabled: false })).toEqual({
+			enabled: false,
+		});
+		expect(reduceEffectAmountAction(null)).toBeNull();
+	});
+});

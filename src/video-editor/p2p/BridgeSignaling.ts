@@ -1,203 +1,216 @@
-import type { SignalMessage } from './types'
+import type { SignalMessage } from "./types";
 
 export interface BridgeSignalingEvents {
-	onMemberJoined(peerId: string, joinedAt: number): void
-	onMemberLeft(peerId: string): void
-	onSignal(msg: SignalMessage): void
-	onLeaderAssigned(leaderPeerId: string, epoch: number): void
-	onConnected(): void
-	onError(error: unknown): void
+	onMemberJoined(peerId: string, joinedAt: number): void;
+	onMemberLeft(peerId: string): void;
+	onSignal(msg: SignalMessage): void;
+	onLeaderAssigned(leaderPeerId: string, epoch: number): void;
+	onConnected(): void;
+	onError(error: unknown): void;
 }
 
 export interface BridgeSignaling {
-	sendSignal(msg: SignalMessage): void
-	sendBye?(): void
-	destroy(): void
+	sendSignal(msg: SignalMessage): void;
+	sendBye?(): void;
+	destroy(): void;
 }
 
 export type BridgeSignalingFactory = (params: {
-	roomId: string
-	peerId: string
-	joinedAt: number
-	events: BridgeSignalingEvents
-}) => BridgeSignaling
+	roomId: string;
+	peerId: string;
+	joinedAt: number;
+	events: BridgeSignalingEvents;
+}) => BridgeSignaling;
 
-const MAX_CONNECT_RETRIES = 3
-const RETRY_BASE_MS = 250
-const HEARTBEAT_INTERVAL_MS = 15_000
+const MAX_CONNECT_RETRIES = 3;
+const RETRY_BASE_MS = 250;
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
-	value && typeof value === 'object' ? value as Record<string, unknown> : null
+	value && typeof value === "object"
+		? (value as Record<string, unknown>)
+		: null;
 
-export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFactory => {
+export const createDoSignalingFactory = (
+	signalUrl: string,
+): BridgeSignalingFactory => {
 	return ({ roomId, peerId, events }) => {
-		let destroyed = false
-		const knownPeers = new Set<string>()
-		let connected = false
-		let connectedNotified = false
-		let lastLeaderEpoch = -1
-		let retryCount = 0
-		let retryTimer: ReturnType<typeof setTimeout> | null = null
-		let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+		let destroyed = false;
+		const knownPeers = new Set<string>();
+		let connected = false;
+		let connectedNotified = false;
+		let lastLeaderEpoch = -1;
+		let retryCount = 0;
+		let retryTimer: ReturnType<typeof setTimeout> | null = null;
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
-		const wsUrl = signalUrl.includes('/api/signal/')
+		const wsUrl = signalUrl.includes("/api/signal/")
 			? signalUrl
-			: `${signalUrl.replace(/\/$/, '')}/api/signal/${encodeURIComponent(roomId)}`
+			: `${signalUrl.replace(/\/$/, "")}/api/signal/${encodeURIComponent(roomId)}`;
 
-		let ws: WebSocket | null = null
+		let ws: WebSocket | null = null;
 
-		const notifyLeaderAssigned = (leaderPeerId: unknown, epoch: unknown): void => {
-			if (typeof leaderPeerId !== 'string' || leaderPeerId.length === 0) {
-				return
+		const notifyLeaderAssigned = (
+			leaderPeerId: unknown,
+			epoch: unknown,
+		): void => {
+			if (typeof leaderPeerId !== "string" || leaderPeerId.length === 0) {
+				return;
 			}
 
-			const nextEpoch = Number(epoch)
+			const nextEpoch = Number(epoch);
 			if (!Number.isFinite(nextEpoch)) {
-				return
+				return;
 			}
 
 			if (nextEpoch < lastLeaderEpoch) {
-				return
+				return;
 			}
 
-			lastLeaderEpoch = nextEpoch
-			events.onLeaderAssigned(leaderPeerId, nextEpoch)
-		}
+			lastLeaderEpoch = nextEpoch;
+			events.onLeaderAssigned(leaderPeerId, nextEpoch);
+		};
 
 		const reconnect = (): void => {
 			if (destroyed) {
-				return
+				return;
 			}
 
-			console.warn('[minicut:signal] reconnecting WebSocket signaling', {
+			console.warn("[minicut:signal] reconnecting WebSocket signaling", {
 				roomId,
 				peerId,
 				retryCount,
-			})
-			stopHeartbeat()
+			});
+			stopHeartbeat();
 			try {
-				ws?.close()
+				ws?.close();
 			} catch {
 				// noop
 			}
 
-			ws = null
-			connected = false
-			scheduleRetry()
-		}
+			ws = null;
+			connected = false;
+			scheduleRetry();
+		};
 
 		const scheduleRetry = (): void => {
 			if (destroyed || retryCount >= MAX_CONNECT_RETRIES) {
-				console.warn('[minicut:signal] WebSocket signaling exhausted retries', {
+				console.warn("[minicut:signal] WebSocket signaling exhausted retries", {
 					roomId,
 					peerId,
-				})
-				events.onError(new Error('WebSocket signaling error'))
-				return
+				});
+				events.onError(new Error("WebSocket signaling error"));
+				return;
 			}
 
-			const delay = RETRY_BASE_MS * 2 ** retryCount
-			retryCount += 1
-			retryTimer = setTimeout(connect, delay)
-		}
+			const delay = RETRY_BASE_MS * 2 ** retryCount;
+			retryCount += 1;
+			retryTimer = setTimeout(connect, delay);
+		};
 
 		const stopHeartbeat = (): void => {
 			if (!heartbeatTimer) {
-				return
+				return;
 			}
 
-			clearInterval(heartbeatTimer)
-			heartbeatTimer = null
-		}
+			clearInterval(heartbeatTimer);
+			heartbeatTimer = null;
+		};
 
 		const startHeartbeat = (): void => {
-			stopHeartbeat()
+			stopHeartbeat();
 			heartbeatTimer = setInterval(() => {
 				if (destroyed || !ws || ws.readyState !== WebSocket.OPEN) {
-					return
+					return;
 				}
 
-				ws.send(JSON.stringify({
-					type: 'ping',
-					roomId,
-					peerId,
-					ts: Date.now(),
-				}))
-			}, HEARTBEAT_INTERVAL_MS)
-		}
+				ws.send(
+					JSON.stringify({
+						type: "ping",
+						roomId,
+						peerId,
+						ts: Date.now(),
+					}),
+				);
+			}, HEARTBEAT_INTERVAL_MS);
+		};
 
 		const onMessage = (event: MessageEvent): void => {
 			if (destroyed) {
-				return
+				return;
 			}
 
-			let payload: unknown
+			let payload: unknown;
 			try {
-				payload = JSON.parse(String(event.data))
+				payload = JSON.parse(String(event.data));
 			} catch {
-				return
+				return;
 			}
 
-			const msg = asRecord(payload)
+			const msg = asRecord(payload);
 			if (!msg) {
-				return
+				return;
 			}
 
 			switch (msg.type) {
-				case 'room-state': {
-					if (typeof msg.roomId === 'string' && msg.roomId !== roomId) {
-						return
+				case "room-state": {
+					if (typeof msg.roomId === "string" && msg.roomId !== roomId) {
+						return;
 					}
 
-					const peers = Array.isArray(msg.peers) ? msg.peers.filter((value): value is string => typeof value === 'string') : []
-					const newPeers = new Set(peers.filter((id) => id !== peerId))
+					const peers = Array.isArray(msg.peers)
+						? msg.peers.filter(
+								(value): value is string => typeof value === "string",
+							)
+						: [];
+					const newPeers = new Set(peers.filter((id) => id !== peerId));
 					for (const knownPeer of knownPeers) {
 						if (!newPeers.has(knownPeer)) {
-							knownPeers.delete(knownPeer)
-							events.onMemberLeft(knownPeer)
+							knownPeers.delete(knownPeer);
+							events.onMemberLeft(knownPeer);
 						}
 					}
 					for (const nextPeer of newPeers) {
 						if (!knownPeers.has(nextPeer)) {
-							knownPeers.add(nextPeer)
-							events.onMemberJoined(nextPeer, 0)
+							knownPeers.add(nextPeer);
+							events.onMemberJoined(nextPeer, 0);
 						}
 					}
 
-					connected = true
-					retryCount = 0
-					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
+					connected = true;
+					retryCount = 0;
+					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch);
 					if (!connectedNotified) {
-						connectedNotified = true
-						events.onConnected()
+						connectedNotified = true;
+						events.onConnected();
 					}
-					break
+					break;
 				}
 
-				case 'leader-changed': {
-					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch)
-					break
+				case "leader-changed": {
+					notifyLeaderAssigned(msg.leaderPeerId, msg.epoch);
+					break;
 				}
 
-				case 'pong':
-					break
+				case "pong":
+					break;
 
-				case 'offer':
-				case 'answer':
-				case 'ice-candidate':
-				case 'server-leaving': {
-					if (typeof msg.roomId === 'string' && msg.roomId !== roomId) {
-						return
+				case "offer":
+				case "answer":
+				case "ice-candidate":
+				case "server-leaving": {
+					if (typeof msg.roomId === "string" && msg.roomId !== roomId) {
+						return;
 					}
 
-					const from = String(msg.from ?? '')
+					const from = String(msg.from ?? "");
 					if (!from || from === peerId) {
-						return
+						return;
 					}
 
-					const to = typeof msg.to === 'string' ? msg.to : undefined
+					const to = typeof msg.to === "string" ? msg.to : undefined;
 					if (to && to !== peerId) {
-						return
+						return;
 					}
 
 					events.onSignal({
@@ -207,65 +220,67 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 						toPeerId: to,
 						ts: Number(msg.ts ?? Date.now()),
 						...(msg.sdp ? { sdp: msg.sdp as RTCSessionDescriptionInit } : {}),
-						...(msg.candidate ? { candidate: msg.candidate as RTCIceCandidateInit } : {}),
-					} as SignalMessage)
-					break
+						...(msg.candidate
+							? { candidate: msg.candidate as RTCIceCandidateInit }
+							: {}),
+					} as SignalMessage);
+					break;
 				}
 			}
-		}
+		};
 
 		const onError = (): void => {
 			if (destroyed) {
-				return
+				return;
 			}
 
-			reconnect()
-		}
+			reconnect();
+		};
 
 		const onClose = (): void => {
 			if (destroyed) {
-				return
+				return;
 			}
 
 			if (!ws) {
-				return
+				return;
 			}
 
-			reconnect()
-		}
+			reconnect();
+		};
 
 		const connect = (): void => {
 			if (destroyed) {
-				return
+				return;
 			}
-			ws = new WebSocket(wsUrl)
+			ws = new WebSocket(wsUrl);
 			ws.onopen = () => {
 				if (destroyed || !ws) {
-					return
+					return;
 				}
 
-				console.info('[minicut:signal] WebSocket signaling connected', {
+				console.info("[minicut:signal] WebSocket signaling connected", {
 					roomId,
 					peerId,
 					url: wsUrl,
-				})
-				startHeartbeat()
-				ws.send(JSON.stringify({ type: 'join', roomId, peerId }))
-			}
-			ws.onmessage = onMessage
-			ws.onerror = onError
-			ws.onclose = onClose
-		}
+				});
+				startHeartbeat();
+				ws.send(JSON.stringify({ type: "join", roomId, peerId }));
+			};
+			ws.onmessage = onMessage;
+			ws.onerror = onError;
+			ws.onclose = onClose;
+		};
 
-		connect()
+		connect();
 
 		const sendToServer = (payload: Record<string, unknown>): void => {
 			if (!ws || ws.readyState !== WebSocket.OPEN) {
-				return
+				return;
 			}
 
-			ws.send(JSON.stringify(payload))
-		}
+			ws.send(JSON.stringify(payload));
+		};
 
 		return {
 			sendSignal(msg: SignalMessage) {
@@ -275,129 +290,140 @@ export const createDoSignalingFactory = (signalUrl: string): BridgeSignalingFact
 					epoch: lastLeaderEpoch >= 0 ? lastLeaderEpoch : 0,
 					from: peerId,
 					to: msg.toPeerId,
-					...(msg.kind === 'offer' || msg.kind === 'answer' ? { sdp: msg.sdp } : {}),
-					...(msg.kind === 'ice-candidate' ? { candidate: msg.candidate } : {}),
+					...(msg.kind === "offer" || msg.kind === "answer"
+						? { sdp: msg.sdp }
+						: {}),
+					...(msg.kind === "ice-candidate" ? { candidate: msg.candidate } : {}),
 					ts: msg.ts,
-				})
+				});
 			},
 
 			sendBye() {
-				sendToServer({ type: 'bye', roomId, peerId })
+				sendToServer({ type: "bye", roomId, peerId });
 			},
 
 			destroy() {
 				if (destroyed) {
-					return
+					return;
 				}
 
-				destroyed = true
+				destroyed = true;
 				if (retryTimer) {
-					clearTimeout(retryTimer)
-					retryTimer = null
+					clearTimeout(retryTimer);
+					retryTimer = null;
 				}
-				stopHeartbeat()
-				ws?.close()
-				ws = null
+				stopHeartbeat();
+				ws?.close();
+				ws = null;
 			},
-		}
-	}
-}
+		};
+	};
+};
 
-export const createWsSignalingFactory = (signalUrl: string): BridgeSignalingFactory => {
+export const createWsSignalingFactory = (
+	signalUrl: string,
+): BridgeSignalingFactory => {
 	return ({ roomId, peerId, joinedAt, events }) => {
-		let destroyed = false
-		let ws: WebSocket | null = new WebSocket(signalUrl)
+		let destroyed = false;
+		let ws: WebSocket | null = new WebSocket(signalUrl);
 
 		const sendSignal = (data: SignalMessage): void => {
 			if (!ws || ws.readyState !== WebSocket.OPEN) {
-				return
+				return;
 			}
 
-			ws.send(JSON.stringify({ action: 'signal', data }))
-		}
+			ws.send(JSON.stringify({ action: "signal", data }));
+		};
 
 		ws.onopen = () => {
 			if (destroyed || !ws) {
-				return
+				return;
 			}
 
-			ws.send(JSON.stringify({ action: 'join', roomId, peerId, joinedAt }))
-			events.onConnected()
-		}
+			ws.send(JSON.stringify({ action: "join", roomId, peerId, joinedAt }));
+			events.onConnected();
+		};
 
 		ws.onmessage = (event) => {
 			if (destroyed) {
-				return
+				return;
 			}
 
-			let payload: unknown
+			let payload: unknown;
 			try {
-				payload = JSON.parse(String(event.data))
+				payload = JSON.parse(String(event.data));
 			} catch {
-				return
+				return;
 			}
 
-			const msg = asRecord(payload)
-			if (!msg || typeof msg.action !== 'string') {
-				return
+			const msg = asRecord(payload);
+			if (!msg || typeof msg.action !== "string") {
+				return;
 			}
 
 			switch (msg.action) {
-				case 'members': {
-					const members = Array.isArray(msg.members) ? msg.members : []
+				case "members": {
+					const members = Array.isArray(msg.members) ? msg.members : [];
 					for (const member of members) {
-						const item = asRecord(member)
-						if (!item || typeof item.peerId !== 'string') {
-							continue
+						const item = asRecord(member);
+						if (!item || typeof item.peerId !== "string") {
+							continue;
 						}
 
-						events.onMemberJoined(item.peerId, Number(item.joinedAt ?? 0))
+						events.onMemberJoined(item.peerId, Number(item.joinedAt ?? 0));
 					}
-					break
+					break;
 				}
 
-				case 'member-joined': {
-					events.onMemberJoined(String(msg.peerId ?? ''), Number(msg.joinedAt ?? 0))
-					break
+				case "member-joined": {
+					events.onMemberJoined(
+						String(msg.peerId ?? ""),
+						Number(msg.joinedAt ?? 0),
+					);
+					break;
 				}
 
-				case 'member-left': {
-					events.onMemberLeft(String(msg.peerId ?? ''))
-					break
+				case "member-left": {
+					events.onMemberLeft(String(msg.peerId ?? ""));
+					break;
 				}
 
-				case 'signal': {
-					const signal = msg.data as SignalMessage
-					if (!signal || signal.fromPeerId === peerId || (signal.toPeerId && signal.toPeerId !== peerId)) {
-						return
+				case "signal": {
+					const signal = msg.data as SignalMessage;
+					if (
+						!signal ||
+						signal.fromPeerId === peerId ||
+						(signal.toPeerId && signal.toPeerId !== peerId)
+					) {
+						return;
 					}
 
-					events.onSignal(signal)
-					break
+					events.onSignal(signal);
+					break;
 				}
 			}
-		}
+		};
 
 		ws.onerror = () => {
 			if (destroyed) {
-				return
+				return;
 			}
 
-			events.onError(new Error('WebSocket signaling error'))
-		}
+			events.onError(new Error("WebSocket signaling error"));
+		};
 
 		return {
 			sendSignal,
 
 			destroy() {
 				if (destroyed) {
-					return
+					return;
 				}
 
-				destroyed = true
-				ws?.close()
-				ws = null
+				destroyed = true;
+				ws?.close();
+				ws = null;
 			},
-		}
-	}
-}
+		};
+	};
+};
