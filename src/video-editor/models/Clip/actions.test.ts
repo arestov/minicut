@@ -6,12 +6,10 @@ const modelRef = (_node_id: string) => ({ _node_id })
 describe('Clip model structural actions', () => {
 	it('normalizes effect creation attrs', () => {
 		expect(normalizeEffectCreationAttrs({
-			sourceEffectId: 'effect:blur',
 			name: 'Blur',
 			kind: 'blur',
 			amount: 0.2,
 		})).toMatchObject({
-			sourceEffectId: 'effect:blur',
 			name: 'Blur',
 			kind: 'blur',
 			amount: 0.2,

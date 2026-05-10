@@ -399,8 +399,7 @@ export const createVideoEditorHarness = (
 			disposeProjectImportState()
 
 			const syncImportState = () => {
-				const attrs = pageRuntime.readAttrs(activeProjectScope, ['sourceProjectId', 'activeImportTaskId', 'importProgress']) as {
-					sourceProjectId?: unknown
+				const attrs = pageRuntime.readAttrs(activeProjectScope, ['activeImportTaskId', 'importProgress']) as {
 					activeImportTaskId?: unknown
 					importProgress?: { stage?: unknown } | null
 				}
@@ -412,15 +411,15 @@ export const createVideoEditorHarness = (
 					return
 				}
 				startImportFilesTask({
-					projectId: typeof attrs.sourceProjectId === 'string' && attrs.sourceProjectId
-						? attrs.sourceProjectId
+					projectId: typeof activeProjectScope._nodeId === 'string' && activeProjectScope._nodeId
+						? activeProjectScope._nodeId
 						: 'active-project',
 					inputBatchHandleId: attrs.activeImportTaskId,
 					addToTimelineWhenEmpty: true,
 				})
 			}
 
-			const unsubscribe = pageRuntime.subscribeAttrs(activeProjectScope, ['sourceProjectId', 'activeImportTaskId', 'importProgress'], syncImportState)
+			const unsubscribe = pageRuntime.subscribeAttrs(activeProjectScope, ['activeImportTaskId', 'importProgress'], syncImportState)
 			disposeProjectImportState = () => {
 				unsubscribe()
 			}

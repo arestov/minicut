@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import { Check, ChevronDown, Plus } from 'lucide-react'
 import { One } from '../../dkt-react-sync/components/One'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
@@ -13,16 +13,16 @@ interface ProjectItemProps {
 }
 
 interface ProjectAttrs {
-	sourceProjectId?: unknown
 	title?: unknown
 	updatedAt?: unknown
 }
 
 const ProjectItem = ({ activeProjectId, onSelect }: ProjectItemProps) => {
 	const { actions } = useVideoEditor()
-	const projectAttrs = useAttrs(['sourceProjectId', 'title', 'updatedAt']) as ProjectAttrs
+	const projectAttrs = useAttrs(['title', 'updatedAt']) as ProjectAttrs
 	const resources = useMany('resources')
-	const projectId = typeof projectAttrs.sourceProjectId === 'string' ? projectAttrs.sourceProjectId : null
+	const projectScopes = useMany('$self')
+	const projectId = projectScopes[0]?._nodeId ?? null
 	const projectTitle = String(projectAttrs.title ?? 'Project')
 	const projectVersion = Number(projectAttrs.updatedAt ?? 1) || 1
 	const isActive = projectId === activeProjectId
@@ -168,3 +168,4 @@ export const ProjectDropdown = () => {
 		</div>
 	)
 }
+

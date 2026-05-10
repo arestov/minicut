@@ -40,12 +40,12 @@ export const EditorSessionRoot = model({
 		previewFrame: ['comp', ['previewStructure', 'cursor', 'previewBuffer', 'isPlaying'] as const,
 			reducePreviewFrame],
 		selectedClipSummary: ['comp', [
-			'< @one:sourceClipId < selectedClip',
+			'< @one:_node_id < selectedClip',
 			'< @one:color < selectedClip',
 			'< @one:name < selectedClip',
 			'< @one:name < selectedClip.track',
-		] as const, (sourceClipId: unknown, color: unknown, clipName: unknown, trackName: unknown) => {
-			if (typeof sourceClipId !== 'string' || !sourceClipId) return null
+		] as const, (clipId: unknown, color: unknown, clipName: unknown, trackName: unknown) => {
+			if (typeof clipId !== 'string' || !clipId) return null
 			return {
 				color: typeof color === 'string' && color ? color : '#2563eb',
 				resourceName: typeof clipName === 'string' && clipName ? clipName : 'Clip',
@@ -126,7 +126,6 @@ export const EditorSessionRoot = model({
 		selectedTrack: ['input', { linking: '<< track << #' }],
 		selectedClip: ['comp', [
 			'<< @all:activeProject.tracks.clips',
-			'< @all:sourceClipId < activeProject.tracks.clips',
 			'selectedEntityId',
 		] as const, reduceSelectedClip, { linking: '<< clip << #' }],
 		selectedResource: ['input', { linking: '<< resource << #' }],

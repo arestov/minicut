@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from 'react'
+import { useContext, useRef, useState } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useActions } from '../../dkt-react-sync/hooks/useActions'
 import { useAttrs } from '../../dkt-react-sync/hooks/useAttrs'
@@ -25,7 +25,6 @@ interface ClipItemProps {
 }
 
 interface ClipRenderAttrs {
-	sourceClipId?: unknown
 	name?: unknown
 	start?: unknown
 	duration?: unknown
@@ -47,9 +46,10 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0)
 	const dispatch = useActions()
 	const sessionDispatch = useRootDispatch()
-	const clipAttrs = useAttrs(['sourceClipId', 'name', 'start', 'duration', 'in', 'opacity', 'color']) as ClipRenderAttrs
+	const scope = useContext(ScopeContext)
+	const clipAttrs = useAttrs(['name', 'start', 'duration', 'in', 'opacity', 'color']) as ClipRenderAttrs
 	const effectScopes = useMany('effects')
-	const clipId = typeof clipAttrs.sourceClipId === 'string' ? clipAttrs.sourceClipId : null
+	const clipId = typeof scope?._nodeId === 'string' ? scope._nodeId : null
 
 	// Skeleton guard: start/duration arrive slightly after the clip node appears
 	// in the track's clips relation (worker streams structure before attrs).
@@ -232,4 +232,5 @@ export const ClipItem = ({ timelineZoom, activeTool, selectedEntityId }: ClipIte
 		</button>
 	)
 }
+
 

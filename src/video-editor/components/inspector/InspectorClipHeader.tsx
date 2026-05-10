@@ -38,7 +38,7 @@ const ResourcePreview = ({ color, name }: { color: string; name: string }) => {
 
 export const InspectorClipHeader = ({ trackPosition }: { trackPosition: { trackName: string; ordinal: number } | null }) => {
 	const dispatch = useActions()
-	const attrs = useAttrs(['sourceClipId', 'name', 'color', 'start', 'duration']) as ClipRenderAttrs & { sourceClipId?: unknown }
+	const attrs = useAttrs(['name', 'color', 'start', 'duration']) as ClipRenderAttrs
 	const resourceScope = useOne('resource')
 	const name = String(attrs.name)
 	const color = String(attrs.color ?? '#2563eb')
@@ -71,3 +71,4 @@ export const InspectorClipHeader = ({ trackPosition }: { trackPosition: { trackN
 		</div>
 	)
 }
+

@@ -4,8 +4,6 @@ import type { VideoEditorHarnessActions } from './actionRuntimeTypes'
 
 let exportSequence = 0
 
-const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
-
 const getRootScope = (env: EditorActionEnvironment): ReactSyncScopeHandle | null => env.pageRuntime?.getRootScope() ?? null
 
 const getRootNodeId = (env: EditorActionEnvironment): string | null => {
@@ -28,18 +26,13 @@ export const createEditorHarnessAdapter = (
 			dispatchRoot(env, 'setActiveProject', projectId)
 		},
 		addTextClip(content?: string): void {
-			const sourceTextId = createSourceId('text')
-			const sourceClipId = createSourceId('clip')
 			dispatchRoot(env, 'addTextClipToTimeline', {
-				sourceClipId,
-				sourceTextId,
 				name: 'Text',
 				mediaKind: 'text',
 				start: 0,
 				in: 0,
 				duration: 3,
 				text: {
-					sourceTextId,
 					content: typeof content === 'string' && content ? content : 'Text',
 				},
 			})

@@ -1,5 +1,4 @@
 export type MiniCutDktProjectSeed = {
-	sourceProjectId: string
 	title?: string
 	fps?: number
 	width?: number
@@ -12,7 +11,6 @@ export type MiniCutDktProjectSeed = {
 }
 
 export type MiniCutDktTrackSeed = {
-	sourceTrackId: string
 	kind?: 'video' | 'audio'
 	name?: string
 	muted?: boolean
@@ -21,8 +19,6 @@ export type MiniCutDktTrackSeed = {
 }
 
 export type MiniCutDktResourceSeed = {
-	sourceResourceId: string
-	sourceProjectId?: string | null
 	name?: string
 	kind?: string
 	url?: string
@@ -37,10 +33,8 @@ export type MiniCutDktResourceSeed = {
 }
 
 export type MiniCutDktClipSeed = {
-	sourceClipId: string
-	sourceResourceId?: string | null
-	sourceResourceName?: string | null
-	sourceTextId?: string | null
+	resourceId?: string | null
+	textId?: string | null
 	name?: string
 	color?: string
 	mediaKind?: string
@@ -60,14 +54,12 @@ export type MiniCutDktClipSeed = {
 }
 
 export type MiniCutDktTextSeed = {
-	sourceTextId: string
 	content?: string
 	style?: Record<string, unknown>
 	box?: Record<string, unknown>
 }
 
 export type MiniCutDktEffectSeed = {
-	sourceEffectId: string
 	name?: string
 	kind?: string
 	enabled?: boolean

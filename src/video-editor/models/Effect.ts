@@ -21,7 +21,6 @@ const _asBool = (v: unknown): boolean => v !== false
 export const Effect = model({
 	model_name: 'minicut_effect',
 	attrs: {
-		sourceEffectId: ['input', null],
 		renderInstruction: ['comp', ['kind', 'name', 'enabled', 'amount', 'params', 'color'] as const,
 			(kind: unknown, name: unknown, enabled: unknown, amount: unknown, params: unknown, color: unknown): EffectRenderInstruction => ({
 				kind: _asStr(kind, 'blur') as EffectRenderInstruction['kind'],
@@ -95,7 +94,7 @@ export const Effect = model({
 })
 
 export const EFFECT_CREATION_SHAPE = {
-	attrs: ['sourceEffectId', 'name', 'kind', 'enabled', 'amount', 'params', 'color'],
+	attrs: ['name', 'kind', 'enabled', 'amount', 'params', 'color'],
 	rels: {
 		clip: {},
 	},

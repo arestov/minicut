@@ -1,4 +1,4 @@
-﻿import { Gauge, Move, Scissors, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react'
+import { Gauge, Move, Scissors, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useActions } from '../../../dkt-react-sync/hooks/useActions'
@@ -20,8 +20,8 @@ import { getTextAttrs } from './types'
 
 const EffectEntry = ({ onRemove }: { onRemove: (effectId: string) => void }) => {
 	const effectScope = useScope()
-	const attrs = useAttrs(['sourceEffectId', 'name', 'kind']) as { sourceEffectId?: unknown; name?: unknown; kind?: unknown }
-	const effectId = effectScope?._nodeId ?? (typeof attrs.sourceEffectId === 'string' ? attrs.sourceEffectId : null)
+	const attrs = useAttrs(['name', 'kind']) as { name?: unknown; kind?: unknown }
+	const effectId = effectScope?._nodeId ?? null
 	const name = String(attrs.name)
 	const kind = String(attrs.kind)
 
@@ -48,7 +48,7 @@ const TransformFields = ({ transform, onChange }: {
 const TextEditorSection = ({ clipColor, mediaElementRegistry }: { clipColor: string; mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const dispatch = useActions()
 	const [paletteStatus, setPaletteStatus] = useState<FramePaletteStatus>('idle')
-	const textAttrs = useAttrs(['sourceTextId', 'content', 'style', 'box']) as TextRenderAttrs & { sourceTextId?: unknown }
+	const textAttrs = useAttrs(['content', 'style', 'box']) as TextRenderAttrs
 	const text = getTextAttrs(textAttrs)
 
 	if (!text) {
@@ -87,7 +87,7 @@ const TextEditorSection = ({ clipColor, mediaElementRegistry }: { clipColor: str
 export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRegistry?: PreviewMediaElementRegistry }) => {
 	const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
 	const clipDispatch = useActions()
-	const attrs = useAttrs(['sourceClipId', 'opacity', 'in', 'fadeIn', 'fadeOut', 'duration', 'start', 'transform', 'color']) as ClipRenderAttrs & { sourceClipId?: unknown }
+	const attrs = useAttrs(['opacity', 'in', 'fadeIn', 'fadeOut', 'duration', 'start', 'transform', 'color']) as ClipRenderAttrs
 	const textScope = useOne('text')
 	const effectScopes = useMany('effects')
 	const opacity = Number(attrs.opacity?.value ?? 1)
@@ -170,4 +170,5 @@ export const InspectorEditTabPanel = ({ mediaElementRegistry }: { mediaElementRe
 		</div>
 	)
 }
+
 

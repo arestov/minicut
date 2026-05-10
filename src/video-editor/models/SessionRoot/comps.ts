@@ -28,12 +28,9 @@ export const reducePreviewFrame = (
 	)
 }
 
-export const reduceSelectedClip = (clips: unknown, sourceClipIds: unknown, selectedEntityId: unknown) => {
+export const reduceSelectedClip = (clips: unknown, selectedEntityId: unknown) => {
 	if (typeof selectedEntityId !== 'string' || !selectedEntityId) return null
 	const modelList = Array.isArray(clips) ? clips : []
-	const idList = Array.isArray(sourceClipIds) ? sourceClipIds : []
-	const index = idList.indexOf(selectedEntityId)
-	if (index !== -1 && modelList[index]) return modelList[index]
 
 	for (const clipModel of modelList) {
 		if (!clipModel || typeof clipModel !== 'object') {

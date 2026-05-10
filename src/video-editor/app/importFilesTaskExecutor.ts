@@ -2,8 +2,6 @@ import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandl
 import type { EditorActionEnvironment } from './editorActionEnvironment'
 import type { RuntimeTaskDescriptor } from './runtimeTaskFacade'
 
-const createSourceId = (prefix: string): string => `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
-
 const isFileLike = (value: unknown): value is File =>
 	Boolean(
 		value
@@ -37,6 +35,25 @@ const dispatchImportProgress = (
 	payload: { taskId: string; stage: 'processing' | 'done' | 'error'; processed: number; total: number; error?: string },
 ): void => {
 	env.dkt?.dispatch('setImportProgress', payload, projectScope)
+}
+
+const resolveImportedResourceNodeId = (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+	url: string,
+): string | null => {
+	const resourceScopes = env.pageRuntime?.readMany(projectScope, 'resources')
+	if (!Array.isArray(resourceScopes)) {
+		return null
+	}
+	for (let index = resourceScopes.length - 1; index >= 0; index -= 1) {
+		const scope = resourceScopes[index]
+		const attrs = env.pageRuntime?.readAttrs(scope, ['url']) as { url?: unknown } | undefined
+		if (attrs?.url === url && typeof scope?._nodeId === 'string') {
+			return scope._nodeId
+		}
+	}
+	return null
 }
 
 export const executeImportFilesTask = async ({
@@ -111,11 +128,9 @@ export const executeImportFilesTask = async ({
 				duration = 0
 			}
 
-			const sourceResourceId = createSourceId('resource')
 			const mime = file.type || 'application/octet-stream'
 
 			env.dkt.dispatch('importResource', {
-				sourceResourceId,
 				name: file.name,
 				kind,
 				url: objectUrl,
@@ -137,7 +152,19 @@ export const executeImportFilesTask = async ({
 			}, projectScope)
 			await env.pageRuntime?.waitForRuntimeSettled?.()
 
-			env.transfers.manager.registerLocalResource(sourceResourceId, file, {
+			const resourceId = resolveImportedResourceNodeId(env, projectScope, objectUrl)
+			if (!resourceId) {
+				processed += 1
+				dispatchImportProgress(env, projectScope, {
+					taskId: inputBatchHandleId,
+					stage: 'processing',
+					processed,
+					total: fileList.length,
+				})
+				continue
+			}
+
+			env.transfers.manager.registerLocalResource(resourceId, file, {
 				objectUrl,
 				kind,
 				mime,

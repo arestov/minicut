@@ -20,7 +20,6 @@ type SessionStateFields = {
 }
 
 type CreateProjectPayload = {
-	sourceProjectId?: unknown
 	title?: unknown
 	fps?: unknown
 	width?: unknown
@@ -213,14 +212,8 @@ type ImportFilesFxPayload = {
 
 const normalizeInitialTrack = (value: unknown) => {
 	const track = asObject(value)
-	const sourceTrackId = asString(track?.sourceTrackId)
-	if (!sourceTrackId) {
-		return null
-	}
-
 	const kind = track?.kind === 'audio' ? 'audio' : 'video'
 	return {
-		sourceTrackId,
 		kind,
 		name: asString(track?.name) ?? (kind === 'audio' ? 'A1' : 'V1'),
 		muted: typeof track?.muted === 'boolean' ? track.muted : false,
@@ -229,9 +222,8 @@ const normalizeInitialTrack = (value: unknown) => {
 	}
 }
 
-const createDefaultTracks = (projectId: string) => [
+const createDefaultTracks = () => [
 	{
-		sourceTrackId: `${projectId}:track:video`,
 		kind: 'video',
 		name: 'V1',
 		muted: false,
@@ -239,7 +231,6 @@ const createDefaultTracks = (projectId: string) => [
 		height: 72,
 	},
 	{
-		sourceTrackId: `${projectId}:track:audio`,
 		kind: 'audio',
 		name: 'A1',
 		muted: false,
@@ -275,11 +266,8 @@ const createProjectSeedPayload = (payload: unknown, forcedProjectId?: string, pr
 	if (!forcedProjectId) {
 		createdProjectSequence = nextSequence
 	}
-	const projectId = forcedProjectId ?? asString(value?.sourceProjectId) ?? `project:${Date.now().toString(36)}:${nextSequence}:${Math.random().toString(36).slice(2, 7)}`
-
 	const now = Date.now()
 	return {
-		sourceProjectId: projectId,
 		title: asString(value?.title) ?? `Project ${nextSequence}`,
 		fps: asNumber(value?.fps, 30),
 		width: asNumber(value?.width, 1920),
@@ -392,7 +380,7 @@ export const sessionCreateProjectAction = [
 				const seed = createProjectSeedPayload(payload, undefined, projectTitles)
 
 				return {
-					activeProjectId: seed.sourceProjectId,
+					activeProjectId: null,
 					selectedEntityId: null,
 					cursor: 0,
 					createdProject: {
@@ -402,6 +390,17 @@ export const sessionCreateProjectAction = [
 					activeProject: { use_ref_id: 'createdProject' },
 				}
 			},
+		],
+	},
+	{
+		to: {
+			activeProjectId: ['activeProjectId'],
+		},
+		fn: [
+			['< @one:_node_id < activeProject'] as const,
+			(_payload: unknown, projectNodeId: unknown) => ({
+				activeProjectId: typeof projectNodeId === 'string' ? projectNodeId : null,
+			}),
 		],
 	},
 	{
@@ -427,7 +426,7 @@ export const sessionHandleInitAction = [
 
 				const pendingProjectInit = createProjectSeedPayload(payload)
 				return {
-					activeProjectId: pendingProjectInit.sourceProjectId,
+					activeProjectId: null,
 					pendingProjectInit,
 					selectedEntityId: null,
 					cursor: 0,
@@ -449,13 +448,12 @@ export const sessionHandleInitAction = [
 			activeProject: ['<< activeProject', { method: 'set_one' }],
 		},
 		fn: [
-			['<< @all:pioneer.project', '< @all:sourceProjectId < pioneer.project', 'activeProjectId'] as const,
-			(_payload: unknown, projects: unknown, sourceProjectIds: unknown, activeProjectId: unknown) => {
+			['<< @all:pioneer.project', 'activeProjectId'] as const,
+			(_payload: unknown, projects: unknown, activeProjectId: unknown) => {
 				if (typeof activeProjectId !== 'string' || !activeProjectId) return { activeProject: null }
 				const modelList = Array.isArray(projects) ? projects : []
-				const idList = Array.isArray(sourceProjectIds) ? sourceProjectIds : []
-				const index = idList.indexOf(activeProjectId)
-				return { activeProject: (index !== -1 && modelList[index]) || null }
+				const found = modelList.find((item) => asString((item as { _node_id?: unknown } | null)?._node_id) === activeProjectId)
+				return { activeProject: found ?? null }
 			},
 		],
 	},
@@ -464,6 +462,19 @@ export const sessionHandleInitAction = [
 		when_deps: ['pendingProjectInit'] as const,
 		when_fn: (_payload: unknown, pendingProjectInit: unknown) => Boolean(pendingProjectInit && typeof pendingProjectInit === 'object'),
 		fn: () => ({}),
+	},
+	{
+		to: {
+			activeProjectId: ['activeProjectId'],
+		},
+		when_deps: ['pendingProjectInit'] as const,
+		when_fn: (_payload: unknown, pendingProjectInit: unknown) => Boolean(pendingProjectInit && typeof pendingProjectInit === 'object'),
+		fn: [
+			['< @one:_node_id < activeProject'] as const,
+			(_payload: unknown, projectNodeId: unknown) => ({
+				activeProjectId: typeof projectNodeId === 'string' ? projectNodeId : null,
+			}),
+		],
 	},
 	{
 		to: {
@@ -487,13 +498,12 @@ export const sessionSetActiveProjectAction = [
 			activeProject: ['<< activeProject', { method: 'set_one' }],
 		},
 		fn: [
-			['<< @all:pioneer.project', '< @all:sourceProjectId < pioneer.project', 'activeProjectId'] as const,
-			(_payload: unknown, projects: unknown, sourceProjectIds: unknown, activeProjectId: unknown) => {
+			['<< @all:pioneer.project', 'activeProjectId'] as const,
+			(_payload: unknown, projects: unknown, activeProjectId: unknown) => {
 				if (typeof activeProjectId !== 'string' || !activeProjectId) return { activeProject: null }
 				const modelList = Array.isArray(projects) ? projects : []
-				const idList = Array.isArray(sourceProjectIds) ? sourceProjectIds : []
-				const index = idList.indexOf(activeProjectId)
-				return { activeProject: (index !== -1 && modelList[index]) || null }
+				const found = modelList.find((item) => asString((item as { _node_id?: unknown } | null)?._node_id) === activeProjectId)
+				return { activeProject: found ?? null }
 			},
 		],
 	},
@@ -643,10 +653,10 @@ export const sessionRequestImportFilesAction = [
 	{
 		to: ['$fx_handleInputFiles', { intent: 'call', drop_when_api_not_ready: false }],
 		fn: [
-			['< @one:sourceProjectId < activeProject'] as const,
-			(payload: unknown, sourceProjectId: unknown) => {
+			['< @one:_node_id < activeProject'] as const,
+			(payload: unknown, projectNodeId: unknown) => {
 				const inputBatchHandleId = asString((payload as { inputBatchHandleId?: unknown } | null)?.inputBatchHandleId)
-				const projectId = asString(sourceProjectId)
+				const projectId = asString(projectNodeId)
 				if (!inputBatchHandleId || !projectId) {
 					return '$noop'
 				}
@@ -669,7 +679,7 @@ export const sessionRequestProjectExportAction = [
 			},
 			fn: [
 				[
-					'< @one:sourceProjectId < activeProject',
+					'< @one:_node_id < activeProject',
 					'< @one:fps < activeProject',
 					'< @one:width < activeProject',
 					'< @one:height < activeProject',
@@ -677,8 +687,8 @@ export const sessionRequestProjectExportAction = [
 					'< @all:clipRenderData < activeProject.tracks.clips',
 					'_node_id',
 				] as const,
-				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, sessionRootNodeId: unknown) => {
-					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+				(payload: unknown, projectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, sessionRootNodeId: unknown) => {
+					const plan = buildExportPlan(projectId, fps, width, height, duration, clipSources)
 					if (!plan) {
 						return '$noop'
 					}
@@ -725,17 +735,17 @@ export const sessionRequestClipExportAction = [
 			},
 			fn: [
 				[
-					'< @one:sourceProjectId < activeProject',
+					'< @one:_node_id < activeProject',
 					'< @one:fps < activeProject',
 					'< @one:width < activeProject',
 					'< @one:height < activeProject',
 					'< @one:duration < activeProject',
 					'< @all:clipRenderData < activeProject.tracks.clips',
-					'< @all:sourceClipId < activeProject.tracks.clips',
+					'< @all:_node_id < activeProject.tracks.clips',
 					'_node_id',
 				] as const,
-				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown, sessionRootNodeId: unknown) => {
-					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+				(payload: unknown, projectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, clipIds: unknown, sessionRootNodeId: unknown) => {
+					const plan = buildExportPlan(projectId, fps, width, height, duration, clipSources)
 					if (!plan) {
 						return '$noop'
 					}
@@ -794,17 +804,17 @@ export const sessionRequestSelectedClipExportAction = [
 			},
 			fn: [
 				[
-					'< @one:sourceProjectId < activeProject',
+					'< @one:_node_id < activeProject',
 					'< @one:fps < activeProject',
 					'< @one:width < activeProject',
 					'< @one:height < activeProject',
 					'< @one:duration < activeProject',
 					'< @all:clipRenderData < activeProject.tracks.clips',
-					'< @one:sourceClipId < selectedClip',
+					'< @one:_node_id < selectedClip',
 					'_node_id',
 				] as const,
-				(payload: unknown, sourceProjectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown, sessionRootNodeId: unknown) => {
-					const plan = buildExportPlan(sourceProjectId, fps, width, height, duration, clipSources)
+				(payload: unknown, projectId: unknown, fps: unknown, width: unknown, height: unknown, duration: unknown, clipSources: unknown, selectedClipId: unknown, sessionRootNodeId: unknown) => {
+					const plan = buildExportPlan(projectId, fps, width, height, duration, clipSources)
 					const clipId = asString(selectedClipId)
 					if (!plan || !clipId) {
 						return '$noop'
@@ -919,12 +929,9 @@ export const dktSessionActions = {
 				to: {
 					selectedEntityId: ['selectedEntityId'],
 				},
-				fn: [
-					['sourceClipId'] as const,
-					(_payload: unknown, sourceClipId: unknown) => ({
-						selectedEntityId: typeof sourceClipId === 'string' ? sourceClipId : null,
-					}),
-				],
+				fn: (payload: unknown) => ({
+					selectedEntityId: asString((payload as { clipId?: unknown } | null)?.clipId),
+				}),
 			},
 		],
 	setActiveProject: sessionSetActiveProjectAction,

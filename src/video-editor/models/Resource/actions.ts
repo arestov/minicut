@@ -21,8 +21,6 @@ export const reduceSetResourceAttrs = (payload: unknown) => {
 	}
 
 	return {
-		sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : '',
-		sourceProjectId: typeof value.sourceProjectId === 'string' ? value.sourceProjectId : null,
 		name: typeof value.name === 'string' ? value.name : 'Resource',
 		kind: typeof value.kind === 'string' ? value.kind : 'video',
 		url: typeof value.url === 'string' ? value.url : '',

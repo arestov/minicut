@@ -1,7 +1,8 @@
-﻿import { Palette, SlidersHorizontal } from 'lucide-react'
+import { Palette, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useActions } from '../../../dkt-react-sync/hooks/useActions'
+import { useScope } from '../../../dkt-react-sync/hooks/useScope'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useMany } from '../../../dkt-react-sync/hooks/useMany'
 import { readVideoFrameImageData } from '../../color/framePalette'
@@ -21,8 +22,9 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 	const [lookThumbnails, setLookThumbnails] = useState<Record<string, string>>({})
 	const compareRestoreEnabledRef = useRef<boolean | null>(null)
 	const dispatch = useActions()
-	const colorCorrectionAttrs = useAttrs(['sourceEffectId', 'enabled', 'params']) as unknown as EffectAttrs & { sourceEffectId?: unknown }
-	const effectId = typeof colorCorrectionAttrs.sourceEffectId === 'string' ? colorCorrectionAttrs.sourceEffectId : null
+	const effectScope = useScope()
+	const colorCorrectionAttrs = useAttrs(['enabled', 'params']) as unknown as EffectAttrs
+	const effectId = effectScope?._nodeId ?? null
 	const colorParams = (colorCorrectionAttrs.params ?? {}) as Partial<ColorCorrectionAttrs>
 	const isColorCorrectionEnabled = colorCorrectionAttrs.enabled !== false
 	const activeLookId = typeof (colorParams as Record<string, unknown>).lookId === 'string' ? String((colorParams as Record<string, unknown>).lookId) : 'clean'
@@ -154,7 +156,7 @@ const ColorCorrectionControls = ({ mediaElementRegistry }: { mediaElementRegistr
 			<label className="ve-slider-field"><span>Contrast</span><input type="range" aria-label="Contrast" min="0" max="200" value={Math.round(getParamValue('contrast', 1) * 100)} onChange={(event) => updateParam('contrast', Number(event.currentTarget.value) / 100)} /></label>
 			<label className="ve-slider-field"><span>Saturation</span><input type="range" aria-label="Saturation" min="0" max="250" value={Math.round(getParamValue('saturation', 1) * 100)} onChange={(event) => updateParam('saturation', Number(event.currentTarget.value) / 100)} /></label>
 			<label className="ve-slider-field"><span>Temperature</span><input type="range" aria-label="Temperature" min="-100" max="100" value={Math.round(getParamValue('temperature', 0) * 100)} onChange={(event) => updateParam('temperature', Number(event.currentTarget.value) / 100)} /></label>
-			<small>{isColorCorrectionEnabled ? 'Grade active' : 'Grade bypassed'} В· Exposure {getParamValue('exposure', 0).toFixed(2)} В· Contrast {getParamValue('contrast', 1).toFixed(2)} В· Saturation {getParamValue('saturation', 1).toFixed(2)}</small>
+			<small>{isColorCorrectionEnabled ? 'Grade active' : 'Grade bypassed'} · Exposure {getParamValue('exposure', 0).toFixed(2)} · Contrast {getParamValue('contrast', 1).toFixed(2)} · Saturation {getParamValue('saturation', 1).toFixed(2)}</small>
 		</>
 	)
 }
@@ -221,4 +223,6 @@ export const InspectorColorTabPanel = ({ mediaElementRegistry }: { mediaElementR
 		</div>
 	)
 }
+
+
 

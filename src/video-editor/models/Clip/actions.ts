@@ -219,15 +219,10 @@ export const reduceTimelineSplitAtAction = (
 
 export const normalizeEffectCreationAttrs = (payload: unknown) => {
 	const value = payload as MiniCutDktEffectSeed | null
-	const sourceEffectId = asString(value?.sourceEffectId)
-		?? asString((payload as { effectId?: unknown } | null)?.effectId)
-		?? createDktEffectSourceId(value?.kind)
-
 	const kindStr = asString(value?.kind)
 	const kindDerivedName = kindStr ? kindStr.charAt(0).toUpperCase() + kindStr.slice(1) : null
 
 	return {
-		sourceEffectId,
 		name: asString(value?.name) ?? kindDerivedName ?? defaultEffectAttrs.name,
 		kind: asString(value?.kind) ?? defaultEffectAttrs.kind,
 		enabled: asBoolean(value?.enabled) ?? defaultEffectAttrs.enabled,
@@ -235,14 +230,6 @@ export const normalizeEffectCreationAttrs = (payload: unknown) => {
 		params: asObject(value?.params),
 		color: asObject(value?.color),
 	}
-}
-
-let effectCreationSequence = 0
-
-const createDktEffectSourceId = (kind: unknown): string => {
-	effectCreationSequence += 1
-	const safeKind = typeof kind === 'string' && kind ? kind.replace(/[^a-z0-9_-]/gi, '-') : 'effect'
-	return `dkt-effect:${safeKind}:${Date.now().toString(36)}:${effectCreationSequence}`
 }
 
 const getNodeId = (model: unknown): string | null => (
@@ -278,9 +265,6 @@ export const reduceSetClipAttrs = (payload: unknown) => {
 	}
 
 	return {
-		sourceClipId: typeof value.sourceClipId === 'string' ? value.sourceClipId : null,
-		sourceResourceId: typeof value.sourceResourceId === 'string' ? value.sourceResourceId : null,
-		sourceTextId: typeof value.sourceTextId === 'string' ? value.sourceTextId : null,
 		name: typeof value.name === 'string' ? value.name : 'Clip',
 		color: typeof value.color === 'string' ? value.color : '#2563eb',
 		mediaKind: typeof value.mediaKind === 'string' ? value.mediaKind : null,

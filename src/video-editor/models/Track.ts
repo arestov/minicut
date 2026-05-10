@@ -2,21 +2,20 @@ import { model } from 'dkt/model.js'
 import { CLIP_CREATION_SHAPE } from './Clip'
 import { TEXT_CREATION_SHAPE } from './Text'
 import {
-	normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef, removeClipBySourceClipId,
+	normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef,
 	reduceRenameTrack, reduceSetTrackMuted, reduceSetTrackLocked,
 	reduceAddClip, reduceAddTextClip, reduceSplitClipAt,
-	reduceSetClips, reduceRemoveClip, reduceRemoveClipBySourceId,
+	reduceSetClips, reduceRemoveClip,
 } from './Track/actions'
 import { reduceTrackAppendStart } from './Track/comps'
 
 export const TRACK_CREATION_SHAPE = {
-	attrs: ['sourceTrackId', 'kind', 'name', 'muted', 'locked', 'height'],
+	attrs: ['kind', 'name', 'muted', 'locked', 'height'],
 } as const
 
 export const Track = model({
 	model_name: 'minicut_track',
 	attrs: {
-		sourceTrackId: ['input', ''],
 		kind: ['input', 'video'],
 		name: ['input', 'Track'],
 		muted: ['input', false],
@@ -57,10 +56,6 @@ export const Track = model({
 			fn: reduceSetTrackLocked,
 		},
 		addClip: {
-			when: [
-				[] as const,
-				(payload: unknown) => typeof (payload as { sourceClipId?: unknown } | null)?.sourceClipId === 'string',
-			],
 			to: {
 				clip: ['<< clip << #', {
 					method: 'at_end',
@@ -122,12 +117,6 @@ export const Track = model({
 				clips: ['<< clips', { method: 'set_many' }],
 			},
 			fn: [['<< @all:clips'] as const, reduceRemoveClip],
-		},
-		removeClipBySourceId: {
-			to: {
-				clips: ['<< clips', { method: 'set_many' }],
-			},
-			fn: [['<< @all:clips', '< @all:sourceClipId < clips'] as const, reduceRemoveClipBySourceId],
 		},
 	},
 })

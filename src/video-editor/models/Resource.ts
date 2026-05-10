@@ -9,14 +9,12 @@ import {
 } from './Resource/actions'
 
 export const RESOURCE_CREATION_SHAPE = {
-	attrs: ['sourceResourceId', 'sourceProjectId', 'name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data'],
+	attrs: ['name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data'],
 } as const
 
 export const Resource = model({
 	model_name: 'minicut_resource',
 	attrs: {
-		sourceResourceId: ['input', ''],
-		sourceProjectId: ['input', null],
 		name: ['input', 'Resource'],
 		kind: ['input', 'video'],
 		url: ['input', ''],
@@ -30,9 +28,9 @@ export const Resource = model({
 		data: ['input', null],
 		timelineAddRequest: ['input', null],
 		isReady: ['comp', ['status'], (status: unknown) => status === 'ready'],
-		timelineClipSource: ['comp', ['sourceResourceId', 'name', 'kind', 'duration', 'url', 'mime'] as const,
-			(sourceResourceId: unknown, name: unknown, kind: unknown, duration: unknown, url: unknown, mime: unknown) => ({
-				sourceResourceId: typeof sourceResourceId === 'string' ? sourceResourceId : '',
+		timelineClipSource: ['comp', ['_node_id', 'name', 'kind', 'duration', 'url', 'mime'] as const,
+			(resourceId: unknown, name: unknown, kind: unknown, duration: unknown, url: unknown, mime: unknown) => ({
+				resourceId: typeof resourceId === 'string' ? resourceId : '',
 				name: typeof name === 'string' ? name : 'Resource',
 				kind: typeof kind === 'string' ? kind : 'video',
 				duration: typeof duration === 'number' && Number.isFinite(duration) ? duration : 0,
@@ -47,9 +45,9 @@ export const Resource = model({
 				mime: typeof mime === 'string' ? mime : 'application/octet-stream',
 				duration: typeof duration === 'number' && Number.isFinite(duration) ? duration : 0,
 			})],
-		transferSnapshot: ['comp', ['sourceResourceId', 'name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data'] as const,
+		transferSnapshot: ['comp', ['_node_id', 'name', 'kind', 'url', 'mime', 'duration', 'width', 'height', 'size', 'source', 'status', 'data'] as const,
 			(
-				sourceResourceId: unknown,
+				resourceId: unknown,
 				name: unknown,
 				kind: unknown,
 				url: unknown,
@@ -62,7 +60,7 @@ export const Resource = model({
 				status: unknown,
 				data: unknown,
 			) => ({
-				sourceResourceId: typeof sourceResourceId === 'string' ? sourceResourceId : '',
+				resourceId: typeof resourceId === 'string' ? resourceId : '',
 				name: typeof name === 'string' ? name : 'Resource',
 				kind: kind === 'audio' || kind === 'image' || kind === 'text' ? kind : 'video',
 				url: typeof url === 'string' ? url : '',
@@ -95,8 +93,6 @@ export const Resource = model({
 		},
 		setResourceAttrs: {
 			to: {
-				sourceResourceId: ['sourceResourceId'],
-				sourceProjectId: ['sourceProjectId'],
 				name: ['name'],
 				kind: ['kind'],
 				url: ['url'],

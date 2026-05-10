@@ -4,7 +4,7 @@ import { TRACK_CREATION_SHAPE } from './Track'
 import {
 	normalizeResourceCreationAttrs,
 	normalizeTrackCreationAttrs,
-	findResourceBySourceId,
+	findResourceById,
 	createTimelineClipPayload,
 	createEmbeddedAudioClipPayload,
 	reduceHandleInit,
@@ -30,7 +30,7 @@ import type { PreviewClipSource, PreviewStructure } from '../read-model/previewC
 import { normalizeExportPlan, type ExportPlan } from '../render/renderPlan'
 
 export const PROJECT_CREATION_SHAPE = {
-	attrs: ['sourceProjectId', 'title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt', 'autoCreateDefaultTracks'],
+	attrs: ['title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt', 'autoCreateDefaultTracks'],
 	rels: {
 		tracks: TRACK_CREATION_SHAPE,
 		resources: RESOURCE_CREATION_SHAPE,
@@ -42,7 +42,7 @@ const asNumber = (value: unknown, fallback: number): number => typeof value === 
 const asString = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback
 
 type TimelineResourceSummary = {
-	sourceResourceId: string
+	resourceId: string
 	kind: string
 	duration: number
 	url?: string
@@ -59,10 +59,10 @@ const hydrateClipSourcesWithResourceSummaries = (
 
 	const byResourceId = new Map<string, TimelineResourceSummary>()
 	for (const summary of resourceSummaries) {
-		if (!summary || typeof summary !== 'object' || !summary.sourceResourceId) {
+		if (!summary || typeof summary !== 'object' || !summary.resourceId) {
 			continue
 		}
-		byResourceId.set(summary.sourceResourceId, summary)
+		byResourceId.set(summary.resourceId, summary)
 	}
 
 	if (byResourceId.size === 0) {
@@ -109,7 +109,6 @@ const hydrateClipSourcesWithResourceSummaries = (
 export const Project = model({
 	model_name: 'minicut_project',
 	attrs: {
-		sourceProjectId: ['input', ''],
 		title: ['input', 'Untitled project'],
 		fps: ['input', 30],
 		width: ['input', 1920],
@@ -131,7 +130,7 @@ export const Project = model({
 			return snapshots
 				.map((entry) => {
 					const item = entry as {
-						sourceResourceId?: unknown
+						resourceId?: unknown
 						name?: unknown
 						kind?: unknown
 						url?: unknown
@@ -144,13 +143,13 @@ export const Project = model({
 						status?: unknown
 						data?: unknown
 					} | null
-					if (!item || typeof item.sourceResourceId !== 'string' || !item.sourceResourceId) {
+					if (!item || typeof item.resourceId !== 'string' || !item.resourceId) {
 						return null
 					}
 					return {
-						resourceId: item.sourceResourceId,
+						resourceId: item.resourceId,
 						attrs: {
-							name: typeof item.name === 'string' ? item.name : item.sourceResourceId,
+							name: typeof item.name === 'string' ? item.name : item.resourceId,
 							kind: item.kind === 'audio' || item.kind === 'image' || item.kind === 'text' ? item.kind : 'video',
 							url: typeof item.url === 'string' ? item.url : '',
 							mime: typeof item.mime === 'string' ? item.mime : 'application/octet-stream',
@@ -204,7 +203,7 @@ export const Project = model({
 				}],
 			},
 			fn: [
-				['sourceProjectId', 'autoCreateDefaultTracks'] as const,
+				['autoCreateDefaultTracks'] as const,
 				reduceHandleInit,
 			],
 		},
@@ -275,7 +274,7 @@ export const Project = model({
 					$output: ['$output'],
 				},
 				fn: [
-					['<< @all:tracks.clips', 'sourceProjectId'] as const,
+					['<< @all:tracks.clips'] as const,
 					reduceImportResourceCreate,
 				],
 			},
@@ -292,9 +291,9 @@ export const Project = model({
 					$output: ['$output'],
 				},
 				fn: [
-					['$noop', '< @one:appendStart < primaryAudioTrack'] as const,
-					(payload: unknown, noop: unknown, audioTrackAppendStart: unknown) => ({
-						embeddedAudioClip: reduceImportResourceToEmbeddedAudio(payload, noop, audioTrackAppendStart),
+					['$noop', '< @one:appendStart < primaryAudioTrack', '<< @all:resources'] as const,
+					(payload: unknown, noop: unknown, audioTrackAppendStart: unknown, resources: unknown) => ({
+						embeddedAudioClip: reduceImportResourceToEmbeddedAudio(payload, noop, Array.isArray(resources) ? resources : [], audioTrackAppendStart),
 						$output: payload,
 					}),
 				],
@@ -309,9 +308,9 @@ export const Project = model({
 					$output: ['$output'],
 				},
 				fn: [
-					['$noop'] as const,
-					(payload: unknown, noop: unknown) => ({
-						videoClip: reduceImportResourceToVideo(payload, noop),
+					['$noop', '<< @all:resources', '< @one:appendStart < primaryVideoTrack'] as const,
+					(payload: unknown, noop: unknown, resources: unknown, videoAppendStart: unknown) => ({
+						videoClip: reduceImportResourceToVideo(payload, noop, Array.isArray(resources) ? resources : [], videoAppendStart),
 						$output: payload,
 					}),
 				],
@@ -329,9 +328,9 @@ export const Project = model({
 					$output: ['$output'],
 				},
 				fn: [
-					['$noop'] as const,
-					(payload: unknown, noop: unknown) => ({
-						audioClip: reduceImportResourceToAudio(payload, noop),
+					['$noop', '<< @all:resources', '< @one:appendStart < primaryAudioTrack'] as const,
+					(payload: unknown, noop: unknown, resources: unknown, audioAppendStart: unknown) => ({
+						audioClip: reduceImportResourceToAudio(payload, noop, Array.isArray(resources) ? resources : [], audioAppendStart),
 						$output: payload,
 					}),
 				],
@@ -352,33 +351,33 @@ export const Project = model({
 		addResourceToTimeline: [
 			{
 				when: [
-					['< @all:timelineClipSource < resources'] as const,
+					['<< @all:resources'] as const,
 					(payload: unknown, resources: unknown[]) => {
-						const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
-						if (typeof sourceResourceId !== 'string') return false
-						const resource = findResourceBySourceId(Array.isArray(resources) ? resources : [], sourceResourceId)
+						const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
+						if (typeof resourceId !== 'string') return false
+						const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
 						return resource != null && resource.kind !== 'audio'
 					},
 				],
 				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
 				fn: [
-					['$noop', '< @all:timelineClipSource < resources', '< @one:appendStart < primaryVideoTrack', '< @one:appendStart < primaryAudioTrack'] as const,
+					['$noop', '<< @all:resources', '< @one:appendStart < primaryVideoTrack', '< @one:appendStart < primaryAudioTrack'] as const,
 					reduceAddVideoResourceToTimeline,
 				],
 			},
 			{
 				when: [
-					['< @all:timelineClipSource < resources'] as const,
+					['<< @all:resources'] as const,
 					(payload: unknown, resources: unknown[]) => {
-						const sourceResourceId = (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId
-						if (typeof sourceResourceId !== 'string') return false
-						const resource = findResourceBySourceId(Array.isArray(resources) ? resources : [], sourceResourceId)
+						const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
+						if (typeof resourceId !== 'string') return false
+						const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
 						return resource != null && resource.kind === 'audio'
 					},
 				],
 				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
 				fn: [
-					['$noop', '< @all:timelineClipSource < resources', '< @one:appendStart < primaryAudioTrack'] as const,
+					['$noop', '<< @all:resources', '< @one:appendStart < primaryAudioTrack'] as const,
 					reduceAddAudioResourceToTimeline,
 				],
 			},
@@ -387,15 +386,15 @@ export const Project = model({
 			{
 				when: [
 					[] as const,
-					(payload: unknown) => typeof (payload as { sourceResourceId?: unknown } | null)?.sourceResourceId === 'string',
+					(payload: unknown) => typeof (payload as { resourceId?: unknown } | null)?.resourceId === 'string',
 				],
 				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
 				fn: [
 					[
 						'$noop',
-						'< @all:timelineClipSource < resources',
+						'<< @all:resources',
 						'< @one:appendStart < primaryAudioTrack',
-						'< @all:sourceResourceId < primaryAudioTrack.clips',
+						'< @all:resourceId < primaryAudioTrack.clips.clipRenderData',
 					] as const,
 					reduceAddEmbeddedAudio,
 				],

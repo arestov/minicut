@@ -164,7 +164,6 @@ describe('Inspector wiring', () => {
 		useOneMock.mockReturnValue({ _nodeId: 'text:inspector' })
 
 		const clipAttrs = {
-			sourceClipId: 'clip:inspector',
 			opacity: { value: 1 },
 			in: 0,
 			fadeIn: 0,
@@ -180,7 +179,6 @@ describe('Inspector wiring', () => {
 			color: '#2563eb',
 		}
 		const textAttrs = {
-			sourceTextId: 'text:inspector',
 			content: 'Initial text',
 			style: {
 				fontFamily: 'Inter',
@@ -199,14 +197,9 @@ describe('Inspector wiring', () => {
 		}
 
 		useManyMock.mockReturnValue([])
-		useRootAttrsMock.mockImplementation((keys: string[]) => {
-			if (keys.includes('sourceClipId')) {
-				return clipAttrs
-			}
-			return {}
-		})
+		useRootAttrsMock.mockReturnValue({})
 		useAttrsMock.mockImplementation((keys: string[]) => {
-			if (keys.includes('sourceTextId')) {
+			if (keys.includes('content')) {
 				return textAttrs
 			}
 			return clipAttrs

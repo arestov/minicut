@@ -3,9 +3,7 @@ import { mergeEffectFilters, type EffectRenderInstruction } from '../../render/c
 import { defaultClipTransform } from './actions'
 
 export const reduceClipRenderData = (
-	sourceClipId: unknown,
-	sourceResourceId: unknown,
-	sourceResourceName: unknown,
+	clipId: unknown,
 	mediaKind: unknown,
 	name: unknown,
 	color: unknown,
@@ -17,6 +15,7 @@ export const reduceClipRenderData = (
 	opacity: unknown,
 	transform: unknown,
 	audio: unknown,
+	resourceId: unknown,
 	effectInstructions: unknown,
 	textAttrs: unknown,
 	resourceSummary: unknown,
@@ -44,11 +43,11 @@ export const reduceClipRenderData = (
 		}
 	}
 	return {
-		id: asStr(sourceClipId, ''),
-		resourceId: typeof sourceResourceId === 'string' ? sourceResourceId : null,
+		id: asStr(clipId, ''),
+		resourceId: typeof resourceId === 'string' ? resourceId : null,
 		name: asStr(name, 'Clip'),
 		color: asStr(color, '#2563eb'),
-		resourceName: res?.name ?? asStr(sourceResourceName ?? name, 'Clip'),
+		resourceName: res?.name ?? asStr(name, 'Clip'),
 		resourceKind: asStr(mediaKind ?? res?.kind, 'video') as PreviewClipSource['resourceKind'],
 		resourceUrl: res?.url ?? '',
 		mime: res?.mime ?? 'application/octet-stream',

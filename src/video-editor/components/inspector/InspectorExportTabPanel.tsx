@@ -1,4 +1,6 @@
+import { useContext } from 'react'
 import { Download } from 'lucide-react'
+import { ScopeContext } from '../../../dkt-react-sync/context/ScopeContext'
 import { useAttrs } from '../../../dkt-react-sync/hooks/useAttrs'
 import { useRootAttrs } from '../../../dkt-react-sync/hooks/useRootAttrs'
 import { useVideoEditor } from '../../app/VideoEditorContext'
@@ -11,9 +13,10 @@ const parseExportProgress = (value: unknown): ExportProgressState | null =>
 
 export const InspectorExportTabPanel = () => {
 	const { actions } = useVideoEditor()
-	const { sourceClipId, name } = useAttrs(['sourceClipId', 'name']) as { sourceClipId?: unknown; name?: unknown }
+	const scope = useContext(ScopeContext)
+	const { name } = useAttrs(['name']) as { name?: unknown }
 	const rootAttrs = useRootAttrs(['exportProgress']) as { exportProgress?: unknown }
-	const clipId = typeof sourceClipId === 'string' ? sourceClipId : null
+	const clipId = typeof scope?._nodeId === 'string' ? scope._nodeId : null
 	const exportProgress = parseExportProgress(rootAttrs.exportProgress)
 	const clipExport = clipId && exportProgress?.range.type === 'clip' && exportProgress.range.clipId === clipId
 		? exportProgress

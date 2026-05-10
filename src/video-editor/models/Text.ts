@@ -5,10 +5,8 @@ import { defaultTextBox, defaultTextStyle } from './Text/defaults'
 export const Text = model({
 	model_name: 'minicut_text',
 	attrs: {
-		sourceTextId: ['input', null],
-		renderAttrs: ['comp', ['sourceTextId', 'content', 'style', 'box'] as const,
-			(sourceTextId: unknown, content: unknown, style: unknown, box: unknown) => ({
-				sourceTextId: typeof sourceTextId === 'string' ? sourceTextId : '',
+		renderAttrs: ['comp', ['content', 'style', 'box'] as const,
+			(content: unknown, style: unknown, box: unknown) => ({
 				content: typeof content === 'string' ? content : '',
 				style: style && typeof style === 'object' ? style as Record<string, unknown> : {},
 				box: box && typeof box === 'object' ? box as Record<string, unknown> : {},
@@ -49,5 +47,5 @@ export const Text = model({
 })
 
 export const TEXT_CREATION_SHAPE = {
-	attrs: ['sourceTextId', 'content', 'style', 'box'],
+	attrs: ['content', 'style', 'box'],
 } as const
