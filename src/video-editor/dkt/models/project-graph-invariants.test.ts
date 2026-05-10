@@ -75,12 +75,8 @@ describe('project graph invariants', () => {
 		}
 
 		await ctx.lockToRead(async () => {
-			await project.dispatch('addResourceToTimeline', {
-				resourceId: videoResource._node_id,
-			})
-			await project.dispatch('addResourceToTimeline', {
-				resourceId: audioResource._node_id,
-			})
+			await project.dispatch('addResourceToTimeline', videoResource._node_id)
+			await project.dispatch('addResourceToTimeline', audioResource._node_id)
 			await project.dispatch('addEmbeddedAudioToTimeline', {
 				resourceId: videoResource._node_id,
 			})

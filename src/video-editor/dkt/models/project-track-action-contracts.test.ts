@@ -67,9 +67,7 @@ describe('Project action contracts', () => {
 		const projectVideoResource = resources.find((resource) => harness.ctx.getAttr(resource, 'name') === 'Project Video Resource')
 		expect(projectVideoResource?._node_id).toBeTruthy()
 
-		await dispatchAndSettle(harness.ctx, harness.project, 'addResourceToTimeline', {
-			resourceId: projectVideoResource!._node_id,
-		})
+		await dispatchAndSettle(harness.ctx, harness.project, 'addResourceToTimeline', projectVideoResource!._node_id)
 
 		const clips = await harness.ctx.queryRel(harness.videoTrack, 'clips')
 		const createdClip = clips

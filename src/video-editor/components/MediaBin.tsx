@@ -167,7 +167,7 @@ const ProjectMediaList = ({
 	const resourceScopes = useMany('resources')
 	const [matchingResourceIds, setMatchingResourceIds] = useState<ReadonlySet<string>>(() => new Set())
 	const handleAddToTimeline = useCallback((resourceId: string) => {
-		projectDispatch('addResourceToTimeline', { resourceId })
+		projectDispatch('addResourceToTimeline', resourceId)
 	}, [projectDispatch])
 	const handleMatchChange = useCallback((nodeId: string, matches: boolean) => {
 		setMatchingResourceIds((current) => {

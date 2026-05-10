@@ -1,4 +1,5 @@
 import type { MiniCutDktResourceSeed, MiniCutDktTrackSeed } from '../../dkt/runtime/seedTypes'
+import { defaultClipTransform } from '../Clip/actions'
 
 export type ProjectAddTrackPayload = MiniCutDktTrackSeed
 export type ProjectImportResourcePayload = MiniCutDktResourceSeed
@@ -106,6 +107,11 @@ export const findResourceById = (resources: unknown[], resourceId: string): Reso
 	return (resources.find((resource) => getNodeId(resource) === resourceId) as ResourceLike | undefined) ?? null
 }
 
+// TODO(remove): replace this node-id lookup with a pure $input_id model-ref handoff
+// once DKT action deps expose the resolved transient base as a reducer argument.
+const resolveResourceModelForClipPayload = (resources: unknown[], resourceId: unknown): ResourceLike | null =>
+	typeof resourceId === 'string' ? findResourceById(resources, resourceId) : null
+
 export const createTimelineClipPayload = (
 	noop: unknown,
 	resource: ResourceLike,
@@ -130,6 +136,27 @@ export const createTimelineClipPayload = (
 		duration: typeof getResourceAttr(resource, 'duration') === 'number' ? getResourceAttr(resource, 'duration') as number : 0,
 	}
 }
+
+const createTimelineClipAttrs = (
+	resource: ResourceLike,
+	overrides: Partial<{
+		name: string
+		mediaKind: string
+	}> = {},
+	appendStart?: number,
+) => ({
+	name: overrides.name ?? (typeof getResourceAttr(resource, 'name') === 'string' ? getResourceAttr(resource, 'name') as string : 'Clip'),
+	color: '#2563eb',
+	mediaKind: overrides.mediaKind ?? getResourceKind(resource),
+	start: typeof appendStart === 'number' ? appendStart : 0,
+	in: 0,
+	duration: typeof getResourceAttr(resource, 'duration') === 'number' ? getResourceAttr(resource, 'duration') as number : 0,
+	fadeIn: 0,
+	fadeOut: 0,
+	audio: { gain: 1, pan: 0 },
+	opacity: { value: 1 },
+	transform: defaultClipTransform,
+})
 
 export const createEmbeddedAudioClipPayload = (noop: unknown, resource: ResourceLike, appendStart?: number) => {
 	if (getResourceAttr(resource, 'kind') !== 'video') {
@@ -244,7 +271,7 @@ export const reduceImportResourceToVideo = (payload: unknown, noop: unknown, res
 		return noop
 	}
 	const resource = resolveOutputResource(payload)
-	if (!resource || resource.kind === 'audio') {
+	if (!resource || getResourceKind(resource) === 'audio') {
 		return noop
 	}
 	return createTimelineClipPayload(noop, resource, {}, typeof appendStart === 'number' ? appendStart : 0)
@@ -256,7 +283,7 @@ export const reduceImportResourceToAudio = (payload: unknown, noop: unknown, res
 		return noop
 	}
 	const resource = resolveOutputResource(payload)
-	if (!resource || resource.kind !== 'audio') {
+	if (!resource || getResourceKind(resource) !== 'audio') {
 		return noop
 	}
 	return createTimelineClipPayload(noop, resource, {}, typeof appendStart === 'number' ? appendStart : 0)
@@ -363,43 +390,40 @@ export const reduceMoveClipToTrackContext = (
 
 export const reduceMoveClipToTrackPayload = (payload: unknown) => payload
 
-export const reduceAddVideoResourceToTimeline = (
+export const reduceAddResourceToTimeline = (
 	payload: unknown,
 	noop: unknown,
 	resources: unknown[],
+	videoTrack: unknown,
+	audioTrack: unknown,
 	videoTrackAppendStart: unknown,
 	audioTrackAppendStart: unknown,
 ) => {
-	const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
-	if (typeof resourceId !== 'string') {
-		return noop
-	}
-	const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
+	const resourceId = typeof payload === 'string' ? payload : (payload as { resourceId?: unknown } | null)?.resourceId
+	const resource = resolveResourceModelForClipPayload(Array.isArray(resources) ? resources : [], resourceId)
 	if (!resource) {
 		return noop
 	}
-	const start = Math.max(
-		typeof videoTrackAppendStart === 'number' ? videoTrackAppendStart : 0,
-		typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0,
-	)
-	return createTimelineClipPayload(noop, resource, {}, start)
-}
-
-export const reduceAddAudioResourceToTimeline = (
-	payload: unknown,
-	noop: unknown,
-	resources: unknown[],
-	audioTrackAppendStart: unknown,
-) => {
-	const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
-	if (typeof resourceId !== 'string') {
+	const kind = getResourceKind(resource)
+	const targetTrack = kind === 'audio' ? audioTrack : videoTrack
+	const start = kind === 'audio'
+		? (typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
+		: Math.max(
+			typeof videoTrackAppendStart === 'number' ? videoTrackAppendStart : 0,
+			typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0,
+		)
+	if (!getNodeId(resource)) {
 		return noop
 	}
-	const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
-	if (!resource || resource.kind !== 'audio') {
-		return noop
+	return {
+		clip: {
+			attrs: createTimelineClipAttrs(resource, {}, start),
+			rels: { track: targetTrack, resource },
+			hold_ref_id: 'timelineClip',
+		},
+		videoClips: kind === 'audio' ? noop : { use_ref_id: 'timelineClip' },
+		audioClips: kind === 'audio' ? { use_ref_id: 'timelineClip' } : noop,
 	}
-	return createTimelineClipPayload(noop, resource, {}, typeof audioTrackAppendStart === 'number' ? audioTrackAppendStart : 0)
 }
 
 export const reduceAddEmbeddedAudio = (
@@ -409,14 +433,14 @@ export const reduceAddEmbeddedAudio = (
 	audioTrackAppendStart: unknown,
 	audioClipResourceIds?: unknown[],
 ) => {
-	const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
+	const resourceId = typeof payload === 'string' ? payload : (payload as { resourceId?: unknown } | null)?.resourceId
 	if (typeof resourceId !== 'string') {
 		return noop
 	}
 	if (Array.isArray(audioClipResourceIds) && audioClipResourceIds.includes(resourceId)) {
 		return noop
 	}
-	const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
+	const resource = resolveResourceModelForClipPayload(Array.isArray(resources) ? resources : [], resourceId)
 	if (!resource) {
 		return noop
 	}

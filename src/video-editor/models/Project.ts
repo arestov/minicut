@@ -1,10 +1,10 @@
 import { model } from 'dkt/model.js'
+import { CLIP_CREATION_SHAPE } from './Clip'
 import { RESOURCE_CREATION_SHAPE } from './Resource'
 import { TRACK_CREATION_SHAPE } from './Track'
 import {
 	normalizeResourceCreationAttrs,
 	normalizeTrackCreationAttrs,
-	findResourceById,
 	getResourceKind,
 	reduceHandleInit,
 	reduceRenameProject,
@@ -21,8 +21,7 @@ import {
 	reduceSetResources,
 	reduceMoveClipToTrackContext,
 	reduceMoveClipToTrackPayload,
-	reduceAddVideoResourceToTimeline,
-	reduceAddAudioResourceToTimeline,
+	reduceAddResourceToTimeline,
 	reduceAddEmbeddedAudio,
 	reduceAddTextClipToVideoTrack,
 } from './Project/actions'
@@ -305,35 +304,32 @@ export const Project = model({
 		],
 		addResourceToTimeline: [
 			{
-				when: [
-					['<< @all:resources'] as const,
-					(payload: unknown, resources: unknown[]) => {
-						const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
-						if (typeof resourceId !== 'string') return false
-						const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
-						return resource != null && getResourceKind(resource) !== 'audio'
-					},
-				],
-				to: ['<< primaryVideoTrack', { action: 'addClip', inline_subwalker: true }],
+				to: {
+					clip: ['<< clip << #', {
+						method: 'at_end',
+						can_create: true,
+						can_hold_refs: true,
+						creation_shape: CLIP_CREATION_SHAPE,
+					}],
+					videoClips: ['<< primaryVideoTrack.clips', {
+						method: 'at_end',
+						can_use_refs: true,
+					}],
+					audioClips: ['<< primaryAudioTrack.clips', {
+						method: 'at_end',
+						can_use_refs: true,
+					}],
+				},
 				fn: [
-					['$noop', '<< @all:resources', '< @one:appendStart < primaryVideoTrack', '< @one:appendStart < primaryAudioTrack'] as const,
-					reduceAddVideoResourceToTimeline,
-				],
-			},
-			{
-				when: [
-					['<< @all:resources'] as const,
-					(payload: unknown, resources: unknown[]) => {
-						const resourceId = (payload as { resourceId?: unknown } | null)?.resourceId
-						if (typeof resourceId !== 'string') return false
-						const resource = findResourceById(Array.isArray(resources) ? resources : [], resourceId)
-						return resource != null && getResourceKind(resource) === 'audio'
-					},
-				],
-				to: ['<< primaryAudioTrack', { action: 'addClip', inline_subwalker: true }],
-				fn: [
-					['$noop', '<< @all:resources', '< @one:appendStart < primaryAudioTrack'] as const,
-					reduceAddAudioResourceToTimeline,
+					[
+						'$noop',
+						'<< @all:resources',
+						'<< @one:primaryVideoTrack',
+						'<< @one:primaryAudioTrack',
+						'< @one:appendStart < primaryVideoTrack',
+						'< @one:appendStart < primaryAudioTrack',
+					] as const,
+					reduceAddResourceToTimeline,
 				],
 			},
 		],

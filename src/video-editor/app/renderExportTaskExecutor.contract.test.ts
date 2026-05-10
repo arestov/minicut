@@ -88,9 +88,7 @@ describe('render export task executor contract', () => {
 		}
 		const exportResourceId = String(exportResource._node_id)
 
-		await dispatchAndSettle(harness.ctx, harness.project, 'addResourceToTimeline', {
-			resourceId: exportResourceId,
-		})
+		await dispatchAndSettle(harness.ctx, harness.project, 'addResourceToTimeline', exportResourceId)
 
 		const clips = await harness.ctx.queryRel(harness.videoTrack, 'clips')
 		const exportClip = clips.find((clip) => {

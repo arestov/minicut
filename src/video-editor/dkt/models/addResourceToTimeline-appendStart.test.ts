@@ -97,9 +97,7 @@ describe('addResourceToTimeline append start', () => {
 		}
 
 		await ctx.lockToRead(async () => {
-			await project.dispatch('addResourceToTimeline', {
-				resourceId: imageResource._node_id,
-			})
+			await project.dispatch('addResourceToTimeline', imageResource._node_id)
 		})
 
 		const videoClipsFinal = await ctx.queryRel(videoTrack, 'clips')
@@ -161,9 +159,7 @@ describe('addResourceToTimeline append start', () => {
 		}
 
 		await ctx.lockToRead(async () => {
-			await project.dispatch('addResourceToTimeline', {
-				resourceId: audioResource._node_id,
-			})
+			await project.dispatch('addResourceToTimeline', audioResource._node_id)
 		})
 
 		const audioClips = await ctx.queryRel(audioTrack, 'clips')
