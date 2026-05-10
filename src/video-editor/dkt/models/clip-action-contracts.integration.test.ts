@@ -149,6 +149,12 @@ describe('Clip action contracts', () => {
 			effectId: effects[0]._node_id,
 			toIndex: 1,
 		})
+		const reorderedEffects = await harness.ctx.queryRel(clip, 'effects')
+		expect(reorderedEffects.map((effect) => harness.ctx.getAttr(effect, 'sourceEffectId'))).toEqual([
+			'effect:integration-b',
+			'effect:integration-a',
+		])
+
 		await dispatchAndSettle(harness.ctx, clip, 'removeEffect', {
 			effectId: effects[0]._node_id,
 		})
@@ -174,6 +180,31 @@ describe('Clip action contracts', () => {
 		const projectRel = await harness.ctx.queryRel(clip, 'project')
 		expect(projectRel).toHaveLength(1)
 		expect(projectRel[0]).toBe(harness.project)
+	})
+
+	it('removeEffect and reorderEffect are no-ops for missing effect ids', async () => {
+		const { harness, clip } = await createTempClip()
+
+		await dispatchAndSettle(harness.ctx, clip, 'addEffect', {
+			effectId: 'effect:stable',
+			kind: 'blur',
+			name: 'Stable Effect',
+			enabled: true,
+			amount: 0.25,
+		})
+		const beforeEffects = await harness.ctx.queryRel(clip, 'effects')
+		const beforeEffectIds = beforeEffects.map((effect) => harness.ctx.getAttr(effect, 'sourceEffectId'))
+
+		await dispatchAndSettle(harness.ctx, clip, 'reorderEffect', {
+			effectId: 'effect-node:missing',
+			toIndex: 0,
+		})
+		await dispatchAndSettle(harness.ctx, clip, 'removeEffect', {
+			effectId: 'effect-node:missing',
+		})
+
+		const afterEffects = await harness.ctx.queryRel(clip, 'effects')
+		expect(afterEffects.map((effect) => harness.ctx.getAttr(effect, 'sourceEffectId'))).toEqual(beforeEffectIds)
 	})
 
 	it('removeSelf removes the clip from its parent track', async () => {

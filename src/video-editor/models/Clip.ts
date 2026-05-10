@@ -245,9 +245,10 @@ export const Clip = model({
 			fn: [
 				['<< @all:effects'] as const,
 				(payload: unknown, effects: unknown[]) => {
+					const effectList = Array.isArray(effects) ? effects : []
 					const effectId = (payload as { effectId?: unknown } | null)?.effectId ?? payload
-					const nextEffects = removeEffectRef(Array.isArray(effects) ? effects : [], effectId)
-					return nextEffects ? { effects: nextEffects } : '$noop'
+					const nextEffects = removeEffectRef(effectList, effectId)
+					return { effects: nextEffects ?? effectList }
 				},
 			],
 		},
@@ -258,9 +259,10 @@ export const Clip = model({
 			fn: [
 				['<< @all:effects'] as const,
 				(payload: unknown, effects: unknown[]) => {
+					const effectList = Array.isArray(effects) ? effects : []
 					const value = payload as { effectId?: unknown; toIndex?: unknown } | null
-					const nextEffects = reorderEffectRefs(Array.isArray(effects) ? effects : [], value?.effectId, value?.toIndex)
-					return nextEffects ? { effects: nextEffects } : '$noop'
+					const nextEffects = reorderEffectRefs(effectList, value?.effectId, value?.toIndex)
+					return { effects: nextEffects ?? effectList }
 				},
 			],
 		},
