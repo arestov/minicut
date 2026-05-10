@@ -150,15 +150,11 @@ export const bootDktModels = async (options: BootDktModelsOptions = {}): Promise
 
 	/**
 	 * Run an async function and wait for the DKT graph to settle.
-	 * Similar to Linkcraft's lockToRead pattern.
+	 * Dispatches directly, then waits for the shared DKT flow queue to become idle.
+	 * This keeps action tests deterministic without wrapping every dispatch in app_model.input().
 	 */
 	const lockToRead = async (fn: () => void | Promise<void>): Promise<void> => {
-		// Dispatch directly (not inside input()) then wait for DKT graph to settle.
-		// Wrapping dispatch in input() would delay processing to the next DKT tick,
-		// causing the subsequent queryRel reads to see stale state.
 		await fn()
-		await computed()
-		// Extra settle for multi-level reactive propagation (e.g. createProject → handleInit).
 		await computed()
 	}
 
