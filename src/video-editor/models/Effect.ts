@@ -96,4 +96,7 @@ export const Effect = model({
 
 export const EFFECT_CREATION_SHAPE = {
 	attrs: ['sourceEffectId', 'name', 'kind', 'enabled', 'amount', 'params', 'color'],
+	rels: {
+		clip: {},
+	},
 } as const
