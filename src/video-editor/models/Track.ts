@@ -127,7 +127,7 @@ export const Track = model({
 			to: {
 				clips: ['<< clips', { method: 'set_many' }],
 			},
-			fn: [['<< @all:clips'] as const, reduceRemoveClipBySourceId],
+			fn: [['<< @all:clips', '< @all:sourceClipId < clips'] as const, reduceRemoveClipBySourceId],
 		},
 	},
 })

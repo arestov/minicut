@@ -186,3 +186,44 @@ describe('SessionRoot.splitSelectedClip E2E', () => {
 		expect(ctx.getAttr(rightClip!, 'start')).toBe(2)
 	})
 })
+
+describe('SessionRoot selected clip edit actions', () => {
+	it('nudgeSelectedClip moves the selected clip through the session action', async () => {
+		const { ctx, clip } = await setupWithClip('clip:e2e-nudge-target', 4)
+
+		await ctx.lockToRead(async () => {
+			await ctx.sessionRoot.dispatch('selectEntity', 'clip:e2e-nudge-target')
+			await ctx.sessionRoot.dispatch('nudgeSelectedClip', { delta: 0.5 })
+		})
+
+		expect(ctx.getAttr(clip, 'start')).toBe(0.5)
+	})
+
+	it('deleteSelectedClip removes the selected clip and clears selection', async () => {
+		const { ctx, videoTrack } = await setupWithClip('clip:e2e-delete-target', 4)
+
+		await ctx.lockToRead(async () => {
+			await ctx.sessionRoot.dispatch('selectEntity', 'clip:e2e-delete-target')
+		})
+		await ctx.lockToRead(async () => {
+			await ctx.sessionRoot.dispatch('deleteSelectedClip')
+		})
+
+		const clipsAfter = await ctx.queryRel(videoTrack, 'clips')
+		const sourceClipIds = clipsAfter.map((clip) => ctx.getAttr(clip, 'sourceClipId'))
+		expect(sourceClipIds).not.toContain('clip:e2e-delete-target')
+		expect(ctx.getAttr(ctx.sessionRoot, 'selectedEntityId')).toBeNull()
+	})
+
+	it('removeSelf removes the clip from its parent track', async () => {
+		const { ctx, videoTrack, clip } = await setupWithClip('clip:e2e-remove-self-target', 4)
+
+		await ctx.lockToRead(async () => {
+			await clip.dispatch('removeSelf')
+		})
+
+		const clipsAfter = await ctx.queryRel(videoTrack, 'clips')
+		const sourceClipIds = clipsAfter.map((entry) => ctx.getAttr(entry, 'sourceClipId'))
+		expect(sourceClipIds).not.toContain('clip:e2e-remove-self-target')
+	})
+})

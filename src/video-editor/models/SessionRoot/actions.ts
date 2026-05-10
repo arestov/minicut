@@ -50,6 +50,7 @@ export type DktSessionActionName =
 	| 'syncSelectedClipRel'
 	| 'togglePlayback'
 	| 'zoomTimeline'
+	| 'nudgeSelectedClip'
 	| 'deleteSelectedClip'
 	| 'splitSelectedClip'
 	| 'startPreviewBuffer'
@@ -877,6 +878,20 @@ export const sessionDeleteSelectedClipAction = [
 	},
 ] as const satisfies DktActionDefinition
 
+export const sessionNudgeSelectedClipAction = [
+	{
+		to: ['<< selectedClip', { action: 'moveBy', sub_flow: true }],
+		fn: (payload: unknown) => {
+			const delta = typeof payload === 'number'
+				? payload
+				: (payload as { delta?: unknown } | null)?.delta
+			return typeof delta === 'number' && Number.isFinite(delta) && delta !== 0
+				? { delta }
+				: '$noop'
+		},
+	},
+] as const satisfies DktActionDefinition
+
 export const sessionSplitSelectedClipAction = [
 	{
 		to: ['<< selectedClip', { action: 'splitSelfAt', inline_subwalker: true }],
@@ -922,6 +937,7 @@ export const dktSessionActions = {
 	tickPlayback: sessionTickPlaybackAction,
 	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
+	nudgeSelectedClip: sessionNudgeSelectedClipAction,
 	requestImportFiles: sessionRequestImportFilesAction,
 	deleteSelectedClip: sessionDeleteSelectedClipAction,
 	splitSelectedClip: sessionSplitSelectedClipAction,

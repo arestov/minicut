@@ -24,11 +24,9 @@ import {
 } from 'react'
 import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 import { useActions } from '../../dkt-react-sync/hooks/useActions'
-import { useReactScopeRuntime } from '../../dkt-react-sync/hooks/useReactScopeRuntime'
 import { useMany } from '../../dkt-react-sync/hooks/useMany'
 import { useRootAttrs } from '../../dkt-react-sync/hooks/useRootAttrs'
 import { useRootDispatch } from '../../dkt-react-sync/hooks/useRootDispatch'
-import { useRootOne } from '../../dkt-react-sync/hooks/useRootOne'
 import type { ReactSyncScopeHandle } from '../../dkt-react-sync/scope/ScopeHandle'
 import {
 	TIMELINE_ZOOM_MAX,
@@ -281,9 +279,6 @@ export const TimelineView = () => {
 	const canZoomIn = timelineZoom < TIMELINE_ZOOM_MAX
 	// session dispatch for simple session actions
 	const sessionDispatch = useRootDispatch()
-	const runtime = useReactScopeRuntime()
-	const selectedClipScope = useRootOne('selectedClip')
-	const selectedClipDispatch = selectedClipScope ? runtime.getDispatch(selectedClipScope) : null
 	// project dispatch for addTrack — scope = activeProject via ActiveProjectScope
 	const projectDispatch = useActions()
 
@@ -362,7 +357,7 @@ export const TimelineView = () => {
 			canZoomIn={canZoomIn}
 			canZoomOut={canZoomOut}
 			onDeleteSelected={() => sessionDispatch('deleteSelectedClip')}
-			onNudgeSelected={(delta) => selectedClipDispatch?.('moveBy', { delta })}
+			onNudgeSelected={(delta) => sessionDispatch('nudgeSelectedClip', { delta })}
 			onSplitSelected={() => sessionDispatch('splitSelectedClip')}
 			onZoom={(delta) => sessionDispatch('zoomTimeline', delta)}
 			selectedClipSummary={selectedClipSummary}

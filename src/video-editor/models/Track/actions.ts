@@ -88,6 +88,13 @@ export const removeClipBySourceClipId = (clips: unknown[], sourceClipId: unknown
 	return clips.filter((_, i) => i !== idx)
 }
 
+export const removeClipBySourceClipIdList = (clips: unknown[], sourceClipIds: unknown[], sourceClipId: unknown): unknown[] | null => {
+	if (typeof sourceClipId !== 'string') return null
+	const idx = sourceClipIds.findIndex((id) => id === sourceClipId)
+	if (idx < 0) return null
+	return clips.filter((_, i) => i !== idx)
+}
+
 export const findClipAttrsBySourceClipId = (
 	clips: unknown[],
 	sourceClipId: unknown,
@@ -192,11 +199,15 @@ export const reduceSetClips = (payload: unknown) => {
 export const reduceRemoveClip = (payload: unknown, clips: unknown[]) => {
 	const clipId = (payload as { clipId?: unknown } | null)?.clipId ?? payload
 	const nextClips = removeClipRef(Array.isArray(clips) ? clips : [], clipId)
-	return nextClips ? { clips: nextClips } : '$noop'
+	return { clips: nextClips ?? (Array.isArray(clips) ? clips : []) }
 }
 
-export const reduceRemoveClipBySourceId = (payload: unknown, clips: unknown[]) => {
+export const reduceRemoveClipBySourceId = (payload: unknown, clips: unknown[], sourceClipIds: unknown[] = []) => {
 	const sourceClipId = (payload as { sourceClipId?: unknown } | null)?.sourceClipId ?? payload
-	const nextClips = removeClipBySourceClipId(Array.isArray(clips) ? clips : [], sourceClipId)
-	return nextClips ? { clips: nextClips } : '$noop'
+	const clipList = Array.isArray(clips) ? clips : []
+	const sourceIdList = Array.isArray(sourceClipIds) ? sourceClipIds : []
+	const nextClips = sourceIdList.length
+		? removeClipBySourceClipIdList(clipList, sourceIdList, sourceClipId)
+		: removeClipBySourceClipId(clipList, sourceClipId)
+	return { clips: nextClips ?? clipList }
 }
