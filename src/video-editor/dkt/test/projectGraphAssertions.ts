@@ -8,13 +8,6 @@ export type ProjectGraphNode = {
 	rels: Record<string, unknown>
 }
 
-const getSingleRel = (value: unknown): string | null => {
-	if (typeof value === 'string') {
-		return value
-	}
-	return null
-}
-
 export const expectClipTiming = (
 	ctx: DktTestContext,
 	clip: { _node_id?: string | null } | null | undefined,
@@ -105,7 +98,31 @@ export const expectProjectGraphInvariants = async (ctx: DktTestContext): Promise
 			seenClipIds.add(clipId)
 		}
 
-		const clipRenderData = ctx.getAttr(clip, 'clipRenderData') as { resourceId?: unknown } | null
+		const clipRenderData = ctx.getAttr(clip, 'clipRenderData') as {
+			id?: unknown
+			resourceId?: unknown
+		} | null
+		expect(clipRenderData?.id).toBe(clip._node_id)
+
+		const mediaKind = ctx.getAttr(clip, 'mediaKind')
+		const resourceRel = await ctx.queryRel(clip, 'resource')
+		const textRel = await ctx.queryRel(clip, 'text')
+
+		if (mediaKind === 'text') {
+			expect(textRel).toHaveLength(1)
+			const textNode = textRel[0]
+			expect(await ctx.queryRel(textNode, 'clip')).toEqual([clip])
+			expect(resourceRel).toHaveLength(0)
+			expect(clipRenderData?.resourceId ?? null).toBeNull()
+		}
+
+		if (mediaKind !== 'text' && resourceRel.length > 0) {
+			expect(resourceRel).toHaveLength(1)
+			const resourceModel = resourceRel[0]
+			expect(resources.some((resource) => resource._node_id === resourceModel._node_id)).toBe(true)
+			expect(clipRenderData?.resourceId).toBe(resourceModel._node_id)
+		}
+
 		if (typeof clipRenderData?.resourceId === 'string') {
 			expect(resources.some((resource) => resource._node_id === clipRenderData.resourceId)).toBe(true)
 		}
