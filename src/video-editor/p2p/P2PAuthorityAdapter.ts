@@ -160,7 +160,6 @@ export const createP2PAuthorityAdapter = (config: CreateP2PAuthorityAdapterConfi
 			rtcConfig: config.rtcConfig,
 			createSignaling: config.createSignaling,
 			sharedWorkerName: roomScopedWorkerName,
-			workerProtocol: 'dkt',
 			connectionTimeoutMs: config.connectionTimeoutMs,
 		},
 		{

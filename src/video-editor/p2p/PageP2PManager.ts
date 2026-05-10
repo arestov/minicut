@@ -1,4 +1,4 @@
-import { MSG, type WireMessage } from '../domain/types'
+import type { WireMessage } from '../domain/types'
 import { DKT_MSG, type MiniCutDktTransportMessage } from '../dkt/shared/messageTypes'
 import type { BridgeSignalingFactory } from './BridgeSignaling'
 import { createDoSignalingFactory } from './BridgeSignaling'
@@ -25,7 +25,6 @@ export interface PageP2PManagerConfig {
 	dataChannelLabel?: string
 	resourceDataChannelLabel?: string
 	sharedWorkerName?: string
-	workerProtocol?: 'legacy' | 'dkt'
 	connectionTimeoutMs?: number
 }
 
@@ -647,9 +646,7 @@ export const createPageP2PManager = (
 
 		entry.proxyPort.onmessage = null
 		try {
-			entry.proxyPort.postMessage(config.workerProtocol === 'dkt'
-				? { type: DKT_MSG.CLOSE_SESSION }
-				: { m: MSG.DISCONNECT })
+			entry.proxyPort.postMessage({ type: DKT_MSG.CLOSE_SESSION })
 		} catch {
 			// noop
 		}
