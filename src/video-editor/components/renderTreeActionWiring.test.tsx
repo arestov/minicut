@@ -1,10 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { ReactNode } from 'react'
+import { ReactScopeRuntimeContext } from '../../dkt-react-sync/context/ReactScopeRuntimeContext'
+import { ScopeContext } from '../../dkt-react-sync/context/ScopeContext'
 
 const useVideoEditorMock = vi.fn()
 const useRootAttrsMock = vi.fn()
 const useRootDispatchMock = vi.fn()
-const useActionsMock = vi.fn()
 const useManyMock = vi.fn()
 const useOneMock = vi.fn()
 const useAttrsMock = vi.fn()
@@ -15,10 +18,6 @@ vi.mock('../../dkt-react-sync/hooks/useRootAttrs', () => ({
 
 vi.mock('../../dkt-react-sync/hooks/useRootDispatch', () => ({
 	useRootDispatch: (...args: unknown[]) => useRootDispatchMock(...args),
-}))
-
-vi.mock('../../dkt-react-sync/hooks/useActions', () => ({
-	useActions: (...args: unknown[]) => useActionsMock(...args),
 }))
 
 vi.mock('../../dkt-react-sync/hooks/useMany', () => ({
@@ -45,11 +44,43 @@ import { Toolbar } from './Toolbar'
 import { TimelineView } from './TimelineView'
 import { InspectorEditTabPanel } from './inspector/InspectorEditTabPanel'
 
+type TestScope = { _nodeId: string }
+
+type RecordedDispatch = {
+	scopeId: string | null
+	action: string
+	payload?: unknown
+}
+
+const createDispatchRecordingRuntime = () => {
+	const dispatches: RecordedDispatch[] = []
+	const runtime = {
+		getDispatch(scope: TestScope | null) {
+			return (action: string, payload?: unknown) => {
+				dispatches.push({ scopeId: scope?._nodeId ?? null, action, payload })
+			}
+		},
+	}
+
+	return { dispatches, runtime }
+}
+
+const renderWithScope = (ui: ReactNode, scope: TestScope) => {
+	const { dispatches, runtime } = createDispatchRecordingRuntime()
+
+	const result = render(
+		<ReactScopeRuntimeContext.Provider value={runtime as any}>
+			<ScopeContext.Provider value={scope as any}>{ui}</ScopeContext.Provider>
+		</ReactScopeRuntimeContext.Provider>,
+	)
+
+	return { ...result, dispatches }
+}
+
 beforeEach(() => {
 	vi.clearAllMocks()
 	useRootAttrsMock.mockReturnValue({})
 	useRootDispatchMock.mockReturnValue(vi.fn())
-	useActionsMock.mockReturnValue(vi.fn())
 	useManyMock.mockReturnValue([])
 	useOneMock.mockReturnValue(null)
 	useAttrsMock.mockReturnValue({})
@@ -67,7 +98,8 @@ beforeEach(() => {
 })
 
 describe('Toolbar wiring', () => {
-	it('dispatches createProject and requestProjectExport from toolbar buttons', () => {
+	it('dispatches createProject and requestProjectExport from toolbar buttons', async () => {
+		const user = userEvent.setup()
 		const videoEditorActions = {
 			createProject: vi.fn(),
 			requestProjectExport: vi.fn(),
@@ -82,8 +114,8 @@ describe('Toolbar wiring', () => {
 
 		render(<Toolbar />)
 
-		fireEvent.click(screen.getByRole('button', { name: 'New project' }))
-		fireEvent.click(screen.getByRole('button', { name: 'Export project' }))
+		await user.click(screen.getByRole('button', { name: 'New project' }))
+		await user.click(screen.getByRole('button', { name: 'Export project' }))
 
 		expect(videoEditorActions.createProject).toHaveBeenCalledTimes(1)
 		expect(videoEditorActions.requestProjectExport).toHaveBeenCalledTimes(1)
@@ -91,11 +123,10 @@ describe('Toolbar wiring', () => {
 })
 
 describe('Timeline wiring', () => {
-	it('dispatches split, nudge, delete, and addTrack actions from timeline controls', () => {
+	it('dispatches split, nudge, delete, and addTrack actions from timeline controls', async () => {
+		const user = userEvent.setup()
 		const rootDispatch = vi.fn()
-		const projectDispatch = vi.fn()
 		useRootDispatchMock.mockReturnValue(rootDispatch)
-		useActionsMock.mockReturnValue(projectDispatch)
 		useRootAttrsMock.mockReturnValue({
 			activeProjectId: 'project:timeline',
 			timelineZoom: 16,
@@ -109,31 +140,29 @@ describe('Timeline wiring', () => {
 		})
 		useManyMock.mockReturnValue([])
 
-		render(<TimelineView />)
+		const { dispatches } = renderWithScope(<TimelineView />, { _nodeId: 'project:timeline' })
 
-		fireEvent.click(screen.getByRole('button', { name: 'Split clip' }))
-		fireEvent.click(screen.getByRole('button', { name: 'Nudge -0.5s' }))
-		fireEvent.click(screen.getByRole('button', { name: 'Delete clip' }))
-		fireEvent.click(screen.getByRole('button', { name: 'Add video track' }))
-		fireEvent.click(screen.getByRole('button', { name: 'Add audio track' }))
+		await user.click(screen.getByRole('button', { name: 'Split clip' }))
+		await user.click(screen.getByRole('button', { name: 'Nudge -0.5s' }))
+		await user.click(screen.getByRole('button', { name: 'Delete clip' }))
+		await user.click(screen.getByRole('button', { name: 'Add video track' }))
+		await user.click(screen.getByRole('button', { name: 'Add audio track' }))
 
 		expect(rootDispatch).toHaveBeenCalledWith('splitSelectedClip')
 		expect(rootDispatch).toHaveBeenCalledWith('nudgeSelectedClip', { delta: -0.5 })
 		expect(rootDispatch).toHaveBeenCalledWith('deleteSelectedClip')
-		expect(projectDispatch).toHaveBeenCalledWith('addTrack', 'video')
-		expect(projectDispatch).toHaveBeenCalledWith('addTrack', 'audio')
+		expect(dispatches).toContainEqual({ scopeId: 'project:timeline', action: 'addTrack', payload: 'video' })
+		expect(dispatches).toContainEqual({ scopeId: 'project:timeline', action: 'addTrack', payload: 'audio' })
 	})
 })
 
 describe('Inspector wiring', () => {
-	it('dispatches text, clip, and effect actions from the edit tab', () => {
-		const clipDispatch = vi.fn()
-		useActionsMock.mockReturnValue(clipDispatch)
+	it('dispatches text actions from text scope and effect actions from clip scope', async () => {
+		const user = userEvent.setup()
 		useRootAttrsMock.mockReturnValue({})
 		useManyMock.mockReturnValue([])
 		useOneMock.mockReturnValue({ _nodeId: 'text:inspector' })
 
-		useActionsMock.mockImplementation(() => clipDispatch)
 		const clipAttrs = {
 			sourceClipId: 'clip:inspector',
 			opacity: { value: 1 },
@@ -176,7 +205,6 @@ describe('Inspector wiring', () => {
 			}
 			return {}
 		})
-		useActionsMock.mockReturnValue(clipDispatch)
 		useAttrsMock.mockImplementation((keys: string[]) => {
 			if (keys.includes('sourceTextId')) {
 				return textAttrs
@@ -184,14 +212,29 @@ describe('Inspector wiring', () => {
 			return clipAttrs
 		})
 
-		render(<InspectorEditTabPanel />)
+		const { dispatches } = renderWithScope(<InspectorEditTabPanel />, { _nodeId: 'clip:inspector' })
 
-		fireEvent.change(screen.getByLabelText('Text content'), { target: { value: 'Updated text' } })
-		fireEvent.click(screen.getByRole('button', { name: 'Fade in +0.5s' }))
-		fireEvent.click(screen.getByRole('button', { name: 'Blur' }))
+		const textInput = screen.getByLabelText('Text content')
+		await user.click(textInput)
+		await user.keyboard('{Control>}a{/Control}')
+		await user.paste('Updated text')
+		await user.click(screen.getByRole('button', { name: 'Fade in +0.5s' }))
+		await user.click(screen.getByRole('button', { name: 'Blur' }))
 
-		expect(clipDispatch).toHaveBeenCalledWith('setTextContent', { content: 'Updated text' })
-		expect(clipDispatch).toHaveBeenCalledWith('setFade', { edge: 'in', delta: 0.5 })
-		expect(clipDispatch).toHaveBeenCalledWith('addEffect', { kind: 'blur' })
+		expect(dispatches).toContainEqual({
+			scopeId: 'text:inspector',
+			action: 'setTextContent',
+			payload: { content: 'Updated text' },
+		})
+		expect(dispatches).toContainEqual({
+			scopeId: 'clip:inspector',
+			action: 'setFade',
+			payload: { edge: 'in', delta: 0.5 },
+		})
+		expect(dispatches).toContainEqual({
+			scopeId: 'clip:inspector',
+			action: 'addEffect',
+			payload: { kind: 'blur' },
+		})
 	})
 })
