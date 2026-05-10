@@ -27,7 +27,7 @@ export interface ProjectGraph {
 	rootEntityId: EntityId
 }
 
-export interface ProjectRegistry extends GraphRoot {
+export interface ProjectRenderGraph extends GraphRoot {
 	activeProjectId: ProjectId | null
 	projects: Record<ProjectId, ProjectGraph>
 }

@@ -6,8 +6,6 @@ import {
 	normalizeTrackCreationAttrs,
 	findResourceById,
 	getResourceKind,
-	createTimelineClipPayload,
-	createEmbeddedAudioClipPayload,
 	reduceHandleInit,
 	reduceRenameProject,
 	reduceSetProjectFormat,
@@ -29,8 +27,6 @@ import {
 	reduceAddTextClipToVideoTrack,
 } from './Project/actions'
 import { reduceProjectPreviewClipSources } from './Project/comps'
-import type { PreviewClipSource, PreviewStructure } from '../read-model/previewComps'
-import { normalizeExportPlan, type ExportPlan } from '../render/renderPlan'
 
 export const PROJECT_CREATION_SHAPE = {
 	attrs: ['title', 'fps', 'width', 'height', 'duration', 'createdAt', 'updatedAt', 'autoCreateDefaultTracks'],
@@ -41,73 +37,6 @@ export const PROJECT_CREATION_SHAPE = {
 } as const
 
 const asNumber = (value: unknown, fallback: number): number => typeof value === 'number' ? value : fallback
-
-const asString = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback
-
-type TimelineResourceSummary = {
-	resourceId: string
-	kind: string
-	duration: number
-	url?: string
-	mime?: string
-}
-
-const hydrateClipSourcesWithResourceSummaries = (
-	clipSources: PreviewClipSource[],
-	resourceSummaries: TimelineResourceSummary[],
-): PreviewClipSource[] => {
-	if (clipSources.length === 0 || resourceSummaries.length === 0) {
-		return clipSources
-	}
-
-	const byResourceId = new Map<string, TimelineResourceSummary>()
-	for (const summary of resourceSummaries) {
-		if (!summary || typeof summary !== 'object' || !summary.resourceId) {
-			continue
-		}
-		byResourceId.set(summary.resourceId, summary)
-	}
-
-	if (byResourceId.size === 0) {
-		return clipSources
-	}
-
-	return clipSources.map((clipSource) => {
-		if (typeof clipSource.resourceId !== 'string' || !clipSource.resourceId) {
-			return clipSource
-		}
-		const summary = byResourceId.get(clipSource.resourceId)
-		if (!summary) {
-			return clipSource
-		}
-
-		const resolvedUrl = asString(summary.url, '').trim()
-		const resolvedMime = asString(summary.mime, '').trim()
-		const resolvedKind = asString(summary.kind, '').trim()
-		const resolvedDuration = Number.isFinite(summary.duration) ? Math.max(0, summary.duration) : clipSource.duration
-
-		if (
-			clipSource.resourceUrl
-			&& clipSource.mime
-			&& Number.isFinite(clipSource.duration)
-			&& clipSource.duration > 0
-		) {
-			return clipSource
-		}
-
-		return {
-			...clipSource,
-			resourceUrl: clipSource.resourceUrl || resolvedUrl,
-			mime: clipSource.mime !== 'application/octet-stream' ? clipSource.mime : (resolvedMime || clipSource.mime),
-			resourceKind: clipSource.resourceKind !== 'video'
-				? clipSource.resourceKind
-				: (resolvedKind === 'audio' || resolvedKind === 'image' || resolvedKind === 'video' || resolvedKind === 'text'
-					? resolvedKind
-					: clipSource.resourceKind),
-			duration: clipSource.duration > 0 ? clipSource.duration : resolvedDuration,
-		}
-	})
-}
 
 export const Project = model({
 	model_name: 'minicut_project',
@@ -285,10 +214,10 @@ export const Project = model({
 				when: [
 					[] as const,
 					(payload: unknown) => {
-						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: unknown; resourceAttrs?: { kind?: unknown } } | null
-						const kind = typeof value?.resourceAttrs?.kind === 'string'
-							? value.resourceAttrs.kind
-							: (value?.resource && typeof value.resource === 'object' ? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0]) : null)
+						const value = payload as { shouldAddEmbeddedAudio?: unknown; resource?: unknown } | null
+						const kind = value?.resource && typeof value.resource === 'object'
+							? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0])
+							: null
 						return value?.shouldAddEmbeddedAudio === true && kind === 'video'
 					},
 				],
@@ -325,10 +254,10 @@ export const Project = model({
 				when: [
 					[] as const,
 					(payload: unknown) => {
-						const value = payload as { shouldAddToTimeline?: unknown; resource?: unknown; resourceAttrs?: { kind?: unknown } } | null
-						const kind = typeof value?.resourceAttrs?.kind === 'string'
-							? value.resourceAttrs.kind
-							: (value?.resource && typeof value.resource === 'object' ? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0]) : null)
+						const value = payload as { shouldAddToTimeline?: unknown; resource?: unknown } | null
+						const kind = value?.resource && typeof value.resource === 'object'
+							? getResourceKind(value.resource as Parameters<typeof getResourceKind>[0])
+							: null
 						return value?.shouldAddToTimeline === true && kind === 'audio'
 					},
 				],

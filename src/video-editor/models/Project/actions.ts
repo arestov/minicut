@@ -106,30 +106,6 @@ export const findResourceById = (resources: unknown[], resourceId: string): Reso
 	return (resources.find((resource) => getNodeId(resource) === resourceId) as ResourceLike | undefined) ?? null
 }
 
-const findResourceByAttrs = (resources: unknown[], attrs: Record<string, unknown>): ResourceLike | null => {
-	if (!Array.isArray(resources)) {
-		return null
-	}
-	const name = typeof attrs.name === 'string' ? attrs.name : null
-	const url = typeof attrs.url === 'string' ? attrs.url : null
-	const mime = typeof attrs.mime === 'string' ? attrs.mime : null
-	const duration = typeof attrs.duration === 'number' ? attrs.duration : null
-	for (let index = resources.length - 1; index >= 0; index -= 1) {
-		const item = resources[index]
-		if (!item || typeof item !== 'object') continue
-		const resource = item as ResourceLike
-		if (
-			(name === null || getResourceAttr(resource, 'name') === name)
-			&& (url === null || getResourceAttr(resource, 'url') === url)
-			&& (mime === null || getResourceAttr(resource, 'mime') === mime)
-			&& (duration === null || getResourceAttr(resource, 'duration') === duration)
-		) {
-			return resource
-		}
-	}
-	return null
-}
-
 export const createTimelineClipPayload = (
 	noop: unknown,
 	resource: ResourceLike,
@@ -247,20 +223,17 @@ export const reduceImportResourceCreate = (payload: unknown, clips: unknown[]) =
 		resource: { attrs, hold_ref_id: 'newResource' },
 		resources: { use_ref_id: 'newResource' },
 		$output: {
-			resourceAttrs: attrs,
+			resource: { use_ref_id: 'newResource' },
 			shouldAddToTimeline,
 			shouldAddEmbeddedAudio: shouldAddToTimeline && attrs.kind === 'video',
 		},
 	}
 }
 
-const resolveOutputResource = (payload: unknown, resources: unknown[]): ResourceLike | null => {
-	const value = payload as { resource?: unknown; resourceAttrs?: Record<string, unknown> } | null
+const resolveOutputResource = (payload: unknown): ResourceLike | null => {
+	const value = payload as { resource?: unknown } | null
 	if (value?.resource && typeof value.resource === 'object') {
 		return value.resource as ResourceLike
-	}
-	if (value?.resourceAttrs && typeof value.resourceAttrs === 'object') {
-		return findResourceByAttrs(resources, value.resourceAttrs)
 	}
 	return null
 }
@@ -270,7 +243,7 @@ export const reduceImportResourceToVideo = (payload: unknown, noop: unknown, res
 	if (value?.shouldAddToTimeline !== true) {
 		return noop
 	}
-	const resource = resolveOutputResource(payload, Array.isArray(resources) ? resources : [])
+	const resource = resolveOutputResource(payload)
 	if (!resource || resource.kind === 'audio') {
 		return noop
 	}
@@ -282,7 +255,7 @@ export const reduceImportResourceToAudio = (payload: unknown, noop: unknown, res
 	if (value?.shouldAddToTimeline !== true) {
 		return noop
 	}
-	const resource = resolveOutputResource(payload, Array.isArray(resources) ? resources : [])
+	const resource = resolveOutputResource(payload)
 	if (!resource || resource.kind !== 'audio') {
 		return noop
 	}
@@ -294,7 +267,7 @@ export const reduceImportResourceToEmbeddedAudio = (payload: unknown, noop: unkn
 	if (value?.shouldAddEmbeddedAudio !== true) {
 		return noop
 	}
-	const resource = resolveOutputResource(payload, Array.isArray(resources) ? resources : [])
+	const resource = resolveOutputResource(payload)
 	if (!resource) {
 		return noop
 	}

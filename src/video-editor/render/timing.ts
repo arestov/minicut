@@ -1,4 +1,4 @@
-import type { AnimatedScalar, EntityId, KeyframeAttrs, ProjectRegistry } from './registryTypes'
+import type { AnimatedScalar, EntityId, KeyframeAttrs, ProjectRenderGraph } from './registryTypes'
 
 export interface ScalarKeyframe extends KeyframeAttrs {
 	time: number
@@ -19,7 +19,7 @@ const isScalarKeyframe = (value: ScalarKeyframeRef): value is ScalarKeyframe =>
 	typeof value === 'object' && value !== null && Number.isFinite(value.time) && Number.isFinite(value.value)
 
 export const getScalarKeyframeEntities = (
-	registry: ProjectRegistry,
+	registry: ProjectRenderGraph,
 	scalar: AnimatedScalar,
 ): ScalarKeyframe[] => (scalar.keyframes ?? [])
 	.map((keyframeId): ScalarKeyframe | null => {
@@ -85,7 +85,7 @@ export const evaluateKeyframedScalar = (
 }
 
 export const evaluateAnimatedScalar = (
-	registry: ProjectRegistry,
+	registry: ProjectRenderGraph,
 	scalar: AnimatedScalar,
 	time: number,
 ): number => evaluateKeyframedScalar(scalar, time, (keyframeId) => {

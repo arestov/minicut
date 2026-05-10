@@ -3,11 +3,16 @@ import { existsSync } from 'node:fs'
 
 const roots = [
   'src/video-editor/app',
-  'src/video-editor/render-sync',
+  'src/video-editor/components',
+  'src/video-editor/models',
+  'src/video-editor/render',
   'src/video-editor/p2p',
   'src/video-editor/worker',
 ].filter((root) => existsSync(root))
 
+// Running editor path must use DKT node identity only.
+// Do not route mutations by source ids or by matching domain attrs.
+// Existing model refs should be passed as refs or resolved through $input_id.
 const checks = [
   {
     name: 'Legacy registry API usage in app/runtime path',
@@ -22,6 +27,21 @@ const checks = [
   {
     name: 'Legacy render/runtime debug compatibility symbols',
     pattern: 'DktRegistryRenderStore|createDktEditorRenderRuntime|legacyRuntime|debugDumpGraph|debugDescribeNode',
+    extraArgs: [],
+  },
+  {
+    name: 'Legacy source-id identity usage in running path',
+    pattern: 'source(Project|Track|Resource|Clip|Text|Effect)Id|sourceResourceName',
+    extraArgs: [],
+  },
+  {
+    name: 'Attribute lookup routing in running path',
+    pattern: 'find[A-Za-z0-9_]*ByAttrs?|lookup[A-Za-z0-9_]*ByAttrs?|resolve[A-Za-z0-9_]*ByAttrs?',
+    extraArgs: [],
+  },
+  {
+    name: 'No-op legacy contract stubs',
+    pattern: 'No-op: legacy|Registry-based authority contract removed|runAuthorityClientContract',
     extraArgs: [],
   },
 ]
