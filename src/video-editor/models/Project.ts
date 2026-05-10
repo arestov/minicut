@@ -21,6 +21,8 @@ import {
 	reduceSetImportProgress,
 	reduceSetTracks,
 	reduceSetResources,
+	reduceMoveClipToTrackContext,
+	reduceMoveClipToTrackPayload,
 	reduceAddVideoResourceToTimeline,
 	reduceAddAudioResourceToTimeline,
 	reduceAddEmbeddedAudio,
@@ -355,6 +357,23 @@ export const Project = model({
 			},
 			fn: reduceSetResources,
 		},
+		moveClipToTrack: [
+			{
+				to: {
+					clip: ['*'],
+					tracks: ['<< tracks', { action: 'removeClip', inline_subwalker: true }],
+					$output: ['$output'],
+				},
+				fn: [
+					['$noop', '<< @all:tracks', '<< @all:tracks.clips'] as const,
+					reduceMoveClipToTrackContext,
+				],
+			},
+			{
+				to: ['<< tracks', { action: 'acceptClipIfTarget', inline_subwalker: true }],
+				fn: reduceMoveClipToTrackPayload,
+			},
+		],
 		addResourceToTimeline: [
 			{
 				when: [

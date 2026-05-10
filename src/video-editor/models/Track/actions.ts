@@ -224,6 +224,22 @@ export const reduceSetClips = (payload: unknown) => {
 	return { clips: Array.isArray(clips) ? clips : [] }
 }
 
+export const reduceAcceptClipIfTarget = (payload: unknown, self: unknown, clips: unknown[]) => {
+	const value = payload as { clip?: unknown; targetTrackId?: unknown } | null
+	const targetTrackId = typeof value?.targetTrackId === 'string' ? value.targetTrackId : null
+	const selfId = getNodeId(self)
+	const clip = value?.clip
+	const clipId = getNodeId(clip)
+	const currentClips = Array.isArray(clips) ? clips : []
+	if (!targetTrackId || !selfId || selfId !== targetTrackId || !clip || !clipId) {
+		return { clips: currentClips }
+	}
+	if (currentClips.some((candidate) => getNodeId(candidate) === clipId)) {
+		return { clips: currentClips }
+	}
+	return { clips: [...currentClips, clip] }
+}
+
 export const reduceRemoveClip = (payload: unknown, clips: unknown[]) => {
 	const clipId = (payload as { clipId?: unknown } | null)?.clipId ?? payload
 	const nextClips = removeClipRef(Array.isArray(clips) ? clips : [], clipId)

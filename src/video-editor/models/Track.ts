@@ -5,7 +5,7 @@ import {
 	normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef,
 	reduceRenameTrack, reduceSetTrackMuted, reduceSetTrackLocked,
 	reduceAddClip, reduceAddTextClip, reduceLinkClipAndTextFromOutput, reduceSplitClipAt,
-	reduceSetClips, reduceRemoveClip,
+	reduceSetClips, reduceAcceptClipIfTarget, reduceRemoveClip,
 } from './Track/actions'
 import { reduceTrackAppendStart } from './Track/comps'
 
@@ -135,6 +135,12 @@ export const Track = model({
 				clips: ['<< clips', { method: 'set_many' }],
 			},
 			fn: reduceSetClips,
+		},
+		acceptClipIfTarget: {
+			to: {
+				clips: ['<< clips', { method: 'set_many' }],
+			},
+			fn: [['<<<<', '<< @all:clips'] as const, reduceAcceptClipIfTarget],
 		},
 		removeClip: {
 			to: {

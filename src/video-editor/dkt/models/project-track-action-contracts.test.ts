@@ -222,4 +222,20 @@ describe('Track action contracts', () => {
 		expect(trackClipIds[1]).toBe(String(firstClip._node_id))
 		await expectProjectGraphInvariants(harness.ctx)
 	})
+
+	it('moveClipToTrack moves a clip between tracks as a single project graph mutation', async () => {
+		const harness = await createActionContractHarness()
+		const clipId = String(harness.videoClip._node_id)
+		const targetTrackId = String(harness.audioTrack._node_id)
+
+		await dispatchAndSettle(harness.ctx, harness.project, 'moveClipToTrack', {
+			clipId,
+			targetTrackId,
+		})
+
+		expect(await readNodeIds(harness.ctx, harness.videoTrack, 'clips')).not.toContain(clipId)
+		expect(await readNodeIds(harness.ctx, harness.audioTrack, 'clips')).toContain(clipId)
+		expect(await readNodeIds(harness.ctx, harness.videoClip, 'track')).toEqual([targetTrackId])
+		await expectProjectGraphInvariants(harness.ctx)
+	})
 })
