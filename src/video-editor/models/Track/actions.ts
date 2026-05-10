@@ -15,6 +15,8 @@ const asString = (value: unknown): string | null => typeof value === 'string' ? 
 const asNumber = (value: unknown): number | null => typeof value === 'number' ? value : null
 const asObject = <Value extends object>(value: unknown): Value | null =>
 	value && typeof value === 'object' ? value as Value : null
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+	value && typeof value === 'object' ? value as Record<string, unknown> : null
 
 export const normalizeClipCreationAttrs = (payload: unknown) => {
 	const value = payload as TrackAddClipPayload | null
@@ -47,6 +49,22 @@ const getNodeId = (model: unknown): string | null => (
 		? (model as { _node_id: string })._node_id
 		: null
 )
+
+const getModelAttr = (model: unknown, key: string): unknown => {
+	if (!model || typeof model !== 'object') {
+		return undefined
+	}
+	const statesValue = (model as { states?: Record<string, unknown> }).states?.[key]
+	if (statesValue !== undefined) {
+		return statesValue
+	}
+	return (model as Record<string, unknown>)[key]
+}
+
+const resolveOutputRelModel = (payload: unknown, relName: string): unknown => {
+	const rels = asRecord((payload as { rels?: unknown } | null)?.rels)
+	return rels?.[relName] ?? null
+}
 
 export const removeClipRef = (clips: unknown[], clipId: unknown): unknown[] | null => {
 	if (typeof clipId !== 'string') return null
@@ -137,8 +155,34 @@ export const reduceAddTextClip = (payload: unknown, self: unknown) => {
 			hold_ref_id: 'newTextNode',
 		},
 		clips: { use_ref_id: 'newTextClip' },
+		$output: {
+			rels: {
+				clip: { use_ref_id: 'newTextClip' },
+				text: { use_ref_id: 'newTextNode' },
+			},
+		},
 	}
 }
+
+export const reduceLinkClipAndTextFromOutput = (payload: unknown) => {
+	const clip = resolveOutputRelModel(payload, 'clip')
+	const text = resolveOutputRelModel(payload, 'text')
+	const clipId = getNodeId(clip)
+	const textId = getNodeId(text)
+	if (!clipId || !textId) {
+		return '$noop'
+	}
+	return {
+		[clipId]: { rels: { text } },
+		[textId]: { rels: { clip } },
+	}
+}
+
+const cloneTextAttrs = (textModel: unknown): ReturnType<typeof normalizeTextCreationAttrs> => normalizeTextCreationAttrs({
+	content: getModelAttr(textModel, 'content'),
+	style: getModelAttr(textModel, 'style'),
+	box: getModelAttr(textModel, 'box'),
+})
 
 export const reduceSplitClipAt = (payload: unknown, self: unknown) => {
 	const attrs = normalizeRightSplitClipAttrs(payload)
@@ -147,17 +191,31 @@ export const reduceSplitClipAt = (payload: unknown, self: unknown) => {
 	}
 	const resource = (payload as { resource?: unknown } | null)?.resource ?? null
 	const text = (payload as { text?: unknown } | null)?.text ?? null
+	const clonedTextAttrs = text ? cloneTextAttrs(text) : null
 	return {
 		clip: {
 			attrs,
 			rels: {
 				track: self,
 				...(resource ? { resource } : {}),
-				...(text ? { text } : {}),
 			},
 			hold_ref_id: 'rightSplitClip',
 		},
+		...(clonedTextAttrs
+			? {
+				text: {
+					attrs: clonedTextAttrs,
+					hold_ref_id: 'rightSplitText',
+				},
+			}
+			: {}),
 		clips: { use_ref_id: 'rightSplitClip' },
+		$output: {
+			rels: {
+				clip: { use_ref_id: 'rightSplitClip' },
+				...(clonedTextAttrs ? { text: { use_ref_id: 'rightSplitText' } } : {}),
+			},
+		},
 	}
 }
 

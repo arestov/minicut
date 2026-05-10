@@ -4,7 +4,7 @@ import { TEXT_CREATION_SHAPE } from './Text'
 import {
 	normalizeClipCreationAttrs, normalizeRightSplitClipAttrs, normalizeTextCreationAttrs, removeClipRef,
 	reduceRenameTrack, reduceSetTrackMuted, reduceSetTrackLocked,
-	reduceAddClip, reduceAddTextClip, reduceSplitClipAt,
+	reduceAddClip, reduceAddTextClip, reduceLinkClipAndTextFromOutput, reduceSplitClipAt,
 	reduceSetClips, reduceRemoveClip,
 } from './Track/actions'
 import { reduceTrackAppendStart } from './Track/comps'
@@ -70,44 +70,66 @@ export const Track = model({
 			},
 			fn: [['<<<<'] as const, reduceAddClip],
 		},
-		addTextClip: {
-			to: {
-				clip: ['<< clip << #', {
-					method: 'at_end',
-					can_create: true,
-					can_hold_refs: true,
-					can_use_refs: true,
-					creation_shape: CLIP_CREATION_SHAPE,
-				}],
-				text: ['<< text << #', {
-					method: 'at_end',
-					can_create: true,
-					can_hold_refs: true,
-					can_use_refs: true,
-					creation_shape: TEXT_CREATION_SHAPE,
-				}],
-				clips: ['<< clips', {
-					method: 'at_end',
-					can_use_refs: true,
-				}],
+		addTextClip: [
+			{
+				to: {
+					clip: ['<< clip << #', {
+						method: 'at_end',
+						can_create: true,
+						can_hold_refs: true,
+						can_use_refs: true,
+						creation_shape: CLIP_CREATION_SHAPE,
+					}],
+					text: ['<< text << #', {
+						method: 'at_end',
+						can_create: true,
+						can_hold_refs: true,
+						can_use_refs: true,
+						creation_shape: TEXT_CREATION_SHAPE,
+					}],
+					clips: ['<< clips', {
+						method: 'at_end',
+						can_use_refs: true,
+					}],
+					$output: ['$output'],
+				},
+				fn: [['<<<<'] as const, reduceAddTextClip],
 			},
-			fn: [['<<<<'] as const, reduceAddTextClip],
-		},
-		splitClipAt: {
-			to: {
-				clip: ['<< clip << #', {
-					method: 'at_end',
-					can_create: true,
-					can_hold_refs: true,
-					creation_shape: CLIP_CREATION_SHAPE,
-				}],
-				clips: ['<< clips', {
-					method: 'at_end',
-					can_use_refs: true,
-				}],
+			{
+				to: ['*'],
+				fn: reduceLinkClipAndTextFromOutput,
 			},
-			fn: [['<<<<'] as const, reduceSplitClipAt],
-		},
+		],
+		splitClipAt: [
+			{
+				to: {
+					clip: ['<< clip << #', {
+						method: 'at_end',
+						can_create: true,
+						can_hold_refs: true,
+						can_use_refs: true,
+						creation_shape: CLIP_CREATION_SHAPE,
+					}],
+					text: ['<< text << #', {
+						method: 'at_end',
+						can_create: true,
+						can_hold_refs: true,
+						can_use_refs: true,
+						creation_shape: TEXT_CREATION_SHAPE,
+					}],
+					clips: ['<< clips', {
+						method: 'at_end',
+						can_use_refs: true,
+					}],
+					$output: ['$output'],
+				},
+				fn: [['<<<<'] as const, reduceSplitClipAt],
+			},
+			{
+				to: ['*'],
+				fn: reduceLinkClipAndTextFromOutput,
+			},
+		],
 		setClips: {
 			to: {
 				clips: ['<< clips', { method: 'set_many' }],
