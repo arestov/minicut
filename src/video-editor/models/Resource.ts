@@ -25,7 +25,7 @@ export const RESOURCE_CREATION_SHAPE = {
 } as const;
 
 export const Resource = model({
-	model_name: "minicut_resource",
+	model_name: "resource",
 	attrs: {
 		name: ["input", "Resource"],
 		kind: ["input", "video"],

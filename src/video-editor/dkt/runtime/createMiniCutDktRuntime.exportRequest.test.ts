@@ -113,7 +113,7 @@ describe("createMiniCutDktRuntime export request channel", () => {
 
 		const beforeDump = await requestDebugDump(memory);
 		const sessionRoot = beforeDump.runtimeModels.find(
-			(entry) => entry.modelName === "minicut_session_root",
+			(entry) => entry.modelName === "session_root",
 		);
 		const projectNodeId = sessionRoot?.rels.activeProject;
 		if (typeof projectNodeId !== "string") {
@@ -329,7 +329,7 @@ describe("createMiniCutDktRuntime export request channel", () => {
 		const dump = await requestDebugDump(memory);
 		const exportTargetClip = dump.runtimeModels.find(
 			(entry) =>
-				entry.modelName === "minicut_clip" &&
+				entry.modelName === "clip" &&
 				entry.attrs.name === "Export target clip",
 		);
 		const clipNodeId = exportTargetClip?.nodeId;

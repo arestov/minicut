@@ -58,7 +58,7 @@ const MOVE_CLIP_INPUT_BASE_REL_SHAPE = {
 } as const;
 
 export const Project = model({
-	model_name: "minicut_project",
+	model_name: "project",
 	attrs: {
 		title: ["input", "Untitled project"],
 		fps: ["input", 30],

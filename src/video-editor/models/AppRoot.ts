@@ -22,7 +22,7 @@ const appProps = mergeDcl({
 		const typedTarget = target as { start_page?: unknown };
 		typedTarget.start_page = typedTarget;
 	},
-	model_name: "minicut_app_root",
+	model_name: "app_root",
 	rels: {
 		$session_root: ["model", EditorSessionRoot],
 		common_session_root: ["input", { linking: "<< $session_root" }],

@@ -20,7 +20,7 @@ export const TRACK_CREATION_SHAPE = {
 } as const;
 
 export const Track = model({
-	model_name: "minicut_track",
+	model_name: "track",
 	attrs: {
 		kind: ["input", "video"],
 		name: ["input", "Track"],

@@ -8,7 +8,7 @@ import {
 import { defaultTextBox, defaultTextStyle } from "./Text/defaults";
 
 export const Text = model({
-	model_name: "minicut_text",
+	model_name: "text",
 	attrs: {
 		renderAttrs: [
 			"comp",

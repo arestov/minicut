@@ -23,7 +23,7 @@ const debugExport = (message: string, details?: unknown) => {
 
 export const EditorSessionRoot = model({
 	extends: BaseSessionRoot,
-	model_name: "minicut_session_root",
+	model_name: "session_root",
 	attrs: {
 		sessionKey: ["input", null],
 		route: ["input", null],

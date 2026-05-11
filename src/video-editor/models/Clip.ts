@@ -28,7 +28,7 @@ import { EFFECT_CREATION_SHAPE } from "./Effect";
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10;
 export const Clip = model({
-	model_name: "minicut_clip",
+	model_name: "clip",
 	attrs: {
 		name: ["input", "Clip"],
 		color: ["input", "#2563eb"],

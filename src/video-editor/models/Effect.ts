@@ -17,7 +17,7 @@ const _asStr = (v: unknown, fb: string): string =>
 const _asBool = (v: unknown): boolean => v !== false;
 
 export const Effect = model({
-	model_name: "minicut_effect",
+	model_name: "effect",
 	attrs: {
 		renderInstruction: [
 			"comp",
