@@ -6,10 +6,14 @@
   const edgeUi = getContext(EDGE_UI_CONTEXT) ?? {
     hoveredRelKey: '',
     selectedRelKey: '',
+    selectedActionFlowId: '',
+    selectedSubflowIds: [],
+    actionRelKeys: [],
     selectedNodeId: '',
     activeNodeIds: [],
     hoveredTargetNodeIds: [],
     selectedTargetNodeIds: [],
+    actionTargetNodeIds: [],
   }
 
   let { data, selected } = $props()
@@ -31,7 +35,9 @@
             ? 'selected'
             : item.key === edgeUi.hoveredRelKey
               ? 'hovered'
-              : null,
+              : (edgeUi.actionRelKeys || []).includes(item.key)
+                ? 'action'
+                : null,
         meta: [
           item.kind,
           item.many ? 'many' : 'one',
@@ -41,6 +47,68 @@
           .filter(Boolean)
           .join(' | '),
       }))
+  })
+  const actionRows = $derived.by(() => {
+    if (data?.category !== 'model') {
+      return []
+    }
+
+    const selectedFlowId = edgeUi.selectedActionFlowId || ''
+    const selectedSubflowIds = new Set(edgeUi.selectedSubflowIds || [])
+
+    return (data.actions || []).map((item) => {
+      const steps = Array.isArray(item?.flow?.steps)
+        ? item.flow.steps.length
+        : Array.isArray(item?.steps)
+          ? item.steps.length
+          : 0
+      const deps = Array.isArray(item?.flow?.steps)
+        ? item.flow.steps.reduce((sum, step) => sum + (step.deps?.length || 0), 0)
+        : 0
+      const writes = Array.isArray(item?.flow?.steps)
+        ? item.flow.steps.reduce((sum, step) => sum + (step.writes?.length || 0), 0)
+        : item.targets?.length || 0
+      const subflows = Array.isArray(item?.flow?.steps)
+        ? item.flow.steps.reduce((sum, step) => sum + (step.subflows?.length || 0), 0)
+        : 0
+      const transitiveSubflows = item?.flow?.transitive_subflows?.length || 0
+      const derivedAffects = item?.flow?.derived_affects?.length || 0
+      const connectionCount =
+        deps +
+        writes +
+        subflows +
+        transitiveSubflows +
+        derivedAffects +
+        (item.targets?.length || 0)
+
+      return {
+        ...item,
+        connectionCount,
+        highlight:
+          item.flow?.id === selectedFlowId
+            ? 'selected'
+            : selectedSubflowIds.has(item.flow?.id)
+              ? 'subflow'
+              : null,
+        meta: [
+          item.mode,
+          connectionCount ? `${connectionCount} links` : null,
+          steps ? `${steps} steps` : null,
+          writes ? `${writes} writes` : null,
+          subflows ? `${subflows} subflows` : null,
+        ]
+          .filter(Boolean)
+          .join(' | '),
+      }
+    }).sort((left, right) => {
+      if (right.connectionCount !== left.connectionCount) {
+        return right.connectionCount - left.connectionCount
+      }
+
+      return String(left.action_name || left.name || '').localeCompare(
+        String(right.action_name || right.name || ''),
+      )
+    })
   })
   const isSelected = $derived(selected || data?.nodeId === edgeUi.selectedNodeId)
   const isDimmed = $derived(
@@ -56,6 +124,10 @@
     Array.isArray(edgeUi.hoveredTargetNodeIds) &&
       edgeUi.hoveredTargetNodeIds.includes(data?.nodeId),
   )
+  const isActionTargeted = $derived(
+    Array.isArray(edgeUi.actionTargetNodeIds) &&
+      edgeUi.actionTargetNodeIds.includes(data?.nodeId),
+  )
 
   function handleRelClick(event, rel) {
     event.stopPropagation()
@@ -65,6 +137,16 @@
     }
 
     data.onNodeRelClick(data.raw, rel)
+  }
+
+  function handleActionClick(event, action) {
+    event.stopPropagation()
+
+    if (typeof data?.onNodeActionClick !== 'function') {
+      return
+    }
+
+    data.onNodeActionClick(data.raw, action)
   }
 
   function handleRelPointerOver(event, rel) {
@@ -134,7 +216,7 @@
   })
 </script>
 
-<div bind:this={cardEl} class:selected={isSelected} class:dimmed={isDimmed} class:targeted={isTargeted} class:hover-targeted={isHoveredTargeted} class:ghost={data?.category === 'ghost'} class="model-card">
+<div bind:this={cardEl} class:selected={isSelected} class:dimmed={isDimmed} class:targeted={isTargeted} class:hover-targeted={isHoveredTargeted} class:action-targeted={isActionTargeted} class:ghost={data?.category === 'ghost'} class="model-card">
   <Handle type="target" position={Position.Top} />
 
   <div class="node-head">
@@ -163,7 +245,7 @@
 
       <ul class="rel-list">
         {#each relRows as rel}
-          <li class:selected={rel.highlight === 'selected'} class:hovered={rel.highlight === 'hovered'}>
+          <li class:selected={rel.highlight === 'selected'} class:hovered={rel.highlight === 'hovered'} class:action={rel.highlight === 'action'}>
             <button class="rel-button" type="button" onclick={(event) => handleRelClick(event, rel)} onpointerover={(event) => handleRelPointerOver(event, rel)} onpointerout={(event) => handleRelPointerOut(event, rel)}>
               <div class="rel-main">
                 <strong>{rel.name}</strong>
@@ -173,8 +255,30 @@
           </li>
         {/each}
       </ul>
-    {:else}
-      <div class="empty-state">No rels</div>
+    {/if}
+
+    {#if actionRows.length}
+      <div class="section-head">
+        <span>actions</span>
+        <strong>{actionRows.length}</strong>
+      </div>
+
+      <ul class="action-list">
+        {#each actionRows as action}
+          <li class:selected={action.highlight === 'selected'} class:subflow={action.highlight === 'subflow'}>
+            <button class="action-button" type="button" onclick={(event) => handleActionClick(event, action)}>
+              <div class="rel-main">
+                <strong>{action.action_name || action.name}</strong>
+                <span>{action.meta}</span>
+              </div>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    {#if !relRows.length && !actionRows.length}
+      <div class="empty-state">No rels or actions</div>
     {/if}
   </div>
 
@@ -235,6 +339,15 @@
       0 0 14px rgba(98, 214, 163, 0.34),
       0 0 36px rgba(98, 214, 163, 0.26),
       0 0 64px rgba(98, 214, 163, 0.16),
+      0 20px 56px rgba(0, 0, 0, 0.34);
+  }
+
+  .model-card.action-targeted {
+    border-color: rgba(240, 111, 146, 0.96);
+    box-shadow:
+      0 0 0 3px rgba(240, 111, 146, 0.28),
+      0 0 16px rgba(240, 111, 146, 0.42),
+      0 0 42px rgba(240, 111, 146, 0.28),
       0 20px 56px rgba(0, 0, 0, 0.34);
   }
 
@@ -327,10 +440,44 @@
     scrollbar-gutter: stable;
   }
 
+  .action-list {
+    display: grid;
+    gap: 6px;
+    min-height: 0;
+    max-height: 128px;
+    margin: 0;
+    padding: 0 3px 0 0;
+    overflow: auto;
+    list-style: none;
+    scrollbar-gutter: stable;
+  }
+
   .rel-list li {
     border: 1px solid rgba(149, 169, 193, 0.16);
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.03);
+  }
+
+  .action-list li {
+    border: 1px solid rgba(240, 111, 146, 0.2);
+    border-radius: 12px;
+    background: rgba(240, 111, 146, 0.06);
+  }
+
+  .action-list li.selected {
+    border-color: rgba(240, 111, 146, 0.92);
+    background: rgba(240, 111, 146, 0.2);
+    box-shadow:
+      0 0 0 1px rgba(240, 111, 146, 0.26) inset,
+      0 0 16px rgba(240, 111, 146, 0.18);
+  }
+
+  .action-list li.subflow {
+    border-color: rgba(245, 182, 99, 0.84);
+    background: rgba(245, 182, 99, 0.16);
+    box-shadow:
+      0 0 0 1px rgba(245, 182, 99, 0.22) inset,
+      0 0 14px rgba(245, 182, 99, 0.16);
   }
 
   .rel-list li.selected {
@@ -346,12 +493,31 @@
     background: rgba(98, 214, 163, 0.11);
   }
 
+  .rel-list li.action {
+    border-color: rgba(240, 111, 146, 0.82);
+    background: rgba(240, 111, 146, 0.14);
+    box-shadow:
+      0 0 0 1px rgba(240, 111, 146, 0.22) inset,
+      0 0 14px rgba(240, 111, 146, 0.14);
+  }
+
   .rel-main {
     display: grid;
     gap: 3px;
   }
 
   .rel-button {
+    width: 100%;
+    padding: 7px 8px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .action-button {
     width: 100%;
     padding: 7px 8px;
     border: 0;

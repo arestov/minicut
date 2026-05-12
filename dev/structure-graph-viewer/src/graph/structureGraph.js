@@ -31,10 +31,6 @@ const LAYER_STYLE = {
     color: '#78a8ff',
     dash: '3 4',
   },
-  action_target: {
-    color: '#f06f92',
-    dash: '10 4 3 4',
-  },
 }
 
 const CORE_REL_KINDS = new Set(['input', 'model', 'nest'])
@@ -72,8 +68,8 @@ function flowAttrId(modelId, attrName) {
   return `attr:${text(modelId)}:${attrName}`
 }
 
-function flowActionId(modelId, actionName) {
-  return `action:${text(modelId)}:${actionName}`
+function actionFlowKey(model, action) {
+  return `${text(model?.model_name || model?.id)}.${text(action?.action_name || action?.name)}`
 }
 
 function relKey(modelId, relName) {
@@ -210,7 +206,7 @@ function makeEdge(id, source, target, label, layer, extra = {}) {
     target,
     label,
     type: 'routed',
-    animated: layer === 'derived_rel' || layer === 'action_target',
+    animated: layer === 'derived_rel',
     markerEnd: {
       type: 'arrowclosed',
       color: style.color,
@@ -236,6 +232,8 @@ function makeModelNode(
   onNodeRelClick = null,
   onNodeRelPointerEnter = null,
   onNodeRelPointerLeave = null,
+  onNodeActionClick = null,
+  actionFlowsByKey = new Map(),
 ) {
   const id = flowModelId(model.id)
   const height = estimateModelHeight(model)
@@ -262,6 +260,7 @@ function makeModelNode(
       onNodeRelClick,
       onNodeRelPointerEnter,
       onNodeRelPointerLeave,
+      onNodeActionClick,
       title: modelLabel(model),
       subtitle: model.hierarchy_path_string || 'root',
       badges: [
@@ -270,7 +269,10 @@ function makeModelNode(
       ].filter(Boolean),
       attrs: model.attrs || [],
       rels,
-      actions: model.actions || [],
+      actions: (model.actions || []).map((action) => ({
+        ...action,
+        flow: actionFlowsByKey.get(actionFlowKey(model, action)) || null,
+      })),
       raw: model,
     },
     selected: text(model.id) === text(selectedModelId),
@@ -657,39 +659,9 @@ function addAttrGraph(nodesById, edges, model, options) {
   }
 }
 
-function addActionGraph(nodesById, edges, model, options) {
-  const source = flowModelId(model.id)
-
-  for (const action of model.actions || []) {
-    const targets = action.targets || []
-    if (!targets.length) {
-      continue
-    }
-
-    const target = flowActionId(model.id, action.action_name || action.name)
-    nodesById.set(
-      target,
-      makeDetailNode(
-        target,
-        action.action_name || action.name,
-        `${action.mode || 'action'} target`,
-        'action',
-        action,
-        options.onNodeMeasure,
-      ),
-    )
-
-    edges.push(
-      makeEdge(
-        `action:${source}:${action.action_name || action.name}`,
-        source,
-        target,
-        targets.map(actionTargetLabel).slice(0, 2).join(', '),
-        'action_target',
-        { action },
-      ),
-    )
-  }
+function addActionGraph() {
+  // Action flows are shown inside model cards. Keep them off-canvas so actions
+  // do not duplicate the model graph as synthetic nodes.
 }
 
 function addHierarchyGraph(edges, snapshot, modelsById) {
@@ -1072,6 +1044,13 @@ async function buildFlowGraph(snapshot, options = {}) {
   const visibleModels = filterVisibleModels(normalized.models, options)
   const { byId: modelsById, idsByName } = buildModelIndexes(visibleModels)
   const context = buildGraphContext(normalized, modelsById, idsByName)
+  const actionFlowsByKey = new Map(
+    (normalized.action_flows || []).map((flow) => [flow.id, flow]),
+  )
+  const graphOptions = {
+    ...options,
+    actionFlowsByKey,
+  }
   const nodesById = new Map()
   const edges = []
 
@@ -1086,6 +1065,8 @@ async function buildFlowGraph(snapshot, options = {}) {
           options.onNodeRelClick,
           options.onNodeRelPointerEnter,
         options.onNodeRelPointerLeave,
+          options.onNodeActionClick,
+          actionFlowsByKey,
       ),
     )
   }
@@ -1116,9 +1097,7 @@ async function buildFlowGraph(snapshot, options = {}) {
       addAttrGraph(nodesById, edges, model, options)
     }
 
-    if (isEnabledLayer(options.layers, 'action_target')) {
-      addActionGraph(nodesById, edges, model, options)
-    }
+    addActionGraph()
   }
 
   const sorted = stableSortGraph(Array.from(nodesById.values()), edges)

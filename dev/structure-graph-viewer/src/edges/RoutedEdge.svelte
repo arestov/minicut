@@ -6,6 +6,8 @@
   const edgeUi = getContext(EDGE_UI_CONTEXT) ?? {
     hoveredRelKey: '',
     selectedRelKey: '',
+    selectedActionFlowId: '',
+    actionRelKeys: [],
     activeEdgeIds: [],
   }
 
@@ -47,8 +49,16 @@
   )
   const isHoveredGroup = $derived(relKey !== '' && relKey === edgeUi.hoveredRelKey)
   const isHovered = $derived(hovered || isHoveredGroup)
+  const isActionRel = $derived(
+    relKey !== '' &&
+      Array.isArray(edgeUi.actionRelKeys) &&
+      edgeUi.actionRelKeys.includes(relKey),
+  )
   const isSelected = $derived(
-    selected || (relKey !== '' && relKey === edgeUi.selectedRelKey),
+    selected ||
+      (relKey !== '' && relKey === edgeUi.selectedRelKey) ||
+      isActionRel ||
+      (data?.action?.flow?.id && data.action.flow.id === edgeUi.selectedActionFlowId),
   )
   const labelPoint = $derived.by(() => {
     const route = data?.route
@@ -80,9 +90,19 @@
           : {}),
   }))
 
-  const edgeClass = $derived.by(() =>
-    isDimmed ? 'edge-dimmed' : isHovered ? 'edge-hovered' : isSelected ? 'edge-selected' : '',
-  )
+  const edgeClass = $derived.by(() => {
+    if (isDimmed) {
+      return 'edge-dimmed'
+    }
+
+    return [
+      isHovered ? 'edge-hovered' : null,
+      isSelected ? 'edge-selected' : null,
+      isActionRel ? 'edge-action' : null,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  })
 
   function handlePointerEnter() {
     hovered = true
@@ -158,5 +178,13 @@
       drop-shadow(0 0 4px rgba(88, 150, 255, 0.9))
       drop-shadow(0 0 8px rgba(88, 150, 255, 0.72))
       drop-shadow(0 0 14px rgba(88, 150, 255, 0.5));
+  }
+
+  :global(.edge-action) {
+    filter:
+      drop-shadow(0 0 2px rgba(240, 111, 146, 0.95))
+      drop-shadow(0 0 5px rgba(240, 111, 146, 0.86))
+      drop-shadow(0 0 10px rgba(240, 111, 146, 0.68))
+      drop-shadow(0 0 18px rgba(240, 111, 146, 0.44));
   }
 </style>

@@ -18,6 +18,10 @@
     normalizeSnapshot,
     rootModelOption,
   } from './graph/structureGraph.js'
+  import {
+    collectActionHighlight,
+    serializeActionHighlight,
+  } from './graph/actionHighlight.js'
   import { EDGE_UI_CONTEXT } from './graph/edgeUiContext.js'
   import ModelNode from './nodes/ModelNode.svelte'
 
@@ -57,18 +61,21 @@
   const edgeUi = $state({
     hoveredRelKey: '',
     selectedRelKey: '',
+    selectedActionFlowId: '',
+    selectedSubflowIds: [],
+    actionRelKeys: [],
     selectedNodeId: '',
     activeNodeIds: [],
     activeEdgeIds: [],
     hoveredTargetNodeIds: [],
     selectedTargetNodeIds: [],
+    actionTargetNodeIds: [],
   })
   let layers = $state({
     hierarchy: false,
     rel_schema: true,
     derived_rel: true,
     attr_dep: false,
-    action_target: false,
     unknown_targets: false,
   })
   let showInfra = $state(false)
@@ -230,6 +237,23 @@
     edgeUi.selectedRelKey = nextKey
   }
 
+  function setSelectedActionFlowId(nextId) {
+    if (edgeUi.selectedActionFlowId === nextId) {
+      return
+    }
+
+    edgeUi.selectedActionFlowId = nextId
+  }
+
+  function setSelectedSubflowIds(nextIds) {
+    const normalized = [...(nextIds || [])].filter(Boolean).sort()
+    if (arraysEqual(edgeUi.selectedSubflowIds || [], normalized)) {
+      return
+    }
+
+    edgeUi.selectedSubflowIds = normalized
+  }
+
   function setSelectedNodeId(nextId) {
     if (edgeUi.selectedNodeId === nextId) {
       return
@@ -250,6 +274,75 @@
     return currentEdges
       .filter((edge) => edge?.data?.relKey === relKey && edge?.target)
       .map((edge) => edge.target)
+  }
+
+  function selectedActionFlow() {
+    const flowId = edgeUi.selectedActionFlowId || ''
+    if (!flowId || !activeSnapshot?.action_flows?.length) {
+      return null
+    }
+
+    return activeSnapshot.action_flows.find((flow) => flow.id === flowId) || null
+  }
+
+  function collectActionFlowIds(flow) {
+    if (!flow) {
+      return new Set()
+    }
+
+    return new Set([
+      flow.id,
+      ...(flow.transitive_subflows || []).map((subflow) => subflow.id).filter(Boolean),
+    ])
+  }
+
+  function selectedActionHighlight() {
+    return serializeActionHighlight(collectActionHighlight(activeSnapshot, selectedActionFlow()))
+  }
+
+  function collectActionModelNames(flow) {
+    const names = new Set()
+    if (!flow) {
+      return names
+    }
+
+    if (flow.model_name) {
+      names.add(flow.model_name)
+    }
+
+    for (const step of flow.steps || []) {
+      for (const write of step.writes || []) {
+        if (write.model_name) {
+          names.add(write.model_name)
+        }
+      }
+      for (const subflow of step.subflows || []) {
+        if (subflow.model_name) {
+          names.add(subflow.model_name)
+        }
+      }
+    }
+
+    for (const subflow of flow.transitive_subflows || []) {
+      if (subflow.model_name) {
+        names.add(subflow.model_name)
+      }
+    }
+
+    for (const affect of flow.derived_affects || []) {
+      if (affect.model_name) {
+        names.add(affect.model_name)
+      }
+    }
+
+    return names
+  }
+
+  function collectActionTargetNodeIds(flow, baseNodes = graphBase.nodes) {
+    const highlightedIds = new Set(selectedActionHighlight().nodeIds)
+    return baseNodes
+      .filter((node) => highlightedIds.has(node.id))
+      .map((node) => node.id)
   }
 
   function matchesModelQuery(model, nextQuery) {
@@ -377,6 +470,13 @@
     }
 
     const focusRelKeys = [edgeUi.selectedRelKey, edgeUi.hoveredRelKey].filter(Boolean)
+    const actionRelKeys = edgeUi.actionRelKeys || []
+    for (const relKey of actionRelKeys) {
+      if (relKey && !focusRelKeys.includes(relKey)) {
+        focusRelKeys.push(relKey)
+      }
+    }
+
     if (focusRelKeys.length) {
       for (const edge of baseEdges) {
         if (!focusRelKeys.includes(edge?.data?.relKey)) {
@@ -386,6 +486,13 @@
         activeEdgeIds.add(edge.id)
         activeNodeIds.add(edge.source)
         activeNodeIds.add(edge.target)
+      }
+    }
+
+    const actionFlow = selectedActionFlow()
+    if (actionFlow) {
+      for (const nodeId of collectActionTargetNodeIds(actionFlow, baseNodes)) {
+        activeNodeIds.add(nodeId)
       }
     }
 
@@ -500,6 +607,7 @@
       selectedItem = root?.raw || null
       setSelectedNodeId(root?.id ? flowModelId(root.id) : '')
       setSelectedEdgeKey('')
+      setSelectedActionFlowId('')
       setHoveredEdgeKey('')
       status = `Loaded ${core?.root?.model_name || derived?.root?.model_name || 'snapshot'}`
     } catch (error) {
@@ -535,6 +643,7 @@
     selectedItem = root?.raw || null
     setSelectedNodeId(root?.id ? flowModelId(root.id) : '')
     setSelectedEdgeKey('')
+    setSelectedActionFlowId('')
     setHoveredEdgeKey('')
     status = 'Loaded snapshot from file picker'
   }
@@ -544,6 +653,7 @@
     selectedItem = models.find((model) => model.id === id)?.raw || null
     setSelectedNodeId(id ? flowModelId(id) : '')
     setSelectedEdgeKey('')
+    setSelectedActionFlowId('')
     setHoveredEdgeKey('')
     isModelMenuOpen = false
   }
@@ -562,6 +672,7 @@
     } else {
       setSelectedEdgeKey('')
     }
+    setSelectedActionFlowId('')
 
     selectedItem = flowNode.data?.raw || flowNode
   }
@@ -596,6 +707,7 @@
     const relKey = rel?.key || ''
     setSelectedNodeId(model?.id == null ? '' : flowModelId(model.id))
     setSelectedEdgeKey(relKey)
+    setSelectedActionFlowId('')
     selectedItem = rel || model || null
   }
 
@@ -610,6 +722,15 @@
     }
   }
 
+  function handleNodeActionClick(model, action) {
+    setSelectedNodeId(model?.id == null ? '' : flowModelId(model.id))
+    setSelectedEdgeKey('')
+    setHoveredEdgeKey('')
+    setSelectedActionFlowId(action?.flow?.id || '')
+    selectedItem = action?.flow || action || model || null
+    isInspectorOpen = true
+  }
+
   function handleEdgeClick(event, edge) {
     const flowEdge = edge || event?.edge || event?.detail?.edge
     if (!flowEdge) {
@@ -619,6 +740,7 @@
     const relKey = flowEdge.data?.relKey || ''
     setSelectedNodeId(flowEdge.source || '')
     setSelectedEdgeKey(relKey)
+    setSelectedActionFlowId(flowEdge.data?.action?.flow?.id || '')
 
     selectedItem =
       flowEdge.data?.rel ||
@@ -666,6 +788,23 @@
   })
 
   $effect(() => {
+    const nextTargetNodeIds = collectActionTargetNodeIds(selectedActionFlow(), graphBase.nodes)
+    const currentTargetNodeIds = edgeUi.actionTargetNodeIds || []
+    if (!arraysEqual(currentTargetNodeIds, nextTargetNodeIds)) {
+      edgeUi.actionTargetNodeIds = nextTargetNodeIds
+    }
+  })
+
+  $effect(() => {
+    const highlight = selectedActionHighlight()
+    setSelectedSubflowIds(highlight.subflowIds)
+
+    if (!arraysEqual(edgeUi.actionRelKeys || [], highlight.relKeys)) {
+      edgeUi.actionRelKeys = highlight.relKeys
+    }
+  })
+
+  $effect(() => {
     const snapshot = activeSnapshot
     const currentRun = layoutRun + 1
     const layoutAnchorModelId = rootModel?.id || models[0]?.id || ''
@@ -677,13 +816,13 @@
         rel_schema: layers.rel_schema,
         derived_rel: layers.derived_rel,
         attr_dep: layers.attr_dep,
-        action_target: layers.action_target,
         unknown_targets: layers.unknown_targets,
       },
       onNodeMeasure: (size) => recordNodeMeasure(size, currentRun),
       onNodeRelClick: handleNodeRelClick,
       onNodeRelPointerEnter: handleNodeRelPointerEnter,
       onNodeRelPointerLeave: handleNodeRelPointerLeave,
+      onNodeActionClick: handleNodeActionClick,
     }
 
     if (!snapshot) {
@@ -787,6 +926,7 @@
     selectedItem = fallbackModel?.raw || null
     setSelectedNodeId(fallbackModel?.id ? flowModelId(fallbackModel.id) : '')
     setSelectedEdgeKey('')
+    setSelectedActionFlowId('')
     setHoveredEdgeKey('')
   })
 
@@ -857,7 +997,6 @@
     <label><input type="checkbox" bind:checked={layers.rel_schema} /> rel schema</label>
     <label><input type="checkbox" bind:checked={layers.derived_rel} /> derived rels</label>
     <label><input type="checkbox" bind:checked={layers.attr_dep} /> attr deps</label>
-    <label><input type="checkbox" bind:checked={layers.action_target} /> action targets</label>
     <label><input type="checkbox" bind:checked={layers.unknown_targets} /> unknown targets</label>
     <label><input type="checkbox" bind:checked={showInfra} /> infra</label>
   </section>
