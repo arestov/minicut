@@ -1364,7 +1364,9 @@ test('timeline tools perform selection, split, and trim actions', async ({ page 
 	await page.mouse.move(handleBox.x + handleBox.width / 2 + 28, handleBox.y + handleBox.height / 2)
 	await page.mouse.up()
 	await expect(rightClip).not.toHaveText(beforeTrimText)
-	await expect(timeline.getByLabel('V1 controls')).toBeVisible()
+	await expect(
+		timeline.getByRole('button', { name: 'Track visible' }).first(),
+	).toBeVisible()
 })
 
 test('timeline hand tool pans horizontally when the lane overflows', async ({ page }) => {
@@ -1406,7 +1408,9 @@ test('timeline hand tool pans horizontally when the lane overflows', async ({ pa
 	await expect.poll(async () => laneScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
 	await expect.poll(async () => scrollArea.evaluate((element) => element.scrollLeft)).toBe(0)
 	await expect.poll(async () => firstRail.evaluate((element) => element.scrollLeft)).toBe(0)
-	await expect(timeline.getByLabel('V1 controls')).toBeVisible()
+	await expect(
+		timeline.getByRole('button', { name: 'Track visible' }).first(),
+	).toBeVisible()
 })
 
 test('timeline clip boxes align to the ruler and playhead origin', async ({ page }) => {
