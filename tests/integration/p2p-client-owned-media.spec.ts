@@ -30,7 +30,7 @@ test('client-owned media imports transfer to main without sticking in error', as
 		const clientRow = clientPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(clientRow).toBeVisible()
 		await clientRow.getByRole('button', { name: 'Add to timeline' }).click()
-		await expect(clientPeer.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+		await expect(clientPeer.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 		await expect(serverPeer.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 	} finally {
 		await closePeerHandles(first, second)
@@ -69,7 +69,7 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 		const lateJoinerRow = lateJoiner.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(lateJoinerRow).toBeVisible()
 		await lateJoinerRow.getByRole('button', { name: 'Add to timeline' }).click()
-		await expect(lateJoiner.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+		await expect(lateJoiner.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 		await expect(lateJoiner.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 	} finally {
 		await closePeerHandles(first, second, lateJoiner)

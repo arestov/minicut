@@ -58,7 +58,7 @@ test('p2p media import transfers to the remote peer and yields a blob preview', 
 		const remoteRow = clientPage.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(remoteRow).toBeVisible()
 		await remoteRow.getByRole('button', { name: 'Add to timeline' }).click()
-		await expect(clientPage.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+		await expect(clientPage.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 		await expect(clientPage.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 
 		await expect.poll(() => clientPage.locator('.ve-media-bin .ve-resource-row small').allTextContents(), {
@@ -95,7 +95,7 @@ test('p2p timeline clip created on the main peer renders preview on the remote p
 		await expect(serverRow).toBeVisible()
 		await serverRow.getByRole('button', { name: 'Add to timeline' }).click()
 
-		const clientTimeline = clientPage.getByRole('region', { name: 'Timeline' })
+		const clientTimeline = clientPage.getByRole('region', { name: 'Timeline', exact: true })
 		await expect(clientTimeline.getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 		await waitForReadyTransfer(clientPage, 'remote')
 		const clientRenderer = clientPage.getByRole('region', { name: 'Renderer stage' })
@@ -177,7 +177,7 @@ test('p2p peers keep independent active projects while remote preview stays avai
 		try {
 			await waitForRolePair(first.page, second.page)
 			await setActiveProject(second.page, oldProjectId)
-			await expect(second.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /old-project-video\.webm/i }).first()).toBeVisible()
+			await expect(second.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /old-project-video\.webm/i }).first()).toBeVisible()
 			await waitForReadyTransfer(second.page, 'remote')
 			const secondRenderer = second.page.getByRole('region', { name: 'Renderer stage' })
 			await expect(secondRenderer.locator('video[data-resource-name="old-project-video.webm"]')).toHaveCount(1)
@@ -188,7 +188,7 @@ test('p2p peers keep independent active projects while remote preview stays avai
 			await expect.poll(() => getActiveProjectNodeId(second.page), {
 				timeout: 20_000,
 			}).toBe(oldProjectId)
-			await expect(second.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /old-project-video\.webm/i }).first()).toBeVisible()
+			await expect(second.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /old-project-video\.webm/i }).first()).toBeVisible()
 			await expect(secondRenderer.locator('video[data-resource-name="old-project-video.webm"]')).toHaveCount(1)
 
 			await setActiveProject(second.page, newProjectId)

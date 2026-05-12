@@ -134,7 +134,7 @@ test.describe('color scopes profile harness', () => {
 		await createProjectFromMenu(page)
 		await page.getByLabel('Import media files').setInputFiles(videoPath)
 
-		const timeline = page.getByRole('region', { name: 'Timeline' })
+		const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 		const importedClip = timeline.getByRole('button', { name: /\.webm|\.ogv|fixture-video/i }).first()
 		await expect(importedClip).toBeVisible()
 		await importedClip.click({ position: { x: 20, y: 18 } })

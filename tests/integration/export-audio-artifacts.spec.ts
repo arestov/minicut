@@ -250,7 +250,7 @@ const createVideoWithToneFile = async (
 }
 
 const addResourceToTimeline = async (page: Page, resourceName: string): Promise<void> => {
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	if (await timeline.getByRole('button', { name: new RegExp(resourceName, 'i') }).count() > 0) {
 		return
 	}
@@ -364,7 +364,7 @@ const exportSelectedClip = async (page: Page): Promise<string> => {
 }
 
 const selectTimelineClip = async (page: Page, name: RegExp): Promise<void> => {
-	const clip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name }).first()
+	const clip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name }).first()
 	await expect(clip).toBeVisible()
 	const box = await clip.boundingBox()
 	if (box) {
@@ -420,7 +420,7 @@ const addSelectedEffect = async (page: Page, effectName: 'Blur' | 'Sharpen' | 'T
 }
 
 const nudgeSelectedClip = async (page: Page, count: number): Promise<void> => {
-	const clipActions = page.getByRole('region', { name: 'Timeline' }).getByLabel('Clip edit actions')
+	const clipActions = page.getByRole('region', { name: 'Timeline', exact: true }).getByLabel('Clip edit actions')
 	for (let index = 0; index < count; index += 1) {
 		await clipActions.getByRole('button', { name: 'Nudge +0.5s' }).click()
 	}
@@ -542,7 +542,7 @@ test.describe('exported audio artifacts', () => {
 
 		const videoFile = await createVideoWithToneFile(page)
 		await importMediaFiles(page, [videoFile])
-		await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+		await expect(page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
 		await selectTimelineClip(page, /linked-tone-video\.webm/i)
 
 		const exportPath = await exportSelectedClip(page)
@@ -559,7 +559,7 @@ test.describe('exported audio artifacts', () => {
 
 		const videoFile = await createVideoWithToneFile(page)
 		await importMediaFiles(page, [videoFile])
-		await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+		await expect(page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
 
 		const exportPath = await exportProject(page)
 		const media = await probeMedia(exportPath)
@@ -670,7 +670,7 @@ test.describe('exported audio artifacts', () => {
 		await addResourceToTimeline(page, toneA.name)
 		await addResourceToTimeline(page, toneB.name)
 
-		const secondClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /mix-tone-b\.wav/i }).first()
+		const secondClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /mix-tone-b\.wav/i }).first()
 		const box = await secondClip.boundingBox()
 		expect(box).not.toBeNull()
 		if (!box) {
@@ -714,7 +714,7 @@ test.describe('exported audio artifacts', () => {
 		await selectTimelineClip(page, /combo-tone-right-880\.wav/i)
 		await setSelectedAudio(page, { gain: 0.5 })
 
-		const rightClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /combo-tone-right-880\.wav/i }).first()
+		const rightClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /combo-tone-right-880\.wav/i }).first()
 		const box = await rightClip.boundingBox()
 		expect(box).not.toBeNull()
 		if (!box) {
@@ -743,7 +743,7 @@ test.describe('exported audio artifacts', () => {
 		await importMediaFiles(page, [green, red])
 		await addResourceToTimeline(page, red.name)
 
-		const redClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /layer-red\.png/i }).first()
+		const redClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /layer-red\.png/i }).first()
 		const box = await redClip.boundingBox()
 		expect(box).not.toBeNull()
 		if (!box) {
@@ -926,7 +926,7 @@ test.describe('exported audio artifacts', () => {
 
 			const videoFile = await createVideoWithToneFile(page)
 			await importMediaFiles(page, [videoFile])
-			await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+			await expect(page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
 			await selectTimelineClip(page, /linked-tone-video\.webm/i)
 
 			const exportPath = await exportSelectedClip(page)
@@ -1011,7 +1011,7 @@ test.describe('exported audio artifacts', () => {
 			await addResourceToTimeline(page, toneA.name)
 			await addResourceToTimeline(page, toneB.name)
 
-			const secondClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fallback-mix-tone-b\.wav/i }).first()
+			const secondClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fallback-mix-tone-b\.wav/i }).first()
 			const box = await secondClip.boundingBox()
 			expect(box).not.toBeNull()
 			if (!box) {
@@ -1077,7 +1077,7 @@ test.describe('exported audio artifacts', () => {
 			await importMediaFiles(page, [green, red])
 			await addResourceToTimeline(page, red.name)
 
-			const redClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fallback-layer-red\.png/i }).first()
+			const redClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fallback-layer-red\.png/i }).first()
 			const box = await redClip.boundingBox()
 			expect(box).not.toBeNull()
 			if (!box) {

@@ -376,7 +376,7 @@ const setTimelineCursor = async (
 	page: import('@playwright/test').Page,
 	seconds: number,
 ): Promise<void> => {
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const zoomText = await timeline.getByText(/px\/s$/i).first().textContent()
 	const zoom = Number.parseFloat((zoomText ?? '56').replace(/[^0-9.]/g, '')) || 56
 	const laneScroll = timeline.locator('.ve-track-lane-scroll')
@@ -430,7 +430,7 @@ test('user can finish the harness happy path in the browser', async ({ page }) =
 	}
 	await expect(inspector.getByText('Opacity 60%')).toBeVisible()
 	await setTimelineCursor(page, 0.5)
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const clipActions = timeline.getByLabel('Clip edit actions')
 
 	await clipActions.getByRole('button', { name: 'Split clip' }).click()
@@ -448,7 +448,7 @@ test('split clip follows playhead and reflects resulting durations in timeline w
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await clip.click()
 	await setTimelineCursor(page, 0.5)
@@ -490,7 +490,7 @@ test('importing into an empty timeline auto-adds the first resource', async ({ p
 	await importFixtureVideo(page)
 
 	await expect(page.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
-	await expect(page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+	await expect(page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
 })
 
 test('adding another resource appends clip start in dumpProjectState', async ({ page }) => {
@@ -522,7 +522,7 @@ test('adding another resource appends clip start in dumpProjectState', async ({ 
 		.getByRole('button', { name: 'Add to timeline' })
 		.click()
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	await expect(timeline.getByRole('button', { name: /fixture-image.png/i })).toBeVisible()
 
 	const appendedState = await dumpProjectState(page) as {
@@ -548,7 +548,7 @@ test('video resources add linked audio clips that play, inspect, and expose expo
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const audioClip = timeline.getByRole('button', { name: /Embedded audio/i })
 	await expect(audioClip).toContainText('0.0s / 1.0s')
 	await audioClip.click()
@@ -593,7 +593,7 @@ test('exports generated solid video, trailing image, and audio with audible outp
 	const audioFile = createToneWavFile()
 
 	await page.getByLabel('Import media files').setInputFiles(videoFile)
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const mediaBin = page.getByLabel('Media bin')
 	const videoClip = timeline.getByRole('button', { name: /solid-red-video.webm/i }).first()
 	await expect(videoClip).toBeVisible()
@@ -640,7 +640,7 @@ test('exports image plus wav audio via WebCodecs when available', async ({ page 
 	const audioFile = createToneWavFile('webcodecs-tone.wav')
 	await page.getByLabel('Import media files').setInputFiles([imageFile, audioFile])
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const mediaBin = page.getByLabel('Media bin')
 	await expect(timeline.getByRole('button', { name: /webcodecs-green-image.png/i })).toBeVisible()
 	await expect(mediaBin.locator('strong').filter({ hasText: 'webcodecs-tone.wav' })).toBeVisible()
@@ -699,7 +699,7 @@ test('imports a video with embedded audio as linked tracks and keeps preview aud
 	const videoFile = await createSolidVideoFile(page)
 	await page.getByLabel('Import media files').setInputFiles(videoFile)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const videoClip = timeline.getByRole('button', { name: /solid-red-video.webm/i }).first()
 	const embeddedAudioClip = timeline.getByRole('button', { name: /Embedded audio/i }).first()
 	await expect(videoClip).toBeVisible()
@@ -821,7 +821,7 @@ test('imports real media files, edits timeline clips, and previews actual media 
 	await expect(mediaBin.locator('img[alt="fixture-image.png thumbnail"]')).toBeVisible()
 	await expect(mediaBin.getByLabel('audio thumbnail')).toBeVisible()
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	for (const resourceName of ['fixture-video.webm', 'fixture-image.png', 'fixture-audio.wav']) {
 		if (await timeline.getByRole('button', { name: new RegExp(resourceName, 'i') }).count() === 0) {
 			await mediaBin.locator('.ve-resource-row').filter({ hasText: resourceName }).getByRole('button', { name: 'Add to timeline' }).click()
@@ -872,7 +872,7 @@ test('timeline uses one shared current step and keeps many tracks scrollable', a
 	await page.goto('/')
 	await createProjectFromMenu(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	await timeline.locator('.ve-timeline-scroll-area').evaluate((element) => {
 		const labelList = element.querySelector('.ve-track-label-list') as HTMLElement | null
 		const laneList = element.querySelector('.ve-track-lane-list') as HTMLElement | null
@@ -946,7 +946,7 @@ test('inspector feature controls combine trim, color, effects, audio, export, an
 			.map((button) => button.textContent?.trim() ?? ''),
 	)
 	expect(overflowingInspectorButtons).toEqual([])
-	const deleteButton = page.getByRole('region', { name: 'Timeline' }).getByLabel('Clip edit actions').getByRole('button', { name: 'Delete clip' })
+	const deleteButton = page.getByRole('region', { name: 'Timeline', exact: true }).getByLabel('Clip edit actions').getByRole('button', { name: 'Delete clip' })
 	await expect(deleteButton).toBeEnabled()
 	await deleteButton.click()
 	await expect.poll(async () => {
@@ -965,7 +965,7 @@ test('color grading preview exposes split compare and scopes', async ({ page }) 
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await clip.click()
 	await setTimelineCursor(page, 0.25)
@@ -1071,10 +1071,10 @@ test('text clip materializes and can be selected for timeline edits', async ({ p
 		return !!video && video.readyState >= video.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0
 	})
 
-	const clipRows = page.getByRole('region', { name: 'Timeline' }).locator('.ve-clip')
+	const clipRows = page.getByRole('region', { name: 'Timeline', exact: true }).locator('.ve-clip')
 	const clipCountBeforeText = await clipRows.count()
 	await page.getByLabel('Media bin').getByRole('button', { name: 'Add Text to Timeline' }).click()
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	await expect.poll(async () => clipRows.count()).toBeGreaterThan(clipCountBeforeText)
 	const textClip = timeline.getByRole('button', { name: /^Resize clip start Text\b/i }).first()
 	await expect(textClip).toBeVisible()
@@ -1097,7 +1097,7 @@ test('selected look affects preview filter and exported pixels', async ({ page }
 	await createProjectFromMenu(page)
 	await page.getByLabel('Import media files').setInputFiles(await createSolidVideoFile(page, 'mono-red-video.webm', '#e11d48'))
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	await timeline.getByRole('button', { name: /mono-red-video.webm/i }).first().click()
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await inspector.getByRole('tab', { name: 'Color' }).click()
@@ -1121,7 +1121,7 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const laneScroll = timeline.locator('.ve-track-lane-scroll')
 	const laneBox = await laneScroll.boundingBox()
 	if (!laneBox) {
@@ -1312,7 +1312,7 @@ test('playback toggle advances timeline cursor over time', async ({ page }) => {
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const currentTime = timeline.getByLabel('Current time')
 	await expect(currentTime).toHaveText('0.00s')
 
@@ -1336,7 +1336,7 @@ test('timeline tools perform selection, split, and trim actions', async ({ page 
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
 	await timeline.getByRole('button', { name: 'Select tool' }).click()
 	await clip.click()
@@ -1374,7 +1374,7 @@ test('timeline hand tool pans horizontally when the lane overflows', async ({ pa
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	await expect(timeline.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
 	await timeline.getByRole('button', { name: 'Hand tool' }).click()
 	const { scrollArea, laneScroll, firstRail } = await ensureTimelineLaneOverflow(timeline)
@@ -1418,8 +1418,11 @@ test('timeline clip boxes align to the ruler and playhead origin', async ({ page
 	await createProjectFromMenu(page)
 	await importFixtureVideo(page)
 
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const clip = timeline.getByRole('button', { name: /fixture-video.webm/i }).first()
+	await expect(clip).toBeVisible({ timeout: 20_000 })
+	await expect(timeline.getByLabel('Time ruler')).toBeVisible({ timeout: 20_000 })
+	await expect(timeline.getByLabel('Current step')).toBeVisible({ timeout: 20_000 })
 	const rulerBox = await timeline.getByLabel('Time ruler').boundingBox()
 	const playheadBox = await timeline.getByLabel('Current step').boundingBox()
 	const clipBox = await clip.boundingBox()
@@ -1440,7 +1443,7 @@ test('preview keeps offscreen canvas active and syncs media layers across playhe
 	await importFixtureMedia(page)
 
 	const mediaBin = page.getByLabel('Media bin')
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	for (const resourceName of ['fixture-image.png', 'fixture-audio.wav']) {
 		if (await timeline.getByRole('button', { name: new RegExp(resourceName, 'i') }).count() === 0) {
 			await mediaBin.locator('.ve-resource-row').filter({ hasText: resourceName }).getByRole('button', { name: 'Add to timeline' }).click()

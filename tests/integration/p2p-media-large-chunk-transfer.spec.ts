@@ -47,7 +47,7 @@ for (const direction of directions) {
 			const remoteRow = observer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-3mb.webm' })
 			await expect(remoteRow).toBeVisible()
 			await remoteRow.getByRole('button', { name: 'Add to timeline' }).click()
-			await expect(observer.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-3mb\.webm/i }).first()).toBeVisible()
+			await expect(observer.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-3mb\.webm/i }).first()).toBeVisible()
 			await expect(observer.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-3mb.webm')
 		} finally {
 			await closePeerHandles(first, second)

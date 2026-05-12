@@ -209,6 +209,9 @@ export const VideoEditorApp = () => {
 						/>
 						<hr
 							className={`ve-panel-resizer${isResizingInspector ? " is-dragging" : ""}`}
+							role="separator"
+							aria-label="Resize preview and inspector panels"
+							aria-orientation="vertical"
 							tabIndex={0}
 							onPointerDown={handleResizePointerDown}
 							onPointerMove={handleResizePointerMove}

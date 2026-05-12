@@ -50,7 +50,7 @@ for (const scenario of scenarios) {
 				const observerRow = observer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 				await expect(observerRow).toBeVisible()
 				await observerRow.getByRole('button', { name: 'Add to timeline' }).click()
-				await expect(observer.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+				await expect(observer.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 				await expect(observer.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 			} finally {
 				await closePeerHandles(first, second)
@@ -78,7 +78,7 @@ for (const scenario of scenarios) {
 			const observerRow = observer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 			await expect(observerRow).toBeVisible()
 			await observerRow.getByRole('button', { name: 'Add to timeline' }).click()
-			await expect(observer.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+			await expect(observer.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 			await expect(observer.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 		} finally {
 			await closePeerHandles(first, second, third)

@@ -41,6 +41,29 @@ const getActiveProjectDetails = async (page: import('@playwright/test').Page): P
 		return (debug?.getActiveProjectDetails?.() ?? null) as DebugProjectDetails | null
 	})
 
+const waitForRuntimeSettled = async (page: import('@playwright/test').Page): Promise<void> => {
+	await page.evaluate(async () => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				waitForRuntimeSettled?: () => Promise<void>
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		await debug?.waitForRuntimeSettled?.()
+	})
+}
+
+const getProjectTitles = async (page: import('@playwright/test').Page): Promise<string[]> =>
+	page.evaluate(() => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				getProjectTitles?: () => string[]
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		return debug?.getProjectTitles?.() ?? []
+	})
+
 const expectSyncedImportedVideoProject = async (
 	page: import('@playwright/test').Page,
 	title: string,
@@ -76,6 +99,9 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	// when auto-seeding has already added "Project 1" on both pages.
 	const uniqueTitle = `SyncTest-${Date.now()}`
 	await createProjectViaDebugBridge(firstPage, uniqueTitle)
+	await waitForRuntimeSettled(firstPage)
+	await waitForRuntimeSettled(secondPage)
+	await expect.poll(() => getProjectTitles(secondPage), { timeout: 20_000 }).toContain(uniqueTitle)
 	await expect(firstPage.getByLabel('Projects').getByRole('button', { name: uniqueTitle })).toBeVisible()
 
 	// secondPage should receive the project via SharedWorker; open its dropdown
@@ -98,7 +124,7 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await expectSyncedImportedVideoProject(firstPage, uniqueTitle)
 	await expectSyncedImportedVideoProject(secondPage, uniqueTitle)
 
-	const secondTimeline = secondPage.getByRole('region', { name: 'Timeline' })
+	const secondTimeline = secondPage.getByRole('region', { name: 'Timeline', exact: true })
 	await expect(secondTimeline.getByRole('button', { name: /fixture-video\.webm.*0\.0+s\s*\/\s*1\.0+s/i }).first()).toBeVisible({ timeout: 20_000 })
 	await expect(secondTimeline.getByRole('button', { name: /Embedded audio.*0\.0+s\s*\/\s*1\.0+s/i }).first()).toBeVisible({ timeout: 20_000 })
 

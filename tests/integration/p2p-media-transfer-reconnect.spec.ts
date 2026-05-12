@@ -43,7 +43,7 @@ test('p2p media transfer resumes after the remote peer reconnects mid-transfer',
 		const replacementRow = replacementClient.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(replacementRow).toBeVisible()
 		await replacementRow.getByRole('button', { name: 'Add to timeline' }).click()
-		await expect(replacementClient.page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+		await expect(replacementClient.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 		await expect(replacementClient.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 	} finally {
 		await closePeerHandles(first, second, replacementClient)

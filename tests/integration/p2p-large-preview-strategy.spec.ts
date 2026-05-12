@@ -33,7 +33,7 @@ test('large-file preview uses head-first partial blob and bounded sequential req
 		const remoteRow = clientPage.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-3mb.webm' })
 		await expect(remoteRow).toBeVisible()
 		await remoteRow.getByRole('button', { name: 'Add to timeline' }).click()
-		await expect(clientPage.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-3mb\.webm/i }).first()).toBeVisible()
+		await expect(clientPage.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-3mb\.webm/i }).first()).toBeVisible()
 		await expect(clientPage.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-3mb.webm')
 	} finally {
 		await closePeerHandles(first, second)

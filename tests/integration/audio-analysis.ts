@@ -344,23 +344,48 @@ export const sampleVideoFramePixelRgba = async (
 	filePath: string,
 	options: { time?: number; x: number; y: number },
 ): Promise<[number, number, number, number]> => {
-	const { stdout } = await runBinary(ffmpegInstaller.path, [
+	const time = String(options.time ?? 0.5)
+	const cropFilter = `crop=2:2:${Math.max(0, Math.round(options.x))}:${Math.max(0, Math.round(options.y))},scale=1:1`
+	const sampleWithFastSeek = () => runBinary(ffmpegInstaller.path, [
 		'-v',
 		'error',
 		'-ss',
-		String(options.time ?? 0.5),
+		time,
 		'-i',
 		filePath,
 		'-frames:v',
 		'1',
 		'-vf',
-		`crop=2:2:${Math.max(0, Math.round(options.x))}:${Math.max(0, Math.round(options.y))},scale=1:1`,
+		cropFilter,
 		'-f',
 		'rawvideo',
 		'-pix_fmt',
 		'rgba',
 		'pipe:1',
 	], { timeoutMs: 60_000 })
+
+	const sampleWithAccurateSeek = () => runBinary(ffmpegInstaller.path, [
+		'-v',
+		'error',
+		'-i',
+		filePath,
+		'-ss',
+		time,
+		'-frames:v',
+		'1',
+		'-vf',
+		cropFilter,
+		'-f',
+		'rawvideo',
+		'-pix_fmt',
+		'rgba',
+		'pipe:1',
+	], { timeoutMs: 60_000 })
+
+	let { stdout } = await sampleWithFastSeek()
+	if (stdout.length < 4) {
+		;({ stdout } = await sampleWithAccurateSeek())
+	}
 	if (stdout.length < 4) {
 		throw new Error('Unable to sample exported video frame pixel')
 	}

@@ -31,7 +31,7 @@ const prepareEditor = async (page: import('@playwright/test').Page) => {
 	const mediaBin = page.getByLabel('Media bin')
 	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible({ timeout: 20_000 })
 	const mediaRow = mediaBin.locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' }).first()
-	const timelineClip = page.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video.webm/i }).first()
+	const timelineClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video.webm/i }).first()
 	if (await timelineClip.count() === 0) {
 		await expect(mediaRow).toBeVisible({ timeout: 20_000 })
 		await mediaRow.getByRole('button', { name: 'Add to timeline' }).click()
@@ -49,7 +49,7 @@ for (const viewport of [
 		await prepareEditor(page)
 
 		await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
-		await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible()
+		await expect(page.getByRole('region', { name: 'Timeline', exact: true })).toBeVisible()
 		await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible()
 		await expect(page.getByLabel('Transform controls')).toBeVisible()
 		await expect(page.getByLabel('Effects editor')).toBeVisible()

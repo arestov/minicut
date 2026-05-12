@@ -54,7 +54,10 @@ const ResourceThumbnail = ({
 	}
 
 	return (
-		<div className={`ve-resource-thumb ve-resource-thumb--${kind}`}>
+		<div
+			className={`ve-resource-thumb ve-resource-thumb--${kind}`}
+			aria-label={kind === "audio" ? "audio thumbnail" : `${name} thumbnail`}
+		>
 			<span>{kind}</span>
 		</div>
 	);

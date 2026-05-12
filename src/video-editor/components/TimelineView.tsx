@@ -90,7 +90,11 @@ interface TimelineBodyProps {
 }
 
 const CurrentTimeLabel = ({ cursorSeconds }: { cursorSeconds: number }) => {
-	return <span className="ve-timeline__time">{cursorSeconds.toFixed(2)}s</span>;
+	return (
+		<span className="ve-timeline__time" aria-label="Current time">
+			{cursorSeconds.toFixed(2)}s
+		</span>
+	);
 };
 
 const TimelinePlayhead = ({
@@ -103,7 +107,7 @@ const TimelinePlayhead = ({
 	return (
 		<div
 			className="ve-timeline-playhead"
-			aria-hidden="true"
+			aria-label="Current step"
 			style={{ left: `${cursorSeconds * timelineZoom}px` }}
 		/>
 	);
@@ -256,7 +260,7 @@ const TimelineBody = ({
 			<div className="ve-timeline-sticky-row">
 				<div className="ve-timeline-label-spacer" aria-hidden="true" />
 				<div className="ve-timeline-ruler-row">
-					<div className="ve-timeline-ruler">
+					<div className="ve-timeline-ruler" aria-label="Time ruler">
 						{timelineTicks.map((tick) => (
 							<span key={tick} style={{ left: `${tick * timelineZoom}px` }}>
 								{tick}s

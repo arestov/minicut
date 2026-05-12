@@ -10,7 +10,7 @@ import {
 } from './p2pTestHelpers'
 
 const setTimelineCursor = async (page: Page, seconds: number): Promise<void> => {
-	const timeline = page.getByRole('region', { name: 'Timeline' })
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const zoomText = await timeline.getByText(/px\/s$/i).first().textContent()
 	const zoom = Number.parseFloat((zoomText ?? '56').replace(/[^0-9.]/g, '')) || 56
 	const laneScroll = timeline.locator('.ve-track-lane-scroll')
@@ -55,10 +55,10 @@ test('scrubbing the remote timeline triggers a non-zero playhead window request'
 		await expect(remoteRow).toBeVisible()
 
 		await remoteRow.getByRole('button', { name: 'Add to timeline' }).click()
-		await expect(clientPage.getByRole('region', { name: 'Timeline' }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+		await expect(clientPage.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 
 		await setTimelineCursor(clientPage, 0.75)
-		await expect(clientPage.getByRole('region', { name: 'Timeline' }).getByLabel('Current time')).not.toHaveText('0.00s')
+		await expect(clientPage.getByRole('region', { name: 'Timeline', exact: true }).getByLabel('Current time')).not.toHaveText('0.00s')
 		await expect(clientPage.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 	} finally {
 		await closePeerHandles(first, second)
