@@ -4,6 +4,7 @@ export default defineConfig({
 	testDir: './tests/integration',
 	testIgnore: ['**/p2p-*.spec.ts'],
 	fullyParallel: true,
+	workers: Number(process.env.FAST_WORKERS ?? (process.env.CI ? 2 : 4)),
 	timeout: 30_000,
 	globalSetup: './tests/integration/playwright-vite-global-setup.mjs',
 	use: {
