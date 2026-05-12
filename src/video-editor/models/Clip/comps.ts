@@ -7,6 +7,14 @@ import {
 	mergeEffectFilters,
 } from "../../render/colorPipeline";
 import { defaultClipTransform } from "./actions";
+import type { TransformAttrs } from "./types";
+import {
+	finiteNumberOr,
+	numberOr,
+	objectOr,
+	objectOrNull,
+	stringOr,
+} from "../valueGuards";
 
 export const reduceClipRenderData = (
 	clipId: unknown,
@@ -31,28 +39,19 @@ export const reduceClipRenderData = (
 		: [];
 	const filters = mergeEffectFilters(effects);
 	const res =
-		resourceSummary && typeof resourceSummary === "object"
-			? (resourceSummary as {
-					name: string;
-					kind: string;
-					url: string;
-					mime: string;
-				})
-			: null;
-	const asNum = (v: unknown, fb: number): number =>
-		typeof v === "number" && Number.isFinite(v) ? v : fb;
-	const asStr = (v: unknown, fb: string): string =>
-		typeof v === "string" ? v : fb;
+		objectOrNull<{
+			name: string;
+			kind: string;
+			url: string;
+			mime: string;
+		}>(resourceSummary);
 	const asAnimScalar = (v: unknown, fb: number): ResolvedAnimatedScalar => {
 		if (v && typeof v === "object" && "value" in v)
 			return v as ResolvedAnimatedScalar;
-		return { value: typeof v === "number" ? v : fb };
+		return { value: numberOr(v, fb) };
 	};
 	const asTransform = (v: unknown) => {
-		const t =
-			v && typeof v === "object"
-				? (v as Record<string, unknown>)
-				: defaultClipTransform;
+		const t = objectOr<TransformAttrs>(v, defaultClipTransform);
 		return {
 			x: asAnimScalar(t.x, 0),
 			y: asAnimScalar(t.y, 0),
@@ -61,33 +60,27 @@ export const reduceClipRenderData = (
 		};
 	};
 	return {
-		id: asStr(clipId, ""),
+		id: stringOr(clipId, ""),
 		resourceId: typeof resourceId === "string" ? resourceId : null,
-		name: asStr(name, "Clip"),
-		color: asStr(color, "#2563eb"),
-		resourceName: res?.name ?? asStr(name, "Clip"),
-		resourceKind: asStr(
+		name: stringOr(name, "Clip"),
+		color: stringOr(color, "#2563eb"),
+		resourceName: res?.name ?? stringOr(name, "Clip"),
+		resourceKind: stringOr(
 			mediaKind ?? res?.kind,
 			"video",
 		) as PreviewClipSource["resourceKind"],
 		resourceUrl: res?.url ?? "",
 		mime: res?.mime ?? "application/octet-stream",
-		inPoint: asNum(inPoint, 0),
-		start: asNum(start, 0),
-		duration: asNum(duration, 0),
-		fadeIn: asNum(fadeIn, 0),
-		fadeOut: asNum(fadeOut, 0),
+		inPoint: finiteNumberOr(inPoint, 0),
+		start: finiteNumberOr(start, 0),
+		duration: finiteNumberOr(duration, 0),
+		fadeIn: finiteNumberOr(fadeIn, 0),
+		fadeOut: finiteNumberOr(fadeOut, 0),
 		opacity: asAnimScalar(opacity, 1),
 		transform: asTransform(transform),
-		audio:
-			audio && typeof audio === "object"
-				? (audio as { gain: number; pan: number })
-				: { gain: 1, pan: 0 },
+		audio: objectOr(audio, { gain: 1, pan: 0 }),
 		filters: filters ? [filters] : [],
 		effects,
-		text:
-			textAttrs && typeof textAttrs === "object"
-				? (textAttrs as PreviewClipSource["text"])
-				: null,
+		text: objectOrNull<NonNullable<PreviewClipSource["text"]>>(textAttrs),
 	};
 };

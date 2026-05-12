@@ -20,6 +20,12 @@ import {
 import { reduceProjectPreviewClipSources } from "./Project/comps";
 import { RESOURCE_CREATION_SHAPE } from "./Resource";
 import { TRACK_CREATION_SHAPE } from "./Track";
+import {
+	finiteNumberOr,
+	finiteNumberOrUndefined,
+	objectOr,
+	stringOr,
+} from "./valueGuards";
 
 export const PROJECT_CREATION_SHAPE = {
 	attrs: [
@@ -37,9 +43,6 @@ export const PROJECT_CREATION_SHAPE = {
 		resources: RESOURCE_CREATION_SHAPE,
 	},
 } as const;
-
-const asNumber = (value: unknown, fallback: number): number =>
-	typeof value === "number" ? value : fallback;
 
 const RESOURCE_INPUT_BASE_REL_SHAPE = {
 	linking: "<< resource << #",
@@ -68,7 +71,7 @@ export const Project = model({
 		timelineDuration: [
 			"comp",
 			["duration"],
-			(duration: unknown) => asNumber(duration, 0),
+			(duration: number) => duration,
 		],
 		importProgress: ["input", null],
 		lastImportError: ["input", null],
@@ -80,8 +83,7 @@ export const Project = model({
 		isLandscape: [
 			"comp",
 			["width", "height"],
-			(width: unknown, height: unknown) =>
-				asNumber(width, 0) >= asNumber(height, 0),
+			(width: number, height: number) => width >= height,
 		],
 		resourceTransferManifest: [
 			"comp",
@@ -116,55 +118,30 @@ export const Project = model({
 						return {
 							resourceId: item.resourceId,
 							attrs: {
-								name:
-									typeof item.name === "string" ? item.name : item.resourceId,
+								name: stringOr(item.name, item.resourceId),
 								kind:
 									item.kind === "audio" ||
 									item.kind === "image" ||
 									item.kind === "text"
 										? item.kind
 										: "video",
-								url: typeof item.url === "string" ? item.url : "",
+								url: stringOr(item.url, ""),
 								mime:
-									typeof item.mime === "string"
-										? item.mime
-										: "application/octet-stream",
-								duration:
-									typeof item.duration === "number" &&
-									Number.isFinite(item.duration)
-										? item.duration
-										: 0,
-								width:
-									typeof item.width === "number" && Number.isFinite(item.width)
-										? item.width
-										: undefined,
-								height:
-									typeof item.height === "number" &&
-									Number.isFinite(item.height)
-										? item.height
-										: undefined,
-								size:
-									typeof item.size === "number" && Number.isFinite(item.size)
-										? item.size
-										: undefined,
-								source:
-									item.source && typeof item.source === "object"
-										? item.source
-										: { kind: "local" },
-								status:
-									typeof item.status === "string" ? item.status : "missing",
-								data:
-									item.data && typeof item.data === "object" ? item.data : {},
+									stringOr(item.mime, "application/octet-stream"),
+								duration: finiteNumberOr(item.duration, 0),
+								width: finiteNumberOrUndefined(item.width),
+								height: finiteNumberOrUndefined(item.height),
+								size: finiteNumberOrUndefined(item.size),
+								source: objectOr(item.source, { kind: "local" }),
+								status: stringOr(item.status, "missing"),
+								data: objectOr(item.data, {}),
 							},
 						};
 					})
 					.filter(
 						(
 							entry,
-						): entry is {
-							resourceId: string;
-							attrs: Record<string, unknown>;
-						} => entry !== null,
+						): entry is NonNullable<typeof entry> => entry !== null,
 					);
 			},
 		],

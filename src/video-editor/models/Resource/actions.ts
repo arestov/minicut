@@ -1,3 +1,5 @@
+import { numberOr, numberOrNull, objectOr, stringOr } from "../valueGuards";
+
 export const reduceRenameResource = (payload: unknown) => {
 	const name =
 		typeof payload === "string"
@@ -27,21 +29,17 @@ export const reduceSetResourceAttrs = (payload: unknown) => {
 	}
 
 	return {
-		name: typeof value.name === "string" ? value.name : "Resource",
-		kind: typeof value.kind === "string" ? value.kind : "video",
-		url: typeof value.url === "string" ? value.url : "",
-		mime:
-			typeof value.mime === "string" ? value.mime : "application/octet-stream",
-		duration: typeof value.duration === "number" ? value.duration : 0,
-		width: typeof value.width === "number" ? value.width : null,
-		height: typeof value.height === "number" ? value.height : null,
-		size: typeof value.size === "number" ? value.size : null,
-		source:
-			value.source && typeof value.source === "object"
-				? value.source
-				: { kind: "local" },
-		status: typeof value.status === "string" ? value.status : "missing",
-		data: value.data && typeof value.data === "object" ? value.data : null,
+		name: stringOr(value.name, "Resource"),
+		kind: stringOr(value.kind, "video"),
+		url: stringOr(value.url, ""),
+		mime: stringOr(value.mime, "application/octet-stream"),
+		duration: numberOr(value.duration, 0),
+		width: numberOrNull(value.width),
+		height: numberOrNull(value.height),
+		size: numberOrNull(value.size),
+		source: objectOr(value.source, { kind: "local" }),
+		status: stringOr(value.status, "missing"),
+		data: objectOr(value.data, null),
 	};
 };
 

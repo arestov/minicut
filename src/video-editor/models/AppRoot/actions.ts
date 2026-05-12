@@ -1,4 +1,6 @@
+import { defaultClipTransform } from "../Clip/actions";
 import { defaultTextBox, defaultTextStyle } from "../Text/defaults";
+import { numberOr, numberOrNull, objectOr, stringOr } from "../valueGuards";
 
 export const reduceCreateProjectModel = (payload: unknown) => {
 	const value = payload as {
@@ -29,10 +31,10 @@ export const reduceCreateProjectModel = (payload: unknown) => {
 					return {
 						attrs: {
 							kind: item.kind === "audio" ? "audio" : "video",
-							name: typeof item.name === "string" ? item.name : "Track",
-							muted: typeof item.muted === "boolean" ? item.muted : false,
-							locked: typeof item.locked === "boolean" ? item.locked : false,
-							height: typeof item.height === "number" ? item.height : 84,
+							name: stringOr(item.name, "Track"),
+							muted: item.muted === true,
+							locked: item.locked === true,
+							height: numberOr(item.height, 84),
 						},
 					};
 				})
@@ -53,14 +55,13 @@ export const reduceCreateProjectModel = (payload: unknown) => {
 
 	return {
 		attrs: {
-			title:
-				typeof value?.title === "string" ? value.title : "Untitled project",
-			fps: typeof value?.fps === "number" ? value.fps : 30,
-			width: typeof value?.width === "number" ? value.width : 1920,
-			height: typeof value?.height === "number" ? value.height : 1080,
-			duration: typeof value?.duration === "number" ? value.duration : 0,
-			createdAt: typeof value?.createdAt === "number" ? value.createdAt : 0,
-			updatedAt: typeof value?.updatedAt === "number" ? value.updatedAt : 0,
+			title: stringOr(value?.title, "Untitled project"),
+			fps: numberOr(value?.fps, 30),
+			width: numberOr(value?.width, 1920),
+			height: numberOr(value?.height, 1080),
+			duration: numberOr(value?.duration, 0),
+			createdAt: numberOr(value?.createdAt, 0),
+			updatedAt: numberOr(value?.updatedAt, 0),
 			autoCreateDefaultTracks: value?.autoCreateDefaultTracks === true,
 		},
 		rels: tracks.length > 0 ? { tracks } : undefined,
@@ -78,10 +79,10 @@ export const reduceCreateTrackModel = (payload: unknown) => {
 	return {
 		attrs: {
 			kind: value?.kind === "audio" ? "audio" : "video",
-			name: typeof value?.name === "string" ? value.name : "Track",
-			muted: typeof value?.muted === "boolean" ? value.muted : false,
-			locked: typeof value?.locked === "boolean" ? value.locked : false,
-			height: typeof value?.height === "number" ? value.height : 84,
+			name: stringOr(value?.name, "Track"),
+			muted: value?.muted === true,
+			locked: value?.locked === true,
+			height: numberOr(value?.height, 84),
 		},
 	};
 };
@@ -103,23 +104,17 @@ export const reduceCreateResourceModel = (payload: unknown) => {
 
 	return {
 		attrs: {
-			name: typeof value?.name === "string" ? value.name : "Resource",
-			kind: typeof value?.kind === "string" ? value.kind : "video",
-			url: typeof value?.url === "string" ? value.url : "",
-			mime:
-				typeof value?.mime === "string"
-					? value.mime
-					: "application/octet-stream",
-			duration: typeof value?.duration === "number" ? value.duration : 0,
-			width: typeof value?.width === "number" ? value.width : null,
-			height: typeof value?.height === "number" ? value.height : null,
-			size: typeof value?.size === "number" ? value.size : null,
-			source:
-				value?.source && typeof value.source === "object"
-					? value.source
-					: { kind: "local" },
-			status: typeof value?.status === "string" ? value.status : "missing",
-			data: value?.data && typeof value.data === "object" ? value.data : null,
+			name: stringOr(value?.name, "Resource"),
+			kind: stringOr(value?.kind, "video"),
+			url: stringOr(value?.url, ""),
+			mime: stringOr(value?.mime, "application/octet-stream"),
+			duration: numberOr(value?.duration, 0),
+			width: numberOrNull(value?.width),
+			height: numberOrNull(value?.height),
+			size: numberOrNull(value?.size),
+			source: objectOr(value?.source, { kind: "local" }),
+			status: stringOr(value?.status, "missing"),
+			data: objectOr(value?.data, null),
 		},
 	};
 };
@@ -132,15 +127,9 @@ export const reduceCreateTextModel = (payload: unknown) => {
 	} | null;
 	return {
 		attrs: {
-			content: typeof value?.content === "string" ? value.content : "Text",
-			style:
-				value?.style && typeof value.style === "object"
-					? value.style
-					: defaultTextStyle,
-			box:
-				value?.box && typeof value.box === "object"
-					? value.box
-					: defaultTextBox,
+			content: stringOr(value?.content, "Text"),
+			style: objectOr(value?.style, defaultTextStyle),
+			box: objectOr(value?.box, defaultTextBox),
 		},
 	};
 };
@@ -156,14 +145,12 @@ export const reduceCreateEffectModel = (payload: unknown) => {
 	} | null;
 	return {
 		attrs: {
-			name: typeof value?.name === "string" ? value.name : "Effect",
-			kind: typeof value?.kind === "string" ? value.kind : "blur",
+			name: stringOr(value?.name, "Effect"),
+			kind: stringOr(value?.kind, "blur"),
 			enabled: typeof value?.enabled === "boolean" ? value.enabled : true,
-			amount: typeof value?.amount === "number" ? value.amount : null,
-			params:
-				value?.params && typeof value.params === "object" ? value.params : null,
-			color:
-				value?.color && typeof value.color === "object" ? value.color : null,
+			amount: numberOrNull(value?.amount),
+			params: objectOr(value?.params, null),
+			color: objectOr(value?.color, null),
 		},
 	};
 };
@@ -185,31 +172,17 @@ export const reduceCreateClipModel = (payload: unknown) => {
 
 	return {
 		attrs: {
-			name: typeof value?.name === "string" ? value.name : "Clip",
-			color: typeof value?.color === "string" ? value.color : "#2563eb",
-			mediaKind: typeof value?.mediaKind === "string" ? value.mediaKind : null,
-			start: typeof value?.start === "number" ? value.start : 0,
-			in: typeof value?.in === "number" ? value.in : 0,
-			duration: typeof value?.duration === "number" ? value.duration : 0,
-			fadeIn: typeof value?.fadeIn === "number" ? value.fadeIn : 0,
-			fadeOut: typeof value?.fadeOut === "number" ? value.fadeOut : 0,
-			audio:
-				value?.audio && typeof value.audio === "object"
-					? value.audio
-					: { gain: 1, pan: 0 },
-			opacity:
-				value?.opacity && typeof value.opacity === "object"
-					? value.opacity
-					: { value: 1 },
-			transform:
-				value?.transform && typeof value.transform === "object"
-					? value.transform
-					: {
-							x: { value: 0 },
-							y: { value: 0 },
-							scale: { value: 1 },
-							rotation: { value: 0 },
-						},
+			name: stringOr(value?.name, "Clip"),
+			color: stringOr(value?.color, "#2563eb"),
+			mediaKind: stringOr(value?.mediaKind, "") || null,
+			start: numberOr(value?.start, 0),
+			in: numberOr(value?.in, 0),
+			duration: numberOr(value?.duration, 0),
+			fadeIn: numberOr(value?.fadeIn, 0),
+			fadeOut: numberOr(value?.fadeOut, 0),
+			audio: objectOr(value?.audio, { gain: 1, pan: 0 }),
+			opacity: objectOr(value?.opacity, { value: 1 }),
+			transform: objectOr(value?.transform, defaultClipTransform),
 		},
 	};
 };

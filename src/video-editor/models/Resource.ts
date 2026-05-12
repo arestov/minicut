@@ -7,6 +7,12 @@ import {
 	reduceSetResourceAttrs,
 	reduceSetResourceStatus,
 } from "./Resource/actions";
+import {
+	finiteNumberOr,
+	finiteNumberOrUndefined,
+	objectOr,
+	stringOr,
+} from "./valueGuards";
 
 export const RESOURCE_CREATION_SHAPE = {
 	attrs: [
@@ -51,15 +57,12 @@ export const Resource = model({
 				url: unknown,
 				mime: unknown,
 			) => ({
-				resourceId: typeof resourceId === "string" ? resourceId : "",
-				name: typeof name === "string" ? name : "Resource",
-				kind: typeof kind === "string" ? kind : "video",
-				duration:
-					typeof duration === "number" && Number.isFinite(duration)
-						? duration
-						: 0,
-				url: typeof url === "string" ? url : "",
-				mime: typeof mime === "string" ? mime : "application/octet-stream",
+				resourceId: stringOr(resourceId, ""),
+				name: stringOr(name, "Resource"),
+				kind: stringOr(kind, "video"),
+				duration: finiteNumberOr(duration, 0),
+				url: stringOr(url, ""),
+				mime: stringOr(mime, "application/octet-stream"),
 			}),
 		],
 		renderSummary: [
@@ -72,14 +75,11 @@ export const Resource = model({
 				mime: unknown,
 				duration: unknown,
 			) => ({
-				name: typeof name === "string" ? name : "Resource",
-				kind: typeof kind === "string" ? kind : "video",
-				url: typeof url === "string" ? url : "",
-				mime: typeof mime === "string" ? mime : "application/octet-stream",
-				duration:
-					typeof duration === "number" && Number.isFinite(duration)
-						? duration
-						: 0,
+				name: stringOr(name, "Resource"),
+				kind: stringOr(kind, "video"),
+				url: stringOr(url, ""),
+				mime: stringOr(mime, "application/octet-stream"),
+				duration: finiteNumberOr(duration, 0),
 			}),
 		],
 		transferSnapshot: [
@@ -112,37 +112,21 @@ export const Resource = model({
 				status: unknown,
 				data: unknown,
 			) => ({
-				resourceId: typeof resourceId === "string" ? resourceId : "",
-				name: typeof name === "string" ? name : "Resource",
+				resourceId: stringOr(resourceId, ""),
+				name: stringOr(name, "Resource"),
 				kind:
 					kind === "audio" || kind === "image" || kind === "text"
 						? kind
 						: "video",
-				url: typeof url === "string" ? url : "",
-				mime: typeof mime === "string" ? mime : "application/octet-stream",
-				duration:
-					typeof duration === "number" && Number.isFinite(duration)
-						? duration
-						: 0,
-				width:
-					typeof width === "number" && Number.isFinite(width)
-						? width
-						: undefined,
-				height:
-					typeof height === "number" && Number.isFinite(height)
-						? height
-						: undefined,
-				size:
-					typeof size === "number" && Number.isFinite(size) ? size : undefined,
-				source:
-					source && typeof source === "object"
-						? (source as Record<string, unknown>)
-						: { kind: "local" },
-				status: typeof status === "string" ? status : "missing",
-				data:
-					data && typeof data === "object"
-						? (data as Record<string, unknown>)
-						: {},
+				url: stringOr(url, ""),
+				mime: stringOr(mime, "application/octet-stream"),
+				duration: finiteNumberOr(duration, 0),
+				width: finiteNumberOrUndefined(width),
+				height: finiteNumberOrUndefined(height),
+				size: finiteNumberOrUndefined(size),
+				source: objectOr(source, { kind: "local" }),
+				status: stringOr(status, "missing"),
+				data: objectOr(data, {}),
 			}),
 		],
 	},

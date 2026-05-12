@@ -1,6 +1,7 @@
 import type { MiniCutDktEffectSeed } from "../../dkt/runtime/seedTypes";
 import type { AnimatedScalar } from "../../render/registryTypes";
 import { defaultEffectAttrs } from "../Effect/defaults";
+import { numberOr, objectOr, stringOr } from "../valueGuards";
 import type { ClipAttrs, TransformAttrs } from "./types";
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10;
@@ -364,26 +365,17 @@ export const reduceSetClipAttrs = (payload: unknown) => {
 	}
 
 	return {
-		name: typeof value.name === "string" ? value.name : "Clip",
-		color: typeof value.color === "string" ? value.color : "#2563eb",
-		mediaKind: typeof value.mediaKind === "string" ? value.mediaKind : null,
-		start: typeof value.start === "number" ? value.start : 0,
-		in: typeof value.in === "number" ? value.in : 0,
-		duration: typeof value.duration === "number" ? value.duration : 0,
-		fadeIn: typeof value.fadeIn === "number" ? value.fadeIn : 0,
-		fadeOut: typeof value.fadeOut === "number" ? value.fadeOut : 0,
-		audio:
-			value.audio && typeof value.audio === "object"
-				? value.audio
-				: { gain: 1, pan: 0 },
-		opacity:
-			value.opacity && typeof value.opacity === "object"
-				? value.opacity
-				: { value: 1 },
-		transform:
-			value.transform && typeof value.transform === "object"
-				? value.transform
-				: defaultClipTransform,
+		name: stringOr(value.name, "Clip"),
+		color: stringOr(value.color, "#2563eb"),
+		mediaKind: stringOr(value.mediaKind, "") || null,
+		start: numberOr(value.start, 0),
+		in: numberOr(value.in, 0),
+		duration: numberOr(value.duration, 0),
+		fadeIn: numberOr(value.fadeIn, 0),
+		fadeOut: numberOr(value.fadeOut, 0),
+		audio: objectOr(value.audio, { gain: 1, pan: 0 }),
+		opacity: objectOr(value.opacity, { value: 1 }),
+		transform: objectOr(value.transform, defaultClipTransform),
 	};
 };
 
@@ -394,9 +386,9 @@ export const reduceSetFade = (
 	duration: unknown,
 ) => {
 	const patch = clipSetFadeAction.fn(payload, {
-		fadeIn: typeof fadeIn === "number" ? fadeIn : 0,
-		fadeOut: typeof fadeOut === "number" ? fadeOut : 0,
-		duration: typeof duration === "number" ? duration : 0,
+		fadeIn: numberOr(fadeIn, 0),
+		fadeOut: numberOr(fadeOut, 0),
+		duration: numberOr(duration, 0),
 	});
 	return patch ?? "$noop";
 };
@@ -422,7 +414,7 @@ export const reduceSetTransform = (payload: unknown, transform: unknown) => {
 
 export const reduceMoveBy = (payload: unknown, start: unknown) => {
 	const patch = reduceTimelineMoveByAction(payload, {
-		start: typeof start === "number" ? start : 0,
+		start: numberOr(start, 0),
 	});
 	return patch ?? {};
 };
@@ -434,9 +426,9 @@ export const reduceTrim = (
 	duration: unknown,
 ) => {
 	const patch = reduceTimelineTrimAction(payload, {
-		start: typeof start === "number" ? start : 0,
-		in: typeof inPoint === "number" ? inPoint : 0,
-		duration: typeof duration === "number" ? duration : 0,
+		start: numberOr(start, 0),
+		in: numberOr(inPoint, 0),
+		duration: numberOr(duration, 0),
 	});
 	return patch ?? "$noop";
 };
@@ -448,9 +440,9 @@ export const reduceResize = (
 	duration: unknown,
 ) => {
 	const patch = reduceTimelineResizeAction(payload, {
-		start: typeof start === "number" ? start : 0,
-		in: typeof inPoint === "number" ? inPoint : 0,
-		duration: typeof duration === "number" ? duration : 0,
+		start: numberOr(start, 0),
+		in: numberOr(inPoint, 0),
+		duration: numberOr(duration, 0),
 	});
 	return patch ?? "$noop";
 };
@@ -462,8 +454,8 @@ export const reduceSplitAt = (
 	duration: unknown,
 ) => {
 	const patch = reduceTimelineSplitAtAction(payload, {
-		start: typeof start === "number" ? start : 0,
-		duration: typeof duration === "number" ? duration : 0,
+		start: numberOr(start, 0),
+		duration: numberOr(duration, 0),
 	});
 	return patch ?? {};
 };

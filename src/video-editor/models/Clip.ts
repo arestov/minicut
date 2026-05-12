@@ -25,6 +25,7 @@ import {
 } from "./Clip/actions";
 import { reduceClipRenderData } from "./Clip/comps";
 import { EFFECT_CREATION_SHAPE } from "./Effect";
+import { numberOr, objectOr, objectOrNull, stringOr } from "./valueGuards";
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10;
 export const Clip = model({
@@ -48,25 +49,17 @@ export const Clip = model({
 		renderInterval: [
 			"comp",
 			["start", "duration"],
-			(start: unknown, duration: unknown) => {
-				const s =
-					typeof start === "number" && Number.isFinite(start) ? start : 0;
-				const d =
-					typeof duration === "number" && Number.isFinite(duration)
-						? Math.max(0, duration)
-						: 0;
-				return { start: s, end: s + d, duration: d };
+			(start: number, duration: number) => {
+				const d = Math.max(0, duration);
+				return { start, end: start + d, duration: d };
 			},
 		],
 		renderBox: [
 			"comp",
 			["transform", "crop"],
-			(transform: unknown, crop: unknown) => ({
-				transform:
-					transform && typeof transform === "object"
-						? transform
-						: defaultClipTransform,
-				crop: crop && typeof crop === "object" ? crop : null,
+			(transform: typeof defaultClipTransform, crop: object | null) => ({
+				transform: transform ?? defaultClipTransform,
+				crop: objectOrNull(crop),
 			}),
 		],
 		effectStackSummary: ["input", null],
@@ -351,8 +344,8 @@ export const Clip = model({
 						_transform: unknown,
 					) => {
 						const time = (payload as { time?: unknown } | null)?.time;
-						const s = typeof start === "number" ? start : 0;
-						const d = typeof duration === "number" ? duration : 0;
+						const s = numberOr(start, 0);
+						const d = numberOr(duration, 0);
 						if (typeof time !== "number" || time <= s || time >= s + d)
 							return noop;
 						return {
@@ -400,13 +393,10 @@ export const Clip = model({
 						resource: unknown,
 						text: unknown,
 					) => {
-						const s = typeof start === "number" ? start : 0;
-						const ip = typeof inPoint === "number" ? inPoint : 0;
-						const leftDuration = typeof duration === "number" ? duration : 0;
-						const originalDuration =
-							typeof splitOriginalDuration === "number"
-								? splitOriginalDuration
-								: 0;
+						const s = numberOr(start, 0);
+						const ip = numberOr(inPoint, 0);
+						const leftDuration = numberOr(duration, 0);
+						const originalDuration = numberOr(splitOriginalDuration, 0);
 						if (
 							!Number.isFinite(originalDuration) ||
 							originalDuration <= leftDuration ||
@@ -419,24 +409,17 @@ export const Clip = model({
 							originalDuration - leftDuration,
 						);
 						return {
-							name: typeof name === "string" ? name : "Clip",
-							color: typeof color === "string" ? color : "#2563eb",
-							mediaKind: typeof mediaKind === "string" ? mediaKind : "video",
+							name: stringOr(name, "Clip"),
+							color: stringOr(color, "#2563eb"),
+							mediaKind: stringOr(mediaKind, "video"),
 							start: splitTime,
 							in: roundToTenths(ip + leftDuration),
 							duration: rightDuration,
 							fadeIn: 0,
-							fadeOut: typeof fadeOut === "number" ? fadeOut : 0,
-							audio:
-								audio && typeof audio === "object"
-									? audio
-									: { gain: 1, pan: 0 },
-							opacity:
-								opacity && typeof opacity === "object" ? opacity : { value: 1 },
-							transform:
-								transform && typeof transform === "object"
-									? transform
-									: defaultClipTransform,
+							fadeOut: numberOr(fadeOut, 0),
+							audio: objectOr(audio, { gain: 1, pan: 0 }),
+							opacity: objectOr(opacity, { value: 1 }),
+							transform: objectOr(transform, defaultClipTransform),
 							resource,
 							text,
 							splitTime,
