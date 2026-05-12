@@ -54,19 +54,31 @@ export const Track = model({
 			to: {
 				name: ["name"],
 			},
-			fn: reduceRenameTrack,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceRenameTrack(payload) ?? noop,
+			],
 		},
 		setTrackMuted: {
 			to: {
 				muted: ["muted"],
 			},
-			fn: reduceSetTrackMuted,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetTrackMuted(payload) ?? noop,
+			],
 		},
 		setTrackLocked: {
 			to: {
 				locked: ["locked"],
 			},
-			fn: reduceSetTrackLocked,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetTrackLocked(payload) ?? noop,
+			],
 		},
 		addClip: {
 			to: {
@@ -121,11 +133,19 @@ export const Track = model({
 					],
 					$output: ["$output"],
 				},
-				fn: [["<<<<"] as const, reduceAddTextClip],
+				fn: [
+					["$noop", "<<<<"] as const,
+					(payload: unknown, noop: unknown, self: unknown) =>
+						reduceAddTextClip(payload, self) ?? noop,
+				],
 			},
 			{
 				to: ["*"],
-				fn: reduceLinkClipAndTextFromOutput,
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) =>
+						reduceLinkClipAndTextFromOutput(payload) ?? noop,
+				],
 			},
 		],
 		splitClipAt: [
@@ -160,11 +180,19 @@ export const Track = model({
 					],
 					$output: ["$output"],
 				},
-				fn: [["<<<<"] as const, reduceSplitClipAt],
+				fn: [
+					["$noop", "<<<<"] as const,
+					(payload: unknown, noop: unknown, self: unknown) =>
+						reduceSplitClipAt(payload, self) ?? noop,
+				],
 			},
 			{
 				to: ["*"],
-				fn: reduceLinkClipAndTextFromOutput,
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) =>
+						reduceLinkClipAndTextFromOutput(payload) ?? noop,
+				],
 			},
 		],
 		setClips: {

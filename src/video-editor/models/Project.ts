@@ -200,13 +200,21 @@ export const Project = model({
 					},
 				],
 			},
-			fn: [["autoCreateDefaultTracks"] as const, reduceHandleInit],
+			fn: [
+				["$noop", "autoCreateDefaultTracks"] as const,
+				(payload: unknown, noop: unknown, autoCreateDefaultTracks: unknown) =>
+					reduceHandleInit(payload, autoCreateDefaultTracks) ?? noop,
+			],
 		},
 		renameProject: {
 			to: {
 				title: ["title"],
 			},
-			fn: reduceRenameProject,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceRenameProject(payload) ?? noop,
+			],
 		},
 		setProjectFormat: {
 			to: {
@@ -214,13 +222,21 @@ export const Project = model({
 				width: ["width"],
 				height: ["height"],
 			},
-			fn: reduceSetProjectFormat,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetProjectFormat(payload) ?? noop,
+			],
 		},
 		setProjectDuration: {
 			to: {
 				duration: ["duration"],
 			},
-			fn: reduceSetProjectDuration,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetProjectDuration(payload) ?? noop,
+			],
 		},
 		addTrack: {
 			to: {
@@ -249,7 +265,11 @@ export const Project = model({
 				importProgress: ["importProgress"],
 				lastImportError: ["lastImportError"],
 			},
-			fn: reduceRequestImportFiles,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceRequestImportFiles(payload) ?? noop,
+			],
 		},
 		setImportProgress: {
 			to: {
@@ -257,7 +277,11 @@ export const Project = model({
 				importProgress: ["importProgress"],
 				lastImportError: ["lastImportError"],
 			},
-			fn: reduceSetImportProgress,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetImportProgress(payload) ?? noop,
+			],
 		},
 		importResource: {
 			to: {

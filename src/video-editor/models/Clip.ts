@@ -98,14 +98,21 @@ export const Clip = model({
 			to: {
 				opacity: ["opacity"],
 			},
-			fn: (payload: unknown) =>
-				reduceClipUpdateOpacityAction(payload) ?? "$noop",
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceClipUpdateOpacityAction(payload) ?? noop,
+			],
 		},
 		rename: {
 			to: {
 				name: ["name"],
 			},
-			fn: (payload: unknown) => reduceClipRenameAction(payload) ?? "$noop",
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceClipRenameAction(payload) ?? noop,
+			],
 		},
 		setClipAttrs: {
 			to: {
@@ -127,27 +134,47 @@ export const Clip = model({
 			to: {
 				mediaKind: ["mediaKind"],
 			},
-			fn: (payload: unknown) =>
-				reduceClipSetMediaKindAction(payload) ?? "$noop",
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceClipSetMediaKindAction(payload) ?? noop,
+			],
 		},
 		color: {
 			to: {
 				color: ["color"],
 			},
-			fn: (payload: unknown) => reduceClipColorAction(payload) ?? "$noop",
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceClipColorAction(payload) ?? noop,
+			],
 		},
 		setFade: {
 			to: {
 				fadeIn: ["fadeIn"],
 				fadeOut: ["fadeOut"],
 			},
-			fn: [["fadeIn", "fadeOut", "duration"] as const, reduceSetFade],
+			fn: [
+				["$noop", "fadeIn", "fadeOut", "duration"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					fadeIn: unknown,
+					fadeOut: unknown,
+					duration: unknown,
+				) => reduceSetFade(payload, fadeIn, fadeOut, duration) ?? noop,
+			],
 		},
 		setAudio: {
 			to: {
 				audio: ["audio"],
 			},
-			fn: [["audio"] as const, reduceSetAudio],
+			fn: [
+				["$noop", "audio"] as const,
+				(payload: unknown, noop: unknown, audio: unknown) =>
+					reduceSetAudio(payload, audio) ?? noop,
+			],
 		},
 		setTimelineAttrs: {
 			to: {
@@ -157,13 +184,21 @@ export const Clip = model({
 				fadeIn: ["fadeIn"],
 				fadeOut: ["fadeOut"],
 			},
-			fn: reduceSetTimelineAttrs,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetTimelineAttrs(payload) ?? noop,
+			],
 		},
 		setTransform: {
 			to: {
 				transform: ["transform"],
 			},
-			fn: [["transform"] as const, reduceSetTransform],
+			fn: [
+				["$noop", "transform"] as const,
+				(payload: unknown, noop: unknown, transform: unknown) =>
+					reduceSetTransform(payload, transform) ?? noop,
+			],
 		},
 		moveBy: {
 			to: {
@@ -177,7 +212,16 @@ export const Clip = model({
 				in: ["in"],
 				duration: ["duration"],
 			},
-			fn: [["start", "in", "duration"] as const, reduceTrim],
+			fn: [
+				["$noop", "start", "in", "duration"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					start: unknown,
+					inPoint: unknown,
+					duration: unknown,
+				) => reduceTrim(payload, start, inPoint, duration) ?? noop,
+			],
 		},
 		resize: {
 			to: {
@@ -185,7 +229,16 @@ export const Clip = model({
 				in: ["in"],
 				duration: ["duration"],
 			},
-			fn: [["start", "in", "duration"] as const, reduceResize],
+			fn: [
+				["$noop", "start", "in", "duration"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					start: unknown,
+					inPoint: unknown,
+					duration: unknown,
+				) => reduceResize(payload, start, inPoint, duration) ?? noop,
+			],
 		},
 		splitAt: {
 			to: {
@@ -213,8 +266,8 @@ export const Clip = model({
 				],
 			},
 			fn: [
-				["<<<<"] as const,
-				(payload: unknown, self: unknown) => {
+				["$noop", "<<<<"] as const,
+				(payload: unknown, noop: unknown, self: unknown) => {
 					const attrs = normalizeEffectCreationAttrs(payload);
 					return attrs
 						? {
@@ -225,7 +278,7 @@ export const Clip = model({
 								},
 								effects: { use_ref_id: "newEffect" },
 							}
-						: "$noop";
+						: noop;
 				},
 			],
 		},
@@ -299,9 +352,9 @@ export const Clip = model({
 			{
 				to: ["<< track", { action: "removeClip", sub_flow: true }],
 				fn: [
-					["_node_id"] as const,
-					(_payload: unknown, clipId: unknown) => {
-						if (typeof clipId !== "string") return "$noop";
+					["$noop", "_node_id"] as const,
+					(_payload: unknown, noop: unknown, clipId: unknown) => {
+						if (typeof clipId !== "string") return noop;
 						return { clipId };
 					},
 				],

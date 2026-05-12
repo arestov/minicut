@@ -361,7 +361,7 @@ export const removeEffectRef = (
 export const reduceSetClipAttrs = (payload: unknown) => {
 	const value = payload as Record<string, unknown> | null;
 	if (!value || typeof value !== "object") {
-		return "$noop";
+		return null;
 	}
 
 	return {
@@ -390,7 +390,7 @@ export const reduceSetFade = (
 		fadeOut: numberOr(fadeOut, 0),
 		duration: numberOr(duration, 0),
 	});
-	return patch ?? "$noop";
+	return patch;
 };
 
 export const reduceSetAudio = (payload: unknown, audio: unknown) => {
@@ -398,18 +398,18 @@ export const reduceSetAudio = (payload: unknown, audio: unknown) => {
 		payload,
 		audio as { gain: number; pan: number },
 	);
-	return patch ?? "$noop";
+	return patch;
 };
 
 export const reduceSetTimelineAttrs = (payload: unknown) =>
-	clipSetTimelineAttrsAction.fn(payload) ?? "$noop";
+	clipSetTimelineAttrsAction.fn(payload);
 
 export const reduceSetTransform = (payload: unknown, transform: unknown) => {
 	const patch = clipSetTransformAction.fn(
 		payload,
 		transform as typeof defaultClipTransform,
 	);
-	return patch ?? "$noop";
+	return patch;
 };
 
 export const reduceMoveBy = (payload: unknown, start: unknown) => {
@@ -430,7 +430,7 @@ export const reduceTrim = (
 		in: numberOr(inPoint, 0),
 		duration: numberOr(duration, 0),
 	});
-	return patch ?? "$noop";
+	return patch;
 };
 
 export const reduceResize = (
@@ -444,7 +444,7 @@ export const reduceResize = (
 		in: numberOr(inPoint, 0),
 		duration: numberOr(duration, 0),
 	});
-	return patch ?? "$noop";
+	return patch;
 };
 
 export const reduceSplitAt = (
@@ -467,7 +467,7 @@ export const reduceAddEffect = (payload: unknown) => {
 				effect: { attrs, hold_ref_id: "newEffect" },
 				effects: { use_ref_id: "newEffect" },
 			}
-		: "$noop";
+		: null;
 };
 
 export const reduceSetResource = (payload: unknown) => ({

@@ -43,7 +43,7 @@ export const reduceSetTextStyle = (payload: unknown, style: unknown) => {
 				? (style as TextAttrs["style"])
 				: ({} as TextAttrs["style"]),
 	});
-	return patch ?? "$noop";
+	return patch;
 };
 
 export const reduceSetTextBox = (payload: unknown, box: unknown) =>
@@ -52,7 +52,7 @@ export const reduceSetTextBox = (payload: unknown, box: unknown) =>
 			box && typeof box === "object"
 				? (box as TextAttrs["box"])
 				: ({} as TextAttrs["box"]),
-	}) ?? "$noop";
+	});
 
 export const reduceSetClipRef = (payload: unknown) => ({
 	clip: (payload as { clip?: unknown } | null)?.clip ?? null,

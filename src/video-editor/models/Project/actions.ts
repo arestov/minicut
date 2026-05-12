@@ -182,7 +182,7 @@ export const reduceHandleInit = (
 	autoCreateDefaultTracks: unknown,
 ) => {
 	if (autoCreateDefaultTracks !== true) {
-		return "$noop";
+		return null;
 	}
 
 	return {
@@ -220,7 +220,7 @@ export const reduceRenameProject = (payload: unknown) => {
 		typeof payload === "string"
 			? payload
 			: (payload as { title?: unknown } | null)?.title;
-	return typeof title === "string" && title ? { title } : "$noop";
+	return typeof title === "string" && title ? { title } : null;
 };
 
 export const reduceSetProjectFormat = (payload: unknown) => {
@@ -235,7 +235,7 @@ export const reduceSetProjectFormat = (payload: unknown) => {
 				width: asNumberFallback(value.width, 1920),
 				height: asNumberFallback(value.height, 1080),
 			}
-		: "$noop";
+		: null;
 };
 
 export const reduceSetProjectDuration = (payload: unknown) => {
@@ -245,7 +245,7 @@ export const reduceSetProjectDuration = (payload: unknown) => {
 			: (payload as { duration?: unknown } | null)?.duration;
 	return typeof duration === "number"
 		? { duration: Math.max(0, duration) }
-		: "$noop";
+		: null;
 };
 
 export const reduceAddTrack = (payload: unknown) => {
@@ -538,7 +538,7 @@ export const reduceRequestImportFiles = (payload: unknown) => {
 		typeof value?.inputBatchHandleId !== "string" ||
 		!value.inputBatchHandleId
 	) {
-		return "$noop";
+		return null;
 	}
 	return {
 		activeImportTaskId: value.inputBatchHandleId,
@@ -560,7 +560,7 @@ export const reduceSetImportProgress = (payload: unknown) => {
 		stage !== "done" &&
 		stage !== "error"
 	) {
-		return "$noop";
+		return null;
 	}
 	const processed =
 		typeof value?.processed === "number" && Number.isFinite(value.processed)

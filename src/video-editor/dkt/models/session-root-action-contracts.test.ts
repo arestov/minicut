@@ -188,6 +188,52 @@ describe("SessionRoot action contracts", () => {
 		);
 	});
 
+	it("invalid session control payloads noop without mutating state", async () => {
+		const harness = await createActionContractHarness();
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"setCursor",
+			2.5,
+		);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"setTimelineZoom",
+			24,
+		);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"setPlaying",
+			true,
+		);
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"setCursor",
+			"bad",
+		);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"setTimelineZoom",
+			{ zoom: 10 },
+		);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"setPlaying",
+			"bad",
+		);
+
+		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(2.5);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "timelineZoom")).toBe(24);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(true);
+	});
+
 	it("playback actions toggle state and tick when playing", async () => {
 		const harness = await createActionContractHarness();
 

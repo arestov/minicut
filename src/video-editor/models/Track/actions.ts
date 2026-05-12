@@ -124,7 +124,7 @@ export const reduceRenameTrack = (payload: unknown) => {
 		typeof payload === "string"
 			? payload
 			: (payload as { name?: unknown } | null)?.name;
-	return typeof name === "string" && name ? { name } : "$noop";
+	return typeof name === "string" && name ? { name } : null;
 };
 
 export const reduceSetTrackMuted = (payload: unknown) => {
@@ -132,7 +132,7 @@ export const reduceSetTrackMuted = (payload: unknown) => {
 		typeof payload === "boolean"
 			? payload
 			: (payload as { muted?: unknown } | null)?.muted;
-	return typeof muted === "boolean" ? { muted } : "$noop";
+	return typeof muted === "boolean" ? { muted } : null;
 };
 
 export const reduceSetTrackLocked = (payload: unknown) => {
@@ -140,7 +140,7 @@ export const reduceSetTrackLocked = (payload: unknown) => {
 		typeof payload === "boolean"
 			? payload
 			: (payload as { locked?: unknown } | null)?.locked;
-	return typeof locked === "boolean" ? { locked } : "$noop";
+	return typeof locked === "boolean" ? { locked } : null;
 };
 
 const resolveResourceRef = (payload: unknown): unknown => {
@@ -191,7 +191,7 @@ export const reduceLinkClipAndTextFromOutput = (payload: unknown) => {
 	const clipId = getNodeId(clip);
 	const textId = getNodeId(text);
 	if (!clipId || !textId) {
-		return "$noop";
+		return null;
 	}
 	return {
 		[clipId]: { rels: { text } },
@@ -211,7 +211,7 @@ const cloneTextAttrs = (
 export const reduceSplitClipAt = (payload: unknown, self: unknown) => {
 	const attrs = normalizeRightSplitClipAttrs(payload);
 	if (!attrs) {
-		return "$noop";
+		return null;
 	}
 	const resource = (payload as { resource?: unknown } | null)?.resource ?? null;
 	const text = (payload as { text?: unknown } | null)?.text ?? null;

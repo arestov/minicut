@@ -139,13 +139,21 @@ export const Resource = model({
 			to: {
 				name: ["name"],
 			},
-			fn: reduceRenameResource,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceRenameResource(payload) ?? noop,
+			],
 		},
 		setResourceStatus: {
 			to: {
 				status: ["status"],
 			},
-			fn: reduceSetResourceStatus,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetResourceStatus(payload) ?? noop,
+			],
 		},
 		setResourceAttrs: {
 			to: {
@@ -161,7 +169,11 @@ export const Resource = model({
 				status: ["status"],
 				data: ["data"],
 			},
-			fn: reduceSetResourceAttrs,
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetResourceAttrs(payload) ?? noop,
+			],
 		},
 		requestAddToTimeline: {
 			to: {

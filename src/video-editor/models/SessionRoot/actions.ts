@@ -91,15 +91,15 @@ type DktActionDescriptor = {
 	when_deps?: readonly string[];
 	when_fn?: (...args: unknown[]) => boolean;
 	fn:
-		| ((payload: unknown) => DktSessionActionPatch | "$noop")
+		| ((payload: unknown) => DktSessionActionPatch | null)
 		| readonly [
 				readonly string[],
 				(
 					payload: unknown,
 					...deps: unknown[]
-				) => DktSessionActionPatch | Record<string, unknown> | "$noop",
+				) => DktSessionActionPatch | Record<string, unknown> | null,
 		  ]
-		| ((payload: unknown) => Record<string, unknown> | "$noop");
+		| ((payload: unknown) => Record<string, unknown> | null);
 };
 
 type DktActionDefinition = DktActionDescriptor | readonly DktActionDescriptor[];
@@ -724,7 +724,11 @@ export const sessionSetCursorAction = {
 	to: {
 		cursor: ["cursor"],
 	},
-	fn: (payload: unknown) => reduceSessionSetCursorAction(payload) ?? "$noop",
+	fn: [
+		["$noop"] as const,
+		(payload: unknown, noop: unknown) =>
+			reduceSessionSetCursorAction(payload) ?? noop,
+	],
 } as const satisfies DktActionDescriptor;
 
 export const sessionSetActiveInspectorTabAction = {
@@ -739,15 +743,22 @@ export const sessionSetPlayingAction = {
 	to: {
 		isPlaying: ["isPlaying"],
 	},
-	fn: (payload: unknown) => reduceSessionSetPlayingAction(payload) ?? "$noop",
+	fn: [
+		["$noop"] as const,
+		(payload: unknown, noop: unknown) =>
+			reduceSessionSetPlayingAction(payload) ?? noop,
+	],
 } as const satisfies DktActionDescriptor;
 
 export const sessionSetTimelineZoomAction = {
 	to: {
 		timelineZoom: ["timelineZoom"],
 	},
-	fn: (payload: unknown) =>
-		reduceSessionSetTimelineZoomAction(payload) ?? "$noop",
+	fn: [
+		["$noop"] as const,
+		(payload: unknown, noop: unknown) =>
+			reduceSessionSetTimelineZoomAction(payload) ?? noop,
+	],
 } as const satisfies DktActionDescriptor;
 
 export const sessionTogglePlaybackAction = {
@@ -767,9 +778,10 @@ export const sessionTickPlaybackAction = {
 		previewBuffer: ["previewBuffer"],
 	},
 	fn: [
-		["cursor", "isPlaying", "previewBuffer", "previewStructure"] as const,
+		["$noop", "cursor", "isPlaying", "previewBuffer", "previewStructure"] as const,
 		(
 			payload: unknown,
+			noop: unknown,
 			cursor: unknown,
 			isPlaying: unknown,
 			previewBuffer: unknown,
@@ -790,7 +802,7 @@ export const sessionTickPlaybackAction = {
 					)
 						? (previewStructure as PreviewStructure)
 						: { clipSources: [] },
-			}) ?? "$noop",
+			}) ?? noop,
 	],
 } as const satisfies DktActionDescriptor;
 
@@ -799,13 +811,10 @@ export const sessionZoomTimelineAction = {
 		timelineZoom: ["timelineZoom"],
 	},
 	fn: [
-		["timelineZoom"] as const,
-		(payload: unknown, timelineZoom: unknown) => {
+		["$noop", "timelineZoom"] as const,
+		(payload: unknown, noop: unknown, timelineZoom: unknown) => {
 			const current = typeof timelineZoom === "number" ? timelineZoom : 16;
-			return (
-				reduceSessionZoomTimelineAction(payload, { timelineZoom: current }) ??
-				"$noop"
-			);
+			return reduceSessionZoomTimelineAction(payload, { timelineZoom: current }) ?? noop;
 		},
 	],
 } as const satisfies DktActionDescriptor;
@@ -841,15 +850,15 @@ export const sessionRequestImportFilesAction = [
 			{ intent: "call", drop_when_api_not_ready: false },
 		],
 		fn: [
-			["< @one:_node_id < activeProject"] as const,
-			(payload: unknown, projectNodeId: unknown) => {
+			["$noop", "< @one:_node_id < activeProject"] as const,
+			(payload: unknown, noop: unknown, projectNodeId: unknown) => {
 				const inputBatchHandleId = asString(
 					(payload as { inputBatchHandleId?: unknown } | null)
 						?.inputBatchHandleId,
 				);
 				const projectId = asString(projectNodeId);
 				if (!inputBatchHandleId || !projectId) {
-					return "$noop";
+					return noop;
 				}
 				return {
 					projectId,
@@ -925,6 +934,7 @@ export const sessionRequestProjectExportAction = [
 		},
 		fn: [
 			[
+				"$noop",
 				"< @one:_node_id < activeProject",
 				"< @one:fps < activeProject",
 				"< @one:width < activeProject",
@@ -935,6 +945,7 @@ export const sessionRequestProjectExportAction = [
 			] as const,
 			(
 				payload: unknown,
+				noop: unknown,
 				projectId: unknown,
 				fps: unknown,
 				width: unknown,
@@ -952,7 +963,7 @@ export const sessionRequestProjectExportAction = [
 					clipSources,
 				);
 				if (!plan) {
-					return "$noop";
+					return noop;
 				}
 				const value = asObject(payload);
 				const initiatedBy =
@@ -983,12 +994,15 @@ export const sessionRequestProjectExportAction = [
 			"$fx_renderExport",
 			{ intent: "call", drop_when_api_not_ready: false },
 		],
-		fn: (payload: unknown) => {
+		fn: [
+			["$noop"] as const,
+			(payload: unknown, noop: unknown) => {
 			if (!payload || typeof payload !== "object") {
-				return "$noop";
+				return noop;
 			}
 			return payload;
-		},
+			},
+		],
 	},
 ] as const satisfies DktActionDefinition;
 
@@ -1001,6 +1015,7 @@ export const sessionRequestClipExportAction = [
 		},
 		fn: [
 			[
+				"$noop",
 				"< @one:_node_id < activeProject",
 				"< @one:fps < activeProject",
 				"< @one:width < activeProject",
@@ -1012,6 +1027,7 @@ export const sessionRequestClipExportAction = [
 			] as const,
 			(
 				payload: unknown,
+				noop: unknown,
 				projectId: unknown,
 				fps: unknown,
 				width: unknown,
@@ -1030,13 +1046,13 @@ export const sessionRequestClipExportAction = [
 					clipSources,
 				);
 				if (!plan) {
-					return "$noop";
+					return noop;
 				}
 
 				const value = asObject(payload);
 				const clipId = asString(value?.clipId);
 				if (!clipId) {
-					return "$noop";
+					return noop;
 				}
 				const normalizedClipIds = Array.isArray(clipIds)
 					? clipIds.filter(
@@ -1044,7 +1060,7 @@ export const sessionRequestClipExportAction = [
 						)
 					: [];
 				if (!normalizedClipIds.includes(clipId)) {
-					return "$noop";
+					return noop;
 				}
 
 				const initiatedBy =
@@ -1075,12 +1091,15 @@ export const sessionRequestClipExportAction = [
 			"$fx_renderExport",
 			{ intent: "call", drop_when_api_not_ready: false },
 		],
-		fn: (payload: unknown) => {
+		fn: [
+			["$noop"] as const,
+			(payload: unknown, noop: unknown) => {
 			if (!payload || typeof payload !== "object") {
-				return "$noop";
+				return noop;
 			}
 			return payload;
-		},
+			},
+		],
 	},
 ] as const satisfies DktActionDefinition;
 
@@ -1093,6 +1112,7 @@ export const sessionRequestSelectedClipExportAction = [
 		},
 		fn: [
 			[
+				"$noop",
 				"< @one:_node_id < activeProject",
 				"< @one:fps < activeProject",
 				"< @one:width < activeProject",
@@ -1104,6 +1124,7 @@ export const sessionRequestSelectedClipExportAction = [
 			] as const,
 			(
 				payload: unknown,
+				noop: unknown,
 				projectId: unknown,
 				fps: unknown,
 				width: unknown,
@@ -1123,7 +1144,7 @@ export const sessionRequestSelectedClipExportAction = [
 				);
 				const clipId = asString(selectedClipId);
 				if (!plan || !clipId) {
-					return "$noop";
+					return noop;
 				}
 				const value = asObject(payload);
 				const initiatedBy =
@@ -1154,12 +1175,15 @@ export const sessionRequestSelectedClipExportAction = [
 			"$fx_renderExport",
 			{ intent: "call", drop_when_api_not_ready: false },
 		],
-		fn: (payload: unknown) => {
+		fn: [
+			["$noop"] as const,
+			(payload: unknown, noop: unknown) => {
 			if (!payload || typeof payload !== "object") {
-				return "$noop";
+				return noop;
 			}
 			return payload;
-		},
+			},
+		],
 	},
 ] as const satisfies DktActionDefinition;
 
@@ -1168,16 +1192,16 @@ export const sessionConsumeExportRequestAction = {
 		exportRequest: ["exportRequest"],
 	},
 	fn: [
-		["exportRequest"] as const,
-		(payload: unknown, exportRequest: unknown) => {
+		["$noop", "exportRequest"] as const,
+		(payload: unknown, noop: unknown, exportRequest: unknown) => {
 			const current = asObject(exportRequest);
 			if (!current) {
-				return "$noop";
+				return noop;
 			}
 			const payloadId =
 				asString((payload as { id?: unknown } | null)?.id) ?? asString(payload);
 			if (payloadId && payloadId !== asString(current.id)) {
-				return "$noop";
+				return noop;
 			}
 			return { exportRequest: null };
 		},

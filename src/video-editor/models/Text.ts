@@ -37,7 +37,11 @@ export const Text = model({
 			to: {
 				content: ["content"],
 			},
-			fn: (payload: unknown) => reduceTextContentAction(payload) ?? "$noop",
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceTextContentAction(payload) ?? noop,
+			],
 		},
 		setTextStyle: {
 			to: {

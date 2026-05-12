@@ -59,6 +59,41 @@ describe("Clip action contracts", () => {
 		expect(harness.ctx.getAttr(harness.videoClip, "mediaKind")).toBe("image");
 	});
 
+	it("invalid payloads for simple clip actions noop without mutating state", async () => {
+		const harness = await createActionContractHarness();
+		const initialOpacity = harness.ctx.getAttr(harness.videoClip, "opacity");
+		const initialName = harness.ctx.getAttr(harness.videoClip, "name");
+		const initialColor = harness.ctx.getAttr(harness.videoClip, "color");
+		const initialMediaKind = harness.ctx.getAttr(
+			harness.videoClip,
+			"mediaKind",
+		);
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.videoClip,
+			"updateOpacity",
+			{ opacityPercent: "bad" },
+		);
+		await dispatchAndSettle(harness.ctx, harness.videoClip, "rename", 123);
+		await dispatchAndSettle(harness.ctx, harness.videoClip, "color", false);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.videoClip,
+			"setMediaKind",
+			"nope",
+		);
+
+		expect(harness.ctx.getAttr(harness.videoClip, "opacity")).toEqual(
+			initialOpacity,
+		);
+		expect(harness.ctx.getAttr(harness.videoClip, "name")).toBe(initialName);
+		expect(harness.ctx.getAttr(harness.videoClip, "color")).toBe(initialColor);
+		expect(harness.ctx.getAttr(harness.videoClip, "mediaKind")).toBe(
+			initialMediaKind,
+		);
+	});
+
 	it("setClipAttrs, setFade, setAudio, setTimelineAttrs, and setTransform patch the clip state", async () => {
 		const harness = await createActionContractHarness();
 

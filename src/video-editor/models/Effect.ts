@@ -60,37 +60,37 @@ export const Effect = model({
 			to: {
 				name: ["name"],
 			},
-			fn: (payload: unknown) => reduceEffectNameAction(payload) ?? "$noop",
+			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectNameAction(payload) ?? noop],
 		},
 		setEffectKind: {
 			to: {
 				kind: ["kind"],
 			},
-			fn: (payload: unknown) => reduceEffectKindAction(payload) ?? "$noop",
+			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectKindAction(payload) ?? noop],
 		},
 		setEffectEnabled: {
 			to: {
 				enabled: ["enabled"],
 			},
-			fn: (payload: unknown) => reduceEffectEnabledAction(payload) ?? "$noop",
+			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectEnabledAction(payload) ?? noop],
 		},
 		setEffectAmount: {
 			to: {
 				amount: ["amount"],
 			},
-			fn: (payload: unknown) => reduceEffectAmountAction(payload) ?? "$noop",
+			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectAmountAction(payload) ?? noop],
 		},
 		setEffectParams: {
 			to: {
 				params: ["params"],
 			},
-			fn: (payload: unknown) => reduceEffectParamsAction(payload) ?? "$noop",
+			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectParamsAction(payload) ?? noop],
 		},
 		setEffectColor: {
 			to: {
 				color: ["color"],
 			},
-			fn: (payload: unknown) => reduceEffectColorAction(payload) ?? "$noop",
+			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectColorAction(payload) ?? noop],
 		},
 		setEffectClip: {
 			to: {

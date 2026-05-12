@@ -5,7 +5,7 @@ export const reduceRenameResource = (payload: unknown) => {
 		typeof payload === "string"
 			? payload
 			: (payload as { name?: unknown } | null)?.name;
-	return typeof name === "string" && name ? { name } : "$noop";
+	return typeof name === "string" && name ? { name } : null;
 };
 
 export const reduceSetResourceStatus = (payload: unknown) => {
@@ -19,13 +19,13 @@ export const reduceSetResourceStatus = (payload: unknown) => {
 		status === "loading" ||
 		status === "error"
 		? { status }
-		: "$noop";
+		: null;
 };
 
 export const reduceSetResourceAttrs = (payload: unknown) => {
 	const value = payload as Record<string, unknown> | null;
 	if (!value || typeof value !== "object") {
-		return "$noop";
+		return null;
 	}
 
 	return {
