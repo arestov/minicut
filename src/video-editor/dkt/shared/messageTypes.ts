@@ -29,6 +29,7 @@ export type DktDispatchActionMessage = {
 export type DktRuntimeReadyMessage = {
 	type: typeof DKT_MSG.RUNTIME_READY;
 	requestId?: string;
+	sessionId?: string;
 	sessionKey?: string;
 	rootNodeId?: string | null;
 };
@@ -86,7 +87,12 @@ export type DktP2PSessionLostMessage = {
 };
 
 export type MiniCutDktTransportMessage =
-	| { type: typeof DKT_MSG.BOOTSTRAP; sessionKey?: string; route?: unknown }
+	| {
+			type: typeof DKT_MSG.BOOTSTRAP;
+			sessionId?: string;
+			sessionKey?: string;
+			route?: unknown;
+	  }
 	| { type: typeof DKT_MSG.CLOSE_SESSION }
 	| DktDispatchActionMessage
 	| DktExportRequestMessage

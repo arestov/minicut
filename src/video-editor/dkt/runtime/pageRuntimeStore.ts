@@ -21,6 +21,7 @@ export const createPageRuntimeSnapshotWithVersion = (
 export const shouldResetPageRuntimeForBootstrap = (
 	current: PageRootSnapshot,
 	options?: {
+		sessionId?: string | null;
 		sessionKey?: string | null;
 		route?: unknown;
 	},
@@ -30,6 +31,10 @@ export const shouldResetPageRuntimeForBootstrap = (
 	}
 
 	if (options?.sessionKey && options.sessionKey !== current.sessionKey) {
+		return true;
+	}
+
+	if (options?.sessionId && options.sessionId !== current.sessionId) {
 		return true;
 	}
 

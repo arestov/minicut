@@ -195,7 +195,7 @@ export const createMiniCutPageSyncRuntime = ({
 					booted: false,
 					ready: false,
 					rootNodeId: null,
-					sessionId: null,
+					sessionId: options?.sessionId ?? null,
 					sessionKey: options?.sessionKey ?? null,
 				}),
 			);
@@ -203,6 +203,7 @@ export const createMiniCutPageSyncRuntime = ({
 
 		emit(
 			createBootstrapMessage({
+				sessionId: options?.sessionId,
 				sessionKey: options?.sessionKey,
 				...(options && "route" in options ? { route: options.route } : {}),
 			}),
@@ -270,6 +271,7 @@ export const createMiniCutPageSyncRuntime = ({
 				store.setSnapshot(
 					createPageRuntimeSnapshotWithVersion(current, {
 						booted: true,
+						sessionId: message.sessionId ?? current.sessionId,
 						sessionKey: message.sessionKey ?? current.sessionKey,
 						rootNodeId: message.rootNodeId ?? syncReceiver.getRootNodeId(),
 						ready: Boolean(message.rootNodeId ?? syncReceiver.getRootNodeId()),

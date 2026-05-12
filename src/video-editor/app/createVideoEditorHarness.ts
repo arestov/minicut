@@ -215,34 +215,36 @@ export const createVideoEditorHarness = (
 
 			disposeProjectResources();
 
+			let disposeResourceAttrs = EMPTY_CLEANUP;
 			const syncResources = () => {
-				const attrs = pageRuntime.readAttrs(activeProjectScope, [
-					"resourceTransferManifest",
-				]) as {
-					resourceTransferManifest?: unknown;
-				};
-				const manifest = Array.isArray(attrs.resourceTransferManifest)
-					? attrs.resourceTransferManifest
-					: [];
-				const resources = manifest
-					.map((entry) => {
-						const item = entry as {
-							resourceId?: unknown;
-							attrs?: unknown;
-						} | null;
-						if (
-							!item ||
-							typeof item.resourceId !== "string" ||
-							!item.resourceId
-						) {
+				const resourceScopes = pageRuntime.readMany(
+					activeProjectScope,
+					"resources",
+				);
+				const resources = resourceScopes
+					.map((scope) => {
+						const resourceId =
+							typeof scope._nodeId === "string" ? scope._nodeId : "";
+						if (!resourceId) {
 							return null;
 						}
-						if (!item.attrs || typeof item.attrs !== "object") {
-							return null;
-						}
+						const attrs = pageRuntime.readAttrs(scope, [
+							"name",
+							"kind",
+							"url",
+							"mime",
+							"duration",
+							"width",
+							"height",
+							"size",
+							"source",
+							"status",
+							"data",
+						]) as ResourceAttrs;
+
 						return {
-							resourceId: item.resourceId,
-							attrs: item.attrs as ResourceAttrs,
+							resourceId,
+							attrs,
 						};
 					})
 					.filter(
@@ -253,26 +255,75 @@ export const createVideoEditorHarness = (
 				resourceTransferManager.syncResources(resources);
 			};
 
-			const unsubscribe = pageRuntime.subscribeAttrs(
+			const syncResourceSubscriptions = () => {
+				disposeResourceAttrs();
+				const resourceScopes = pageRuntime.readMany(
+					activeProjectScope,
+					"resources",
+				);
+				const unsubscribers = resourceScopes.map((scope) =>
+					pageRuntime.subscribeAttrs(
+						scope,
+						[
+							"name",
+							"kind",
+							"url",
+							"mime",
+							"duration",
+							"width",
+							"height",
+							"size",
+							"source",
+							"status",
+							"data",
+						],
+						syncResources,
+					),
+				);
+				disposeResourceAttrs = () => {
+					for (const unsubscribe of unsubscribers) {
+						unsubscribe();
+					}
+				};
+				syncResources();
+			};
+
+			const unsubscribeResources = pageRuntime.subscribeMany(
 				activeProjectScope,
-				["resourceTransferManifest"],
-				syncResources,
+				"resources",
+				syncResourceSubscriptions,
 			);
 			disposeProjectResources = () => {
-				unsubscribe();
+				unsubscribeResources();
+				disposeResourceAttrs();
 			};
-			syncResources();
+			syncResourceSubscriptions();
 		};
 
-		const disposeActiveProject = pageRuntime.subscribeRootScope(() => {
+		let disposeActiveProjectRel = EMPTY_CLEANUP;
+		const resubscribeActiveProjectRel = () => {
+			disposeActiveProjectRel();
+			disposeActiveProjectRel = EMPTY_CLEANUP;
+			const rootScope = pageRuntime.getRootScope();
+			if (rootScope) {
+				disposeActiveProjectRel = pageRuntime.subscribeOne(
+					rootScope,
+					"activeProject",
+					syncActiveProjectResources,
+				);
+			}
 			syncActiveProjectResources();
-		});
+		};
+		const disposeRootScope = pageRuntime.subscribeRootScope(
+			resubscribeActiveProjectRel,
+		);
 
-		syncActiveProjectResources();
+		resubscribeActiveProjectRel();
 
 		return () => {
 			disposeProjectResources();
-			disposeActiveProject();
+			disposeActiveProjectRel();
+			disposeRootScope();
 		};
 	};
 

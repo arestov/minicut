@@ -4,10 +4,12 @@ import {
 } from "../shared/messageTypes";
 
 export const createBootstrapMessage = (options?: {
+	sessionId?: string | null;
 	sessionKey?: string | null;
 	route?: unknown;
 }): MiniCutDktTransportMessage => ({
 	type: DKT_MSG.BOOTSTRAP,
+	...(options?.sessionId ? { sessionId: options.sessionId } : {}),
 	...(options?.sessionKey ? { sessionKey: options.sessionKey } : {}),
 	...(options && "route" in options ? { route: options.route } : {}),
 });

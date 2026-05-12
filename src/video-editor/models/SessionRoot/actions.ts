@@ -518,6 +518,13 @@ export const sessionHandleInitAction = [
 			pendingProjectInit: ["pendingProjectInit"],
 			selectedEntityId: ["selectedEntityId"],
 			cursor: ["cursor"],
+			existingProject: [
+				"<< activeProject",
+				{
+					method: "set_one",
+					can_use_refs: true,
+				},
+			],
 			createdProject: [
 				"<< $root.project << #",
 				{
@@ -536,10 +543,31 @@ export const sessionHandleInitAction = [
 			],
 		},
 		fn: [
-			["activeProjectId", "< @all:title < pioneer.project"] as const,
-			(payload: unknown, activeProjectId: unknown, projectTitles: unknown) => {
+			[
+				"activeProjectId",
+				"<< @all:pioneer.project",
+				"< @all:title < pioneer.project",
+			] as const,
+			(
+				payload: unknown,
+				activeProjectId: unknown,
+				projects: unknown,
+				projectTitles: unknown,
+			) => {
 				if (typeof activeProjectId === "string" && activeProjectId) {
 					return { pendingProjectInit: null };
+				}
+
+				const existingProjects = Array.isArray(projects) ? projects : [];
+				const firstProject = existingProjects.find(Boolean);
+				if (firstProject) {
+					return {
+						activeProjectId: null,
+						pendingProjectInit: null,
+						selectedEntityId: null,
+						cursor: 0,
+						existingProject: firstProject,
+					};
 				}
 
 				const seed = createProjectSeedPayload(
@@ -559,6 +587,21 @@ export const sessionHandleInitAction = [
 					activeProject: { use_ref_id: "createdProject" },
 				};
 			},
+		],
+	},
+	{
+		to: {
+			activeProjectId: ["activeProjectId"],
+		},
+		when_deps: ["pendingProjectInit"] as const,
+		when_fn: (_payload: unknown, pendingProjectInit: unknown) =>
+			pendingProjectInit === null,
+		fn: [
+			["< @one:_node_id < activeProject"] as const,
+			(_payload: unknown, projectNodeId: unknown) => ({
+				activeProjectId:
+					typeof projectNodeId === "string" ? projectNodeId : null,
+			}),
 		],
 	},
 	{

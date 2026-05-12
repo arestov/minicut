@@ -544,6 +544,7 @@ const VisualClipLayer = ({
 				<video
 					ref={mediaElementRegistry ? handleVideoRef : undefined}
 					src={clip.resourceUrl}
+					data-resource-name={clip.resourceName}
 					muted
 					playsInline
 					preload="metadata"

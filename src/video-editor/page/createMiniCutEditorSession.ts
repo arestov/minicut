@@ -205,6 +205,14 @@ export const createMiniCutEditorSession = (): MiniCutEditorSession => {
 	const harness = createBrowserHarness(room, signalUrl);
 	const runtime = harness.pageRuntime;
 	const sessionKey = signalUrl && room ? room.roomId : DEFAULT_SESSION_KEY;
+	const sessionId =
+		signalUrl && room
+			? `${room.roomId}:peer:${
+					typeof crypto !== "undefined" && "randomUUID" in crypto
+						? crypto.randomUUID()
+						: Math.random().toString(36).slice(2)
+				}`
+			: DEFAULT_SESSION_KEY;
 
 	return {
 		harness,
@@ -212,7 +220,7 @@ export const createMiniCutEditorSession = (): MiniCutEditorSession => {
 		runtime,
 		store: runtime?.store ?? null,
 		bootstrap(options) {
-			runtime?.bootstrap({ sessionKey, ...options });
+			runtime?.bootstrap({ sessionId, sessionKey, ...options });
 		},
 		describeNode(nodeId) {
 			return runtime?.debugDescribeNode(nodeId) ?? null;

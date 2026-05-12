@@ -227,13 +227,15 @@ export const createMiniCutDktRuntime = (
 
 	const bootstrapSessionRoot = async (
 		sessionKey = "minicut-local",
+		sessionId?: string | null,
 	): Promise<RuntimeModelLike | null> => {
 		const app = await bootstrapApp();
 		if (!app) {
 			return null;
 		}
 
-		const cached = sessionRootPromises.get(sessionKey);
+		const resolvedSessionId = sessionId || sessionKey;
+		const cached = sessionRootPromises.get(resolvedSessionId);
 		if (cached) {
 			return cached;
 		}
@@ -246,7 +248,7 @@ export const createMiniCutDktRuntime = (
 							app.appModel,
 							app.appModel.start_page,
 							{
-								sessionKey,
+								sessionKey: resolvedSessionId,
 								route: null,
 							},
 						);
@@ -265,7 +267,7 @@ export const createMiniCutDktRuntime = (
 			},
 		);
 
-		sessionRootPromises.set(sessionKey, sessionRootPromise);
+		sessionRootPromises.set(resolvedSessionId, sessionRootPromise);
 
 		return sessionRootPromise;
 	};
@@ -275,8 +277,9 @@ export const createMiniCutDktRuntime = (
 		payload?: unknown,
 		scopeNodeId?: string | null,
 		sessionKey = "minicut-local",
+		sessionId?: string | null,
 	): Promise<void> => {
-		const sessionRoot = await bootstrapSessionRoot(sessionKey);
+		const sessionRoot = await bootstrapSessionRoot(sessionKey, sessionId);
 		if (!sessionRoot) {
 			throw new Error("MiniCut DKT runtime is disabled");
 		}
@@ -303,6 +306,7 @@ export const createMiniCutDktRuntime = (
 		let destroyed = false;
 		let stream: ReturnType<typeof createWorkerStream> | null = null;
 		let activeSessionKey = "minicut-local";
+		let activeSessionId = "minicut-local";
 		let messageQueue = Promise.resolve();
 		activeTransports.add(transport);
 
@@ -318,25 +322,30 @@ export const createMiniCutDktRuntime = (
 		const bootstrap = async (
 			requestId?: string,
 			sessionKey?: string,
+			sessionId?: string,
 		): Promise<void> => {
 			const app = await bootstrapApp();
 			if (!app) {
 				throw new Error("MiniCut DKT runtime is disabled");
 			}
 			activeSessionKey = sessionKey || "minicut-local";
-			const sessionRoot = await bootstrapSessionRoot(activeSessionKey);
+			activeSessionId = sessionId || activeSessionKey;
+			const sessionRoot = await bootstrapSessionRoot(
+				activeSessionKey,
+				activeSessionId,
+			);
 			if (!sessionRoot) {
 				throw new Error("MiniCut DKT session root is not available");
 			}
 
 			// Recreate the sync stream if the sessionKey changed (e.g. after failover reconnect
 			// or if a premature BOOTSTRAP previously locked the stream to the wrong session).
-			if (stream && stream.sessionKey !== activeSessionKey) {
+			if (stream && stream.sessionKey !== activeSessionId) {
 				app.runtime.sync_sender.removeSyncStream(stream);
 				stream = null;
 			}
 			if (!stream) {
-				stream = createWorkerStream(transport, activeSessionKey);
+				stream = createWorkerStream(transport, activeSessionId);
 				await app.runtime.sync_sender.addSyncStream(
 					sessionRoot,
 					stream,
@@ -347,6 +356,7 @@ export const createMiniCutDktRuntime = (
 			transport.send({
 				type: DKT_MSG.RUNTIME_READY,
 				requestId,
+				sessionId: activeSessionId,
 				sessionKey: activeSessionKey,
 				rootNodeId: sessionRoot._node_id ?? null,
 			});
@@ -361,7 +371,7 @@ export const createMiniCutDktRuntime = (
 
 			switch (message.type) {
 				case DKT_MSG.BOOTSTRAP:
-					await bootstrap(undefined, message.sessionKey);
+					await bootstrap(undefined, message.sessionKey, message.sessionId);
 					return;
 				case DKT_MSG.WAIT_IDLE: {
 					const app = await bootstrapApp();
@@ -410,11 +420,14 @@ export const createMiniCutDktRuntime = (
 						message.payload,
 						message.scopeNodeId,
 						activeSessionKey,
+						activeSessionId,
 					);
 					if (message.requestId) {
 						transport.send({
 							type: DKT_MSG.RUNTIME_READY,
 							requestId: message.requestId,
+							sessionId: activeSessionId,
+							sessionKey: activeSessionKey,
 							rootNodeId: null,
 						});
 					}
