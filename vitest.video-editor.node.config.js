@@ -18,6 +18,10 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'node',
+		fileParallelism: true,
+		maxWorkers: 4,
+		hookTimeout: 30_000,
+		testTimeout: 30_000,
 		include: [
 			'src/video-editor/node/**/*.test.ts',
 			'src/video-editor/worker/*contract.test.ts',

@@ -19,6 +19,12 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'jsdom',
+		threads: true,
+		minWorkers: 1,
+		maxWorkers: 2,
+		fileParallelism: false,
+		hookTimeout: 30_000,
+		testTimeout: 30_000,
 		include: [
 			'src/video-editor/**/*.test.ts',
 			'src/video-editor/**/*.test.tsx',
