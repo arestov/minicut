@@ -78,6 +78,7 @@ interface ResourceRenderAttrs {
 }
 
 const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
+	const { resolveResourceUrl } = useVideoEditor();
 	const scope = useContext(ScopeContext);
 	const resourceAttrs = useAttrs([
 		"name",
@@ -92,7 +93,10 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const kind = resourceAttrs.kind ?? "video";
 	const mime = String(resourceAttrs.mime);
 	const duration = Number(resourceAttrs.duration);
-	const url = String(resourceAttrs.url);
+	const url =
+		resourceId && typeof resourceAttrs.url === "string"
+			? resolveResourceUrl(resourceId, resourceAttrs.url)
+			: String(resourceAttrs.url ?? "");
 	const totalBytes = Number(resourceAttrs.size ?? 0);
 	const statusLabel =
 		totalBytes > 0 ? `${Math.round(totalBytes / 1024)} KB` : null;

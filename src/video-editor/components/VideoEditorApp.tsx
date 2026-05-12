@@ -29,7 +29,6 @@ const clamp = (value: number, min: number, max: number): number =>
 
 /**
  * Provides project scope to children when an active project is set.
- * Transparent (renders children at session scope) when there is no active project.
  */
 const ActiveProjectScope = ({ children }: { children: React.ReactNode }) => {
 	const runtime = useReactScopeRuntime();
@@ -45,9 +44,7 @@ const ActiveProjectScope = ({ children }: { children: React.ReactNode }) => {
 			sessionScope ? runtime.readOne(sessionScope, "activeProject") : null,
 	);
 	return (
-		<ScopeContext.Provider value={projectScope ?? sessionScope}>
-			{children}
-		</ScopeContext.Provider>
+		<ScopeContext.Provider value={projectScope}>{children}</ScopeContext.Provider>
 	);
 };
 

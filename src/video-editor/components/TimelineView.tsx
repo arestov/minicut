@@ -19,6 +19,7 @@ import {
 	type ReactElement,
 	type PointerEvent as ReactPointerEvent,
 	type SetStateAction,
+	useContext,
 	useRef,
 	useState,
 } from "react";
@@ -391,6 +392,7 @@ const ResolvedProjectTimeline = ({
 };
 
 export const TimelineView = () => {
+	const projectScope = useContext(ScopeContext);
 	const [activeTool, setActiveTool] = useState<TimelineTool>("select");
 	const [snappingEnabled, setSnappingEnabled] = useState(true);
 	const panState = useRef<{ x: number; scrollLeft: number } | null>(null);
@@ -413,6 +415,7 @@ export const TimelineView = () => {
 		typeof rootAttrs.activeProjectId === "string"
 			? rootAttrs.activeProjectId
 			: null;
+	const resolvedActiveProjectId = projectScope?._nodeId ?? null;
 	const selectedEntityId =
 		typeof rootAttrs.selectedEntityId === "string"
 			? rootAttrs.selectedEntityId
@@ -534,7 +537,7 @@ export const TimelineView = () => {
 
 	return (
 		<section className="ve-panel ve-timeline" aria-label="Timeline">
-			{!activeProjectId ? (
+			{!resolvedActiveProjectId ? (
 				<>
 					{renderHeader(0)}
 					<p className="ve-empty">
@@ -543,7 +546,7 @@ export const TimelineView = () => {
 				</>
 			) : (
 				<ResolvedProjectTimeline
-					activeProjectId={activeProjectId}
+					activeProjectId={resolvedActiveProjectId}
 					activeTool={activeTool}
 					handleHandPan={handleHandPan}
 					handlePlayheadPointerDown={handlePlayheadPointerDown}

@@ -29,6 +29,31 @@ describe("SessionRoot action contracts", () => {
 		expect(typeof projectsAfter[0]?._node_id).toBe("string");
 	});
 
+	it("handleInit repairs active project rel when activeProjectId is already set", async () => {
+		const harness = await createActionContractHarness();
+		const activeProjectId = String(harness.project._node_id);
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"syncActiveProjectRel",
+			{ project: null },
+		);
+		expect(
+			await harness.ctx.queryRel(harness.sessionRoot, "activeProject"),
+		).toHaveLength(0);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "activeProjectId")).toBe(
+			activeProjectId,
+		);
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "handleInit");
+
+		const activeProject = (
+			await harness.ctx.queryRel(harness.sessionRoot, "activeProject")
+		)[0];
+		expect(activeProject?._node_id).toBe(activeProjectId);
+	});
+
 	it("createProject switches active project and clears editor state", async () => {
 		const harness = await createActionContractHarness();
 

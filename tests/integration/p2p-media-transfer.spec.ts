@@ -203,6 +203,45 @@ test('p2p peers keep independent active projects while remote preview stays avai
 	}
 })
 
+test('late p2p peer resolves the first project without manual project selection', async ({ browser }) => {
+	const roomId = createP2PRoomId('p2p-late-peer-active-project', test.info())
+	const roomUrl = buildRoomUrl(roomId, {
+		transferChunkSize: 512,
+		transferChunkDelayMs: 100,
+		transferHeadBytes: 512,
+		transferPlayheadWindowSeconds: 0.5,
+	})
+	const first = await openP2PPeer(browser, roomUrl)
+	const videoFile = await createRenamedFixtureVideo('late-peer-video.webm')
+
+	try {
+		await expect(first.page.getByRole('heading', { name: 'minicut' })).toBeVisible()
+		await first.page.getByLabel('Import media files').setInputFiles(videoFile)
+		const firstRow = first.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'late-peer-video.webm' })
+		await expect(firstRow).toBeVisible()
+		await firstRow.getByRole('button', { name: 'Add to timeline' }).click()
+		const projectId = await getActiveProjectNodeId(first.page)
+
+		const second = await openP2PPeer(browser, roomUrl)
+		try {
+			await waitForRolePair(first.page, second.page)
+			await expect.poll(() => getActiveProjectNodeId(second.page), {
+				timeout: 20_000,
+			}).toBe(projectId)
+
+			const secondTimeline = second.page.getByRole('region', { name: 'Timeline', exact: true })
+			await expect(secondTimeline.getByRole('button', { name: /late-peer-video\.webm/i }).first()).toBeVisible()
+			await waitForReadyTransfer(second.page, 'remote')
+			const secondRow = second.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'late-peer-video.webm' })
+			await expect(secondRow.locator('video.ve-resource-thumb')).toHaveCount(1)
+		} finally {
+			await closePeerHandles(second)
+		}
+	} finally {
+		await closePeerHandles(first)
+	}
+})
+
 const windowTransfers = async (page: import('@playwright/test').Page) =>
 	page.evaluate(() => window.__MINICUT_P2P_DEBUG__?.getResourceTransfers?.() ?? []) as Promise<Array<{
 		name: string

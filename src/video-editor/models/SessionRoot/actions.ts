@@ -555,7 +555,15 @@ export const sessionHandleInitAction = [
 				projectTitles: unknown,
 			) => {
 				if (typeof activeProjectId === "string" && activeProjectId) {
-					return { pendingProjectInit: null };
+					const existingProjects = Array.isArray(projects) ? projects : [];
+					const activeProject = existingProjects.find(
+						(item) =>
+							asString((item as { _node_id?: unknown } | null)?._node_id) ===
+							activeProjectId,
+					);
+					return activeProject
+						? { pendingProjectInit: null, existingProject: activeProject }
+						: { pendingProjectInit: null };
 				}
 
 				const existingProjects = Array.isArray(projects) ? projects : [];
