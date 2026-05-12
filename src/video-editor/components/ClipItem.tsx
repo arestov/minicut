@@ -261,8 +261,7 @@ export const ClipItem = ({
 				setDragPreviewDeltaPx(0);
 			}}
 		>
-			<button
-				type="button"
+			<span
 				className="ve-clip__resize-handle ve-clip__resize-handle--start"
 				aria-label="Resize clip start"
 				onClick={(event) => event.stopPropagation()}
@@ -293,8 +292,7 @@ export const ClipItem = ({
 				{name} | {formatSeconds(start)} / {formatSeconds(duration)} | opacity{" "}
 				{formatPercent(opacity)}
 			</small>
-			<button
-				type="button"
+			<span
 				className="ve-clip__resize-handle ve-clip__resize-handle--end"
 				aria-label="Resize clip end"
 				onClick={(event) => event.stopPropagation()}
