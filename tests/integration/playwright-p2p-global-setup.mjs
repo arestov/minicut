@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createServer } from 'vite'
+import startViteServer from './startViteServer.mjs'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const backendHealthUrl = 'http://127.0.0.1:8787/api/health'
@@ -113,15 +113,11 @@ export default async function setupP2PServers() {
 		await waitForBackend()
 	}
 
-	const frontend = await createServer({
-		configFile: path.join(repoRoot, 'vite.video-editor.config.js'),
-		server: {
-			host: '127.0.0.1',
-			port: 4174,
-			strictPort: true,
-		},
+	const frontend = await startViteServer({
+		repoRoot,
+		host: '127.0.0.1',
+		port: 4174,
 	})
-	await frontend.listen()
 
 	return async () => {
 		await frontend.close()
