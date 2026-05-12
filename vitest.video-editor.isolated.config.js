@@ -19,24 +19,12 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'jsdom',
-		threads: true,
-		minWorkers: 1,
-		maxWorkers: 2,
 		fileParallelism: false,
+		maxWorkers: 1,
 		hookTimeout: 30_000,
 		testTimeout: 30_000,
-		include: [
-			'src/video-editor/**/*.test.ts',
-			'src/video-editor/**/*.test.tsx',
-			'src/dkt-react-sync/**/*.test.ts',
-			'src/dkt-react-sync/**/*.test.tsx',
-		],
-		exclude: [
-			'node_modules/**',
-			'dist*/**',
-			'tmp/dkt/**',
-			'src/video-editor/p2p/**/*.test.ts',
-		],
+		include: ['src/video-editor/p2p/**/*.test.ts'],
+		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**'],
 		setupFiles: ['./src/video-editor/tests/setup.ts'],
 	},
 })
