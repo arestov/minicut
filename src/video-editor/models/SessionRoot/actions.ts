@@ -87,6 +87,7 @@ export type DktSessionActionPatch = Partial<
 >;
 
 type DktActionDescriptor = {
+	aggregate?: unknown;
 	to: unknown;
 	when_deps?: readonly string[];
 	when_fn?: (...args: unknown[]) => boolean;
@@ -102,7 +103,15 @@ type DktActionDescriptor = {
 		| ((payload: unknown) => Record<string, unknown> | null);
 };
 
-type DktActionDefinition = DktActionDescriptor | readonly DktActionDescriptor[];
+type DktActionWithSteps = {
+	aggregate?: unknown;
+	steps: readonly DktActionDescriptor[];
+};
+
+type DktActionDefinition =
+	| DktActionDescriptor
+	| DktActionWithSteps
+	| readonly DktActionDescriptor[];
 
 export const roundToHundredths = (value: number): number =>
 	Math.round(value * 100) / 100;
@@ -833,49 +842,68 @@ export const sessionClearExportProgressAction = {
 	fn: () => ({ exportProgress: null }),
 } as const satisfies DktActionDescriptor;
 
-export const sessionRequestImportFilesAction = [
-	{
-		to: {
-			projectImport: ["<< activeProject", { action: "requestImportFiles" }],
-			importFxPayload: ["$output"],
-		},
-		fn: (payload: unknown) => ({
-			projectImport: payload as Record<string, unknown>,
-			importFxPayload: payload,
-		}),
+export const sessionRequestImportFilesAction = {
+	aggregate: {
+		name: "importPipeline",
+		role: "boundary",
+		as: "requestImportFiles",
+		permission: "entry",
 	},
-	{
-		to: [
-			"$fx_handleInputFiles",
-			{ intent: "call", drop_when_api_not_ready: false },
-		],
-		fn: [
-			["$noop", "< @one:_node_id < activeProject"] as const,
-			(payload: unknown, noop: unknown, projectNodeId: unknown) => {
-				const inputBatchHandleId = asString(
-					(payload as { inputBatchHandleId?: unknown } | null)
-						?.inputBatchHandleId,
-				);
-				const projectId = asString(projectNodeId);
-				if (!inputBatchHandleId || !projectId) {
-					return noop;
-				}
-				return {
-					projectId,
-					inputBatchHandleId,
-					addToTimelineWhenEmpty: true,
-				} as ImportFilesFxPayload;
+	steps: [
+		{
+			to: {
+				projectImport: [
+					"<< activeProject",
+					{ action: "requestImportFiles", sub_flow: true },
+				],
+				importFxPayload: ["$output"],
 			},
-		],
-	},
-] as const satisfies DktActionDefinition;
+			fn: (payload: unknown) => ({
+				projectImport: payload as Record<string, unknown>,
+				importFxPayload: payload,
+			}),
+		},
+		{
+			to: [
+				"$fx_handleInputFiles",
+				{ intent: "call", drop_when_api_not_ready: false },
+			],
+			fn: [
+				["$noop", "< @one:_node_id < activeProject"] as const,
+				(payload: unknown, noop: unknown, projectNodeId: unknown) => {
+					const inputBatchHandleId = asString(
+						(payload as { inputBatchHandleId?: unknown } | null)
+							?.inputBatchHandleId,
+					);
+					const projectId = asString(projectNodeId);
+					if (!inputBatchHandleId || !projectId) {
+						return noop;
+					}
+					return {
+						projectId,
+						inputBatchHandleId,
+						addToTimelineWhenEmpty: true,
+					} as ImportFilesFxPayload;
+				},
+			],
+		},
+	],
+} as const satisfies DktActionDefinition;
 
-export const sessionSetActiveProjectImportProgressAction = [
-	{
-		to: ["<< activeProject", { action: "setImportProgress", sub_flow: true }],
-		fn: (payload: unknown) => payload as Record<string, unknown>,
+export const sessionSetActiveProjectImportProgressAction = {
+	aggregate: {
+		name: "importPipeline",
+		role: "boundary",
+		as: "setActiveProjectImportProgress",
+		permission: "entry",
 	},
-] as const satisfies DktActionDefinition;
+	steps: [
+		{
+			to: ["<< activeProject", { action: "setImportProgress", sub_flow: true }],
+			fn: (payload: unknown) => payload as Record<string, unknown>,
+		},
+	],
+} as const satisfies DktActionDefinition;
 
 export const sessionImportResourceIntoActiveProjectAction = {
 	to: {
