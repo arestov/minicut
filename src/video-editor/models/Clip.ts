@@ -111,7 +111,7 @@ export const Clip = model({
 			effects: "sequence",
 			text: null,
 			resource: "lww",
-			track: null,
+			track: ["lww", { conflictMeta: true }],
 			project: null,
 			crdtConflicts: null,
 		},

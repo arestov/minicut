@@ -60,6 +60,18 @@ const createPairWithClips = async (roomId: string, clipCount: number) => {
 	return { pair, clipsA, clipsB };
 };
 
+const findTrackByKind = async (
+	peer: Awaited<ReturnType<typeof createCrdtWorkerPair>>["a"],
+	kind: string,
+) => {
+	const tracks = await peer.ctx.queryRel(peer.project, "tracks");
+	const track = tracks.find((item) => peer.ctx.getAttr(item, "kind") === kind);
+	if (!track) {
+		throw new Error(`Expected ${kind} track`);
+	}
+	return track;
+};
+
 const createPairWithTextClip = async (roomId: string) => {
 	const pair = await createCrdtWorkerPair({
 		roomId,
@@ -372,9 +384,46 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
-	it.todo(
-		"records owner-slot conflict meta for concurrent moves to different tracks",
-	);
+	it("records owner-slot conflict meta for concurrent moves to different tracks", async () => {
+		const { pair, clipsA, clipsB } = await createPairWithClips(
+			"room-conflict-owner-slot-cross-track",
+			2,
+		);
+		const audioTrackA = await findTrackByKind(pair.a, "audio");
+		const clipId = clipsA[0]?._node_id;
+		if (!clipId) {
+			throw new Error("Expected clip fixture");
+		}
 
-	it.todo("records dangling resource ref conflict meta");
+		await pair.a.dispatch(pair.a.project, "moveClipToTrack", {
+			clipId,
+			targetTrackId: audioTrackA._node_id,
+		});
+		const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
+
+		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
+			clipId: clipsB[0]?._node_id,
+			afterClipId: clipsB[1]?._node_id,
+		});
+		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+
+		await exchangeOps(pair, opsA, opsB);
+
+		expect(
+			openConflictCount(clipsB[0], [
+				"$meta$rels$crdt$track$open_conflicts_count",
+				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(await pair.a.ctx.queryRel(pair.a.videoTrack, "clips")).not.toContain(
+			clipsA[0],
+		);
+		expect(await pair.a.ctx.queryRel(audioTrackA, "clips")).toContain(clipsA[0]);
+		pair.close();
+	});
+
+	it.todo(
+		"records dangling resource ref conflict meta when MiniCut adds resource tombstone attrs",
+	);
 });
