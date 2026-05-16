@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
 import { useActions } from "../../dkt-react-sync/hooks/useActions";
 import { useAttrs } from "../../dkt-react-sync/hooks/useAttrs";
@@ -46,6 +46,14 @@ interface ClipRenderAttrs {
 	"$meta$model$crdt$last_resolution_error"?: unknown;
 }
 
+interface ConflictViewAttrs {
+	id?: unknown;
+	kind?: unknown;
+	scope?: unknown;
+	summary?: unknown;
+	decision?: unknown;
+}
+
 const ClipGradeBadge = () => {
 	const attrs = useAttrs(["kind", "enabled"]) as {
 		kind?: unknown;
@@ -55,6 +63,53 @@ const ClipGradeBadge = () => {
 	return attrs.kind === "color-correction" && attrs.enabled !== false ? (
 		<span className="ve-clip__badge">Grade</span>
 	) : null;
+};
+
+const isTimingDecision = (
+	value: unknown,
+): value is NonNullable<ClipConflictItem["decision"]> => {
+	if (!value || typeof value !== "object") {
+		return false;
+	}
+	const decision = value as { start?: unknown; in?: unknown; duration?: unknown };
+	return (
+		typeof decision.start === "number" ||
+		typeof decision.in === "number" ||
+		typeof decision.duration === "number"
+	);
+};
+
+const sameConflictItem = (
+	left: ClipConflictItem | undefined,
+	right: ClipConflictItem,
+): boolean =>
+	Boolean(left) &&
+	left?.id === right.id &&
+	left?.kind === right.kind &&
+	left?.scope === right.scope &&
+	left?.summary === right.summary &&
+	left?.decision === right.decision;
+
+const ClipConflictProjectionItem = ({
+	scope,
+	onRead,
+}: {
+	scope: { _nodeId: string };
+	onRead: (item: ClipConflictItem) => void;
+}) => {
+	const attrs = useAttrs(["id", "kind", "scope", "summary", "decision"]) as
+		ConflictViewAttrs;
+	const item = {
+		id: typeof attrs.id === "string" ? attrs.id : scope._nodeId,
+		kind: typeof attrs.kind === "string" ? attrs.kind : undefined,
+		scope: typeof attrs.scope === "string" ? attrs.scope : undefined,
+		summary: typeof attrs.summary === "string" ? attrs.summary : undefined,
+		decision: isTimingDecision(attrs.decision) ? attrs.decision : undefined,
+	};
+	useEffect(() => {
+		onRead(item);
+	}, [item.id, item.kind, item.scope, item.summary, item.decision, onRead]);
+	return null;
 };
 
 export const ClipItem = ({
@@ -99,10 +154,19 @@ export const ClipItem = ({
 	const opacity = Number(clipAttrs.opacity?.value ?? 1);
 	const color = String(clipAttrs.color ?? "#2563eb");
 	const clipConflictState = clipAttrs as unknown as Record<string, unknown>;
-	const conflictItems: ClipConflictItem[] = conflictScopes.map((conflictScope) => ({
-		id: conflictScope._nodeId,
-		scope: "clipTiming",
-	}));
+	const [conflictItemsById, setConflictItemsById] = useState<
+		Record<string, ClipConflictItem>
+	>({});
+	const conflictItems: ClipConflictItem[] =
+		conflictScopes.length > 0
+			? conflictScopes.map(
+					(conflictScope) =>
+						conflictItemsById[conflictScope._nodeId] ?? {
+							id: conflictScope._nodeId,
+							scope: "clipTiming",
+						},
+				)
+			: [];
 	const width = Math.max(36, duration * timelineZoom);
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx);
 	const selectClip = (): void => {
@@ -344,6 +408,23 @@ export const ClipItem = ({
 					onKeyDown={(event) => event.stopPropagation()}
 					onPointerDown={(event) => event.stopPropagation()}
 				>
+					{conflictScopes.map((conflictScope) => (
+						<ScopeContext.Provider
+							key={conflictScope._nodeId}
+							value={conflictScope}
+						>
+							<ClipConflictProjectionItem
+								scope={conflictScope}
+								onRead={(item) =>
+									setConflictItemsById((current) =>
+										sameConflictItem(current[conflictScope._nodeId], item)
+											? current
+											: { ...current, [conflictScope._nodeId]: item },
+									)
+								}
+							/>
+						</ScopeContext.Provider>
+					))}
 					<ConflictInspectorPanel
 						model={{ states: clipConflictState, dispatch }}
 						conflicts={conflictItems}
