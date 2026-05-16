@@ -16,6 +16,9 @@ import { dumpWorkerAppState } from "./workerStateDump";
 type RuntimeModelLike = {
 	_node_id?: string | null;
 	model_name?: string | null;
+	_highway?: {
+		model_data_schema?: Record<string, unknown> | null;
+	};
 	states?: Record<string, unknown>;
 	__getPublicAttrs?: () => readonly string[];
 	getLinedStructure?: (
@@ -48,6 +51,21 @@ type RuntimeLike = {
 	model_data_schema?: Record<string, unknown>;
 };
 
+const stripAggregateSchema = (payload: unknown): unknown => {
+	if (Array.isArray(payload)) {
+		return payload.map(stripAggregateSchema);
+	}
+	if (!payload || typeof payload !== "object") {
+		return payload;
+	}
+	if (!Object.hasOwn(payload, "$aggregates")) {
+		return payload;
+	}
+	const sanitizedSchema = { ...(payload as Record<string, unknown>) };
+	delete sanitizedSchema.$aggregates;
+	return sanitizedSchema;
+};
+
 const createWorkerStream = (
 	transport: DomSyncTransportViewLike<MiniCutDktTransportMessage>,
 	sessionKey: string,
@@ -69,7 +87,15 @@ const createWorkerStream = (
 		});
 	},
 	sendWithType(syncType: number, payload: unknown) {
-		transport.send({ type: DKT_MSG.SYNC_HANDLE, syncType, payload });
+		const outgoingPayload =
+			syncType === SYNCR_TYPES.SET_MODEL_SCHEMA
+				? stripAggregateSchema(payload)
+				: payload;
+		transport.send({
+			type: DKT_MSG.SYNC_HANDLE,
+			syncType,
+			payload: outgoingPayload,
+		});
 	},
 });
 
@@ -219,14 +245,6 @@ export const createMiniCutDktRuntime = (
 						},
 					},
 				});
-				if (
-					runtime.model_data_schema &&
-					Object.hasOwn(runtime.model_data_schema, "$aggregates")
-				) {
-					const sanitizedSchema = { ...runtime.model_data_schema };
-					delete sanitizedSchema.$aggregates;
-					runtime.model_data_schema = sanitizedSchema;
-				}
 				return { runtime, appModel: inited.app_model };
 			})();
 		}
@@ -355,11 +373,25 @@ export const createMiniCutDktRuntime = (
 			}
 			if (!stream) {
 				stream = createWorkerStream(transport, activeSessionId);
-				await app.runtime.sync_sender.addSyncStream(
-					sessionRoot,
-					stream,
-					SESSION_IMPORTANT_REL_PATHS,
-				);
+				const sanitizedSchema = stripAggregateSchema(
+					app.runtime.model_data_schema,
+				) as Record<string, unknown> | undefined;
+				const originalSyncSchema = sessionRoot._highway?.model_data_schema;
+				if (sessionRoot._highway && sanitizedSchema) {
+					sessionRoot._highway.model_data_schema = sanitizedSchema;
+				}
+				try {
+					await app.runtime.sync_sender.addSyncStream(
+						sessionRoot,
+						stream,
+						SESSION_IMPORTANT_REL_PATHS,
+					);
+				} finally {
+					if (sessionRoot._highway) {
+						sessionRoot._highway.model_data_schema =
+							originalSyncSchema ?? app.runtime.model_data_schema ?? null;
+					}
+				}
 			}
 
 			transport.send({

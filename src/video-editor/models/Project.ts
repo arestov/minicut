@@ -68,6 +68,8 @@ export const Project = model({
 		},
 		resourceLifecycle: {
 			kind: "entity",
+			delete: "tombstone",
+			concurrentActivity: "conflict",
 		},
 		importPipeline: {
 			kind: "pipeline",
@@ -182,6 +184,7 @@ export const Project = model({
 				linking: "<< track << #",
 				role: "owner",
 				ownership: "multi",
+				inverseRel: "project",
 				aggregate: { name: "projectTracks", role: "primary", as: "tracks" },
 			},
 		],
@@ -192,6 +195,7 @@ export const Project = model({
 				linking: "<< resource << #",
 				role: "owner",
 				ownership: "multi",
+				inverseRel: "project",
 				aggregate: {
 					name: "resourceLifecycle",
 					role: "primary",
@@ -203,54 +207,68 @@ export const Project = model({
 		primaryAudioTrack: ["input", { linking: "<< track << #", role: "projection" }],
 	},
 	actions: {
-		handleInit: {
-			to: {
-				videoTrack: [
-					"<< track << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: TRACK_CREATION_SHAPE,
-					},
-				],
-				audioTrack: [
-					"<< track << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: TRACK_CREATION_SHAPE,
-					},
-				],
-				tracks: [
-					"<< tracks",
-					{
-						method: "set_many",
-						can_use_refs: true,
-					},
-				],
-				primaryVideoTrack: [
-					"<< primaryVideoTrack",
-					{
-						method: "set_one",
-						can_use_refs: true,
-					},
-				],
-				primaryAudioTrack: [
-					"<< primaryAudioTrack",
-					{
-						method: "set_one",
-						can_use_refs: true,
-					},
+		handleInit: [
+			{
+				to: {
+					videoTrack: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					audioTrack: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					tracks: [
+						"<< tracks",
+						{
+							method: "set_many",
+							can_use_refs: true,
+						},
+					],
+					primaryVideoTrack: [
+						"<< primaryVideoTrack",
+						{
+							method: "set_one",
+							can_use_refs: true,
+						},
+					],
+					primaryAudioTrack: [
+						"<< primaryAudioTrack",
+						{
+							method: "set_one",
+							can_use_refs: true,
+						},
+					],
+				},
+				fn: [
+					["$noop", "autoCreateDefaultTracks", "<< @all:tracks"] as const,
+					(
+						payload: unknown,
+						noop: unknown,
+						autoCreateDefaultTracks: unknown,
+						tracks: unknown,
+					) =>
+						reduceHandleInit(payload, autoCreateDefaultTracks, tracks) ?? noop,
 				],
 			},
-			fn: [
-				["$noop", "autoCreateDefaultTracks"] as const,
-				(payload: unknown, noop: unknown, autoCreateDefaultTracks: unknown) =>
-					reduceHandleInit(payload, autoCreateDefaultTracks) ?? noop,
-			],
-		},
+			{
+				to: ["<< tracks", { action: "setProject", sub_flow: true }],
+				fn: [
+					["<<<<"] as const,
+					(_payload: unknown, self: unknown) => ({ project: self }),
+				],
+			},
+		],
 		renameProject: {
 			to: {
 				title: ["title"],
@@ -283,27 +301,36 @@ export const Project = model({
 					reduceSetProjectDuration(payload) ?? noop,
 			],
 		},
-		addTrack: {
-			to: {
-				track: [
-					"<< track << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: TRACK_CREATION_SHAPE,
-					},
-				],
-				tracks: [
-					"<< tracks",
-					{
-						method: "at_end",
-						can_use_refs: true,
-					},
+		addTrack: [
+			{
+				to: {
+					track: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					tracks: [
+						"<< tracks",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+				},
+				fn: reduceAddTrack,
+			},
+			{
+				to: ["<< tracks", { action: "setProject", sub_flow: true }],
+				fn: [
+					["<<<<"] as const,
+					(_payload: unknown, self: unknown) => ({ project: self }),
 				],
 			},
-			fn: reduceAddTrack,
-		},
+		],
 		requestImportFiles: {
 			to: {
 				activeImportTaskId: ["activeImportTaskId"],
@@ -328,27 +355,36 @@ export const Project = model({
 					reduceSetImportProgress(payload) ?? noop,
 			],
 		},
-		importResource: {
-			to: {
-				resource: [
-					"<< resource << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: RESOURCE_CREATION_SHAPE,
-					},
-				],
-				resources: [
-					"<< resources",
-					{
-						method: "at_end",
-						can_use_refs: true,
-					},
+		importResource: [
+			{
+				to: {
+					resource: [
+						"<< resource << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: RESOURCE_CREATION_SHAPE,
+						},
+					],
+					resources: [
+						"<< resources",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+				},
+				fn: reduceImportResourceCreateOnly,
+			},
+			{
+				to: ["<< resources", { action: "setProject", sub_flow: true }],
+				fn: [
+					["<<<<"] as const,
+					(_payload: unknown, self: unknown) => ({ project: self }),
 				],
 			},
-			fn: reduceImportResourceCreateOnly,
-		},
+		],
 		setTracks: {
 			to: {
 				tracks: ["<< tracks", { method: "set_many" }],

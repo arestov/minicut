@@ -34,8 +34,15 @@ export const Clip = model({
 	aggregates: {
 		clipTiming: {
 			kind: "group",
+			deps: {
+				sourceDuration: {
+					fromMember: "resource",
+					addr: "< duration",
+				},
+			},
 			validate(ctx: {
 				members: Record<string, { value: unknown }>;
+				deps?: Record<string, { value: unknown; status?: string }>;
 			}) {
 				const start = Number(ctx.members.start.value);
 				const inPoint = Number(ctx.members.inPoint.value);
@@ -56,11 +63,21 @@ export const Clip = model({
 				if (duration <= 0) {
 					return { ok: false, code: "duration_non_positive" };
 				}
+				if (
+					ctx.members.resource.value != null &&
+					typeof ctx.deps?.sourceDuration?.value === "number" &&
+					inPoint + duration > ctx.deps.sourceDuration.value
+				) {
+					return { ok: false, code: "clip_exceeds_source_media" };
+				}
 				return { ok: true };
 			},
 		},
 		clipLifecycle: {
 			kind: "entity",
+			delete: "tombstone",
+			concurrentActivity: "conflict",
+			ownedSubtree: "include",
 		},
 	},
 	attrs: {
@@ -142,7 +159,7 @@ export const Clip = model({
 				inverseRel: "clip",
 				aggregate: {
 					name: "clipLifecycle",
-					role: "boundary",
+					role: "evidence",
 					as: "effects",
 				},
 			},
@@ -156,7 +173,7 @@ export const Clip = model({
 				inverseRel: "clip",
 				aggregate: {
 					name: "clipLifecycle",
-					role: "boundary",
+					role: "evidence",
 					as: "text",
 				},
 			},
@@ -166,6 +183,7 @@ export const Clip = model({
 			{
 				linking: "<< resource << #",
 				role: "ref",
+				aggregate: { name: "clipTiming", role: "evidence", as: "resource" },
 			},
 		],
 		track: [

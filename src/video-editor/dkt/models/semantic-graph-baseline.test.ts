@@ -38,6 +38,61 @@ const setupProjectWithVideoTrack = async () => {
 	return { ctx, project, videoTrack };
 };
 
+const setupProjectWithSeededClip = async (options?: {
+	graphSemantics?: {
+		inverseValidation?: "off" | "warn" | "error";
+	};
+}) => {
+	const ctx = await bootDktModels(options);
+	await ctx.lockToRead(async () => {
+		await ctx.sessionRoot.dispatch("createProject", {
+			title: "Semantic Seeded Clip",
+		});
+	});
+	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
+	if (!project) {
+		throw new Error("Expected active project");
+	}
+	const tracks = await ctx.queryRel(project, "tracks");
+	const videoTrack = tracks.find((track) => ctx.getAttr(track, "kind") === "video");
+	const audioTrack = tracks.find((track) => ctx.getAttr(track, "kind") === "audio");
+	if (!videoTrack || !audioTrack) {
+		throw new Error("Expected default tracks");
+	}
+	await ctx.lockToRead(async () => {
+		await project.dispatch("importResource", {
+			name: "Semantic Video Resource",
+			kind: "video",
+			url: "https://example.invalid/semantic-video.webm",
+			mime: "video/webm",
+			duration: 5,
+			size: 500,
+			source: { kind: "local" },
+			status: "ready",
+			data: { status: "ready" },
+		});
+	});
+	const resource = (await ctx.queryRel(project, "resources"))[0];
+	if (!resource) {
+		throw new Error("Expected resource");
+	}
+	await ctx.lockToRead(async () => {
+		await videoTrack.dispatch("addClip", {
+			resource,
+			name: "Semantic Clip",
+			mediaKind: "video",
+			start: 0,
+			in: 1,
+			duration: 3,
+		});
+	});
+	const clip = (await ctx.queryRel(videoTrack, "clips"))[0];
+	if (!clip) {
+		throw new Error("Expected clip");
+	}
+	return { ctx, project, videoTrack, audioTrack, resource, clip };
+};
+
 describe("semantic graph baseline", () => {
 	it("rejects direct track membership patch when inverse side is stale", async () => {
 		const ctx = await bootDktModels({
@@ -145,6 +200,48 @@ describe("semantic graph baseline", () => {
 		).rejects.toThrow('aggregate "clipTiming" validation failed');
 		expect(ctx.getAttr(clip, "start")).toBe(1);
 		expect(ctx.getAttr(clip, "duration")).toBe(3);
+	});
+
+	it("rejects clip timing patch that exceeds the linked resource duration", async () => {
+		const { ctx, clip } = await setupProjectWithSeededClip();
+		const runtime = ctx.runtime;
+		if (typeof runtime.applyExternalGraphPatch !== "function") {
+			throw new Error("Runtime applyExternalGraphPatch is unavailable");
+		}
+		await expect(
+			Promise.resolve(
+				runtime.applyExternalGraphPatch(
+					createAttrPatch(String(clip._node_id), {
+						duration: 4.5,
+					}),
+					{ origin: "sync_receiver", intent_type: "external_patch" },
+				),
+			),
+		).rejects.toThrow('aggregate "clipTiming" validation failed');
+		expect(ctx.getAttr(clip, "in")).toBe(1);
+		expect(ctx.getAttr(clip, "duration")).toBe(3);
+	});
+
+	it("rejects a patch that places one clip into two track owner slots", async () => {
+		const { ctx, videoTrack, audioTrack, clip } = await setupProjectWithSeededClip({
+			graphSemantics: { inverseValidation: "error" },
+		});
+		const runtime = ctx.runtime;
+		if (typeof runtime.applyExternalGraphPatch !== "function") {
+			throw new Error("Runtime applyExternalGraphPatch is unavailable");
+		}
+		await expect(
+			Promise.resolve(
+				runtime.applyExternalGraphPatch(
+					createRelPatch(String(audioTrack._node_id), {
+						clips: [clip],
+					}),
+					{ origin: "sync_receiver", intent_type: "external_patch" },
+				),
+			),
+		).rejects.toThrow("REL_INVERSE_MISMATCH");
+		expect(await ctx.queryRel(clip, "track")).toEqual([videoTrack]);
+		expect(await ctx.queryRel(audioTrack, "clips")).toEqual([]);
 	});
 
 	it("rejects external writes to session projection aggregate", async () => {

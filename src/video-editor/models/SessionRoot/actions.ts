@@ -896,13 +896,17 @@ export const sessionImportResourceIntoActiveProjectAction = {
 			},
 		],
 	},
-	fn: (payload: unknown) => ({
-		resource: {
-			attrs: normalizeResourceCreationAttrs(payload),
-			hold_ref_id: "activeProjectImportResource",
-		},
-		projectResource: { use_ref_id: "activeProjectImportResource" },
-	}),
+	fn: [
+		["<< @one:activeProject"] as const,
+		(_payload: unknown, activeProject: unknown) => ({
+			resource: {
+				attrs: normalizeResourceCreationAttrs(_payload),
+				rels: activeProject ? { project: activeProject } : undefined,
+				hold_ref_id: "activeProjectImportResource",
+			},
+			projectResource: { use_ref_id: "activeProjectImportResource" },
+		}),
+	],
 } as const satisfies DktActionDescriptor;
 
 export const sessionAddActiveProjectResourceToTimelineAction = [

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
 import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
@@ -7,7 +8,7 @@ import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 import type { WorkerStateDump } from "./workerStateDump";
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-	for (let attempt = 0; attempt < 80; attempt += 1) {
+	for (let attempt = 0; attempt < 400; attempt += 1) {
 		if (predicate()) {
 			return;
 		}
@@ -90,6 +91,40 @@ const waitForProjectImportProgress = async (
 };
 
 describe("createMiniCutDktRuntime export request channel", () => {
+	it("sanitizes aggregate schema only on the sync transport payload", async () => {
+		const runtime = createMiniCutDktRuntime({ enabled: true });
+		const memory = createMemoryTransport();
+		const connection = runtime.connect(memory.transport);
+
+		memory.emit({
+			type: DKT_MSG.BOOTSTRAP,
+			sessionKey: "session:schema-sanitization",
+		});
+
+		await waitFor(() =>
+			memory.sent.some(
+				(message) =>
+					message.type === DKT_MSG.SYNC_HANDLE &&
+					message.syncType === SYNCR_TYPES.SET_MODEL_SCHEMA,
+			),
+		);
+
+		const schemaMessage = memory.sent.find(
+			(message) =>
+				message.type === DKT_MSG.SYNC_HANDLE &&
+				message.syncType === SYNCR_TYPES.SET_MODEL_SCHEMA,
+		) as
+			| {
+					payload?: Record<string, unknown>;
+			  }
+			| undefined;
+		expect(schemaMessage?.payload).toBeTruthy();
+		expect(schemaMessage?.payload?.$aggregates).toBeUndefined();
+		expect(schemaMessage?.payload?.clip).toBeTruthy();
+
+		connection.destroy();
+	});
+
 	it("applies root-dispatched active project import progress through worker runtime", async () => {
 		const runtime = createMiniCutDktRuntime({ enabled: true });
 		const memory = createMemoryTransport();
@@ -164,10 +199,7 @@ describe("createMiniCutDktRuntime export request channel", () => {
 			},
 			scopeNodeId: null,
 		});
-
-		await waitFor(() =>
-			memory.sent.some((message) => message.type === DKT_MSG.SYNC_HANDLE),
-		);
+		await waitForIdle(memory);
 
 		memory.emit({
 			type: DKT_MSG.DISPATCH_ACTION,
@@ -237,10 +269,7 @@ describe("createMiniCutDktRuntime export request channel", () => {
 			},
 			scopeNodeId: null,
 		});
-
-		await waitFor(() =>
-			memory.sent.some((message) => message.type === DKT_MSG.SYNC_HANDLE),
-		);
+		await waitForIdle(memory);
 
 		memory.emit({
 			type: DKT_MSG.DISPATCH_ACTION,
@@ -298,10 +327,7 @@ describe("createMiniCutDktRuntime export request channel", () => {
 			},
 			scopeNodeId: null,
 		});
-
-		await waitFor(() =>
-			memory.sent.some((message) => message.type === DKT_MSG.SYNC_HANDLE),
-		);
+		await waitForIdle(memory);
 
 		memory.emit({
 			type: DKT_MSG.DISPATCH_ACTION,

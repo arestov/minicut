@@ -28,6 +28,9 @@ export const RESOURCE_CREATION_SHAPE = {
 		"status",
 		"data",
 	],
+	rels: {
+		project: {},
+	},
 } as const;
 
 export const Resource = model({
@@ -136,7 +139,8 @@ export const Resource = model({
 			{
 				linking: "<< project << #",
 				role: "nav",
-				aggregate: { name: "resourceLifecycle", role: "member", as: "project" },
+				inverseRel: "resources",
+				aggregate: { name: "resourceLifecycle", role: "mirror", as: "project" },
 			},
 		],
 		clips: ["input", { many: true, linking: "<< clip << #", role: "ref" }],

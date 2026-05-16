@@ -180,8 +180,12 @@ export const createEmbeddedAudioClipPayload = (
 export const reduceHandleInit = (
 	_payload: unknown,
 	autoCreateDefaultTracks: unknown,
+	existingTracks?: unknown,
 ) => {
 	if (autoCreateDefaultTracks !== true) {
+		return null;
+	}
+	if (Array.isArray(existingTracks) && existingTracks.length > 0) {
 		return null;
 	}
 
@@ -212,6 +216,12 @@ export const reduceHandleInit = (
 		],
 		primaryVideoTrack: { use_ref_id: "defaultVideoTrack" },
 		primaryAudioTrack: { use_ref_id: "defaultAudioTrack" },
+		$output: {
+			rels: {
+				videoTrack: { use_ref_id: "defaultVideoTrack" },
+				audioTrack: { use_ref_id: "defaultAudioTrack" },
+			},
+		},
 	};
 };
 
@@ -251,8 +261,16 @@ export const reduceSetProjectDuration = (payload: unknown) => {
 export const reduceAddTrack = (payload: unknown) => {
 	const attrs = normalizeTrackCreationAttrs(payload);
 	return {
-		track: { attrs, hold_ref_id: "newTrack" },
+		track: {
+			attrs,
+			hold_ref_id: "newTrack",
+		},
 		tracks: { use_ref_id: "newTrack" },
+		$output: {
+			rels: {
+				track: { use_ref_id: "newTrack" },
+			},
+		},
 	};
 };
 
@@ -284,10 +302,15 @@ export const reduceImportResourceCreate = (
 	};
 };
 
-export const reduceImportResourceCreateOnly = (payload: unknown) => {
+export const reduceImportResourceCreateOnly = (
+	payload: unknown,
+) => {
 	const attrs = normalizeResourceCreationAttrs(payload);
 	return {
-		resource: { attrs, hold_ref_id: "newResource" },
+		resource: {
+			attrs,
+			hold_ref_id: "newResource",
+		},
 		resources: { use_ref_id: "newResource" },
 	};
 };

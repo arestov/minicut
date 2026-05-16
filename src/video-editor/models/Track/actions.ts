@@ -154,7 +154,7 @@ export const reduceAddClip = (payload: unknown, self: unknown) => {
 	return {
 		clip: {
 			attrs,
-			rels: resource ? { track: self, resource } : { track: self },
+			rels: { track: self, resource: resource ?? null },
 			hold_ref_id: "newClip",
 		},
 		clips: { use_ref_id: "newClip" },
@@ -168,7 +168,7 @@ export const reduceAddTextClip = (payload: unknown, self: unknown) => {
 	return {
 		clip: {
 			attrs: { ...clipAttrs, mediaKind: "text" },
-			rels: { track: self },
+			rels: { track: self, resource: null },
 			hold_ref_id: "newTextClip",
 		},
 		text: {
@@ -221,7 +221,7 @@ export const reduceSplitClipAt = (payload: unknown, self: unknown) => {
 			attrs,
 			rels: {
 				track: self,
-				...(resource ? { resource } : {}),
+				resource: resource ?? null,
 			},
 			hold_ref_id: "rightSplitClip",
 		},
@@ -247,6 +247,10 @@ export const reduceSetClips = (payload: unknown) => {
 	const clips = (payload as { clips?: unknown } | null)?.clips;
 	return { clips: Array.isArray(clips) ? clips : [] };
 };
+
+export const reduceSetTrackProject = (payload: unknown) => ({
+	project: (payload as { project?: unknown } | null)?.project ?? null,
+});
 
 export const reduceAcceptClipIfTarget = (
 	payload: unknown,

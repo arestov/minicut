@@ -303,4 +303,41 @@ describe("Clip action contracts", () => {
 		expect(clipIds).not.toContain(String(clip._node_id));
 		await expectProjectGraphInvariants(harness.ctx);
 	});
+
+	it("splitSelfAt keeps resource and track semantics on the generated right clip", async () => {
+		const harness = await createActionContractHarness();
+		const originalClipId = String(harness.videoClip._node_id);
+
+		await dispatchAndSettle(harness.ctx, harness.videoClip, "splitSelfAt", {
+			time: 3,
+		});
+
+		const clips = await harness.ctx.queryRel(harness.videoTrack, "clips");
+		expect(clips).toHaveLength(2);
+
+		const leftClip = clips.find(
+			(entry) => String(entry._node_id) === originalClipId,
+		);
+		const rightClip = clips.find(
+			(entry) => String(entry._node_id) !== originalClipId,
+		);
+		expect(leftClip).toBeTruthy();
+		expect(rightClip).toBeTruthy();
+		if (!leftClip || !rightClip) {
+			throw new Error("Expected left/right split clips");
+		}
+
+		expect(harness.ctx.getAttr(leftClip, "duration")).toBe(2);
+		expect(harness.ctx.getAttr(rightClip, "start")).toBe(3);
+		expect(harness.ctx.getAttr(rightClip, "in")).toBe(2);
+		expect(harness.ctx.getAttr(rightClip, "duration")).toBe(2);
+		expect(await harness.ctx.queryRel(rightClip, "track")).toEqual([
+			harness.videoTrack,
+		]);
+		expect(await harness.ctx.queryRel(rightClip, "resource")).toEqual([
+			harness.videoResource,
+		]);
+
+		await expectProjectGraphInvariants(harness.ctx);
+	});
 });

@@ -30,6 +30,67 @@ type RuntimeWithCallsFlow = {
 	whenAllReady?: (fn: () => void) => void;
 };
 
+type FlowErrorsCatcher = {
+	last_error_prom: Promise<unknown>;
+	reject_error_prom: (err: unknown) => void;
+};
+
+const catchFlowErrors = (): FlowErrorsCatcher => {
+	let rejectCurrent: (err: unknown) => void = () => {};
+
+	const makePromise = (): Promise<unknown> =>
+		new Promise((_resolve, reject) => {
+			rejectCurrent = (err: unknown) => {
+				reject(err);
+				catcher.last_error_prom = makePromise();
+			};
+		});
+
+	const catcher = {
+		last_error_prom: Promise.resolve() as Promise<unknown>,
+		reject_error_prom: (err: unknown) => rejectCurrent(err),
+	};
+
+	catcher.last_error_prom = makePromise();
+
+	return catcher;
+};
+
+const neverPromise = (): Promise<never> => new Promise<never>(() => {});
+
+const toError = (value: unknown): Error =>
+	value instanceof Error ? value : new Error(String(value));
+
+const raceWithProcessErrors = async <Value>(
+	promises: Promise<Value>[],
+): Promise<Value> => {
+	let cleanup = () => {};
+	const processError = new Promise<never>((_resolve, reject) => {
+		const onUnhandledRejection = (reason: unknown) => {
+			cleanup();
+			reject(toError(reason));
+		};
+		const onUncaughtException = (error: unknown) => {
+			cleanup();
+			reject(toError(error));
+		};
+
+		cleanup = () => {
+			process.off("unhandledRejection", onUnhandledRejection);
+			process.off("uncaughtException", onUncaughtException);
+		};
+
+		process.once("unhandledRejection", onUnhandledRejection);
+		process.once("uncaughtException", onUncaughtException);
+	});
+
+	try {
+		return await Promise.race([...promises, processError]);
+	} finally {
+		cleanup();
+	}
+};
+
 /**
  * Query a rel on a model. Returns [] when rel is empty/null.
  */
@@ -104,26 +165,37 @@ export type BootDktModelsOptions = {
 export const bootDktModels = async (
 	options: BootDktModelsOptions = {},
 ): Promise<DktTestContext> => {
+	const errorsCatcher = catchFlowErrors();
 	const runtime = prepareAppRuntime({
 		sync_sender: false,
 		proxies: false,
 		warnUnexpectedAttrs: false,
 		graphSemantics: options.graphSemantics,
 		aggregateValidation: options.aggregateValidation,
+		onError: (err: unknown) => {
+			errorsCatcher.reject_error_prom(err);
+		},
 	}) as {
 		start(options: {
 			App: typeof MiniCutAppRoot;
 			interfaces: Record<string, unknown>;
 		}): Promise<{ app_model: AnyModel; flow?: AnyModel }>;
-		last_error?: Promise<unknown>;
 		whenAllReady?: (fn: () => void) => void;
 		input?: (fn: () => void | Promise<void>) => unknown;
+		last_error?: Promise<unknown>;
 	};
 
-	const inited = await runtime.start({
-		App: MiniCutAppRoot,
-		interfaces: options.interfaces ?? {},
-	});
+	const inited = (await raceWithProcessErrors([
+		runtime.last_error ?? neverPromise(),
+		errorsCatcher.last_error_prom,
+		runtime.start({
+			App: MiniCutAppRoot,
+			interfaces: options.interfaces ?? {},
+		}),
+	])) as {
+		app_model: AnyModel;
+		flow?: AnyModel;
+	};
 
 	const appModel = inited.app_model;
 	const runtimeWithCallsFlow = runtime as RuntimeWithCallsFlow;
@@ -135,54 +207,69 @@ export const bootDktModels = async (
 	 * Follows Linkcraft's pattern from dkt/test/waitFlow.js
 	 */
 	const computed = async (): Promise<void> => {
-		if (runtime.whenAllReady) {
-			return new Promise<void>((resolve) =>
-				runtime.whenAllReady(() => resolve()),
-			);
-		}
-		if (flow?.whenReady) {
-			return new Promise<void>((resolve) => flow.whenReady(() => resolve()));
-		}
-		// Fallback if neither available
-		await new Promise<void>((resolve) => {
-			if (typeof appModel.input === "function") {
-				appModel.input?.(() => resolve());
-			} else {
-				resolve();
-			}
-		});
+		const waitForReady = runtime.whenAllReady
+			? new Promise<void>((resolve) => runtime.whenAllReady?.(() => resolve()))
+			: flow?.whenReady
+				? new Promise<void>((resolve) => flow.whenReady?.(() => resolve()))
+				: new Promise<void>((resolve) => {
+						if (typeof appModel.input === "function") {
+							appModel.input?.(() => resolve());
+						} else {
+							resolve();
+						}
+					});
+		await raceWithProcessErrors([
+			waitForReady,
+			runtime.last_error ?? neverPromise(),
+			errorsCatcher.last_error_prom,
+		]);
 	};
 
 	// Create session root (needed for SessionRoot-level actions like splitSelectedClip)
-	const sessionRoot = await new Promise<AnyModel>((resolve, reject) => {
-		const doHook = async () => {
-			try {
-				const sr = await hookSessionRoot(appModel, appModel.start_page, {
-					sessionKey: "test-session",
-					route: null,
-				});
-				resolve(sr as AnyModel);
-			} catch (err) {
-				reject(err);
-			}
-		};
+	const sessionRoot = await raceWithProcessErrors([
+		runtime.last_error ?? neverPromise(),
+		errorsCatcher.last_error_prom,
+		new Promise<AnyModel>((resolve, reject) => {
+			const doHook = async () => {
+				try {
+					const sr = await hookSessionRoot(appModel, appModel.start_page, {
+						sessionKey: "test-session",
+						route: null,
+					});
+					resolve(sr as AnyModel);
+				} catch (err) {
+					reject(err);
+				}
+			};
 
-		if (typeof appModel.input === "function") {
-			appModel.input(doHook);
-		} else {
-			doHook();
-		}
-	});
+			if (typeof appModel.input === "function") {
+				appModel.input(doHook);
+			} else {
+				doHook();
+			}
+		}),
+	]);
 
 	await computed();
 
 	/**
 	 * Run an async function and wait for the DKT graph to settle.
-	 * Dispatches directly, then waits for the shared DKT flow queue to become idle.
-	 * This keeps action tests deterministic without wrapping every dispatch in app_model.input().
+	 * Dispatches inside runtime.input(), then races runtime errors against graph settle.
 	 */
 	const lockToRead = async (fn: () => void | Promise<void>): Promise<void> => {
-		await fn();
+		await raceWithProcessErrors([
+			runtime.last_error ?? neverPromise(),
+			errorsCatcher.last_error_prom,
+			new Promise<void>((resolve, reject) => {
+				if (runtime.input) {
+					runtime.input(async () => {
+						await fn().then(resolve, reject);
+					});
+					return;
+				}
+				void Promise.resolve(fn()).then(resolve, reject);
+			}),
+		]);
 		await computed();
 	};
 

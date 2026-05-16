@@ -9,6 +9,7 @@ import {
 	reduceRemoveClip,
 	reduceRenameTrack,
 	reduceSetClips,
+	reduceSetTrackProject,
 	reduceSetTrackLocked,
 	reduceSetTrackMuted,
 	reduceSplitClipAt,
@@ -17,6 +18,9 @@ import { reduceTrackAppendStart } from "./Track/comps";
 
 export const TRACK_CREATION_SHAPE = {
 	attrs: ["kind", "name", "muted", "locked", "height"],
+	rels: {
+		project: {},
+	},
 } as const;
 
 export const Track = model({
@@ -67,7 +71,8 @@ export const Track = model({
 			{
 				linking: "<< project << #",
 				role: "nav",
-				aggregate: { name: "projectTracks", role: "member", as: "project" },
+				inverseRel: "tracks",
+				aggregate: { name: "projectTracks", role: "mirror", as: "project" },
 			},
 		],
 	},
@@ -222,6 +227,12 @@ export const Track = model({
 				clips: ["<< clips", { method: "set_many" }],
 			},
 			fn: reduceSetClips,
+		},
+		setProject: {
+			to: {
+				project: ["<< project", { method: "set_one" }],
+			},
+			fn: reduceSetTrackProject,
 		},
 		acceptClipIfTarget: {
 			to: {

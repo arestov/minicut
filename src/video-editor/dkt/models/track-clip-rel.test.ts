@@ -163,4 +163,72 @@ describe("Track self-rel: splitClipAt", () => {
 		expect(trackRel[0]).toBe(videoTrack);
 		await expectProjectGraphInvariants(ctx);
 	});
+
+	it("splitClipAt clones text ownership onto the right split clip", async () => {
+		const { ctx, videoTrack } = await setupProjectAndTrack();
+
+		await ctx.lockToRead(async () => {
+			await videoTrack.dispatch("addTextClip", {
+				name: "Split Text Clip",
+				mediaKind: "text",
+				start: 2,
+				in: 0,
+				duration: 4,
+				text: {
+					content: "Split me",
+					style: {
+						fontFamily: "Inter",
+						fontSize: 32,
+						color: "#ffffff",
+					},
+					box: {
+						x: 0.2,
+						y: 0.2,
+						width: 0.4,
+						height: 0.2,
+					},
+				},
+			});
+		});
+
+		const beforeClips = await ctx.queryRel(videoTrack, "clips");
+		const sourceClip = beforeClips.find(
+			(clip) => ctx.getAttr(clip, "name") === "Split Text Clip",
+		);
+		if (!sourceClip) {
+			throw new Error("Expected source text clip");
+		}
+		const sourceText = (await ctx.queryRel(sourceClip, "text"))[0];
+		if (!sourceText) {
+			throw new Error("Expected source text");
+		}
+
+		await ctx.lockToRead(async () => {
+			await videoTrack.dispatch("splitClipAt", {
+				name: "Split Text Clip",
+				mediaKind: "text",
+				splitTime: 4,
+				sourceClip: { start: 2, in: 0, duration: 4 },
+				text: sourceText,
+			});
+		});
+
+		const clips = await ctx.queryRel(videoTrack, "clips");
+		const rightClip = clips.find(
+			(clip) =>
+				!beforeClips.some((before) => before._node_id === clip._node_id),
+		);
+		if (!rightClip) {
+			throw new Error("Expected right split clip");
+		}
+
+		const rightTrackRel = await ctx.queryRel(rightClip, "track");
+		expect(rightTrackRel).toEqual([videoTrack]);
+		const rightTextRel = await ctx.queryRel(rightClip, "text");
+		expect(rightTextRel).toHaveLength(1);
+		expect(rightTextRel[0]?._node_id).not.toBe(sourceText._node_id);
+		expect(ctx.getAttr(rightTextRel[0], "content")).toBe("Split me");
+		expect(await ctx.queryRel(rightTextRel[0], "clip")).toEqual([rightClip]);
+		await expectProjectGraphInvariants(ctx);
+	});
 });

@@ -74,6 +74,7 @@ export const expectProjectGraphInvariants = async (
 	for (const track of tracks) {
 		expect(ctx.getAttr(track, "kind")).toMatch(/^(video|audio)$/);
 		expect(Number(ctx.getAttr(track, "appendStart"))).toBeGreaterThanOrEqual(0);
+		expect(await ctx.queryRel(track, "project")).toEqual([activeProject]);
 	}
 
 	for (const track of tracks) {
@@ -161,6 +162,7 @@ export const expectProjectGraphInvariants = async (
 		}
 		expect(typeof resource._node_id).toBe("string");
 		expect(Number(ctx.getAttr(resource, "duration"))).toBeGreaterThanOrEqual(0);
+		expect(await ctx.queryRel(resource, "project")).toEqual([activeProject]);
 	}
 };
 
