@@ -141,6 +141,42 @@ describe("ConflictInspectorPanel", () => {
 		});
 	});
 
+	it("offers product actions for structural conflicts", async () => {
+		const dispatch = vi.fn();
+		render(
+			<ConflictInspectorPanel
+				model={{ dispatch }}
+				conflicts={[
+					{
+						id: "structural:delete:clip-1",
+						kind: "structural_delete_with_concurrent_activity",
+						scope: "timelineMembership",
+						summary: "Remote delete conflicts with local effect edit",
+					},
+				]}
+			/>,
+		);
+
+		expect(screen.getByText("Delete conflict · timelineMembership")).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: "Keep local" }));
+		await userEvent.click(screen.getByRole("button", { name: "Accept delete" }));
+		await userEvent.click(screen.getByRole("button", { name: "Restore" }));
+
+		expect(dispatch).toHaveBeenNthCalledWith(1, "resolveStructuralConflict", {
+			conflict_id: "structural:delete:clip-1",
+			decision: { type: "keep_local" },
+		});
+		expect(dispatch).toHaveBeenNthCalledWith(2, "resolveStructuralConflict", {
+			conflict_id: "structural:delete:clip-1",
+			decision: { type: "accept_remote_delete" },
+		});
+		expect(dispatch).toHaveBeenNthCalledWith(3, "resolveStructuralConflict", {
+			conflict_id: "structural:delete:clip-1",
+			decision: { type: "restore" },
+		});
+	});
+
 	it("shows and clears CRDT resolution attempt errors", async () => {
 		const dispatch = vi.fn();
 		render(
@@ -167,5 +203,28 @@ describe("ConflictInspectorPanel", () => {
 			aggregate: "clipTiming",
 			attrs: ["start", "in", "duration"],
 		});
+	});
+
+	it("renders field-level timing attempt errors and disables submit while resolving", () => {
+		render(
+			<ConflictInspectorPanel
+				model={{
+					states: {
+						"$meta$aggregates$crdt$clipTiming$last_resolution_status": "submitting",
+						"$meta$aggregates$crdt$clipTiming$last_resolution_error": {
+							code: "invalid_timing",
+							fields: {
+								duration: { code: "duration_must_be_positive" },
+							},
+						},
+					},
+				}}
+				conflicts={conflicts}
+			/>,
+		);
+
+		expect(screen.getByText("duration_must_be_positive")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Resolving timing" })).toBeDisabled();
+	expect(screen.getByDisplayValue("3")).toBeDisabled();
 	});
 });

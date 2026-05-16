@@ -570,6 +570,30 @@ export const Clip = model({
 				},
 			],
 		},
+		resolveStructuralConflict: {
+			to: ["$crdt:resolve"],
+			fn: [
+				[],
+				(payload: unknown) => {
+					const value =
+						payload && typeof payload === "object"
+							? (payload as { conflict_id?: unknown; conflictId?: unknown; decision?: unknown; type?: unknown })
+							: null;
+					const conflictId = value?.conflict_id ?? value?.conflictId;
+					if (typeof conflictId !== "string" || conflictId.length === 0) {
+						return null;
+					}
+					const decision =
+						value?.decision && typeof value.decision === "object"
+							? value.decision
+							: { type: typeof value?.type === "string" ? value.type : "keep_local" };
+					return {
+						conflict_id: conflictId,
+						decision,
+					};
+				},
+			],
+		},
 		clearResolutionAttempt: {
 			to: ["$crdt:clear_resolution_attempt"],
 			fn: [[], (payload: unknown) => payload ?? {}],

@@ -1,4 +1,4 @@
-import { Check, CircleX, Eye, GitMerge, X } from "lucide-react";
+import { Check, CircleX, Eye, GitBranch, GitMerge, RotateCcw, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type ConflictDecision = {
@@ -29,6 +29,7 @@ type ConflictInspectorPanelProps = {
 type ResolutionAttemptError = {
 	code?: string;
 	message?: string | null;
+	fields?: Record<string, ResolutionAttemptError>;
 };
 
 type TimingDecisionFields = Required<ConflictDecision>;
@@ -61,6 +62,28 @@ const normalizeDecision = (
 	duration: typeof decision?.duration === "number" ? decision.duration : 1,
 });
 
+const structuralKindText = (kind: string | undefined): string => {
+	if (!kind) return "Structural conflict";
+	if (kind.includes("delete")) return "Delete conflict";
+	if (kind.includes("owner_slot") || kind.includes("move")) return "Placement conflict";
+	if (kind.includes("dangling")) return "Reference conflict";
+	return "Structural conflict";
+};
+
+const isTimingConflict = (conflict: ClipConflictItem): boolean =>
+	Boolean(conflict.decision) || conflict.scope === "clipTiming";
+
+const isStructuralConflict = (conflict: ClipConflictItem): boolean =>
+	!isTimingConflict(conflict);
+
+const fieldErrorText = (
+	attemptError: ResolutionAttemptError | null,
+	fieldName: string,
+): string | null => {
+	const field = attemptError?.fields?.[fieldName];
+	return field?.message || field?.code || null;
+};
+
 export const ConflictInspectorPanel = ({
 	model,
 	conflicts,
@@ -85,6 +108,9 @@ export const ConflictInspectorPanel = ({
 	);
 	const attemptError = readResolutionAttemptError(model);
 	const attemptErrorText = attemptError?.message || attemptError?.code || null;
+	const isSubmitting =
+		model.states?.["$meta$aggregates$crdt$clipTiming$last_resolution_status"] ===
+		"submitting";
 	const resolveTimingConflict = (
 		conflict: ClipConflictItem,
 		formData: FormData,
@@ -97,11 +123,17 @@ export const ConflictInspectorPanel = ({
 			duration: toFiniteNumber(formData.get("duration")) ?? fallback.duration,
 		});
 	};
+	const resolveStructuralConflict = (conflict: ClipConflictItem, type: string) => {
+		dispatch("resolveStructuralConflict", {
+			conflict_id: conflict.id,
+			decision: { type },
+		});
+	};
 
 	return (
 		<section className="conflict-inspector-panel" aria-label="Conflict inspector">
 			<header>
-				<h2>Conflicts</h2>
+				<h2>Open conflicts</h2>
 				<button type="button" title="Close" aria-label="Close" onClick={onClose}>
 					<X aria-hidden="true" size={16} />
 				</button>
@@ -130,9 +162,14 @@ export const ConflictInspectorPanel = ({
 				<ul>
 					{conflicts.map((conflict) => {
 						const decision = normalizeDecision(conflict.decision);
+						const timingConflict = isTimingConflict(conflict);
+						const structuralConflict = isStructuralConflict(conflict);
 						return (
-							<li key={conflict.id}>
-								<div>
+							<li
+								key={conflict.id}
+								className={`conflict-inspector-panel__item conflict-inspector-panel__item--${timingConflict ? "timing" : "structural"}`}
+							>
+								<div className="conflict-inspector-panel__item-header">
 									{conflict.decision ? (
 										<input
 											type="checkbox"
@@ -151,12 +188,18 @@ export const ConflictInspectorPanel = ({
 											}
 										/>
 									) : null}
-									<strong>{conflict.summary ?? conflict.kind ?? conflict.id}</strong>
-									{conflict.scope ? <span>{conflict.scope}</span> : null}
+									<div>
+										<strong>{conflict.summary ?? conflict.kind ?? conflict.id}</strong>
+										<span>
+											{timingConflict ? "Timing conflict" : structuralKindText(conflict.kind)}
+											{conflict.scope ? ` · ${conflict.scope}` : ""}
+										</span>
+									</div>
 								</div>
 								<form
 									onSubmit={(event) => {
 										event.preventDefault();
+										if (!timingConflict) return;
 										resolveTimingConflict(
 											conflict,
 											new FormData(event.currentTarget),
@@ -172,7 +215,9 @@ export const ConflictInspectorPanel = ({
 													type="number"
 													step="0.1"
 													defaultValue={decision.start}
+													disabled={isSubmitting}
 												/>
+												{fieldErrorText(attemptError, "start") ? <small>{fieldErrorText(attemptError, "start")}</small> : null}
 											</label>
 											<label>
 												In
@@ -181,7 +226,9 @@ export const ConflictInspectorPanel = ({
 													type="number"
 													step="0.1"
 													defaultValue={decision.in}
+													disabled={isSubmitting}
 												/>
+												{fieldErrorText(attemptError, "in") ? <small>{fieldErrorText(attemptError, "in")}</small> : null}
 											</label>
 											<label>
 												Duration
@@ -190,8 +237,26 @@ export const ConflictInspectorPanel = ({
 													type="number"
 													step="0.1"
 													defaultValue={decision.duration}
+													disabled={isSubmitting}
 												/>
+												{fieldErrorText(attemptError, "duration") ? <small>{fieldErrorText(attemptError, "duration")}</small> : null}
 											</label>
+										</div>
+									) : null}
+									{structuralConflict ? (
+										<div className="conflict-inspector-panel__structural-actions" aria-label={`Resolve ${conflict.id}`}>
+											<button type="button" onClick={() => resolveStructuralConflict(conflict, "keep_local")}>
+												<GitBranch aria-hidden="true" size={16} />
+												Keep local
+											</button>
+											<button type="button" onClick={() => resolveStructuralConflict(conflict, "accept_remote_delete")}>
+												<Trash2 aria-hidden="true" size={16} />
+												Accept delete
+											</button>
+											<button type="button" onClick={() => resolveStructuralConflict(conflict, "restore") }>
+												<RotateCcw aria-hidden="true" size={16} />
+												Restore
+											</button>
 										</div>
 									) : null}
 									<div className="conflict-inspector-panel__actions">
@@ -222,8 +287,9 @@ export const ConflictInspectorPanel = ({
 										{conflict.decision ? (
 											<button
 												type="submit"
-												title="Resolve timing"
-												aria-label="Resolve timing"
+												title={isSubmitting ? "Resolving timing" : "Resolve timing"}
+												aria-label={isSubmitting ? "Resolving timing" : "Resolve timing"}
+												disabled={isSubmitting}
 											>
 												<GitMerge aria-hidden="true" size={16} />
 											</button>

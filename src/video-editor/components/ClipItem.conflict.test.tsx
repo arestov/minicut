@@ -149,4 +149,53 @@ describe("ClipItem conflict UX", () => {
 		});
 		expect(screen.getByText("No open conflicts")).toBeInTheDocument();
 	});
+
+	it("renders structural conflict projection actions from materialized conflicts", async () => {
+		const clipScope = { kind: "scope" as const, _nodeId: "clip:structural-actions" };
+		const conflictScope = { kind: "scope" as const, _nodeId: "conflict:structural" };
+		mockState.dispatch.mockClear();
+		mockState.sessionDispatch.mockClear();
+		mockState.attrsByNode.clear();
+		mockState.relsByNode.clear();
+		mockState.attrsByNode.set(clipScope._nodeId, {
+			name: "structural-actions.webm",
+			start: 0,
+			in: 0,
+			duration: 4,
+			opacity: { value: 1 },
+			color: "#2563eb",
+			"$meta$model$crdt$open_conflicts_count": 1,
+		});
+		mockState.attrsByNode.set(conflictScope._nodeId, {
+			id: "structural:delete:clip-1",
+			kind: "structural_delete_with_concurrent_activity",
+			scope: "timelineMembership",
+			summary: "Remote delete conflicts with local effect edit",
+		});
+		mockState.relsByNode.set(clipScope._nodeId, {
+			effects: [],
+			crdtConflicts: [conflictScope],
+		});
+
+		render(
+			<ScopeContext.Provider value={clipScope}>
+				<ClipItem
+					timelineZoom={40}
+					activeTool="select"
+					selectedEntityId={null}
+				/>
+			</ScopeContext.Provider>,
+		);
+
+		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
+		await waitFor(() =>
+			expect(screen.getByText("Remote delete conflicts with local effect edit")).toBeInTheDocument(),
+		);
+		await userEvent.click(screen.getByRole("button", { name: "Keep local" }));
+
+		expect(mockState.dispatch).toHaveBeenCalledWith("resolveStructuralConflict", {
+			conflict_id: "structural:delete:clip-1",
+			decision: { type: "keep_local" },
+		});
+	});
 });
