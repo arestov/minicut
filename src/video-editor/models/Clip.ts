@@ -42,8 +42,15 @@ export const Clip = model({
 			},
 			validate(ctx: {
 				members: Record<string, { value: unknown }>;
+				phase?: string;
+				summary?: { staged_ops?: readonly unknown[] };
 				deps?: Record<string, { value: unknown; status?: string }>;
 			}) {
+				const conflict = (code: string) => ({
+					ok: false,
+					code,
+					kind: "group_invariant_violation",
+				});
 				const start = Number(ctx.members.start.value);
 				const inPoint = Number(ctx.members.inPoint.value);
 				const duration = Number(ctx.members.duration.value);
@@ -52,23 +59,26 @@ export const Clip = model({
 					!Number.isFinite(inPoint) ||
 					!Number.isFinite(duration)
 				) {
-					return { ok: false, code: "timing_not_finite" };
+					if (ctx.phase === "local" && ctx.summary?.staged_ops?.length) {
+						return { ok: true };
+					}
+					return conflict("timing_not_finite");
 				}
 				if (start < 0) {
-					return { ok: false, code: "start_negative" };
+					return conflict("start_negative");
 				}
 				if (inPoint < 0) {
-					return { ok: false, code: "in_negative" };
+					return conflict("in_negative");
 				}
 				if (duration <= 0) {
-					return { ok: false, code: "duration_non_positive" };
+					return conflict("duration_non_positive");
 				}
 				if (
 					ctx.members.resource.value != null &&
 					typeof ctx.deps?.sourceDuration?.value === "number" &&
 					inPoint + duration > ctx.deps.sourceDuration.value
 				) {
-					return { ok: false, code: "clip_exceeds_source_media" };
+					return conflict("clip_exceeds_source_media");
 				}
 				return { ok: true };
 			},
