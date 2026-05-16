@@ -69,6 +69,14 @@ export const findByAttr = async (
 export type DktTestContext = {
 	appModel: AnyModel;
 	sessionRoot: AnyModel;
+	runtime: {
+		applyExternalGraphPatch?: (
+			patch: unknown,
+			meta?: unknown,
+			options?: unknown,
+		) => Promise<unknown> | unknown;
+		graph_semantics?: { inverseValidation?: "off" | "warn" | "error" };
+	};
 	computed: () => Promise<void>;
 	/**
 	 * Run a dispatch inside app_model.input() and wait for settle.
@@ -82,6 +90,10 @@ export type DktTestContext = {
 
 export type BootDktModelsOptions = {
 	interfaces?: Record<string, unknown>;
+	graphSemantics?: {
+		inverseValidation?: "off" | "warn" | "error";
+	};
+	aggregateValidation?: "error" | "warn" | "off";
 };
 
 /**
@@ -96,6 +108,8 @@ export const bootDktModels = async (
 		sync_sender: false,
 		proxies: false,
 		warnUnexpectedAttrs: false,
+		graphSemantics: options.graphSemantics,
+		aggregateValidation: options.aggregateValidation,
 	}) as {
 		start(options: {
 			App: typeof MiniCutAppRoot;
@@ -175,6 +189,7 @@ export const bootDktModels = async (
 	return {
 		appModel,
 		sessionRoot,
+		runtime,
 		computed,
 		lockToRead,
 		queryRel,
