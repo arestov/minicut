@@ -583,6 +583,12 @@ export const Clip = model({
 					},
 				],
 			},
+			{
+				to: {
+					track: ["<< track", { method: "set_one" }],
+				},
+				fn: [[], () => ({ track: null })],
+			},
 		],
 		splitSelfAt: [
 			{
