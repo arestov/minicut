@@ -43,8 +43,13 @@ const createPairWithClips = async (roomId: string, clipCount: number) => {
 				duration: 4,
 			});
 		}
-		drainCrdtOutbox(peer.ctx.runtime);
 	}
+	const baseOpsA = drainCrdtOutbox(pair.a.ctx.runtime);
+	drainCrdtOutbox(pair.b.ctx.runtime);
+	pair.transportA.sendOps({ ops: baseOpsA });
+	await pair.waitForConvergence();
+	drainCrdtOutbox(pair.a.ctx.runtime);
+	drainCrdtOutbox(pair.b.ctx.runtime);
 	const clipsA = await pair.a.ctx.queryRel(pair.a.videoTrack, "clips");
 	const clipsB = await pair.b.ctx.queryRel(pair.b.videoTrack, "clips");
 	expect(clipsA).toHaveLength(clipCount);
@@ -220,22 +225,31 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
-	it("does not crash remote apply for concurrent clip reorders", async () => {
+	it("records relation conflict meta for concurrent semantic clip moves", async () => {
 		const { pair, clipsA, clipsB } = await createPairWithClips(
 			"room-conflict-move-vs-move",
 			3,
 		);
 
-		await pair.a.dispatch(pair.a.videoTrack, "setClips", {
-			clips: [clipsA[1], clipsA[0], clipsA[2]],
+		await pair.a.dispatch(pair.a.videoTrack, "moveClipWithinTrack", {
+			clipId: clipsA[1]?._node_id,
+			afterClipId: null,
 		});
 		const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
-		await pair.b.dispatch(pair.b.videoTrack, "setClips", {
-			clips: [clipsB[0], clipsB[2], clipsB[1]],
+		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
+			clipId: clipsB[1]?._node_id,
+			afterClipId: clipsB[2]?._node_id,
 		});
 		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
 
-		await expect(exchangeOps(pair, opsA, opsB)).resolves.toBeUndefined();
+		await exchangeOps(pair, opsA, opsB);
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
 		pair.close();
 	});
 

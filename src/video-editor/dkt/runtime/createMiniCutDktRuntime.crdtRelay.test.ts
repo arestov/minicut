@@ -41,15 +41,29 @@ describe("MiniCut CRDT relay convergence", () => {
 		pair.close();
 	});
 
-	it("converges timeline membership when peers already share created node ids", async () => {
+	it("records a structural conflict when remote delete touches local clip activity", async () => {
 		const pair = await createCrdtWorkerPair(pairOptions("room-membership"));
 		await addMatchingClip(pair);
 
-		await pair.a.dispatch(pair.a.videoTrack, "setClips", []);
+		const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+		if (!clipA) {
+			throw new Error("Expected matching clip");
+		}
+		const originalClipIds = pair.b.readVideoClipIds();
+
+		await pair.a.dispatch(clipA, "removeSelf");
 		pair.a.flushOutbound();
 		await pair.waitForConvergence();
 
-		expect(pair.b.readVideoClipIds()).toEqual([]);
+		expect(pair.b.readVideoClipIds()).toEqual(originalClipIds);
+		expect(
+			Number(
+				pair.b.ctx.getAttr(
+					pair.b.videoTrack,
+					"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+				) ?? 0,
+			),
+		).toBeGreaterThan(0);
 		pair.close();
 	});
 

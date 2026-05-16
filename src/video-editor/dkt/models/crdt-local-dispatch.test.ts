@@ -82,6 +82,29 @@ describe("MiniCut CRDT local dispatch staging", () => {
 		});
 	});
 
+	it("Track.moveClipWithinTrack creates a semantic sequence move op", async () => {
+		const { ctx, videoTrack } = await createCrdtContext();
+		const first = await addClip(ctx, videoTrack);
+		await addClip(ctx, videoTrack);
+		drainCrdtOutbox(ctx.runtime);
+
+		await ctx.lockToRead(async () => {
+			await videoTrack.dispatch("moveClipWithinTrack", {
+				clipId: first._node_id,
+				afterClipId: null,
+			});
+		});
+
+		const ops = drainCrdtOutbox(ctx.runtime);
+		expectCrdtOutboxContains(ops, {
+			kind: "rel",
+			name: "clips",
+			operation: "move",
+			item_id: first._node_id,
+			after_id: null,
+		});
+	});
+
 	it("Clip.trim creates mvr timing ops", async () => {
 		const { ctx, videoTrack } = await createCrdtContext();
 		const clip = await addClip(ctx, videoTrack);

@@ -6,6 +6,7 @@ import {
 	reduceAddClip,
 	reduceAddTextClip,
 	reduceLinkClipAndTextFromOutput,
+	reduceMoveClipWithinTrack,
 	reduceRemoveClip,
 	reduceRenameTrack,
 	reduceSetClips,
@@ -252,6 +253,12 @@ export const Track = model({
 				clips: ["<< clips", { method: "set_many" }],
 			},
 			fn: reduceSetClips,
+		},
+		moveClipWithinTrack: {
+			to: {
+				clips: ["<< clips", { method: "insert_after_id" }],
+			},
+			fn: [["$noop", "<< @all:clips"] as const, reduceMoveClipWithinTrack],
 		},
 		setProject: {
 			to: {

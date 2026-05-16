@@ -248,6 +248,30 @@ export const reduceSetClips = (payload: unknown) => {
 	return { clips: Array.isArray(clips) ? clips : [] };
 };
 
+export const reduceMoveClipWithinTrack = (
+	payload: unknown,
+	noop: unknown,
+	clips: unknown[],
+) => {
+	const value = payload as { clipId?: unknown; afterClipId?: unknown } | null;
+	const currentClips = Array.isArray(clips) ? clips : [];
+	const clipId = value?.clipId;
+	const afterClipId = value?.afterClipId ?? null;
+	const clip =
+		typeof clipId === "string"
+			? currentClips.find((item) => getNodeId(item) === clipId)
+			: null;
+	if (!clip) {
+		return noop;
+	}
+	return {
+		clips: {
+			id: typeof afterClipId === "string" ? afterClipId : null,
+			value: clip,
+		},
+	};
+};
+
 export const reduceSetTrackProject = (payload: unknown) => ({
 	project: (payload as { project?: unknown } | null)?.project ?? null,
 });
