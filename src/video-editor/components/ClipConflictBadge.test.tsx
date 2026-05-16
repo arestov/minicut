@@ -36,6 +36,28 @@ describe("ClipConflictBadge", () => {
 		});
 		expect(onOpen).toHaveBeenCalledOnce();
 	});
+
+	it("materializes structural and model conflicts through the Clip DKT action", async () => {
+		const dispatch = vi.fn();
+		render(
+			<ClipConflictBadge
+				model={{
+					states: {
+						"$meta$aggregates$crdt$timelineMembership$open_conflicts_count": 1,
+						"$meta$model$crdt$open_conflicts_count": 3,
+					},
+					dispatch,
+				}}
+				scope="all"
+			/>,
+		);
+
+		await userEvent.click(screen.getByRole("button", { name: /3 open conflicts/i }));
+
+		expect(dispatch).toHaveBeenCalledWith("loadConflicts", {
+			scope: { model: "clip", include_structural: true },
+		});
+	});
 });
 
 describe("ConflictInspectorPanel", () => {
@@ -55,6 +77,8 @@ describe("ConflictInspectorPanel", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "Load details" }));
 		await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
+		await userEvent.clear(screen.getByLabelText("Duration"));
+		await userEvent.type(screen.getByLabelText("Duration"), "2.5");
 		await userEvent.click(screen.getByRole("button", { name: "Resolve timing" }));
 		await userEvent.click(screen.getByRole("button", { name: "Resolve selected" }));
 
@@ -68,9 +92,43 @@ describe("ConflictInspectorPanel", () => {
 			conflict_id: "conflict:duration",
 			start: 0,
 			in: 0,
-			duration: 3,
+			duration: 2.5,
 		});
 		expect(dispatch).toHaveBeenNthCalledWith(4, "resolveClipTimingConflictsBatch", {
+			atomic: false,
+			decisions: [
+				{
+					conflict_id: "conflict:duration",
+					start: 0,
+					in: 0,
+					duration: 3,
+				},
+			],
+		});
+	});
+
+	it("batch resolves only checked conflicts", async () => {
+		const dispatch = vi.fn();
+		render(
+			<ConflictInspectorPanel
+				model={{ dispatch }}
+				conflicts={[
+					...conflicts,
+					{
+						id: "conflict:start",
+						kind: "mvr",
+						scope: "clipTiming",
+						summary: "Start has concurrent edits",
+						decision: { start: 1, in: 0, duration: 3 },
+					},
+				]}
+			/>,
+		);
+
+		await userEvent.click(screen.getByRole("checkbox", { name: "Select conflict:start" }));
+		await userEvent.click(screen.getByRole("button", { name: "Resolve selected" }));
+
+		expect(dispatch).toHaveBeenCalledWith("resolveClipTimingConflictsBatch", {
 			atomic: false,
 			decisions: [
 				{

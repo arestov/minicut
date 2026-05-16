@@ -1523,14 +1523,25 @@ button:disabled {
 }
 
 .conflict-inspector-panel li {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	align-items: center;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
 	gap: 10px;
 	padding: 8px;
 	border: 1px solid var(--ve-border);
 	border-radius: 8px;
 	background: #fafafa;
+}
+
+.conflict-inspector-panel li > div:first-child {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	column-gap: 8px;
+}
+
+.conflict-inspector-panel li > div:first-child span {
+	grid-column: 2;
 }
 
 .conflict-inspector-panel li strong,
@@ -1552,7 +1563,37 @@ button:disabled {
 .conflict-inspector-panel__actions {
 	display: inline-flex;
 	align-items: center;
+	justify-content: flex-end;
 	gap: 4px;
+}
+
+.conflict-inspector-panel form {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.conflict-inspector-panel__timing-fields {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 6px;
+}
+
+.conflict-inspector-panel__timing-fields label {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	color: var(--ve-muted-foreground);
+	font-size: 11px;
+	font-weight: 650;
+}
+
+.conflict-inspector-panel__timing-fields input {
+	width: 100%;
+	min-width: 0;
+	height: 28px;
+	padding: 0 6px;
+	font-size: 12px;
 }
 
 .conflict-inspector-panel__actions button,

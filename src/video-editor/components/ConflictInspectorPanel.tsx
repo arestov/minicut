@@ -1,4 +1,5 @@
 import { Check, CircleX, Eye, GitMerge, X } from "lucide-react";
+import { useMemo, useState } from "react";
 
 type ConflictDecision = {
 	start?: number;
@@ -30,6 +31,8 @@ type ResolutionAttemptError = {
 	message?: string | null;
 };
 
+type TimingDecisionFields = Required<ConflictDecision>;
+
 const readResolutionAttemptError = (
 	model: ConflictInspectorModel,
 ): ResolutionAttemptError | null => {
@@ -42,17 +45,58 @@ const readResolutionAttemptError = (
 	return value as ResolutionAttemptError;
 };
 
+const toFiniteNumber = (value: FormDataEntryValue | null): number | null => {
+	if (typeof value !== "string" || value.trim() === "") {
+		return null;
+	}
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeDecision = (
+	decision: ConflictDecision | undefined,
+): TimingDecisionFields => ({
+	start: typeof decision?.start === "number" ? decision.start : 0,
+	in: typeof decision?.in === "number" ? decision.in : 0,
+	duration: typeof decision?.duration === "number" ? decision.duration : 1,
+});
+
 export const ConflictInspectorPanel = ({
 	model,
 	conflicts,
 	onClose,
 }: ConflictInspectorPanelProps) => {
+	const initialSelectedIds = useMemo(
+		() =>
+			new Set(
+				conflicts
+					.filter((conflict) => conflict.decision)
+					.map((conflict) => conflict.id),
+			),
+		[conflicts],
+	);
+	const [selectedIds, setSelectedIds] = useState<Set<string>>(initialSelectedIds);
 	const dispatch = (actionName: string, payload?: unknown) => {
 		void model.dispatch?.(actionName, payload);
 	};
 	const resolvable = conflicts.filter((conflict) => conflict.decision);
+	const selectedResolvable = resolvable.filter((conflict) =>
+		selectedIds.has(conflict.id),
+	);
 	const attemptError = readResolutionAttemptError(model);
 	const attemptErrorText = attemptError?.message || attemptError?.code || null;
+	const resolveTimingConflict = (
+		conflict: ClipConflictItem,
+		formData: FormData,
+	) => {
+		const fallback = normalizeDecision(conflict.decision);
+		dispatch("resolveClipTimingConflict", {
+			conflict_id: conflict.id,
+			start: toFiniteNumber(formData.get("start")) ?? fallback.start,
+			in: toFiniteNumber(formData.get("in")) ?? fallback.in,
+			duration: toFiniteNumber(formData.get("duration")) ?? fallback.duration,
+		});
+	};
 
 	return (
 		<section className="conflict-inspector-panel" aria-label="Conflict inspector">
@@ -84,64 +128,120 @@ export const ConflictInspectorPanel = ({
 				<p>No open conflicts</p>
 			) : (
 				<ul>
-					{conflicts.map((conflict) => (
-						<li key={conflict.id}>
-							<div>
-								<strong>{conflict.summary ?? conflict.kind ?? conflict.id}</strong>
-								{conflict.scope ? <span>{conflict.scope}</span> : null}
-							</div>
-							<div className="conflict-inspector-panel__actions">
-								<button
-									type="button"
-									title="Load details"
-									aria-label="Load details"
-									onClick={() =>
-										dispatch("requireConflictDetails", {
-											conflict_id: conflict.id,
-										})
-									}
+					{conflicts.map((conflict) => {
+						const decision = normalizeDecision(conflict.decision);
+						return (
+							<li key={conflict.id}>
+								<div>
+									{conflict.decision ? (
+										<input
+											type="checkbox"
+											aria-label={`Select ${conflict.id}`}
+											checked={selectedIds.has(conflict.id)}
+											onChange={(event) =>
+												setSelectedIds((current) => {
+													const next = new Set(current);
+													if (event.currentTarget.checked) {
+														next.add(conflict.id);
+													} else {
+														next.delete(conflict.id);
+													}
+													return next;
+												})
+											}
+										/>
+									) : null}
+									<strong>{conflict.summary ?? conflict.kind ?? conflict.id}</strong>
+									{conflict.scope ? <span>{conflict.scope}</span> : null}
+								</div>
+								<form
+									onSubmit={(event) => {
+										event.preventDefault();
+										resolveTimingConflict(
+											conflict,
+											new FormData(event.currentTarget),
+										);
+									}}
 								>
-									<Eye aria-hidden="true" size={16} />
-								</button>
-								<button
-									type="button"
-									title="Acknowledge"
-									aria-label="Acknowledge"
-									onClick={() =>
-										dispatch("acknowledgeConflict", {
-											conflict_id: conflict.id,
-										})
-									}
-								>
-									<Check aria-hidden="true" size={16} />
-								</button>
-								{conflict.decision ? (
-									<button
-										type="button"
-										title="Resolve timing"
-										aria-label="Resolve timing"
-										onClick={() =>
-											dispatch("resolveClipTimingConflict", {
-												conflict_id: conflict.id,
-												...conflict.decision,
-											})
-										}
-									>
-										<GitMerge aria-hidden="true" size={16} />
-									</button>
-								) : null}
-							</div>
-						</li>
-					))}
+									{conflict.decision ? (
+										<div className="conflict-inspector-panel__timing-fields">
+											<label>
+												Start
+												<input
+													name="start"
+													type="number"
+													step="0.1"
+													defaultValue={decision.start}
+												/>
+											</label>
+											<label>
+												In
+												<input
+													name="in"
+													type="number"
+													step="0.1"
+													defaultValue={decision.in}
+												/>
+											</label>
+											<label>
+												Duration
+												<input
+													name="duration"
+													type="number"
+													step="0.1"
+													defaultValue={decision.duration}
+												/>
+											</label>
+										</div>
+									) : null}
+									<div className="conflict-inspector-panel__actions">
+										<button
+											type="button"
+											title="Load details"
+											aria-label="Load details"
+											onClick={() =>
+												dispatch("requireConflictDetails", {
+													conflict_id: conflict.id,
+												})
+											}
+										>
+											<Eye aria-hidden="true" size={16} />
+										</button>
+										<button
+											type="button"
+											title="Acknowledge"
+											aria-label="Acknowledge"
+											onClick={() =>
+												dispatch("acknowledgeConflict", {
+													conflict_id: conflict.id,
+												})
+											}
+										>
+											<Check aria-hidden="true" size={16} />
+										</button>
+										{conflict.decision ? (
+											<button
+												type="submit"
+												title="Resolve timing"
+												aria-label="Resolve timing"
+											>
+												<GitMerge aria-hidden="true" size={16} />
+											</button>
+										) : null}
+									</div>
+								</form>
+							</li>
+						);
+					})}
 				</ul>
 			)}
 			<button
 				type="button"
-				disabled={resolvable.length === 0}
+				disabled={selectedResolvable.length === 0}
 				onClick={() =>
 					dispatch("resolveClipTimingConflictsBatch", {
 						atomic: false,
-						decisions: resolvable.map((conflict) => ({
+						decisions: selectedResolvable.map((conflict) => ({
 							conflict_id: conflict.id,
 							...conflict.decision,
 						})),

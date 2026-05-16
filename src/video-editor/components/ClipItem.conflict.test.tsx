@@ -96,7 +96,7 @@ describe("ClipItem conflict UX", () => {
 		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
 
 		expect(mockState.dispatch).toHaveBeenCalledWith("loadConflicts", {
-			scope: { aggregate: "clipTiming" },
+			scope: { model: "clip", include_structural: true },
 		});
 		await waitFor(() =>
 			expect(screen.getByText("Duration has concurrent edits")).toBeInTheDocument(),
@@ -110,5 +110,43 @@ describe("ClipItem conflict UX", () => {
 			in: 0,
 			duration: 3,
 		});
+	});
+
+	it("shows the clip badge for structural CRDT meta", async () => {
+		const clipScope = { kind: "scope" as const, _nodeId: "clip:structural" };
+		mockState.dispatch.mockClear();
+		mockState.sessionDispatch.mockClear();
+		mockState.attrsByNode.clear();
+		mockState.relsByNode.clear();
+		mockState.attrsByNode.set(clipScope._nodeId, {
+			name: "structural.webm",
+			start: 0,
+			in: 0,
+			duration: 4,
+			opacity: { value: 1 },
+			color: "#2563eb",
+			"$meta$aggregates$crdt$timelineMembership$open_conflicts_count": 1,
+		});
+		mockState.relsByNode.set(clipScope._nodeId, {
+			effects: [],
+			crdtConflicts: [],
+		});
+
+		render(
+			<ScopeContext.Provider value={clipScope}>
+				<ClipItem
+					timelineZoom={40}
+					activeTool="select"
+					selectedEntityId={null}
+				/>
+			</ScopeContext.Provider>,
+		);
+
+		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
+
+		expect(mockState.dispatch).toHaveBeenCalledWith("loadConflicts", {
+			scope: { model: "clip", include_structural: true },
+		});
+		expect(screen.getByText("No open conflicts")).toBeInTheDocument();
 	});
 });

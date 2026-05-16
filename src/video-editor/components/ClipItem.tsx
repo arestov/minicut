@@ -42,6 +42,8 @@ interface ClipRenderAttrs {
 	color?: unknown;
 	"$meta$aggregates$crdt$clipTiming$open_conflicts_count"?: unknown;
 	"$meta$aggregates$crdt$clipTiming$last_resolution_error"?: unknown;
+	"$meta$aggregates$crdt$timelineMembership$open_conflicts_count"?: unknown;
+	"$meta$rels$crdt$clips$open_conflicts_count"?: unknown;
 	"$meta$model$crdt$open_conflicts_count"?: unknown;
 	"$meta$model$crdt$last_resolution_error"?: unknown;
 }
@@ -132,6 +134,8 @@ export const ClipItem = ({
 		"color",
 		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
 		"$meta$aggregates$crdt$clipTiming$last_resolution_error",
+		"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+		"$meta$rels$crdt$clips$open_conflicts_count",
 		"$meta$model$crdt$open_conflicts_count",
 		"$meta$model$crdt$last_resolution_error",
 	]) as ClipRenderAttrs;
@@ -374,7 +378,7 @@ export const ClipItem = ({
 				))}
 				<ClipConflictBadge
 					model={{ states: clipConflictState, dispatch }}
-					timing={true}
+					scope="all"
 					onOpen={() => setIsConflictInspectorOpen(true)}
 				/>
 			</div>
