@@ -34,6 +34,8 @@ export default defineConfig({
 			'src/video-editor/dkt/runtime/createMiniCutDktRuntime.crdt.test.ts',
 			'src/video-editor/dkt/runtime/createMiniCutDktRuntime.crdtRelay.test.ts',
 			'src/video-editor/dkt/crdt/**/*.test.ts',
+			'src/video-editor/dkt/maelstrom/**/*.test.ts',
+			'src/video-editor/dkt/maelstrom/**/*.maelstrom.test.ts',
 			'src/video-editor/components/ClipConflictBadge.test.tsx',
 		],
 		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**'],
