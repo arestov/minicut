@@ -5,6 +5,11 @@ import { useAttrs } from "../../dkt-react-sync/hooks/useAttrs";
 import { useMany } from "../../dkt-react-sync/hooks/useMany";
 import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
 import type { AnimatedScalar } from "../render/registryTypes";
+import { ClipConflictBadge } from "./ClipConflictBadge";
+import {
+	ConflictInspectorPanel,
+	type ClipConflictItem,
+} from "./ConflictInspectorPanel";
 import { formatPercent, formatSeconds } from "./format";
 
 const MIN_CLIP_DURATION = 0.5;
@@ -35,6 +40,10 @@ interface ClipRenderAttrs {
 	in?: unknown;
 	opacity?: AnimatedScalar;
 	color?: unknown;
+	"$meta$aggregates$crdt$clipTiming$open_conflicts_count"?: unknown;
+	"$meta$aggregates$crdt$clipTiming$last_resolution_error"?: unknown;
+	"$meta$model$crdt$open_conflicts_count"?: unknown;
+	"$meta$model$crdt$last_resolution_error"?: unknown;
 }
 
 const ClipGradeBadge = () => {
@@ -55,6 +64,7 @@ export const ClipItem = ({
 }: ClipItemProps) => {
 	const dragState = useRef<ClipPointerDragState | null>(null);
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0);
+	const [isConflictInspectorOpen, setIsConflictInspectorOpen] = useState(false);
 	const dispatch = useActions();
 	const sessionDispatch = useRootDispatch();
 	const scope = useContext(ScopeContext);
@@ -65,8 +75,13 @@ export const ClipItem = ({
 		"in",
 		"opacity",
 		"color",
+		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+		"$meta$aggregates$crdt$clipTiming$last_resolution_error",
+		"$meta$model$crdt$open_conflicts_count",
+		"$meta$model$crdt$last_resolution_error",
 	]) as ClipRenderAttrs;
 	const effectScopes = useMany("effects");
+	const conflictScopes = useMany("crdtConflicts");
 	const clipId = typeof scope?._nodeId === "string" ? scope._nodeId : null;
 
 	// Skeleton guard: start/duration arrive slightly after the clip node appears
@@ -83,6 +98,11 @@ export const ClipItem = ({
 	const inPoint = Number(clipAttrs.in);
 	const opacity = Number(clipAttrs.opacity?.value ?? 1);
 	const color = String(clipAttrs.color ?? "#2563eb");
+	const clipConflictState = clipAttrs as unknown as Record<string, unknown>;
+	const conflictItems: ClipConflictItem[] = conflictScopes.map((conflictScope) => ({
+		id: conflictScope._nodeId,
+		scope: "clipTiming",
+	}));
 	const width = Math.max(36, duration * timelineZoom);
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx);
 	const selectClip = (): void => {
@@ -181,8 +201,9 @@ export const ClipItem = ({
 	};
 
 	return (
-		<button
-			type="button"
+		<div
+			role="button"
+			tabIndex={0}
 			aria-pressed={selected}
 			className={`ve-clip${selected ? " is-selected" : ""}`}
 			data-tool={activeTool}
@@ -287,6 +308,11 @@ export const ClipItem = ({
 						<ClipGradeBadge />
 					</ScopeContext.Provider>
 				))}
+				<ClipConflictBadge
+					model={{ states: clipConflictState, dispatch }}
+					timing={true}
+					onOpen={() => setIsConflictInspectorOpen(true)}
+				/>
 			</div>
 			<small>
 				{name} | {formatSeconds(start)} / {formatSeconds(duration)} | opacity{" "}
@@ -311,6 +337,20 @@ export const ClipItem = ({
 					finishPointerDrag(event.clientX);
 				}}
 			/>
-		</button>
+			{isConflictInspectorOpen ? (
+				<div
+					className="ve-clip-conflict-popover"
+					onClick={(event) => event.stopPropagation()}
+					onKeyDown={(event) => event.stopPropagation()}
+					onPointerDown={(event) => event.stopPropagation()}
+				>
+					<ConflictInspectorPanel
+						model={{ states: clipConflictState, dispatch }}
+						conflicts={conflictItems}
+						onClose={() => setIsConflictInspectorOpen(false)}
+					/>
+				</div>
+			) : null}
+		</div>
 	);
 };

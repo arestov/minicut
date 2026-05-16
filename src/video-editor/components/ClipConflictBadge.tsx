@@ -9,6 +9,7 @@ type ConflictBadgeModel = {
 type ClipConflictBadgeProps = {
 	model: ConflictBadgeModel;
 	timing?: boolean;
+	onOpen?: () => void;
 };
 
 const readCount = (model: ConflictBadgeModel, timing: boolean): number => {
@@ -19,7 +20,11 @@ const readCount = (model: ConflictBadgeModel, timing: boolean): number => {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 };
 
-export const ClipConflictBadge = ({ model, timing = false }: ClipConflictBadgeProps) => {
+export const ClipConflictBadge = ({
+	model,
+	timing = false,
+	onOpen,
+}: ClipConflictBadgeProps) => {
 	const count = readCount(model, timing);
 	if (count <= 0) {
 		return null;
@@ -30,6 +35,7 @@ export const ClipConflictBadge = ({ model, timing = false }: ClipConflictBadgePr
 		void model.dispatch?.("loadConflicts", {
 			scope: timing ? { aggregate: "clipTiming" } : { model: "clip" },
 		});
+		onOpen?.();
 	};
 
 	return (

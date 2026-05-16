@@ -1408,7 +1408,11 @@ button:disabled {
 	height: 58px;
 	padding: 12px;
 	min-width: 36px;
+	border: 1px solid var(--ve-input);
+	border-radius: var(--ve-radius);
 	background: #ffffff;
+	color: var(--ve-foreground);
+	font: inherit;
 	gap: 4px;
 	flex: 0 0 auto;
 	justify-content: center;
@@ -1444,6 +1448,137 @@ button:disabled {
 	letter-spacing: 0.02em;
 	text-transform: uppercase;
 	flex: 0 0 auto;
+}
+
+.clip-conflict-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	width: auto;
+	height: 20px;
+	padding: 0 6px;
+	border-color: #f59e0b;
+	border-radius: 999px;
+	background: #fffbeb;
+	color: #92400e;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 1;
+	pointer-events: auto;
+}
+
+.clip-conflict-badge:not(:disabled):hover {
+	border-color: #d97706;
+	background: #fef3c7;
+}
+
+.ve-clip-conflict-popover {
+	position: absolute;
+	left: 0;
+	top: calc(100% + 8px);
+	z-index: 20;
+	width: min(360px, calc(100vw - 32px));
+	color: var(--ve-foreground);
+	cursor: default;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.conflict-inspector-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 12px;
+	border: 1px solid var(--ve-border);
+	border-radius: 8px;
+	background: #ffffff;
+	box-shadow: 0 14px 34px rgba(24, 24, 27, 0.18);
+}
+
+.conflict-inspector-panel header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.conflict-inspector-panel h2 {
+	margin: 0;
+	font-size: 14px;
+}
+
+.conflict-inspector-panel p {
+	margin: 0;
+	color: var(--ve-muted-foreground);
+	font-size: 13px;
+}
+
+.conflict-inspector-panel ul {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.conflict-inspector-panel li {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 10px;
+	padding: 8px;
+	border: 1px solid var(--ve-border);
+	border-radius: 8px;
+	background: #fafafa;
+}
+
+.conflict-inspector-panel li strong,
+.conflict-inspector-panel li span {
+	display: block;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.conflict-inspector-panel li strong {
+	font-size: 13px;
+}
+
+.conflict-inspector-panel li span {
+	color: var(--ve-muted-foreground);
+	font-size: 12px;
+}
+
+.conflict-inspector-panel__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.conflict-inspector-panel__actions button,
+.conflict-inspector-panel header button,
+.conflict-inspector-panel__attempt-error button {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+}
+
+.conflict-inspector-panel > button {
+	width: 100%;
+}
+
+.conflict-inspector-panel__attempt-error {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px;
+	border: 1px solid #fecaca;
+	border-radius: 8px;
+	background: #fef2f2;
+	color: #991b1b;
+	font-size: 12px;
+	font-weight: 650;
 }
 
 .ve-clip:active {
