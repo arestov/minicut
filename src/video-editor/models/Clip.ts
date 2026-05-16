@@ -113,6 +113,7 @@ export const Clip = model({
 			resource: "lww",
 			track: null,
 			project: null,
+			crdtConflicts: null,
 		},
 	},
 	attrs: {
@@ -232,6 +233,14 @@ export const Clip = model({
 			},
 		],
 		project: ["input", { linking: "<< project << #", role: "nav" }],
+		crdtConflicts: [
+			"input",
+			{
+				any: true,
+				many: true,
+				role: "projection",
+			},
+		],
 	},
 	actions: {
 		updateOpacity: {
@@ -487,6 +496,70 @@ export const Clip = model({
 					return { effects: nextEffects ?? effectList };
 				},
 			],
+		},
+		loadConflicts: {
+			to: ["$crdt:materialize_conflicts"],
+			fn: [[], (payload: unknown) => payload ?? {}],
+		},
+		requireConflictDetails: {
+			to: ["$crdt:require_details"],
+			fn: [[], (payload: unknown) => payload ?? {}],
+		},
+		acknowledgeConflict: {
+			to: ["$crdt:acknowledge"],
+			fn: [[], (payload: unknown) => payload ?? {}],
+		},
+		resolveClipTimingConflict: [
+			{
+				to: {
+					start: ["start"],
+					in: ["in"],
+					duration: ["duration"],
+				},
+				fn: [
+					["$noop", "start", "in", "duration"] as const,
+					(
+						payload: unknown,
+						noop: unknown,
+						start: unknown,
+						inPoint: unknown,
+						duration: unknown,
+					) => {
+						const value = payload as {
+							start?: unknown;
+							in?: unknown;
+							duration?: unknown;
+						} | null;
+						const next = {
+							start: numberOr(value?.start, numberOr(start, 0)),
+							in: numberOr(value?.in, numberOr(inPoint, 0)),
+							duration: numberOr(value?.duration, numberOr(duration, 0)),
+						};
+						return next.duration > 0 ? next : noop;
+					},
+				],
+			},
+			{
+				to: ["$crdt:resolve"],
+				fn: [
+					[],
+					(payload: unknown) => {
+						const value = payload as {
+							conflict_id?: unknown;
+							conflictId?: unknown;
+							decision?: unknown;
+						} | null;
+						return {
+							conflict_id: value?.conflict_id ?? value?.conflictId,
+							decision: value?.decision ?? payload,
+						};
+					},
+				],
+			},
+		],
+		resolveClipTimingConflictsBatch: {
+			to: ["$crdt:resolve_batch"],
+			fn: [[], (payload: unknown) => payload ?? { decisions: [] }],
 		},
 		removeSelf: [
 			{
