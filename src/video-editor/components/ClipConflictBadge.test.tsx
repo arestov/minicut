@@ -15,6 +15,7 @@ describe("ClipConflictBadge", () => {
 
 	it("materializes timing conflicts through the Clip DKT action", async () => {
 		const dispatch = vi.fn();
+		const onOpen = vi.fn();
 		render(
 			<ClipConflictBadge
 				model={{
@@ -24,6 +25,7 @@ describe("ClipConflictBadge", () => {
 					dispatch,
 				}}
 				timing={true}
+				onOpen={onOpen}
 			/>,
 		);
 
@@ -32,6 +34,7 @@ describe("ClipConflictBadge", () => {
 		expect(dispatch).toHaveBeenCalledWith("loadConflicts", {
 			scope: { aggregate: "clipTiming" },
 		});
+		expect(onOpen).toHaveBeenCalledOnce();
 	});
 });
 
