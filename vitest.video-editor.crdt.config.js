@@ -30,6 +30,7 @@ export default defineConfig({
 			'src/video-editor/dkt/models/crdt-field-coverage.test.ts',
 			'src/video-editor/dkt/models/crdt-local-dispatch.test.ts',
 			'src/video-editor/dkt/models/crdt-rollback.test.ts',
+			'src/video-editor/dkt/models/crdt-resolution-attempt.test.ts',
 			'src/video-editor/dkt/models/crdt-conflict-scenarios.test.ts',
 			'src/video-editor/dkt/runtime/createMiniCutDktRuntime.crdt.test.ts',
 			'src/video-editor/dkt/runtime/createMiniCutDktRuntime.crdtRelay.test.ts',
