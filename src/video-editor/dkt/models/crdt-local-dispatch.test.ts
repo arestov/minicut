@@ -53,6 +53,31 @@ const addClip = async (ctx: DktTestContext, videoTrack: AnyModel) => {
 };
 
 describe("MiniCut CRDT local dispatch staging", () => {
+	it("Project.setProjectTimestamps stages durable project metadata ops", async () => {
+		const { ctx, project } = await createCrdtContext();
+
+		await ctx.lockToRead(async () => {
+			await project.dispatch("setProjectTimestamps", {
+				createdAt: 101,
+				updatedAt: 202,
+			});
+		});
+
+		const ops = drainCrdtOutbox(ctx.runtime);
+		expectCrdtOutboxContains(ops, {
+			kind: "attr",
+			name: "createdAt",
+			operation: "set",
+			value: 101,
+		});
+		expectCrdtOutboxContains(ops, {
+			kind: "attr",
+			name: "updatedAt",
+			operation: "set",
+			value: 202,
+		});
+	});
+
 	it("Project.renameProject creates an lww attr op", async () => {
 		const { ctx, project } = await createCrdtContext();
 

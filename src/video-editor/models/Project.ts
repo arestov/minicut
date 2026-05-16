@@ -87,9 +87,13 @@ export const Project = model({
 			width: "lww",
 			height: "lww",
 			duration: "lww",
+			createdAt: "lww",
+			updatedAt: "lww",
+			autoCreateDefaultTracks: null,
 			importProgress: null,
 			lastImportError: null,
 			activeImportTaskId: null,
+			previewFrame: null,
 		},
 		rels: {
 			tracks: "sequence",
@@ -322,6 +326,34 @@ export const Project = model({
 				["$noop"] as const,
 				(payload: unknown, noop: unknown) =>
 					reduceSetProjectDuration(payload) ?? noop,
+			],
+		},
+		setProjectTimestamps: {
+			to: {
+				createdAt: ["createdAt"],
+				updatedAt: ["updatedAt"],
+			},
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) => {
+					if (!payload || typeof payload !== "object") {
+						return noop;
+					}
+					const value = payload as {
+						createdAt?: unknown;
+						updatedAt?: unknown;
+					};
+					const result: { createdAt?: number; updatedAt?: number } = {};
+					const createdAt = finiteNumberOrUndefined(value.createdAt);
+					const updatedAt = finiteNumberOrUndefined(value.updatedAt);
+					if (typeof createdAt === "number") {
+						result.createdAt = createdAt;
+					}
+					if (typeof updatedAt === "number") {
+						result.updatedAt = updatedAt;
+					}
+					return Object.keys(result).length ? result : noop;
+				},
 			],
 		},
 		addTrack: [

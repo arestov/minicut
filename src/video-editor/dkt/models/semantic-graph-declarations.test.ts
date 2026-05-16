@@ -311,9 +311,13 @@ describe("semantic graph declarations", () => {
 			width: "lww",
 			height: "lww",
 			duration: "lww",
+			createdAt: "lww",
+			updatedAt: "lww",
+			autoCreateDefaultTracks: null,
 			importProgress: null,
 			lastImportError: null,
 			activeImportTaskId: null,
+			previewFrame: null,
 		});
 		expect(
 			getCrdtSection(Project as unknown as Record<string, unknown>, "rels"),
@@ -332,11 +336,18 @@ describe("semantic graph declarations", () => {
 			start: ["mvr", { conflictMeta: true }],
 			in: ["mvr", { conflictMeta: true }],
 			duration: ["mvr", { conflictMeta: true }],
+			trimStart: null,
+			effectStackSummary: null,
 		});
 		expect(
 			getCrdtSection(Track as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
 			clips: ["sequence", { conflictMeta: true }],
+		});
+		expect(
+			getCrdtSection(Clip as unknown as Record<string, unknown>, "rels"),
+		).toMatchObject({
+			track: ["lww", { conflictMeta: true }],
 		});
 		expect(
 			getCrdtSection(Effect as unknown as Record<string, unknown>, "attrs"),

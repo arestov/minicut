@@ -97,6 +97,7 @@ export const Clip = model({
 			mediaKind: "lww",
 			start: ["mvr", { conflictMeta: true }],
 			in: ["mvr", { conflictMeta: true }],
+			trimStart: null,
 			duration: ["mvr", { conflictMeta: true }],
 			fadeIn: "lww",
 			fadeOut: "lww",
@@ -106,6 +107,7 @@ export const Clip = model({
 			splitOriginalDuration: null,
 			crop: "lww",
 			colorAdjustments: "lww",
+			effectStackSummary: null,
 		},
 		rels: {
 			effects: "sequence",
