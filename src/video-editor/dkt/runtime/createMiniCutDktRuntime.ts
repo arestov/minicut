@@ -3,6 +3,7 @@ import type {
 	DomSyncTransportViewLike,
 } from "dkt/dom-sync/transport.js";
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
+import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
@@ -31,6 +32,50 @@ type RuntimeModelLike = {
 	start_page?: unknown;
 };
 
+export type MiniCutCrdtTransport = {
+	attach?: (
+		crdtRuntime: MiniCutCrdtRuntimeLike,
+		context: {
+			peerId: string;
+			profileId: string;
+			profileVersion: number;
+		},
+	) => undefined | (() => void);
+};
+
+type MiniCutCrdtRuntimeLike = {
+	peer_id?: string;
+	outbox?: unknown[];
+	crdt_registry?: unknown;
+	receiveCanonicalOp?: (model: RuntimeModelLike, op: unknown) => unknown;
+	receiveCanonicalOps?: (model: RuntimeModelLike, ops: unknown[]) => unknown;
+	testing?: {
+		drainOutbox?: () => unknown[];
+		peekDurableLog?: () => unknown[];
+		receiveFromNetwork?: (
+			model: RuntimeModelLike,
+			message: unknown,
+		) => unknown;
+	};
+};
+
+type MiniCutCrdtOptions =
+	| false
+	| {
+			enabled: true;
+			testOnly?: true;
+			peerId?: string;
+			profileId?: string;
+			profileVersion?: number;
+			storage?: "memory";
+			transport?: MiniCutCrdtTransport | null;
+		};
+
+type CreateMiniCutDktRuntimeOptions = {
+	enabled?: boolean;
+	crdt?: MiniCutCrdtOptions;
+};
+
 type RuntimeLike = {
 	start(options: {
 		App: typeof MiniCutAppRoot;
@@ -49,6 +94,41 @@ type RuntimeLike = {
 	};
 	models?: Record<string, RuntimeModelLike>;
 	model_data_schema?: Record<string, unknown>;
+	crdt_runtime?: MiniCutCrdtRuntimeLike | null;
+};
+
+const createCrdtRuntimeForTests = (
+	options: MiniCutCrdtOptions | undefined,
+): {
+	crdtRuntime: MiniCutCrdtRuntimeLike | null;
+	peerId: string;
+	profileId: string;
+	profileVersion: number;
+	transport: MiniCutCrdtTransport | null;
+} => {
+	if (!options || options.enabled !== true) {
+		return {
+			crdtRuntime: null,
+			peerId: "minicut-local",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+			transport: null,
+		};
+	}
+	if (options.testOnly !== true) {
+		throw new Error("MiniCut CRDT runtime is test-only in this phase");
+	}
+	if (options.storage && options.storage !== "memory") {
+		throw new Error("MiniCut CRDT test runtime only supports memory storage");
+	}
+	const peerId = options.peerId ?? "minicut-test-worker";
+	return {
+		crdtRuntime: new DktCRDTEngine({ peer_id: peerId }) as MiniCutCrdtRuntimeLike,
+		peerId,
+		profileId: options.profileId ?? "minicut-crdt-v1",
+		profileVersion: options.profileVersion ?? 1,
+		transport: options.transport ?? null,
+	};
 };
 
 const stripAggregateSchema = (payload: unknown): unknown => {
@@ -120,8 +200,10 @@ const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
 ]);
 
 export const createMiniCutDktRuntime = (
-	options: { enabled?: boolean } = {},
+	options: CreateMiniCutDktRuntimeOptions = {},
 ) => {
+	const crdt = createCrdtRuntimeForTests(options.crdt);
+	let crdtTransportCleanup: (() => void) | null = null;
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
 		appModel: RuntimeModelLike;
@@ -206,6 +288,7 @@ export const createMiniCutDktRuntime = (
 				const runtime = prepareAppRuntime({
 					sync_sender: true,
 					warnUnexpectedAttrs: true,
+					...(crdt.crdtRuntime ? { crdtRuntime: crdt.crdtRuntime } : null),
 					onError(error: unknown) {
 						for (const transport of activeTransports) {
 							transport.send({
@@ -245,6 +328,16 @@ export const createMiniCutDktRuntime = (
 						},
 					},
 				});
+				if (crdt.crdtRuntime && crdt.transport?.attach) {
+					const cleanup = crdt.transport.attach(crdt.crdtRuntime, {
+						peerId: crdt.peerId,
+						profileId: crdt.profileId,
+						profileVersion: crdt.profileVersion,
+					});
+					if (typeof cleanup === "function") {
+						crdtTransportCleanup = cleanup;
+					}
+				}
 				return { runtime, appModel: inited.app_model };
 			})();
 		}
@@ -531,6 +624,8 @@ export const createMiniCutDktRuntime = (
 			activeTransports.delete(transport);
 			unlisten();
 			unlistenDisconnect();
+			crdtTransportCleanup?.();
+			crdtTransportCleanup = null;
 			void bootstrapApp()
 				.then((app) => {
 					if (app && stream) {
@@ -554,8 +649,10 @@ export const createMiniCutDktRuntime = (
 				booted: false,
 				sessions: [...sessionRootPromises.keys()],
 				modelsCount: 0,
+				crdt: { enabled: false },
 			};
 		}
+		const durableLog = app.runtime.crdt_runtime?.testing?.peekDurableLog?.();
 
 		return {
 			enabled,
@@ -563,6 +660,17 @@ export const createMiniCutDktRuntime = (
 			sessions: [...sessionRootPromises.keys()],
 			modelsCount: Object.keys(app.runtime.models ?? {}).length,
 			rootNodeId: app.appModel._node_id ?? null,
+			crdt: app.runtime.crdt_runtime
+				? {
+						enabled: true,
+						peerId: app.runtime.crdt_runtime.peer_id ?? crdt.peerId,
+						profileId: crdt.profileId,
+						profileVersion: crdt.profileVersion,
+						outboxCount: app.runtime.crdt_runtime.outbox?.length ?? 0,
+						durableLogCount: durableLog?.length ?? 0,
+						hasRegistry: Boolean(app.runtime.crdt_runtime.crdt_registry),
+					}
+				: { enabled: false },
 		};
 	};
 

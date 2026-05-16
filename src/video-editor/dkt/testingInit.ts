@@ -12,6 +12,7 @@
 
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
 import { _getCurrentRel } from "dkt-all/libs/provoda/_internal/_listRels.js";
+import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { MiniCutAppRoot } from "../models/AppRoot";
 
@@ -28,6 +29,19 @@ type AnyModel = {
 type RuntimeWithCallsFlow = {
 	calls_flow?: AnyModel;
 	whenAllReady?: (fn: () => void) => void;
+};
+
+export type MiniCutDktCrdtRuntime = {
+	peer_id?: string;
+	outbox?: unknown[];
+	crdt_registry?: unknown;
+	receiveCanonicalOp?: (model: AnyModel, op: unknown) => unknown;
+	receiveCanonicalOps?: (model: AnyModel, ops: unknown[]) => unknown;
+	testing?: {
+		drainOutbox?: () => unknown[];
+		peekDurableLog?: () => unknown[];
+		receiveFromNetwork?: (model: AnyModel, message: unknown) => unknown;
+	};
 };
 
 type FlowErrorsCatcher = {
@@ -131,6 +145,7 @@ export type DktTestContext = {
 	appModel: AnyModel;
 	sessionRoot: AnyModel;
 	runtime: {
+		crdt_runtime?: MiniCutDktCrdtRuntime | null;
 		applyExternalGraphPatch?: (
 			patch: unknown,
 			meta?: unknown,
@@ -155,6 +170,33 @@ export type BootDktModelsOptions = {
 		inverseValidation?: "off" | "warn" | "error";
 	};
 	aggregateValidation?: "error" | "warn" | "off";
+	crdt?:
+		| false
+		| {
+				enabled: true;
+				peerId?: string;
+				profileId?: string;
+				profileVersion?: number;
+				storage?: "memory";
+				transport?: null;
+			};
+};
+
+const createCrdtRuntimeForTests = (
+	options: BootDktModelsOptions["crdt"],
+): MiniCutDktCrdtRuntime | null => {
+	if (!options || options.enabled !== true) {
+		return null;
+	}
+	if (options.storage && options.storage !== "memory") {
+		throw new Error("MiniCut CRDT test runtime only supports memory storage");
+	}
+	if (options.transport !== undefined && options.transport !== null) {
+		throw new Error("MiniCut CRDT bootDktModels only supports null transport");
+	}
+	return new DktCRDTEngine({
+		peer_id: options.peerId ?? "minicut-test-peer",
+	}) as MiniCutDktCrdtRuntime;
 };
 
 /**
@@ -166,12 +208,14 @@ export const bootDktModels = async (
 	options: BootDktModelsOptions = {},
 ): Promise<DktTestContext> => {
 	const errorsCatcher = catchFlowErrors();
+	const crdtRuntime = createCrdtRuntimeForTests(options.crdt);
 	const runtime = prepareAppRuntime({
 		sync_sender: false,
 		proxies: false,
 		warnUnexpectedAttrs: false,
 		graphSemantics: options.graphSemantics,
 		aggregateValidation: options.aggregateValidation,
+		...(crdtRuntime ? { crdtRuntime } : null),
 		onError: (err: unknown) => {
 			errorsCatcher.reject_error_prom(err);
 		},
