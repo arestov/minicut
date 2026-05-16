@@ -9,7 +9,6 @@ export const createMiniCutTimelineFixture = async (peers: MiniCutPeer[]) => {
 			in: 0,
 			duration: 4,
 		});
-		peer.flushOutbound();
 	}
 	for (const peer of peers) {
 		peer.ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
