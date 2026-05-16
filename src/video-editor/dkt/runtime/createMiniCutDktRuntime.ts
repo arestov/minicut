@@ -45,6 +45,7 @@ type RuntimeLike = {
 		requireShapeForModel(streamId: string, data: unknown): void;
 	};
 	models?: Record<string, RuntimeModelLike>;
+	model_data_schema?: Record<string, unknown>;
 };
 
 const createWorkerStream = (
@@ -218,6 +219,14 @@ export const createMiniCutDktRuntime = (
 						},
 					},
 				});
+				if (
+					runtime.model_data_schema &&
+					Object.hasOwn(runtime.model_data_schema, "$aggregates")
+				) {
+					const sanitizedSchema = { ...runtime.model_data_schema };
+					delete sanitizedSchema.$aggregates;
+					runtime.model_data_schema = sanitizedSchema;
+				}
 				return { runtime, appModel: inited.app_model };
 			})();
 		}
