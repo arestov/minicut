@@ -28,16 +28,61 @@ import { EFFECT_CREATION_SHAPE } from "./Effect";
 import { numberOr, objectOr, objectOrNull, stringOr } from "./valueGuards";
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10;
+
 export const Clip = model({
 	model_name: "clip",
+	aggregates: {
+		clipTiming: {
+			kind: "group",
+			validate(ctx: {
+				members: Record<string, { value: unknown }>;
+			}) {
+				const start = Number(ctx.members.start.value);
+				const inPoint = Number(ctx.members.inPoint.value);
+				const duration = Number(ctx.members.duration.value);
+				if (
+					!Number.isFinite(start) ||
+					!Number.isFinite(inPoint) ||
+					!Number.isFinite(duration)
+				) {
+					return { ok: false, code: "timing_not_finite" };
+				}
+				if (start < 0) {
+					return { ok: false, code: "start_negative" };
+				}
+				if (inPoint < 0) {
+					return { ok: false, code: "in_negative" };
+				}
+				if (duration <= 0) {
+					return { ok: false, code: "duration_non_positive" };
+				}
+				return { ok: true };
+			},
+		},
+		clipLifecycle: {
+			kind: "entity",
+		},
+	},
 	attrs: {
 		name: ["input", "Clip"],
 		color: ["input", "#2563eb"],
 		mediaKind: ["input", null],
-		start: ["input", 0],
-		in: ["input", 0],
+		start: [
+			"input",
+			0,
+			{ aggregate: { name: "clipTiming", as: "start" } },
+		],
+		in: [
+			"input",
+			0,
+			{ aggregate: { name: "clipTiming", as: "inPoint" } },
+		],
 		trimStart: ["input", 0],
-		duration: ["input", 0],
+		duration: [
+			"input",
+			0,
+			{ aggregate: { name: "clipTiming", as: "duration" } },
+		],
 		fadeIn: ["input", 0],
 		fadeOut: ["input", 0],
 		audio: ["input", { gain: 1, pan: 0 }],
@@ -87,11 +132,52 @@ export const Clip = model({
 		],
 	},
 	rels: {
-		effects: ["input", { many: true, linking: "<< effect << #" }],
-		text: ["input", { linking: "<< text << #" }],
-		resource: ["input", { linking: "<< resource << #" }],
-		track: ["input", { linking: "<< track << #" }],
-		project: ["input", { linking: "<< project << #" }],
+		effects: [
+			"input",
+			{
+				many: true,
+				linking: "<< effect << #",
+				role: "owner",
+				ownership: "slot-single",
+				inverseRel: "clip",
+				aggregate: {
+					name: "clipLifecycle",
+					role: "boundary",
+					as: "effects",
+				},
+			},
+		],
+		text: [
+			"input",
+			{
+				linking: "<< text << #",
+				role: "owner",
+				ownership: "slot-single",
+				inverseRel: "clip",
+				aggregate: {
+					name: "clipLifecycle",
+					role: "boundary",
+					as: "text",
+				},
+			},
+		],
+		resource: [
+			"input",
+			{
+				linking: "<< resource << #",
+				role: "ref",
+			},
+		],
+		track: [
+			"input",
+			{
+				linking: "<< track << #",
+				role: "nav",
+				inverseRel: "clips",
+				aggregate: { name: "timelineMembership", role: "mirror", as: "track" },
+			},
+		],
+		project: ["input", { linking: "<< project << #", role: "nav" }],
 	},
 	actions: {
 		updateOpacity: {

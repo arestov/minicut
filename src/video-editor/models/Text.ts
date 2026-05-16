@@ -9,6 +9,11 @@ import { defaultTextBox, defaultTextStyle } from "./Text/defaults";
 
 export const Text = model({
 	model_name: "text",
+	aggregates: {
+		textBoxStyle: {
+			kind: "group",
+		},
+	},
 	attrs: {
 		renderAttrs: [
 			"comp",
@@ -25,12 +30,24 @@ export const Text = model({
 						: {},
 			}),
 		],
-		content: ["input", "Text"],
-		style: ["input", defaultTextStyle],
-		box: ["input", defaultTextBox],
+		content: [
+			"input",
+			"Text",
+			{ aggregate: { name: "textBoxStyle", as: "content" } },
+		],
+		style: [
+			"input",
+			defaultTextStyle,
+			{ aggregate: { name: "textBoxStyle", as: "style" } },
+		],
+		box: [
+			"input",
+			defaultTextBox,
+			{ aggregate: { name: "textBoxStyle", as: "box" } },
+		],
 	},
 	rels: {
-		clip: ["input", { linking: "<< clip << #" }],
+		clip: ["input", { linking: "<< clip << #", role: "nav", inverseRel: "text" }],
 	},
 	actions: {
 		setTextContent: {

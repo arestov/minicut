@@ -62,6 +62,17 @@ const MOVE_CLIP_INPUT_BASE_REL_SHAPE = {
 
 export const Project = model({
 	model_name: "project",
+	aggregates: {
+		projectTracks: {
+			kind: "ordered-membership",
+		},
+		resourceLifecycle: {
+			kind: "entity",
+		},
+		importPipeline: {
+			kind: "pipeline",
+		},
+	},
 	attrs: {
 		title: ["input", "Untitled project"],
 		fps: ["input", 30],
@@ -73,9 +84,21 @@ export const Project = model({
 			["duration"],
 			(duration: number) => duration,
 		],
-		importProgress: ["input", null],
-		lastImportError: ["input", null],
-		activeImportTaskId: ["input", null],
+		importProgress: [
+			"input",
+			null,
+			{ aggregate: { name: "importPipeline", as: "importProgress" } },
+		],
+		lastImportError: [
+			"input",
+			null,
+			{ aggregate: { name: "importPipeline", as: "lastImportError" } },
+		],
+		activeImportTaskId: [
+			"input",
+			null,
+			{ aggregate: { name: "importPipeline", as: "activeImportTaskId" } },
+		],
 		previewFrame: ["input", null],
 		createdAt: ["input", 0],
 		updatedAt: ["input", 0],
@@ -152,10 +175,32 @@ export const Project = model({
 		],
 	},
 	rels: {
-		tracks: ["input", { many: true, linking: "<< track << #" }],
-		resources: ["input", { many: true, linking: "<< resource << #" }],
-		primaryVideoTrack: ["input", { linking: "<< track << #" }],
-		primaryAudioTrack: ["input", { linking: "<< track << #" }],
+		tracks: [
+			"input",
+			{
+				many: true,
+				linking: "<< track << #",
+				role: "owner",
+				ownership: "multi",
+				aggregate: { name: "projectTracks", role: "primary", as: "tracks" },
+			},
+		],
+		resources: [
+			"input",
+			{
+				many: true,
+				linking: "<< resource << #",
+				role: "owner",
+				ownership: "multi",
+				aggregate: {
+					name: "resourceLifecycle",
+					role: "primary",
+					as: "resources",
+				},
+			},
+		],
+		primaryVideoTrack: ["input", { linking: "<< track << #", role: "projection" }],
+		primaryAudioTrack: ["input", { linking: "<< track << #", role: "projection" }],
 	},
 	actions: {
 		handleInit: {

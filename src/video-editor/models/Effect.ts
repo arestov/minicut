@@ -18,6 +18,11 @@ const _asBool = (v: unknown): boolean => v !== false;
 
 export const Effect = model({
 	model_name: "effect",
+	aggregates: {
+		effectParams: {
+			kind: "group",
+		},
+	},
 	attrs: {
 		renderInstruction: [
 			"comp",
@@ -45,15 +50,31 @@ export const Effect = model({
 			}),
 		],
 		name: ["input", defaultEffectAttrs.name],
-		kind: ["input", defaultEffectAttrs.kind],
+		kind: [
+			"input",
+			defaultEffectAttrs.kind,
+			{ aggregate: { name: "effectParams", as: "kind" } },
+		],
 		enabled: ["input", defaultEffectAttrs.enabled],
-		amount: ["input", defaultEffectAttrs.amount],
-		params: ["input", defaultEffectAttrs.params],
-		color: ["input", defaultEffectAttrs.color],
+		amount: [
+			"input",
+			defaultEffectAttrs.amount,
+			{ aggregate: { name: "effectParams", as: "amount" } },
+		],
+		params: [
+			"input",
+			defaultEffectAttrs.params,
+			{ aggregate: { name: "effectParams", as: "params" } },
+		],
+		color: [
+			"input",
+			defaultEffectAttrs.color,
+			{ aggregate: { name: "effectParams", as: "color" } },
+		],
 	},
 	rels: {
-		clip: ["input", { linking: "<< clip << #" }],
-		project: ["input", { linking: "<< project << #" }],
+		clip: ["input", { linking: "<< clip << #", role: "nav", inverseRel: "effects" }],
+		project: ["input", { linking: "<< project << #", role: "nav" }],
 	},
 	actions: {
 		setEffectName: {

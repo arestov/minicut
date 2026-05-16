@@ -131,8 +131,15 @@ export const Resource = model({
 		],
 	},
 	rels: {
-		project: ["input", { linking: "<< project << #" }],
-		clips: ["input", { many: true, linking: "<< clip << #" }],
+		project: [
+			"input",
+			{
+				linking: "<< project << #",
+				role: "nav",
+				aggregate: { name: "resourceLifecycle", role: "member", as: "project" },
+			},
+		],
+		clips: ["input", { many: true, linking: "<< clip << #", role: "ref" }],
 	},
 	actions: {
 		renameResource: {

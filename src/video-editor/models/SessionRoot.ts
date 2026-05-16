@@ -24,24 +24,170 @@ const debugExport = (message: string, details?: unknown) => {
 export const EditorSessionRoot = model({
 	extends: BaseSessionRoot,
 	model_name: "session_root",
+	aggregates: {
+		sessionProjection: {
+			kind: "projection",
+			write: "local-only",
+		},
+	},
 	attrs: {
-		sessionKey: ["input", null],
-		route: ["input", null],
-		closedAt: ["input", null],
-		isCommonRoot: ["input", false],
-		tabId: ["input", null],
-		activeProjectId: ["input", null],
-		pendingProjectInit: ["input", null],
-		selectedEntityId: ["input", null],
-		activeInspectorTab: ["input", "edit"],
-		cursor: ["input", 0],
-		isPlaying: ["input", false],
-		previewBuffer: ["input", null as PreviewBuffer | null],
-		exportRequest: ["input", null as ExportRequestState | null],
-		exportProgress: ["input", null as ExportProgressState | null],
-		timelineZoom: ["input", TIMELINE_ZOOM_DEFAULT],
-		timelineTool: ["input", "select"],
-		snappingEnabled: ["input", true],
+		sessionKey: [
+			"input",
+			null,
+			{ aggregate: { name: "sessionProjection", role: "projection", as: "sessionKey" } },
+		],
+		route: [
+			"input",
+			null,
+			{ aggregate: { name: "sessionProjection", role: "projection", as: "route" } },
+		],
+		closedAt: [
+			"input",
+			null,
+			{ aggregate: { name: "sessionProjection", role: "projection", as: "closedAt" } },
+		],
+		isCommonRoot: [
+			"input",
+			false,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "isCommonRoot",
+				},
+			},
+		],
+		tabId: [
+			"input",
+			null,
+			{ aggregate: { name: "sessionProjection", role: "projection", as: "tabId" } },
+		],
+		activeProjectId: [
+			"input",
+			null,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "activeProjectId",
+				},
+			},
+		],
+		pendingProjectInit: [
+			"input",
+			null,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "pendingProjectInit",
+				},
+			},
+		],
+		selectedEntityId: [
+			"input",
+			null,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "selectedEntityId",
+				},
+			},
+		],
+		activeInspectorTab: [
+			"input",
+			"edit",
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "activeInspectorTab",
+				},
+			},
+		],
+		cursor: [
+			"input",
+			0,
+			{ aggregate: { name: "sessionProjection", role: "projection", as: "cursor" } },
+		],
+		isPlaying: [
+			"input",
+			false,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "isPlaying",
+				},
+			},
+		],
+		previewBuffer: [
+			"input",
+			null as PreviewBuffer | null,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "previewBuffer",
+				},
+			},
+		],
+		exportRequest: [
+			"input",
+			null as ExportRequestState | null,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "exportRequest",
+				},
+			},
+		],
+		exportProgress: [
+			"input",
+			null as ExportProgressState | null,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "exportProgress",
+				},
+			},
+		],
+		timelineZoom: [
+			"input",
+			TIMELINE_ZOOM_DEFAULT,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "timelineZoom",
+				},
+			},
+		],
+		timelineTool: [
+			"input",
+			"select",
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "timelineTool",
+				},
+			},
+		],
+		snappingEnabled: [
+			"input",
+			true,
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "snappingEnabled",
+				},
+			},
+		],
 		previewStructure: [
 			"comp",
 			["< @one:previewClipSources < activeProject"] as const,
@@ -168,17 +314,64 @@ export const EditorSessionRoot = model({
 		},
 	},
 	rels: {
-		activeProject: ["input", { linking: "<< project << #" }],
-		selectedTrack: ["input", { linking: "<< track << #" }],
+		activeProject: [
+			"input",
+			{
+				linking: "<< project << #",
+				role: "projection",
+				aggregate: { name: "sessionProjection", role: "projection", as: "activeProject" },
+			},
+		],
+		selectedTrack: [
+			"input",
+			{
+				linking: "<< track << #",
+				role: "projection",
+				aggregate: { name: "sessionProjection", role: "projection", as: "selectedTrack" },
+			},
+		],
 		selectedClip: [
 			"comp",
 			["<< @all:activeProject.tracks.clips", "selectedEntityId"] as const,
 			reduceSelectedClip,
-			{ linking: "<< clip << #" },
+			{
+				linking: "<< clip << #",
+				role: "projection",
+				aggregate: { name: "sessionProjection", role: "projection", as: "selectedClip" },
+			},
 		],
-		selectedResource: ["input", { linking: "<< resource << #" }],
-		selectedText: ["input", { linking: "<< text << #" }],
-		selectedEffect: ["input", { linking: "<< effect << #" }],
+		selectedResource: [
+			"input",
+			{
+				linking: "<< resource << #",
+				role: "projection",
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "selectedResource",
+				},
+			},
+		],
+		selectedText: [
+			"input",
+			{
+				linking: "<< text << #",
+				role: "projection",
+				aggregate: { name: "sessionProjection", role: "projection", as: "selectedText" },
+			},
+		],
+		selectedEffect: [
+			"input",
+			{
+				linking: "<< effect << #",
+				role: "projection",
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "selectedEffect",
+				},
+			},
+		],
 	},
 	actions: dktSessionActions,
 });

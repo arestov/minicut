@@ -21,6 +21,11 @@ export const TRACK_CREATION_SHAPE = {
 
 export const Track = model({
 	model_name: "track",
+	aggregates: {
+		timelineMembership: {
+			kind: "ordered-membership",
+		},
+	},
 	attrs: {
 		kind: ["input", "video"],
 		name: ["input", "Track"],
@@ -46,8 +51,25 @@ export const Track = model({
 		],
 	},
 	rels: {
-		clips: ["input", { many: true, linking: "<< clip << #" }],
-		project: ["input", { linking: "<< project << #" }],
+		clips: [
+			"input",
+			{
+				many: true,
+				linking: "<< clip << #",
+				role: "owner",
+				ownership: "slot-single",
+				inverseRel: "track",
+				aggregate: { name: "timelineMembership", role: "primary", as: "clips" },
+			},
+		],
+		project: [
+			"input",
+			{
+				linking: "<< project << #",
+				role: "nav",
+				aggregate: { name: "projectTracks", role: "member", as: "project" },
+			},
+		],
 	},
 	actions: {
 		renameTrack: {
