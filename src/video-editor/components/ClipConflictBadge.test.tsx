@@ -78,4 +78,32 @@ describe("ConflictInspectorPanel", () => {
 			],
 		});
 	});
+
+	it("shows and clears CRDT resolution attempt errors", async () => {
+		const dispatch = vi.fn();
+		render(
+			<ConflictInspectorPanel
+				model={{
+					dispatch,
+					states: {
+						"$meta$aggregates$crdt$clipTiming$last_resolution_error": {
+							code: "duration_non_positive",
+						},
+					},
+				}}
+				conflicts={conflicts}
+			/>,
+		);
+
+		expect(screen.getByText("duration_non_positive")).toBeInTheDocument();
+
+		await userEvent.click(
+			screen.getByRole("button", { name: "Clear resolution error" }),
+		);
+
+		expect(dispatch).toHaveBeenCalledWith("clearResolutionAttempt", {
+			aggregate: "clipTiming",
+			attrs: ["start", "in", "duration"],
+		});
+	});
 });

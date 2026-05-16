@@ -1,4 +1,4 @@
-import { Check, Eye, GitMerge, X } from "lucide-react";
+import { Check, CircleX, Eye, GitMerge, X } from "lucide-react";
 
 type ConflictDecision = {
 	start?: number;
@@ -15,6 +15,7 @@ export type ClipConflictItem = {
 };
 
 type ConflictInspectorModel = {
+	states?: Record<string, unknown>;
 	dispatch?: (actionName: string, payload?: unknown) => void | Promise<void>;
 };
 
@@ -22,6 +23,23 @@ type ConflictInspectorPanelProps = {
 	model: ConflictInspectorModel;
 	conflicts: ClipConflictItem[];
 	onClose?: () => void;
+};
+
+type ResolutionAttemptError = {
+	code?: string;
+	message?: string | null;
+};
+
+const readResolutionAttemptError = (
+	model: ConflictInspectorModel,
+): ResolutionAttemptError | null => {
+	const value =
+		model.states?.["$meta$aggregates$crdt$clipTiming$last_resolution_error"] ??
+		model.states?.["$meta$model$crdt$last_resolution_error"];
+	if (!value || typeof value !== "object") {
+		return null;
+	}
+	return value as ResolutionAttemptError;
 };
 
 export const ConflictInspectorPanel = ({
@@ -33,6 +51,8 @@ export const ConflictInspectorPanel = ({
 		void model.dispatch?.(actionName, payload);
 	};
 	const resolvable = conflicts.filter((conflict) => conflict.decision);
+	const attemptError = readResolutionAttemptError(model);
+	const attemptErrorText = attemptError?.message || attemptError?.code || null;
 
 	return (
 		<section className="conflict-inspector-panel" aria-label="Conflict inspector">
@@ -42,6 +62,24 @@ export const ConflictInspectorPanel = ({
 					<X aria-hidden="true" size={16} />
 				</button>
 			</header>
+			{attemptErrorText ? (
+				<div className="conflict-inspector-panel__attempt-error">
+					<span>{attemptErrorText}</span>
+					<button
+						type="button"
+						title="Clear resolution error"
+						aria-label="Clear resolution error"
+						onClick={() =>
+							dispatch("clearResolutionAttempt", {
+								aggregate: "clipTiming",
+								attrs: ["start", "in", "duration"],
+							})
+						}
+					>
+						<CircleX aria-hidden="true" size={16} />
+					</button>
+				</div>
+			) : null}
 			{conflicts.length === 0 ? (
 				<p>No open conflicts</p>
 			) : (

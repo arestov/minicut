@@ -28,7 +28,12 @@ type RuntimeModelLike = {
 	) => Promise<readonly RuntimeModelLike[]> | readonly RuntimeModelLike[];
 	input?: (callback: () => void | Promise<void>) => unknown;
 	queryRel?: (relName: string) => Promise<unknown> | unknown;
-	dispatch: (actionName: string, payload?: unknown) => Promise<void> | void;
+	dispatch: (
+		actionName: string,
+		payload?: unknown,
+		options?: unknown,
+		meta?: unknown,
+	) => Promise<void> | void;
 	start_page?: unknown;
 };
 
@@ -198,6 +203,32 @@ const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
 	Object.freeze(["activeProject", "tracks", "clips", "effects"]),
 	Object.freeze(["pioneer", "effect"]),
 ]);
+
+const crdtResolutionAttemptMeta = (
+	actionName: string,
+	payload: unknown,
+	target: RuntimeModelLike,
+): Record<string, unknown> | null => {
+	if (actionName !== "resolveClipTimingConflict") {
+		return null;
+	}
+	const conflictId =
+		payload && typeof payload === "object"
+			? ((payload as { conflict_id?: unknown; conflictId?: unknown }).conflict_id ??
+				(payload as { conflictId?: unknown }).conflictId)
+			: null;
+	if (typeof conflictId !== "string" || conflictId.length === 0) {
+		return null;
+	}
+	return {
+		crdt_resolution_attempt: {
+			conflict_id: conflictId,
+			aggregate: "clipTiming",
+			model_id: target._node_id ?? null,
+			model_name: target.model_name ?? null,
+		},
+	};
+};
 
 export const createMiniCutDktRuntime = (
 	options: CreateMiniCutDktRuntimeOptions = {},
@@ -417,7 +448,12 @@ export const createMiniCutDktRuntime = (
 			target = scopedTarget;
 		}
 
-		await target.dispatch(actionName, payload);
+		await target.dispatch(
+			actionName,
+			payload,
+			null,
+			crdtResolutionAttemptMeta(actionName, payload, target) ?? undefined,
+		);
 	};
 
 	const connect = (

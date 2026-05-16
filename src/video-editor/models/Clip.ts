@@ -535,7 +535,7 @@ export const Clip = model({
 							in: numberOr(value?.in, numberOr(inPoint, 0)),
 							duration: numberOr(value?.duration, numberOr(duration, 0)),
 						};
-						return next.duration > 0 ? next : noop;
+						return next;
 					},
 				],
 			},
@@ -560,6 +560,10 @@ export const Clip = model({
 		resolveClipTimingConflictsBatch: {
 			to: ["$crdt:resolve_batch"],
 			fn: [[], (payload: unknown) => payload ?? { decisions: [] }],
+		},
+		clearResolutionAttempt: {
+			to: ["$crdt:clear_resolution_attempt"],
+			fn: [[], (payload: unknown) => payload ?? {}],
 		},
 		removeSelf: [
 			{
