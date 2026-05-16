@@ -35,6 +35,26 @@ export const RESOURCE_CREATION_SHAPE = {
 
 export const Resource = model({
 	model_name: "resource",
+	crdt: {
+		attrs: {
+			name: "lww",
+			kind: "lww",
+			url: "lww",
+			mime: "lww",
+			duration: "lww",
+			width: "lww",
+			height: "lww",
+			size: "lww",
+			source: "lww",
+			status: null,
+			data: "lww",
+			timelineAddRequest: null,
+		},
+		rels: {
+			project: null,
+			clips: null,
+		},
+	},
 	attrs: {
 		name: ["input", "Resource"],
 		kind: ["input", "video"],
@@ -177,6 +197,12 @@ export const Resource = model({
 			],
 		},
 		setResourceStatus: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "setResourceStatus",
+				permission: "entry",
+			},
 			to: {
 				status: ["status"],
 			},
@@ -187,6 +213,12 @@ export const Resource = model({
 			],
 		},
 		setResourceAttrs: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "setResourceAttrs",
+				permission: "entry",
+			},
 			to: {
 				name: ["name"],
 				kind: ["kind"],
@@ -207,6 +239,12 @@ export const Resource = model({
 			],
 		},
 		requestAddToTimeline: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "requestAddToTimeline",
+				permission: "entry",
+			},
 			to: {
 				timelineAddRequest: ["timelineAddRequest"],
 			},

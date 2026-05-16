@@ -77,6 +77,25 @@ export const Project = model({
 		},
 		importPipeline: {
 			kind: "pipeline",
+			write: "domain-action",
+		},
+	},
+	crdt: {
+		attrs: {
+			title: "lww",
+			fps: "lww",
+			width: "lww",
+			height: "lww",
+			duration: "lww",
+			importProgress: null,
+			lastImportError: null,
+			activeImportTaskId: null,
+		},
+		rels: {
+			tracks: "sequence",
+			resources: "or-set",
+			primaryVideoTrack: null,
+			primaryAudioTrack: null,
 		},
 	},
 	attrs: {
@@ -336,6 +355,12 @@ export const Project = model({
 			},
 		],
 		requestImportFiles: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "requestImportFiles",
+				permission: "entry",
+			},
 			to: {
 				activeImportTaskId: ["activeImportTaskId"],
 				importProgress: ["importProgress"],
@@ -348,6 +373,12 @@ export const Project = model({
 			],
 		},
 		setImportProgress: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "setImportProgress",
+				permission: "internal",
+			},
 			to: {
 				activeImportTaskId: ["activeImportTaskId"],
 				importProgress: ["importProgress"],

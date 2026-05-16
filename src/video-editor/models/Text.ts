@@ -14,6 +14,16 @@ export const Text = model({
 			kind: "group",
 		},
 	},
+	crdt: {
+		attrs: {
+			content: "lww",
+			style: "lww",
+			box: "lww",
+		},
+		rels: {
+			clip: null,
+		},
+	},
 	attrs: {
 		renderAttrs: [
 			"comp",

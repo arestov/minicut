@@ -23,6 +23,20 @@ export const Effect = model({
 			kind: "group",
 		},
 	},
+	crdt: {
+		attrs: {
+			name: "lww",
+			kind: "lww",
+			enabled: "lww",
+			amount: ["mvr", { conflictMeta: true }],
+			params: ["mvr", { conflictMeta: true }],
+			color: ["mvr", { conflictMeta: true }],
+		},
+		rels: {
+			clip: null,
+			project: null,
+		},
+	},
 	attrs: {
 		renderInstruction: [
 			"comp",

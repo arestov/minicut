@@ -33,6 +33,23 @@ export const Track = model({
 			remove: "tombstone-membership",
 		},
 	},
+	crdt: {
+		attrs: {
+			kind: "lww",
+			name: "lww",
+			muted: "lww",
+			locked: "lww",
+			isVisible: "lww",
+			height: "lww",
+			trackDuration: null,
+			clipCount: null,
+			appendStart: null,
+		},
+		rels: {
+			clips: ["sequence", { conflictMeta: true }],
+			project: null,
+		},
+	},
 	attrs: {
 		kind: ["input", "video"],
 		name: ["input", "Track"],
