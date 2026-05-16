@@ -45,9 +45,17 @@ export const Resource = model({
 		height: ["input", null],
 		size: ["input", null],
 		source: ["input", { kind: "local" }],
-		status: ["input", "missing"],
+		status: [
+			"input",
+			"missing",
+			{ aggregate: { name: "importPipeline", as: "status" } },
+		],
 		data: ["input", null],
-		timelineAddRequest: ["input", null],
+		timelineAddRequest: [
+			"input",
+			null,
+			{ aggregate: { name: "importPipeline", as: "timelineAddRequest" } },
+		],
 		isReady: ["comp", ["status"], (status: unknown) => status === "ready"],
 		timelineClipSource: [
 			"comp",
@@ -143,7 +151,19 @@ export const Resource = model({
 				aggregate: { name: "resourceLifecycle", role: "mirror", as: "project" },
 			},
 		],
-		clips: ["input", { many: true, linking: "<< clip << #", role: "ref" }],
+		clips: [
+			"input",
+			{
+				many: true,
+				linking: "<< clip << #",
+				role: "ref",
+				aggregate: {
+					name: "resourceLifecycle",
+					role: "evidence",
+					as: "clips",
+				},
+			},
+		],
 	},
 	actions: {
 		renameResource: {

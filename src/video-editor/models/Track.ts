@@ -28,6 +28,9 @@ export const Track = model({
 	aggregates: {
 		timelineMembership: {
 			kind: "ordered-membership",
+			move: "atomic",
+			insert: "sequence",
+			remove: "tombstone-membership",
 		},
 	},
 	attrs: {
@@ -63,7 +66,12 @@ export const Track = model({
 				role: "owner",
 				ownership: "slot-single",
 				inverseRel: "track",
-				aggregate: { name: "timelineMembership", role: "primary", as: "clips" },
+				aggregate: {
+					name: "timelineMembership",
+					role: "primary",
+					as: "clips",
+					traversal: "owned-subtree",
+				},
 			},
 		],
 		project: [

@@ -118,6 +118,14 @@ describe("semantic graph declarations", () => {
 
 	it("exports project, track, and resource inverseRel metadata", () => {
 		expect(
+			getAggregate(Project as unknown as Record<string, unknown>, "projectTracks"),
+		).toMatchObject({
+			kind: "ordered-membership",
+			move: "atomic",
+			insert: "sequence",
+			remove: "tombstone-membership",
+		});
+		expect(
 			getRelOptions(Project as unknown as Record<string, unknown>, "tracks"),
 		).toMatchObject({
 			role: "owner",
@@ -156,6 +164,16 @@ describe("semantic graph declarations", () => {
 				as: "project",
 			},
 		});
+		expect(
+			getRelOptions(Resource as unknown as Record<string, unknown>, "clips"),
+		).toMatchObject({
+			role: "ref",
+			aggregate: {
+				name: "resourceLifecycle",
+				role: "evidence",
+				as: "clips",
+			},
+		});
 	});
 
 	it("exports resource and effect aggregate metadata used by lifecycle checks", () => {
@@ -165,7 +183,17 @@ describe("semantic graph declarations", () => {
 			kind: "entity",
 			delete: "tombstone",
 			concurrentActivity: "conflict",
+			orphan: "conflict",
 		});
+		expect(
+			getAttrAggregate(Resource as unknown as Record<string, unknown>, "status"),
+		).toMatchObject({ name: "importPipeline", as: "status" });
+		expect(
+			getAttrAggregate(
+				Resource as unknown as Record<string, unknown>,
+				"timelineAddRequest",
+			),
+		).toMatchObject({ name: "importPipeline", as: "timelineAddRequest" });
 		expect(
 			getAttrAggregate(Effect as unknown as Record<string, unknown>, "params"),
 		).toMatchObject({ name: "effectParams", as: "params" });

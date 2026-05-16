@@ -183,6 +183,7 @@ export const Clip = model({
 			{
 				linking: "<< resource << #",
 				role: "ref",
+				deletion: "prevent-delete",
 				aggregate: { name: "clipTiming", role: "evidence", as: "resource" },
 			},
 		],

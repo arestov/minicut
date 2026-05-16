@@ -73,7 +73,14 @@ export const Effect = model({
 		],
 	},
 	rels: {
-		clip: ["input", { linking: "<< clip << #", role: "nav", inverseRel: "effects" }],
+		clip: [
+			"input",
+			{
+				linking: "<< clip << #",
+				role: "nav",
+				inverseRel: "effects",
+			},
+		],
 		project: ["input", { linking: "<< project << #", role: "nav" }],
 	},
 	actions: {

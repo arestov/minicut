@@ -47,7 +47,14 @@ export const Text = model({
 		],
 	},
 	rels: {
-		clip: ["input", { linking: "<< clip << #", role: "nav", inverseRel: "text" }],
+		clip: [
+			"input",
+			{
+				linking: "<< clip << #",
+				role: "nav",
+				inverseRel: "text",
+			},
+		],
 	},
 	actions: {
 		setTextContent: {

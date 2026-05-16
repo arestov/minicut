@@ -65,11 +65,15 @@ export const Project = model({
 	aggregates: {
 		projectTracks: {
 			kind: "ordered-membership",
+			move: "atomic",
+			insert: "sequence",
+			remove: "tombstone-membership",
 		},
 		resourceLifecycle: {
 			kind: "entity",
 			delete: "tombstone",
 			concurrentActivity: "conflict",
+			orphan: "conflict",
 		},
 		importPipeline: {
 			kind: "pipeline",
