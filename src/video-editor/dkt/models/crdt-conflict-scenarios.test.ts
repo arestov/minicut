@@ -60,6 +60,38 @@ const createPairWithClips = async (roomId: string, clipCount: number) => {
 	return { pair, clipsA, clipsB };
 };
 
+const createPairWithTextClip = async (roomId: string) => {
+	const pair = await createCrdtWorkerPair({
+		roomId,
+		profileId: "minicut-crdt-v1",
+		profileVersion: 1,
+	});
+	for (const peer of [pair.a, pair.b]) {
+		await peer.dispatch(peer.videoTrack, "addTextClip", {
+			name: "Text conflict",
+			mediaKind: "text",
+			start: 0,
+			in: 0,
+			duration: 4,
+			text: { content: "Original title" },
+		});
+		drainCrdtOutbox(peer.ctx.runtime);
+	}
+	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
+	if (!clipA || !clipB) {
+		throw new Error("Expected matching text clips");
+	}
+	const textA = (await pair.a.ctx.queryRel(clipA, "text"))[0];
+	const textB = (await pair.b.ctx.queryRel(clipB, "text"))[0];
+	if (!textA || !textB) {
+		throw new Error("Expected matching text nodes");
+	}
+	expect(clipA._node_id).toBe(clipB._node_id);
+	expect(textA._node_id).toBe(textB._node_id);
+	return { pair, clipA, clipB, textA, textB };
+};
+
 const exchangeOps = async (
 	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
 	opsA: unknown[],
@@ -292,6 +324,32 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
+	it("records structural conflict meta for delete vs text edit", async () => {
+		const { pair, clipA, clipB, textA } = await createPairWithTextClip(
+			"room-conflict-delete-vs-text-edit",
+		);
+
+		await pair.a.dispatch(textA, "setTextContent", "Remote title edit");
+		drainCrdtOutbox(pair.a.ctx.runtime);
+		await pair.b.dispatch(clipB, "removeSelf");
+		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+
+		pair.transportB.sendOps({ ops: opsB });
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect((await pair.a.ctx.queryRel(clipA, "text"))[0]?._node_id).toBe(
+			textA._node_id,
+		);
+		pair.close();
+	});
+
 	it("records structural conflict meta for split vs delete", async () => {
 		const { pair, clipA, clipB } = await createPairWithClip(
 			"room-conflict-split-vs-delete",
@@ -313,4 +371,10 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		).toBeGreaterThan(0);
 		pair.close();
 	});
+
+	it.todo(
+		"records owner-slot conflict meta for concurrent moves to different tracks",
+	);
+
+	it.todo("records dangling resource ref conflict meta");
 });
