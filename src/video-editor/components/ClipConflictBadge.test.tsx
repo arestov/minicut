@@ -71,6 +71,7 @@ describe("ConflictInspectorPanel", () => {
 			duration: 3,
 		});
 		expect(dispatch).toHaveBeenNthCalledWith(4, "resolveClipTimingConflictsBatch", {
+			atomic: false,
 			decisions: [
 				{
 					conflict_id: "conflict:duration",

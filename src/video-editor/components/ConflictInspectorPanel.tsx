@@ -140,6 +140,7 @@ export const ConflictInspectorPanel = ({
 				disabled={resolvable.length === 0}
 				onClick={() =>
 					dispatch("resolveClipTimingConflictsBatch", {
+						atomic: false,
 						decisions: resolvable.map((conflict) => ({
 							conflict_id: conflict.id,
 							...conflict.decision,

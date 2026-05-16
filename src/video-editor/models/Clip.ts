@@ -509,57 +509,64 @@ export const Clip = model({
 			to: ["$crdt:acknowledge"],
 			fn: [[], (payload: unknown) => payload ?? {}],
 		},
-		resolveClipTimingConflict: [
-			{
-				to: {
-					start: ["start"],
-					in: ["in"],
-					duration: ["duration"],
+		resolveClipTimingConflict: {
+			to: {
+				start: ["start"],
+				in: ["in"],
+				duration: ["duration"],
+				close: ["$crdt:resolve"],
+			},
+			fn: [
+				["$noop", "start", "in", "duration"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					start: unknown,
+					inPoint: unknown,
+					duration: unknown,
+				) => {
+					const value = payload as {
+						start?: unknown;
+						in?: unknown;
+						duration?: unknown;
+						conflict_id?: unknown;
+						conflictId?: unknown;
+						decision?: unknown;
+					} | null;
+					const conflictId = value?.conflict_id ?? value?.conflictId;
+					if (typeof conflictId !== "string") {
+						return noop;
+					}
+					const decision = {
+						start: numberOr(value?.start, numberOr(start, 0)),
+						in: numberOr(value?.in, numberOr(inPoint, 0)),
+						duration: numberOr(value?.duration, numberOr(duration, 0)),
+					};
+					return {
+						...decision,
+						close: {
+							conflict_id: conflictId,
+							decision: value?.decision ?? decision,
+						},
+					};
 				},
-				fn: [
-					["$noop", "start", "in", "duration"] as const,
-					(
-						payload: unknown,
-						noop: unknown,
-						start: unknown,
-						inPoint: unknown,
-						duration: unknown,
-					) => {
-						const value = payload as {
-							start?: unknown;
-							in?: unknown;
-							duration?: unknown;
-						} | null;
-						const next = {
-							start: numberOr(value?.start, numberOr(start, 0)),
-							in: numberOr(value?.in, numberOr(inPoint, 0)),
-							duration: numberOr(value?.duration, numberOr(duration, 0)),
-						};
-						return next;
-					},
-				],
-			},
-			{
-				to: ["$crdt:resolve"],
-				fn: [
-					[],
-					(payload: unknown) => {
-						const value = payload as {
-							conflict_id?: unknown;
-							conflictId?: unknown;
-							decision?: unknown;
-						} | null;
-						return {
-							conflict_id: value?.conflict_id ?? value?.conflictId,
-							decision: value?.decision ?? payload,
-						};
-					},
-				],
-			},
-		],
+			],
+		},
 		resolveClipTimingConflictsBatch: {
 			to: ["$crdt:resolve_batch"],
-			fn: [[], (payload: unknown) => payload ?? { decisions: [] }],
+			fn: [
+				[],
+				(payload: unknown) => {
+					const value =
+						payload && typeof payload === "object"
+							? (payload as { atomic?: unknown; decisions?: unknown })
+							: null;
+					return {
+						atomic: typeof value?.atomic === "boolean" ? value.atomic : false,
+						decisions: Array.isArray(value?.decisions) ? value.decisions : [],
+					};
+				},
+			],
 		},
 		clearResolutionAttempt: {
 			to: ["$crdt:clear_resolution_attempt"],
