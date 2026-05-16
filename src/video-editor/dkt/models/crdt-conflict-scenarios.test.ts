@@ -27,6 +27,56 @@ const createPairWithClip = async (roomId: string) => {
 	return { pair, clipA, clipB };
 };
 
+const createPairWithClips = async (roomId: string, clipCount: number) => {
+	const pair = await createCrdtWorkerPair({
+		roomId,
+		profileId: "minicut-crdt-v1",
+		profileVersion: 1,
+	});
+	for (const peer of [pair.a, pair.b]) {
+		for (let index = 0; index < clipCount; index += 1) {
+			await peer.dispatch(peer.videoTrack, "addClip", {
+				name: `conflict-fixture-${index}.webm`,
+				mediaKind: "video",
+				start: index * 4,
+				in: 0,
+				duration: 4,
+			});
+		}
+		drainCrdtOutbox(peer.ctx.runtime);
+	}
+	const clipsA = await pair.a.ctx.queryRel(pair.a.videoTrack, "clips");
+	const clipsB = await pair.b.ctx.queryRel(pair.b.videoTrack, "clips");
+	expect(clipsA).toHaveLength(clipCount);
+	expect(clipsB).toHaveLength(clipCount);
+	expect(clipsA.map((clip) => clip._node_id)).toEqual(
+		clipsB.map((clip) => clip._node_id),
+	);
+	return { pair, clipsA, clipsB };
+};
+
+const exchangeOps = async (
+	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
+	opsA: unknown[],
+	opsB: unknown[],
+) => {
+	pair.transportA.sendOps({ ops: opsA });
+	pair.transportB.sendOps({ ops: opsB });
+	await pair.waitForConvergence();
+};
+
+const openConflictCount = (
+	model: { getAttr?: (name: string) => unknown } | null | undefined,
+	attrs: string[],
+) =>
+	Math.max(
+		0,
+		...attrs.map((attr) => {
+			const value = model?.getAttr?.(attr);
+			return typeof value === "number" ? value : Number(value ?? 0);
+		}),
+	);
+
 const createTimingConflict = async (roomId: string) => {
 	const { pair, clipA, clipB } = await createPairWithClip(roomId);
 
@@ -35,9 +85,7 @@ const createTimingConflict = async (roomId: string) => {
 	await pair.b.dispatch(clipB, "resize", { edge: "end", delta: -2 });
 	const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
 
-	pair.transportA.sendOps({ ops: opsA });
-	pair.transportB.sendOps({ ops: opsB });
-	await pair.waitForConvergence();
+	await exchangeOps(pair, opsA, opsB);
 	const conflictId =
 		pair.a.ctx.getAttr(
 			clipA,
@@ -172,13 +220,83 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
-	it.todo(
-		"move vs move creates a sequence/owner conflict when DKT exposes deterministic move conflict projection for MiniCut Track.clips",
-	);
-	it.todo(
-		"delete vs effect edit creates structural_delete_with_concurrent_activity when DKT owned-subtree detector covers MiniCut Clip.effects",
-	);
-	it.todo(
-		"split vs delete creates a structural conflict when DKT sequence/lifecycle detector covers split-generated clips",
-	);
+	it("does not crash remote apply for concurrent clip reorders", async () => {
+		const { pair, clipsA, clipsB } = await createPairWithClips(
+			"room-conflict-move-vs-move",
+			3,
+		);
+
+		await pair.a.dispatch(pair.a.videoTrack, "setClips", {
+			clips: [clipsA[1], clipsA[0], clipsA[2]],
+		});
+		const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
+		await pair.b.dispatch(pair.b.videoTrack, "setClips", {
+			clips: [clipsB[0], clipsB[2], clipsB[1]],
+		});
+		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+
+		await expect(exchangeOps(pair, opsA, opsB)).resolves.toBeUndefined();
+		pair.close();
+	});
+
+	it("records structural conflict meta for delete vs effect edit", async () => {
+		const { pair, clipA, clipB } = await createPairWithClip(
+			"room-conflict-delete-vs-effect-edit",
+		);
+		await pair.a.dispatch(clipA, "addEffect", {
+			kind: "blur",
+			name: "Blur",
+			params: { radius: 2 },
+		});
+		await pair.b.dispatch(clipB, "addEffect", {
+			kind: "blur",
+			name: "Blur",
+			params: { radius: 2 },
+		});
+		drainCrdtOutbox(pair.a.ctx.runtime);
+		drainCrdtOutbox(pair.b.ctx.runtime);
+		const effectA = (await pair.a.ctx.queryRel(clipA, "effects"))[0];
+		if (!effectA) {
+			throw new Error("Expected effect fixture");
+		}
+
+		await pair.a.dispatch(effectA, "setEffectParams", { params: { radius: 8 } });
+		drainCrdtOutbox(pair.a.ctx.runtime);
+		await pair.b.dispatch(clipB, "removeSelf");
+		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+
+		pair.transportB.sendOps({ ops: opsB });
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		pair.close();
+	});
+
+	it("records structural conflict meta for split vs delete", async () => {
+		const { pair, clipA, clipB } = await createPairWithClip(
+			"room-conflict-split-vs-delete",
+		);
+
+		await pair.a.dispatch(clipA, "splitSelfAt", { time: 2 });
+		drainCrdtOutbox(pair.a.ctx.runtime);
+		await pair.b.dispatch(clipB, "removeSelf");
+		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+
+		pair.transportB.sendOps({ ops: opsB });
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		pair.close();
+	});
 });
