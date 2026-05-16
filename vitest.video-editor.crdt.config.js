@@ -27,6 +27,7 @@ export default defineConfig({
 		testTimeout: 30_000,
 		include: [
 			'src/video-editor/dkt/models/semantic-graph-declarations.test.ts',
+			'src/video-editor/dkt/models/crdt-field-coverage.test.ts',
 			'src/video-editor/dkt/models/crdt-local-dispatch.test.ts',
 			'src/video-editor/dkt/models/crdt-rollback.test.ts',
 			'src/video-editor/dkt/models/crdt-conflict-scenarios.test.ts',
