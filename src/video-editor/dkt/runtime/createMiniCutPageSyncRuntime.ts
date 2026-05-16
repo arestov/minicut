@@ -368,6 +368,9 @@ export const createMiniCutPageSyncRuntime = ({
 
 				emit({ type: DKT_MSG.WAIT_IDLE, requestId });
 			}),
+		applyDebugSyncUpdateTesting: (list) => {
+			syncReceiver.handleSync(SYNCR_TYPES.UPDATE, list);
+		},
 		dispatchAction,
 		getSnapshot: () => store.getSnapshot(),
 		getRootScope: () => syncReceiver.getRootScope(),

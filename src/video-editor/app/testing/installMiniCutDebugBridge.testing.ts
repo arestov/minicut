@@ -26,6 +26,12 @@ type MiniCutDebugBridge = {
 		actionName: string,
 		payload?: unknown,
 	) => Promise<void>;
+	injectFirstClipConflictTesting: (options?: {
+		kind?: string;
+		scope?: string;
+		summary?: string;
+		timing?: boolean;
+	}) => Promise<{ clipId: string; conflictId: string }>;
 	setCursor: (cursor: number) => void;
 	dispatchCreateProject: (title?: string) => Promise<void>;
 };
@@ -638,6 +644,60 @@ export const installMiniCutDebugBridgeTesting = (
 			}
 			harness.pageRuntime?.dispatch(actionName, payload, projectScope);
 			return waitForRuntimeSettled();
+		},
+		injectFirstClipConflictTesting: async (options = {}) => {
+			const runtime = harness.pageRuntime;
+			const projectScope = getActiveProjectScope();
+			if (!runtime || !projectScope) {
+				throw new Error("No active project");
+			}
+			const trackScope = runtime.readMany(projectScope, "tracks")[0];
+			const clipScope = trackScope ? runtime.readMany(trackScope, "clips")[0] : null;
+			if (!clipScope?._nodeId) {
+				throw new Error("No clip available for conflict injection");
+			}
+			const timing = options.timing === true;
+			const conflictId = `${timing ? "timing" : "structural"}:playwright:${clipScope._nodeId}`;
+			const conflictNodeId = `conflict:${conflictId}`;
+			const kind = options.kind ?? (timing ? "mvr_alternatives" : "structural_delete_with_concurrent_activity");
+			const scope = options.scope ?? (timing ? "clipTiming" : "timelineMembership");
+			const summary = options.summary ?? (timing ? "Duration has concurrent edits" : "Remote delete conflicts with local edit");
+			const update = [
+				0,
+				clipScope._nodeId,
+				timing ? 4 : 8,
+				"$meta$model$crdt$open_conflicts_count",
+				1,
+				...(timing
+					? ["$meta$aggregates$crdt$clipTiming$open_conflicts_count", 1]
+					: [
+							"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+							1,
+							"$meta$rels$crdt$clips$open_conflicts_count",
+							1,
+							"$meta$model$crdt$last_conflict_id",
+							conflictId,
+						]),
+				0,
+				conflictNodeId,
+				timing ? 10 : 8,
+				"id",
+				conflictId,
+				"kind",
+				kind,
+				"scope",
+				scope,
+				"summary",
+				summary,
+				...(timing ? ["decision", { start: 0, in: 0, duration: 3 }] : []),
+				1,
+				clipScope._nodeId,
+				"crdtConflicts",
+				[conflictNodeId],
+			];
+			runtime.applyDebugSyncUpdateTesting?.(update);
+			await waitForRuntimeSettled();
+			return { clipId: clipScope._nodeId, conflictId };
 		},
 		setCursor: (cursor: number) => {
 			harness.actions.setCursor(cursor);

@@ -25,6 +25,8 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
 	requestDebugDump?(): Promise<unknown>;
 	/** Debug-only: waits for the DKT worker and page sync runtime to settle. */
 	waitForRuntimeSettled?(): Promise<void>;
+	/** Test-only: applies a compact sync update to the page read model. */
+	applyDebugSyncUpdateTesting?(list: readonly unknown[]): void;
 	dispatchAction(
 		actionName: string,
 		payload?: unknown,
