@@ -1,5 +1,6 @@
 import type { MiniCutPeer, createMiniCutCrdtSimulation } from "./createMiniCutCrdtSimulation";
 import type { MiniCutTraceStep } from "./MiniCutScenarioDSL";
+import { dispatchClipTimingResizeGesture } from "../../test/clipTimingGesture";
 
 type Simulation = Awaited<ReturnType<typeof createMiniCutCrdtSimulation>>;
 
@@ -10,6 +11,12 @@ type TraceContext = {
 const targetForStep = (peer: MiniCutPeer, step: Extract<MiniCutTraceStep, { type: "dispatch" }>, ctx: TraceContext) => {
 	if (step.target === "project") return peer.project;
 	if (step.target === "videoTrack") return peer.videoTrack;
+	const clip = ctx.clipByPeer?.[peer.id];
+	if (!clip) throw new Error(`Trace target clip was not provided for peer ${peer.id}`);
+	return clip;
+};
+
+const clipTargetForPeer = (peer: MiniCutPeer, ctx: TraceContext) => {
 	const clip = ctx.clipByPeer?.[peer.id];
 	if (!clip) throw new Error(`Trace target clip was not provided for peer ${peer.id}`);
 	return clip;
@@ -34,6 +41,18 @@ export const runMiniCutTrace = async (simulation: Simulation, steps: MiniCutTrac
 				case "dispatch": {
 					const peer = simulation.peer(step.peerId);
 					await peer.dispatch(targetForStep(peer, step, ctx), step.actionName, step.payload, step.meta);
+					peer.flushOutbound();
+					break;
+				}
+				case "clipTimingResizeGesture": {
+					const peer = simulation.peer(step.peerId);
+					await peer.ctx.lockToRead(async () => {
+						await dispatchClipTimingResizeGesture(peer.ctx, clipTargetForPeer(peer, ctx), {
+							edge: step.edge,
+							delta: step.delta,
+							batchId: step.batchId,
+						});
+					});
 					peer.flushOutbound();
 					break;
 				}

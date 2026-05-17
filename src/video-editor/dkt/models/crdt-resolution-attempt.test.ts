@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { drainCrdtOutbox } from "../test/crdtAssertions";
 import { createMiniCutTimelineFixture } from "../maelstrom/fixtures/createMiniCutTimelineFixture";
-import { network, user } from "../maelstrom/sim/MiniCutScenarioDSL";
+import { clipTimingGesture, network } from "../maelstrom/sim/MiniCutScenarioDSL";
 import { runMiniCutTrace } from "../maelstrom/sim/MiniCutTraceRunner";
 import { createMiniCutCrdtSimulation } from "../maelstrom/sim/createMiniCutCrdtSimulation";
 
@@ -33,8 +33,8 @@ describe("CRDT resolution attempt meta", () => {
 
 		await runMiniCutTrace(sim, [
 			network.partition(["A"], ["B"]),
-			user("A").dispatch("resize", { edge: "end", delta: -1 }, { target: "clip" }),
-			user("B").dispatch("resize", { edge: "end", delta: -2 }, { target: "clip" }),
+			clipTimingGesture("A").resizeEnd(-1, { batchId: "resolution:A:resize" }),
+			clipTimingGesture("B").resizeEnd(-2, { batchId: "resolution:B:resize" }),
 			network.heal(),
 			network.deliverAll({ duplicate: true, reorder: true, seed: 21 }),
 		], { clipByPeer: { A: clipA, B: clipB } });

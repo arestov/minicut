@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { drainCrdtOutbox } from "../test/crdtAssertions";
+import { dispatchClipTimingResizeGesture } from "../test/clipTimingGesture";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const createPairWithClip = async (roomId: string) => {
@@ -174,9 +175,21 @@ const openConflictCount = (
 const createTimingConflict = async (roomId: string) => {
 	const { pair, clipA, clipB } = await createPairWithClip(roomId);
 
-	await pair.a.dispatch(clipA, "resize", { edge: "end", delta: -1 });
+	await pair.a.ctx.lockToRead(async () => {
+		await dispatchClipTimingResizeGesture(pair.a.ctx, clipA, {
+			edge: "end",
+			delta: -1,
+			batchId: `${roomId}:A:resize`,
+		});
+	});
 	const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
-	await pair.b.dispatch(clipB, "resize", { edge: "end", delta: -2 });
+	await pair.b.ctx.lockToRead(async () => {
+		await dispatchClipTimingResizeGesture(pair.b.ctx, clipB, {
+			edge: "end",
+			delta: -2,
+			batchId: `${roomId}:B:resize`,
+		});
+	});
 	const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
 
 	await exchangeOps(pair, opsA, opsB);

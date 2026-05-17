@@ -5,7 +5,8 @@ export type MiniCutTraceStep =
 	| { type: "heal" }
 	| { type: "deliverAll"; duplicate?: boolean; reorder?: boolean; seed?: number }
 	| { type: "replayDelivered"; count?: number }
-	| { type: "dispatch"; peerId: MiniCutPeerId; target: "project" | "videoTrack" | "clip"; actionName: string; payload?: unknown; meta?: unknown };
+	| { type: "dispatch"; peerId: MiniCutPeerId; target: "project" | "videoTrack" | "clip"; actionName: string; payload?: unknown; meta?: unknown }
+	| { type: "clipTimingResizeGesture"; peerId: MiniCutPeerId; edge: "start" | "end"; delta: number; batchId: string };
 
 export const network = {
 	partition: (groupA: MiniCutPeerId[], groupB: MiniCutPeerId[]): MiniCutTraceStep => ({ type: "partition", groupA, groupB }),
@@ -23,6 +24,18 @@ export const user = (peerId: MiniCutPeerId) => ({
 			actionName,
 			payload,
 			meta: options.meta,
+		};
+	},
+});
+
+export const clipTimingGesture = (peerId: MiniCutPeerId) => ({
+	resizeEnd(delta: number, options: { batchId?: string } = {}): MiniCutTraceStep {
+		return {
+			type: "clipTimingResizeGesture",
+			peerId,
+			edge: "end",
+			delta,
+			batchId: options.batchId ?? `clip-timing:${peerId}:resize-end`,
 		};
 	},
 });

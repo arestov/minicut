@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { drainCrdtOutbox } from "../test/crdtAssertions";
 import { createMiniCutTimelineFixture } from "./fixtures/createMiniCutTimelineFixture";
 import { expectNoPendingNetwork, expectTimingConflictOpen } from "./sim/MiniCutInvariantChecker";
-import { network, user } from "./sim/MiniCutScenarioDSL";
+import { clipTimingGesture, network } from "./sim/MiniCutScenarioDSL";
 import { runMiniCutTrace } from "./sim/MiniCutTraceRunner";
 import { createMiniCutCrdtSimulation } from "./sim/createMiniCutCrdtSimulation";
 
@@ -34,8 +34,8 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 
 		await runMiniCutTrace(sim, [
 			network.partition(["A"], ["B"]),
-			user("A").dispatch("resize", { edge: "end", delta: -1 }, { target: "clip" }),
-			user("B").dispatch("resize", { edge: "end", delta: -2 }, { target: "clip" }),
+			clipTimingGesture("A").resizeEnd(-1, { batchId: "lifecycle:A:resize" }),
+			clipTimingGesture("B").resizeEnd(-2, { batchId: "lifecycle:B:resize" }),
 			network.heal(),
 			network.deliverAll({ duplicate: true, reorder: true, seed: 13 }),
 		], { clipByPeer: { A: clipA, B: clipB } });

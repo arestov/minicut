@@ -16,6 +16,7 @@ type PeerRuntime = {
 		target: RuntimeModel,
 		actionName: string,
 		payload?: unknown,
+		meta?: unknown,
 	) => Promise<void>;
 	flushOutbound: () => void;
 	readProjectTitle: () => unknown;
@@ -95,9 +96,9 @@ const createPeer = async (peerId: string): Promise<PeerRuntime> => {
 		ctx,
 		project,
 		videoTrack,
-		async dispatch(target, actionName, payload) {
+		async dispatch(target, actionName, payload, meta) {
 			await ctx.lockToRead(async () => {
-				await target.dispatch(actionName, payload);
+				await target.dispatch(actionName, payload, null, meta);
 			});
 		},
 		flushOutbound() {},

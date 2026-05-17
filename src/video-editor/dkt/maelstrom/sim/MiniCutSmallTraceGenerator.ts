@@ -1,4 +1,8 @@
-import { network, user, type MiniCutTraceStep } from "./MiniCutScenarioDSL";
+import {
+	clipTimingGesture,
+	network,
+	type MiniCutTraceStep,
+} from "./MiniCutScenarioDSL";
 
 export type MiniCutGeneratedTrace = {
 	seed: number;
@@ -19,8 +23,12 @@ export const generateMiniCutSmallTrace = (seed: number): MiniCutGeneratedTrace =
 		family: "timing_edit_vs_timing_edit",
 		steps: [
 			network.partition(["A"], ["B"]),
-			user("A").dispatch("resize", { edge: "end", delta: first }, { target: "clip" }),
-			user("B").dispatch("resize", { edge: "end", delta: second }, { target: "clip" }),
+			clipTimingGesture("A").resizeEnd(first, {
+				batchId: `generated:${seed}:A:resize`,
+			}),
+			clipTimingGesture("B").resizeEnd(second, {
+				batchId: `generated:${seed}:B:resize`,
+			}),
 			network.heal(),
 		],
 	};
