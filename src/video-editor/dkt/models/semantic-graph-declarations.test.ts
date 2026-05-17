@@ -362,6 +362,7 @@ describe("semantic graph declarations", () => {
 		expect(
 			getCrdtSection(Resource as unknown as Record<string, unknown>, "attrs"),
 		).toMatchObject({
+			"$meta$removed": "lww",
 			status: null,
 			timelineAddRequest: null,
 		});

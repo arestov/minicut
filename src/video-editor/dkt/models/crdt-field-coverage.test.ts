@@ -115,6 +115,7 @@ const MODEL_CASES: ModelCase[] = [
 		model: Resource as unknown as Record<string, unknown>,
 		fields: {
 			attrs: {
+				"$meta$removed": "crdt",
 				name: "crdt",
 				kind: "crdt",
 				url: "crdt",
@@ -246,7 +247,13 @@ describe("CRDT field coverage", () => {
 	it("classifies every MiniCut input attr and rel", () => {
 		for (const entry of MODEL_CASES) {
 			for (const section of ["attrs", "rels"] as const) {
-				const inputFields = getInputFieldNames(entry.model, section);
+				const systemFields = Object.keys(entry.fields[section]).filter((name) =>
+					name.startsWith("$meta$"),
+				);
+				const inputFields = [
+					...getInputFieldNames(entry.model, section),
+					...systemFields,
+				].sort();
 				const classifiedFields = Object.keys(entry.fields[section]).sort();
 
 				expect(classifiedFields, entry.name + "." + section).toEqual(

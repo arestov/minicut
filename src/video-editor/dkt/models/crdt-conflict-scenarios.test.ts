@@ -104,6 +104,51 @@ const createPairWithTextClip = async (roomId: string) => {
 	return { pair, clipA, clipB, textA, textB };
 };
 
+const createPairWithResourceClip = async (roomId: string) => {
+	const pair = await createCrdtWorkerPair({
+		roomId,
+		profileId: "minicut-crdt-v1",
+		profileVersion: 1,
+	});
+	for (const peer of [pair.a, pair.b]) {
+		await peer.dispatch(peer.project, "importResource", {
+			name: "dangling-resource.webm",
+			kind: "video",
+			url: "memory://dangling-resource.webm",
+			mime: "video/webm",
+			duration: 4,
+			status: "ready",
+		});
+		const resource = (await peer.ctx.queryRel(peer.project, "resources"))[0];
+		if (!resource) {
+			throw new Error("Expected resource fixture");
+		}
+		await peer.dispatch(peer.videoTrack, "addClip", {
+			name: "dangling-resource-clip.webm",
+			mediaKind: "video",
+			start: 0,
+			in: 0,
+			duration: 4,
+		});
+		const clip = (await peer.ctx.queryRel(peer.videoTrack, "clips"))[0];
+		if (!clip) {
+			throw new Error("Expected clip fixture");
+		}
+		await peer.dispatch(clip, "setResource", { resource });
+		drainCrdtOutbox(peer.ctx.runtime);
+	}
+	const resourceA = (await pair.a.ctx.queryRel(pair.a.project, "resources"))[0];
+	const resourceB = (await pair.b.ctx.queryRel(pair.b.project, "resources"))[0];
+	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
+	if (!resourceA || !resourceB || !clipA || !clipB) {
+		throw new Error("Expected matching resource clip fixtures");
+	}
+	expect(resourceA._node_id).toBe(resourceB._node_id);
+	expect(clipA._node_id).toBe(clipB._node_id);
+	return { pair, resourceA, resourceB, clipA, clipB };
+};
+
 const exchangeOps = async (
 	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
 	opsA: unknown[],
@@ -423,7 +468,29 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
-	it.todo(
-		"records dangling resource ref conflict meta when MiniCut adds resource tombstone attrs",
-	);
+	it("records dangling resource ref conflict meta for resource tombstone", async () => {
+		const { pair, resourceA, resourceB, clipA } =
+			await createPairWithResourceClip("room-conflict-dangling-resource-ref");
+
+		expect((await pair.a.ctx.queryRel(clipA, "resource"))[0]?._node_id).toBe(
+			resourceA._node_id,
+		);
+
+		await pair.b.dispatch(resourceB, "removeSelf");
+		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+		pair.transportB.sendOps({ ops: opsB });
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(resourceA, [
+				"$meta$aggregates$crdt$resourceLifecycle$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(pair.a.ctx.getAttr(resourceA, "$meta$removed") ?? false).toBe(false);
+		expect((await pair.a.ctx.queryRel(clipA, "resource"))[0]?._node_id).toBe(
+			resourceA._node_id,
+		);
+		pair.close();
+	});
 });

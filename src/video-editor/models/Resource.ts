@@ -37,6 +37,7 @@ export const Resource = model({
 	model_name: "resource",
 	crdt: {
 		attrs: {
+			"$meta$removed": "lww",
 			name: "lww",
 			kind: "lww",
 			url: "lww",
@@ -195,6 +196,12 @@ export const Resource = model({
 				(payload: unknown, noop: unknown) =>
 					reduceRenameResource(payload) ?? noop,
 			],
+		},
+		removeSelf: {
+			to: {
+				"$meta$removed": ["$meta$removed"],
+			},
+			fn: () => ({ "$meta$removed": true }),
 		},
 		setResourceStatus: {
 			aggregate: {
