@@ -8,17 +8,17 @@ const pairOptions = (roomId: string) => ({
 	profileVersion: 1,
 });
 
-const addMatchingClip = async (pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>) => {
-	for (const peer of [pair.a, pair.b]) {
-		await peer.dispatch(peer.videoTrack, "addClip", {
-			name: "relay-fixture.webm",
-			mediaKind: "video",
-			start: 0,
-			in: 0,
-			duration: 4,
-		});
-		drainCrdtOutbox(peer.ctx.runtime);
-	}
+const addMatchingClip = async (
+	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
+) => {
+	await pair.a.dispatch(pair.a.videoTrack, "addClip", {
+		name: "relay-fixture.webm",
+		mediaKind: "video",
+		start: 0,
+		in: 0,
+		duration: 4,
+	});
+	await pair.syncBaselineFrom("A");
 	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
 	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
 	if (!clipA || !clipB) {
@@ -36,7 +36,7 @@ describe("MiniCut CRDT relay convergence", () => {
 		pair.a.flushOutbound();
 		await pair.waitForConvergence();
 
-		expect(pair.b.readProjectTitle()).toBe("Relay title");
+		await expect(pair.b.readProjectTitle()).resolves.toBe("Relay title");
 		expect(drainCrdtOutbox(pair.b.ctx.runtime)).toEqual([]);
 		pair.close();
 	});
@@ -49,13 +49,13 @@ describe("MiniCut CRDT relay convergence", () => {
 		if (!clipA) {
 			throw new Error("Expected matching clip");
 		}
-		const originalClipIds = pair.b.readVideoClipIds();
+		const originalClipIds = await pair.b.readVideoClipIds();
 
 		await pair.a.dispatch(clipA, "removeSelf");
 		pair.a.flushOutbound();
 		await pair.waitForConvergence();
 
-		expect(pair.b.readVideoClipIds()).toEqual(originalClipIds);
+		await expect(pair.b.readVideoClipIds()).resolves.toEqual(originalClipIds);
 		expect(
 			Number(
 				pair.b.ctx.getAttr(
@@ -90,7 +90,9 @@ describe("MiniCut CRDT relay convergence", () => {
 		pair.transportA.sendOps({ ops });
 		await pair.waitForConvergence();
 
-		expect(pair.b.readProjectTitle()).toBe("Duplicate-safe title");
+		await expect(pair.b.readProjectTitle()).resolves.toBe(
+			"Duplicate-safe title",
+		);
 		expect(pair.relay.getRoomSnapshot("room-duplicate").log).toHaveLength(1);
 		pair.close();
 	});
