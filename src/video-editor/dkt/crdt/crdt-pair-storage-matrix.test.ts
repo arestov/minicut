@@ -1,34 +1,40 @@
-import { indexedDB } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 import { bootDktModels, type DktTestContext } from "../testingInit";
 import { drainCrdtOutbox } from "../test/crdtAssertions";
+import { createMiniCutCrdtStorageProfiles } from "../test/crdtStorageMatrix";
 import type { MiniCutDktCrdtStorageOptions } from "../testingInit";
+import type { MiniCutCrdtStorageProfile } from "../test/crdtStorageMatrix";
 
 type Model = DktTestContext["sessionRoot"];
 
-const storageProfiles: {
-	name: "memory" | "indexeddb";
-	storage: (peerId: string) => MiniCutDktCrdtStorageOptions;
-}[] = [
-	{ name: "memory", storage: () => "memory" },
-	{
-		name: "indexeddb",
-		storage: (peerId) => ({
-			type: "indexeddb",
-			dbName: `minicut-pair-indexeddb-${peerId}-${Date.now()}-${Math.random()
-				.toString(36)
-				.slice(2)}`,
-			indexedDB,
-		}),
-	},
-];
+const storageForPeer = (
+	profile: MiniCutCrdtStorageProfile,
+	peerId: string,
+): MiniCutDktCrdtStorageOptions => {
+	if (profile.storage === "memory" || profile.storage.type === "memory") {
+		return profile.storage;
+	}
+	if (profile.storage.type === "indexeddb") {
+		return {
+			...profile.storage,
+			dbName: `${profile.storage.dbName}-${peerId}`,
+		};
+	}
+	return profile.storage;
+};
 
 const createPeer = async (
 	peerId: string,
-	storage: MiniCutDktCrdtStorageOptions,
+	profile: MiniCutCrdtStorageProfile,
 ) => {
 	const ctx = await bootDktModels({
-		crdt: { enabled: true, peerId, storage, transport: null },
+		crdt: {
+			enabled: true,
+			peerId,
+			storage: storageForPeer(profile, peerId),
+			transport: null,
+		},
+		unloadModels: profile.unloadModels,
 	});
 	await ctx.lockToRead(async () => {
 		await ctx.sessionRoot.dispatch("createProject", {
@@ -37,9 +43,14 @@ const createPeer = async (
 	});
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected project");
-	const videoTrack = (await ctx.queryRel(project, "tracks")).find(
-		(track) => ctx.getAttr(track, "kind") === "video",
+	const tracks = await ctx.queryRel(project, "tracks");
+	const trackKinds = await Promise.all(
+		tracks.map(async (track) => ({
+			track,
+			kind: await ctx.queryAttr(track, "kind"),
+		})),
 	);
+	const videoTrack = trackKinds.find((item) => item.kind === "video")?.track;
 	if (!videoTrack) throw new Error("Expected video track");
 	drainCrdtOutbox(ctx.runtime);
 	return { ctx, project, videoTrack };
@@ -67,10 +78,10 @@ const mapOpsToNode = (ops: unknown[], nodeId: string) =>
 		.map((op) => ({ ...(op as object), node_id: nodeId }));
 
 describe("MiniCut CRDT pair storage matrix", () => {
-	for (const profile of storageProfiles) {
+	for (const profile of createMiniCutCrdtStorageProfiles()) {
 		it(`applies mapped timing edits with ${profile.name}`, async () => {
-			const a = await createPeer("A", profile.storage("A"));
-			const b = await createPeer("B", profile.storage("B"));
+			const a = await createPeer("A", profile);
+			const b = await createPeer("B", profile);
 			const clipA = await addClip(a.ctx, a.videoTrack);
 			const clipB = await addClip(b.ctx, b.videoTrack);
 
@@ -83,9 +94,9 @@ describe("MiniCut CRDT pair storage matrix", () => {
 			);
 			await b.ctx.computed();
 
-			expect(b.ctx.getAttr(clipB, "start")).toBe(1);
-			expect(b.ctx.getAttr(clipB, "in")).toBe(1);
-			expect(b.ctx.getAttr(clipB, "duration")).toBe(3);
+			await expect(b.ctx.queryAttr(clipB, "start")).resolves.toBe(1);
+			await expect(b.ctx.queryAttr(clipB, "in")).resolves.toBe(1);
+			await expect(b.ctx.queryAttr(clipB, "duration")).resolves.toBe(3);
 			await a.ctx.close();
 			await b.ctx.close();
 		});

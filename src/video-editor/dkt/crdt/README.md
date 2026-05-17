@@ -14,9 +14,9 @@ MiniCut accepts DKT's public CRDT storage packages through `crdt.storage`.
 | --- | --- | --- | --- |
 | `memory` | `makeDktCrdtMemoryStorage()` | off | fast model, relay, and maelstrom tests |
 | `indexeddb` | `makeDktCrdtIndexedDBStorage()` | off | browser worker durable smoke tests |
-| `lazy-indexeddb` | `makeDktCrdtIndexedDBStorage()` | on | planned targeted unload/lazy carrier tests |
+| `lazy-indexeddb` | `makeDktCrdtIndexedDBStorage()` | on | unload/lazy carrier pair tests |
 
-The web worker production path should use IndexedDB when CRDT is enabled. Memory remains a test/default harness storage only. Lazy unload is opt-in via `unloadModels: true`; durable storage alone must not enable unload implicitly. Full MiniCut lazy runtime is still blocked by DKT effect reads over unloaded `session_root` models, so the automated MiniCut matrix currently runs memory and IndexedDB durable profiles only.
+The web worker production path should use IndexedDB when CRDT is enabled. Memory remains a test/default harness storage only. Lazy unload is opt-in via `unloadModels: true`; durable storage alone must not enable unload implicitly. The pair storage matrix runs memory, IndexedDB, and lazy IndexedDB profiles so CRDT receive paths keep working when MiniCut models are unloaded between transactions.
 
 ## Relay Harness
 
