@@ -18,8 +18,8 @@ export type MiniCutPeer = {
 	audioTrack: RuntimeModel;
 	dispatch: (target: RuntimeModel, actionName: string, payload?: unknown, meta?: unknown) => Promise<void>;
 	flushOutbound: () => void;
-	readProjectTitle: () => unknown;
-	readVideoClipIds: () => string[];
+	readProjectTitle: () => Promise<unknown>;
+	readVideoClipIds: () => Promise<string[]>;
 	readConflictSummary: () => MiniCutConflictSummary;
 };
 
@@ -42,9 +42,26 @@ const findModel = (ctx: DktTestContext, nodeId: string): RuntimeModel => {
 	return sessionModel;
 };
 
-const receiveNetworkMessage = async (ctx: DktTestContext, message: MiniCutNetworkMessage) => {
+type NodeAliasMap = Map<string, string>;
+
+const remapOpNode = (op: unknown, aliases: NodeAliasMap): unknown => {
+	if (!op || typeof op !== "object") return op;
+	const next = { ...(op as Record<string, unknown>) };
+	const nodeId = typeof next.node_id === "string" ? next.node_id : null;
+	if (nodeId && aliases.has(nodeId)) {
+		next.node_id = aliases.get(nodeId);
+	}
+	return next;
+};
+
+const receiveNetworkMessage = async (
+	ctx: DktTestContext,
+	message: MiniCutNetworkMessage,
+	aliases: NodeAliasMap,
+) => {
 	const opsByNode = new Map<string, unknown[]>();
-	for (const op of message.packet.ops ?? []) {
+	for (const rawOp of message.packet.ops ?? []) {
+		const op = remapOpNode(rawOp, aliases);
 		const nodeId = (op as { node_id?: unknown } | null)?.node_id;
 		if (typeof nodeId !== "string" || !nodeId) {
 			throw new Error("MiniCut maelstrom received op without node_id");
@@ -79,15 +96,22 @@ const wrapPeer = async (
 	id: MiniCutPeerId,
 	ctx: DktTestContext,
 	network: DeterministicMiniCutNetwork,
+	aliasMaps: Map<MiniCutPeerId, NodeAliasMap>,
 ): Promise<MiniCutPeer> => {
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected active project");
 	const tracks = await ctx.queryRel(project, "tracks");
-	const videoTrack = tracks.find((track) => ctx.getAttr(track, "kind") === "video");
-	const audioTrack = tracks.find((track) => ctx.getAttr(track, "kind") === "audio");
+	const trackKinds = await Promise.all(
+		tracks.map(async (track) => ({
+			track,
+			kind: await ctx.queryAttr(track, "kind"),
+		})),
+	);
+	const videoTrack = trackKinds.find((item) => item.kind === "video")?.track;
+	const audioTrack = trackKinds.find((item) => item.kind === "audio")?.track;
 	if (!videoTrack || !audioTrack) throw new Error("Expected video and audio tracks");
 
-	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
+	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message, aliasMaps.get(id) ?? new Map()));
 
 	return {
 		id,
@@ -111,16 +135,12 @@ const wrapPeer = async (
 				});
 			}
 		},
-		readProjectTitle() {
-			return ctx.getAttr(project, "title");
+		async readProjectTitle() {
+			return ctx.queryAttr(project, "title");
 		},
-		readVideoClipIds() {
-			const clips = videoTrack.children_models?.clips;
-			return Array.isArray(clips)
-				? clips
-						.map((entry: unknown) => typeof entry === "string" ? entry : (entry as { _node_id?: unknown } | null)?._node_id)
-						.filter((value): value is string => typeof value === "string")
-				: [];
+		async readVideoClipIds() {
+			const clips = await ctx.queryRel(videoTrack, "clips");
+			return clips.map((clip) => String(clip._node_id));
 		},
 		readConflictSummary() {
 			return {
@@ -136,6 +156,7 @@ const createPeer = async (
 	id: MiniCutPeerId,
 	network: DeterministicMiniCutNetwork,
 	options: SimulationOptions,
+	aliasMaps: Map<MiniCutPeerId, NodeAliasMap>,
 ): Promise<MiniCutPeer> => {
 	const ctx = await bootDktModels({
 		aggregateValidation: "error",
@@ -159,15 +180,36 @@ const createPeer = async (
 		});
 	});
 	drainCrdtOutbox(ctx.runtime);
-	return wrapPeer(id, ctx, network);
+	return wrapPeer(id, ctx, network, aliasMaps);
+};
+
+const addBaseGraphAliases = (
+	peers: Map<MiniCutPeerId, MiniCutPeer>,
+	aliasMaps: Map<MiniCutPeerId, NodeAliasMap>,
+) => {
+	for (const toPeer of peers.values()) {
+		const aliases = aliasMaps.get(toPeer.id);
+		if (!aliases) continue;
+		for (const fromPeer of peers.values()) {
+			if (fromPeer.id === toPeer.id) continue;
+			aliases.set(String(fromPeer.project._node_id), String(toPeer.project._node_id));
+			aliases.set(String(fromPeer.videoTrack._node_id), String(toPeer.videoTrack._node_id));
+			aliases.set(String(fromPeer.audioTrack._node_id), String(toPeer.audioTrack._node_id));
+		}
+	}
 };
 
 export const createMiniCutCrdtSimulation = async (options: SimulationOptions) => {
 	const network = new DeterministicMiniCutNetwork();
 	const peers = new Map<MiniCutPeerId, MiniCutPeer>();
+	const aliasMaps = new Map<MiniCutPeerId, NodeAliasMap>();
 	for (const id of options.peers) {
-		peers.set(id, await createPeer(id, network, options));
+		aliasMaps.set(id, new Map());
 	}
+	for (const id of options.peers) {
+		peers.set(id, await createPeer(id, network, options, aliasMaps));
+	}
+	addBaseGraphAliases(peers, aliasMaps);
 
 	return {
 		network,
@@ -200,8 +242,9 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 					transport: null,
 				},
 			});
-			const restarted = await wrapPeer(id, ctx, network);
+			const restarted = await wrapPeer(id, ctx, network, aliasMaps);
 			peers.set(id, restarted);
+			addBaseGraphAliases(peers, aliasMaps);
 			return restarted;
 		},
 	};

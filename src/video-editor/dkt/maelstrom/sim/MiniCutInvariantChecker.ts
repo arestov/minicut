@@ -19,8 +19,8 @@ export const expectNonNegativeCrdtMeta = (peer: MiniCutPeer) => {
 	}
 };
 
-export const expectUniqueVideoClipIds = (peer: MiniCutPeer) => {
-	const clipIds = peer.readVideoClipIds();
+export const expectUniqueVideoClipIds = async (peer: MiniCutPeer) => {
+	const clipIds = await peer.readVideoClipIds();
 	expect(new Set(clipIds).size).toBe(clipIds.length);
 };
 

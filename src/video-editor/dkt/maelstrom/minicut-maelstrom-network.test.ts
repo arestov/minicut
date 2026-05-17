@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { expectNoPendingNetwork, expectNonNegativeCrdtMeta, expectUniqueVideoClipIds } from "./sim/MiniCutInvariantChecker";
+import { createMiniCutMaelstromProfiles } from "./sim/MiniCutMaelstromProfiles";
 import { network, user } from "./sim/MiniCutScenarioDSL";
 import { runMiniCutTrace } from "./sim/MiniCutTraceRunner";
 import { createMiniCutCrdtSimulation } from "./sim/createMiniCutCrdtSimulation";
 
 describe("MiniCut maelstrom deterministic network", () => {
-	it("converges public project attrs after partition healing", async () => {
-		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
+	for (const profile of createMiniCutMaelstromProfiles()) {
+	it(`converges public project attrs after partition healing with ${profile.name}`, async () => {
+		const sim = await createMiniCutCrdtSimulation({
+			peers: ["A", "B"],
+			storage: profile.storage,
+			unloadModels: profile.unloadModels,
+		});
 
 		await runMiniCutTrace(sim, [
 			network.partition(["A"], ["B"]),
@@ -16,16 +22,20 @@ describe("MiniCut maelstrom deterministic network", () => {
 			network.deliverAll({ duplicate: true, reorder: true, seed: 7 }),
 		]);
 
-		expect(sim.peer("B").readProjectTitle()).toBe("Maelstrom title");
+		await expect(sim.peer("B").readProjectTitle()).resolves.toBe("Maelstrom title");
 		expectNoPendingNetwork(sim.network);
 		for (const peerId of ["A", "B"] as const) {
 			expectNonNegativeCrdtMeta(sim.peer(peerId));
-			expectUniqueVideoClipIds(sim.peer(peerId));
+			await expectUniqueVideoClipIds(sim.peer(peerId));
 		}
 	});
 
-	it("keeps duplicate delivered packets idempotent", async () => {
-		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
+	it(`keeps duplicate delivered packets idempotent with ${profile.name}`, async () => {
+		const sim = await createMiniCutCrdtSimulation({
+			peers: ["A", "B"],
+			storage: profile.storage,
+			unloadModels: profile.unloadModels,
+		});
 
 		await runMiniCutTrace(sim, [
 			user("A").dispatch("renameProject", "Duplicate replay title"),
@@ -33,7 +43,8 @@ describe("MiniCut maelstrom deterministic network", () => {
 			network.replayDelivered(2),
 		]);
 
-		expect(sim.peer("B").readProjectTitle()).toBe("Duplicate replay title");
+		await expect(sim.peer("B").readProjectTitle()).resolves.toBe("Duplicate replay title");
 		expectNoPendingNetwork(sim.network);
 	});
+	}
 });

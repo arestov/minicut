@@ -9,8 +9,8 @@ export const readMiniCutPublicSummary = async (peers: MiniCutPeer[]) => {
 		const clips = await peer.ctx.queryRel(peer.videoTrack, "clips");
 		peerSummaries.push({
 			peerId: peer.id,
-			projectTitle: peer.readProjectTitle(),
-			videoClipIds: peer.readVideoClipIds(),
+			projectTitle: await peer.readProjectTitle(),
+			videoClipIds: await peer.readVideoClipIds(),
 			clips: clips.map((clip) => ({
 				id: clip._node_id,
 				start: peer.ctx.getAttr(clip, "start"),
