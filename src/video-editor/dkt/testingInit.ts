@@ -11,6 +11,7 @@
  */
 
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
+import { makeDktCrdtIndexedDBStorage } from "dkt/crdt/storage/indexeddb.js";
 import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { _getCurrentRel } from "dkt-all/libs/provoda/_internal/_listRels.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
@@ -51,6 +52,19 @@ export type MiniCutDktCrdtStoragePackage = {
 	whenReady?: () => Promise<void> | void;
 	close?: () => Promise<void> | void;
 };
+
+export type MiniCutDktCrdtStorageOptions =
+	| "memory"
+	| MiniCutDktCrdtStoragePackage
+	| {
+			type: "memory";
+	  }
+	| {
+			type: "indexeddb";
+			dbName: string;
+			version?: number;
+			indexedDB?: unknown;
+	  };
 
 type FlowErrorsCatcher = {
 	last_error_prom: Promise<unknown>;
@@ -170,6 +184,8 @@ export type DktTestContext = {
 	queryRel: typeof queryRel;
 	getAttr: typeof getAttr;
 	findByAttr: typeof findByAttr;
+	storagePackage: MiniCutDktCrdtStoragePackage | null;
+	close: () => Promise<void>;
 };
 
 export type BootDktModelsOptions = {
@@ -178,6 +194,7 @@ export type BootDktModelsOptions = {
 		inverseValidation?: "off" | "warn" | "error";
 	};
 	aggregateValidation?: "error" | "warn" | "off";
+	unloadModels?: boolean;
 	crdt?:
 		| false
 		| {
@@ -185,27 +202,53 @@ export type BootDktModelsOptions = {
 				peerId?: string;
 				profileId?: string;
 				profileVersion?: number;
-				storage?: "memory" | MiniCutDktCrdtStoragePackage;
+				storage?: MiniCutDktCrdtStorageOptions;
 				transport?: null;
 			};
 };
 
-const createCrdtRuntimeForTests = (
+const isStoragePackage = (
+	value: MiniCutDktCrdtStorageOptions | undefined,
+): value is MiniCutDktCrdtStoragePackage =>
+	Boolean(
+		value &&
+			typeof value === "object" &&
+			"dktStorage" in value &&
+			"crdtStorage" in value,
+	);
+
+const createStoragePackage = async (
+	storage: MiniCutDktCrdtStorageOptions | undefined,
+): Promise<MiniCutDktCrdtStoragePackage> => {
+	if (isStoragePackage(storage)) {
+		return storage;
+	}
+	if (!storage || storage === "memory" || storage.type === "memory") {
+		return makeDktCrdtMemoryStorage();
+	}
+	if (storage.type === "indexeddb") {
+		return makeDktCrdtIndexedDBStorage({
+			dbName: storage.dbName,
+			version: storage.version,
+			indexedDB: storage.indexedDB,
+		}) as Promise<MiniCutDktCrdtStoragePackage>;
+	}
+	throw new Error("Unsupported MiniCut CRDT storage option");
+};
+
+const createCrdtRuntimeForTests = async (
 	options: BootDktModelsOptions["crdt"],
-): {
+): Promise<{
 	crdtRuntime: MiniCutDktCrdtRuntime | null;
 	storagePackage: MiniCutDktCrdtStoragePackage | null;
-} => {
+}> => {
 	if (!options || options.enabled !== true) {
 		return { crdtRuntime: null, storagePackage: null };
 	}
 	if (options.transport !== undefined && options.transport !== null) {
 		throw new Error("MiniCut CRDT bootDktModels only supports null transport");
 	}
-	const storagePackage =
-		options.storage && options.storage !== "memory"
-			? options.storage
-			: makeDktCrdtMemoryStorage();
+	const storagePackage = await createStoragePackage(options.storage);
 	return {
 		crdtRuntime: new DktCRDTEngine({
 			peer_id: options.peerId ?? "minicut-test-peer",
@@ -224,12 +267,14 @@ export const bootDktModels = async (
 	options: BootDktModelsOptions = {},
 ): Promise<DktTestContext> => {
 	const errorsCatcher = catchFlowErrors();
-	const { crdtRuntime, storagePackage } = createCrdtRuntimeForTests(options.crdt);
+	const { crdtRuntime, storagePackage } = await createCrdtRuntimeForTests(
+		options.crdt,
+	);
 	const runtime = prepareAppRuntime({
 		sync_sender: false,
 		proxies: false,
 		warnUnexpectedAttrs: false,
-		unload_models: false,
+		unload_models: options.unloadModels === true,
 		graphSemantics: options.graphSemantics,
 		aggregateValidation: options.aggregateValidation,
 		...(crdtRuntime ? { crdtRuntime } : null),
@@ -344,5 +389,9 @@ export const bootDktModels = async (
 		queryRel,
 		getAttr,
 		findByAttr,
+		storagePackage,
+		close: async () => {
+			await storagePackage?.close?.();
+		},
 	};
 };

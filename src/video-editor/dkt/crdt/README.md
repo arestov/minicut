@@ -4,7 +4,19 @@ MiniCut keeps CRDT transport behind test-only runtime options. The production wo
 
 ## Test Runtime
 
-Use `createMiniCutDktRuntime({ crdt: { enabled: true, peerId, transport } })` or `bootDktModels({ crdt: true })` in tests. Both paths inject DKT's CRDT runtime through `prepareAppRuntime({ crdtRuntime })` and leave the default runtime unchanged.
+Use `createMiniCutDktRuntime({ crdt: { enabled: true, peerId, transport } })` or `bootDktModels({ crdt: { enabled: true, peerId } })` in tests. Both paths inject DKT's CRDT runtime through `prepareAppRuntime({ crdtRuntime })` and leave the default runtime unchanged.
+
+## Storage Matrix
+
+MiniCut accepts DKT's public CRDT storage packages through `crdt.storage`.
+
+| Profile | Storage | Unload | Use |
+| --- | --- | --- | --- |
+| `memory` | `makeDktCrdtMemoryStorage()` | off | fast model, relay, and maelstrom tests |
+| `indexeddb` | `makeDktCrdtIndexedDBStorage()` | off | browser worker durable smoke tests |
+| `lazy-indexeddb` | `makeDktCrdtIndexedDBStorage()` | on | targeted unload/lazy carrier tests |
+
+The web worker production path should use IndexedDB when CRDT is enabled. Memory remains a test/default harness storage only. Lazy unload is opt-in via `unloadModels: true`; durable storage alone must not enable unload implicitly.
 
 ## Relay Harness
 
@@ -20,4 +32,4 @@ Run the focused suite with:
 npm run test:video-editor:crdt
 ```
 
-The suite covers declaration shape, local op staging/rollback, runtime bootstrap, relay contracts, two-peer convergence, one real timing conflict scenario, and the jsdom conflict command UI. Structural conflict scenarios that depend on future deterministic DKT detector projection are recorded as `todo` tests in `crdt-conflict-scenarios.test.ts`.
+The suite covers declaration shape, storage profiles, local op staging/rollback, runtime bootstrap, relay contracts, two-peer convergence, one real timing conflict scenario, MiniCut maelstrom traces, and the jsdom conflict command UI.

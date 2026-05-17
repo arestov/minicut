@@ -3,6 +3,7 @@ import type {
 	DomSyncTransportViewLike,
 } from "dkt/dom-sync/transport.js";
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
+import { makeDktCrdtIndexedDBStorage } from "dkt/crdt/storage/indexeddb.js";
 import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
@@ -72,6 +73,19 @@ type MiniCutCrdtStoragePackage = {
 	close?: () => Promise<void> | void;
 };
 
+type MiniCutCrdtStorageOptions =
+	| "memory"
+	| MiniCutCrdtStoragePackage
+	| {
+			type: "memory";
+	  }
+	| {
+			type: "indexeddb";
+			dbName: string;
+			version?: number;
+			indexedDB?: unknown;
+	  };
+
 type MiniCutCrdtOptions =
 	| false
 	| {
@@ -80,13 +94,14 @@ type MiniCutCrdtOptions =
 			peerId?: string;
 			profileId?: string;
 			profileVersion?: number;
-			storage?: "memory" | MiniCutCrdtStoragePackage;
+			storage?: MiniCutCrdtStorageOptions;
 			transport?: MiniCutCrdtTransport | null;
 		};
 
 type CreateMiniCutDktRuntimeOptions = {
 	enabled?: boolean;
 	crdt?: MiniCutCrdtOptions;
+	unloadModels?: boolean;
 };
 
 type RuntimeLike = {
@@ -110,16 +125,45 @@ type RuntimeLike = {
 	crdt_runtime?: MiniCutCrdtRuntimeLike | null;
 };
 
-const createCrdtRuntimeForTests = (
+const isStoragePackage = (
+	value: MiniCutCrdtStorageOptions | undefined,
+): value is MiniCutCrdtStoragePackage =>
+	Boolean(
+		value &&
+			typeof value === "object" &&
+			"dktStorage" in value &&
+			"crdtStorage" in value,
+	);
+
+const createStoragePackage = async (
+	storage: MiniCutCrdtStorageOptions | undefined,
+): Promise<MiniCutCrdtStoragePackage> => {
+	if (isStoragePackage(storage)) {
+		return storage;
+	}
+	if (!storage || storage === "memory" || storage.type === "memory") {
+		return makeDktCrdtMemoryStorage();
+	}
+	if (storage.type === "indexeddb") {
+		return makeDktCrdtIndexedDBStorage({
+			dbName: storage.dbName,
+			version: storage.version,
+			indexedDB: storage.indexedDB,
+		}) as Promise<MiniCutCrdtStoragePackage>;
+	}
+	throw new Error("Unsupported MiniCut CRDT storage option");
+};
+
+const createCrdtRuntimeForTests = async (
 	options: MiniCutCrdtOptions | undefined,
-): {
+): Promise<{
 	crdtRuntime: MiniCutCrdtRuntimeLike | null;
 	storagePackage: MiniCutCrdtStoragePackage | null;
 	peerId: string;
 	profileId: string;
 	profileVersion: number;
 	transport: MiniCutCrdtTransport | null;
-} => {
+}> => {
 	if (!options || options.enabled !== true) {
 		return {
 			crdtRuntime: null,
@@ -134,10 +178,7 @@ const createCrdtRuntimeForTests = (
 		throw new Error("MiniCut CRDT runtime is test-only in this phase");
 	}
 	const peerId = options.peerId ?? "minicut-test-worker";
-	const storagePackage =
-		options.storage && options.storage !== "memory"
-			? options.storage
-			: makeDktCrdtMemoryStorage();
+	const storagePackage = await createStoragePackage(options.storage);
 	return {
 		crdtRuntime: new DktCRDTEngine({
 			peer_id: peerId,
@@ -248,7 +289,7 @@ const crdtResolutionAttemptMeta = (
 export const createMiniCutDktRuntime = (
 	options: CreateMiniCutDktRuntimeOptions = {},
 ) => {
-	const crdt = createCrdtRuntimeForTests(options.crdt);
+	const crdtPromise = createCrdtRuntimeForTests(options.crdt);
 	let crdtTransportCleanup: (() => void) | null = null;
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
@@ -331,10 +372,11 @@ export const createMiniCutDktRuntime = (
 
 		if (!bootPromise) {
 			bootPromise = (async () => {
+				const crdt = await crdtPromise;
 				const runtime = prepareAppRuntime({
 					sync_sender: true,
 					warnUnexpectedAttrs: true,
-					unload_models: false,
+					unload_models: options.unloadModels === true,
 					...(crdt.crdtRuntime ? { crdtRuntime: crdt.crdtRuntime } : null),
 					...(crdt.storagePackage
 						? { dkt_storage: crdt.storagePackage.dktStorage }
@@ -687,7 +729,10 @@ export const createMiniCutDktRuntime = (
 						app.runtime.sync_sender.removeSyncStream(stream);
 					}
 				})
-				.then(() => crdt.storagePackage?.close?.())
+				.then(async () => {
+					const crdt = await crdtPromise;
+					await crdt.storagePackage?.close?.();
+				})
 				.finally(() => {
 					stream = null;
 					transport.destroy();
@@ -708,6 +753,7 @@ export const createMiniCutDktRuntime = (
 				crdt: { enabled: false },
 			};
 		}
+		const crdt = await crdtPromise;
 		const durableLog = app.runtime.crdt_runtime?.testing?.peekDurableLog?.();
 
 		return {

@@ -1,4 +1,5 @@
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
+import { indexedDB } from "fake-indexeddb";
 import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { describe, expect, it } from "vitest";
 import { bootDktModels } from "../testingInit";
@@ -109,6 +110,32 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 			hasRegistry: true,
 		});
 		await storagePackage.close?.();
+	});
+
+	it("boots with IndexedDB CRDT storage for browser workers", async () => {
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				testOnly: true,
+				peerId: "worker-crdt-indexeddb",
+				storage: {
+					type: "indexeddb",
+					dbName: `minicut-worker-crdt-${Date.now()}`,
+					indexedDB,
+				},
+				transport: null,
+			},
+		});
+
+		const dump = await runtime.debugDumpState();
+
+		expect(dump.crdt).toMatchObject({
+			enabled: true,
+			peerId: "worker-crdt-indexeddb",
+			durableLogCount: 0,
+			hasRegistry: true,
+		});
 	});
 
 	it("stages local CRDT ops through bootDktModels dispatch", async () => {
