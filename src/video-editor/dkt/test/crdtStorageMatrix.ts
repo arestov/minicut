@@ -4,7 +4,7 @@ import type { MiniCutDktCrdtStorageOptions } from "../testingInit";
 let nextIndexedDbId = 0;
 
 export type MiniCutCrdtStorageProfile = {
-	name: "memory" | "indexeddb" | "lazy-indexeddb";
+	name: "memory" | "indexeddb";
 	unloadModels: boolean;
 	storage: MiniCutDktCrdtStorageOptions;
 };
@@ -26,15 +26,6 @@ export const createMiniCutCrdtStorageProfiles =
 				storage: {
 					type: "indexeddb",
 					dbName: indexedDbName("indexeddb"),
-					indexedDB,
-				},
-			},
-			{
-				name: "lazy-indexeddb",
-				unloadModels: true,
-				storage: {
-					type: "indexeddb",
-					dbName: indexedDbName("lazy-indexeddb"),
 					indexedDB,
 				},
 			},
