@@ -1,4 +1,6 @@
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
+import { queryAddr } from "dkt/async/queryAddr.js";
+import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { drainCrdtOutbox } from "../../test/crdtAssertions";
 import { waitForRuntimeIdle } from "../../test/waitForRuntimeIdle";
 import {
@@ -33,6 +35,7 @@ const PROFILE_ID = "minicut-crdt-v1";
 const PROFILE_VERSION = 1;
 
 const findModel = (ctx: DktTestContext, nodeId: string): RuntimeModel => {
+	if (String(ctx.appModel._node_id) === nodeId) return ctx.appModel;
 	const runtimeModel = (ctx.runtime as { models?: Record<string, RuntimeModel> }).models?.[nodeId];
 	if (runtimeModel) return runtimeModel;
 	const sessionModel = getModelById(ctx.sessionRoot, nodeId) as RuntimeModel | null;
@@ -42,36 +45,45 @@ const findModel = (ctx: DktTestContext, nodeId: string): RuntimeModel => {
 	return sessionModel;
 };
 
-type NodeAliasMap = Map<string, string>;
-
-const remapOpNode = (op: unknown, aliases: NodeAliasMap): unknown => {
-	if (!op || typeof op !== "object") return op;
-	const next = { ...(op as Record<string, unknown>) };
-	const nodeId = typeof next.node_id === "string" ? next.node_id : null;
-	if (nodeId && aliases.has(nodeId)) {
-		next.node_id = aliases.get(nodeId);
-	}
-	return next;
-};
-
 const receiveNetworkMessage = async (
 	ctx: DktTestContext,
 	message: MiniCutNetworkMessage,
-	aliases: NodeAliasMap,
 ) => {
-	const opsByNode = new Map<string, unknown[]>();
-	for (const rawOp of message.packet.ops ?? []) {
-		const op = remapOpNode(rawOp, aliases);
-		const nodeId = (op as { node_id?: unknown } | null)?.node_id;
-		if (typeof nodeId !== "string" || !nodeId) {
-			throw new Error("MiniCut maelstrom received op without node_id");
+	const pending = [...(message.packet.ops ?? [])];
+	while (pending.length > 0) {
+		const nextPending = [];
+		let applied = 0;
+		const opsByNode = new Map<string, unknown[]>();
+		for (const op of pending) {
+			const nodeId = (op as { node_id?: unknown } | null)?.node_id;
+			if (typeof nodeId !== "string" || !nodeId) {
+				throw new Error("MiniCut maelstrom received op without node_id");
+			}
+			try {
+				findModel(ctx, nodeId);
+			} catch {
+				nextPending.push(op);
+				continue;
+			}
+			const ops = opsByNode.get(nodeId) ?? [];
+			ops.push(op);
+			opsByNode.set(nodeId, ops);
 		}
-		const ops = opsByNode.get(nodeId) ?? [];
-		ops.push(op);
-		opsByNode.set(nodeId, ops);
-	}
-	for (const [nodeId, ops] of opsByNode) {
-		await ctx.runtime.crdt_runtime?.receiveCanonicalOps?.(findModel(ctx, nodeId), ops);
+		for (const [nodeId, ops] of opsByNode) {
+			await ctx.runtime.crdt_runtime?.receiveCanonicalOps?.(findModel(ctx, nodeId), ops);
+			applied += ops.length;
+		}
+		if (nextPending.length === 0) {
+			break;
+		}
+		if (applied === 0) {
+			const ids = nextPending
+				.map((op) => (op as { node_id?: unknown } | null)?.node_id)
+				.filter(Boolean)
+				.join(", ");
+			throw new Error(`MiniCut maelstrom could not materialize incoming CRDT nodes: ${ids}`);
+		}
+		pending.splice(0, pending.length, ...nextPending);
 	}
 	await waitForRuntimeIdle(ctx);
 };
@@ -92,15 +104,128 @@ const resolveStorage = (
 		? options.storage(id)
 		: (options.storage ?? "memory");
 
+const documentOnlySnapshot = (snapshot: unknown): unknown => {
+	if (!snapshot || typeof snapshot !== "object") return snapshot;
+	const source = snapshot as {
+		models?: Record<string, { model_name?: string; rels?: Record<string, unknown>; mentions?: Record<string, unknown> }>;
+	};
+	const models = { ...(source.models ?? {}) };
+	for (const [id, model] of Object.entries(models)) {
+		if (model?.model_name === "session_root") {
+			delete models[id];
+			continue;
+		}
+		if (model?.model_name === "app_root") {
+			models[id] = {
+				...model,
+				rels: {
+					...(model.rels ?? {}),
+					$session_root: [],
+					common_session_root: null,
+					sessions: [],
+					free_sessions: [],
+				},
+			};
+		}
+	}
+	const validIds = new Set(Object.keys(models));
+	const scrubRel = (value: unknown): unknown => {
+		if (typeof value === "string") return validIds.has(value) ? value : null;
+		if (Array.isArray(value)) {
+			return value.filter((item) => typeof item !== "string" || validIds.has(item));
+		}
+		if (value && typeof value === "object" && "_node_id" in value) {
+			const id = String((value as { _node_id?: unknown })._node_id ?? "");
+			return validIds.has(id) ? value : null;
+		}
+		return value;
+	};
+	for (const [id, model] of Object.entries(models)) {
+		const nextModel = { ...model };
+		if (model?.rels) {
+			const nextRels: Record<string, unknown> = {};
+			for (const [name, value] of Object.entries(model.rels)) {
+				nextRels[name] = scrubRel(value);
+			}
+			nextModel.rels = nextRels;
+		}
+		if (model?.mentions) {
+			const nextMentions: Record<string, unknown> = {};
+			for (const [name, value] of Object.entries(model.mentions)) {
+				nextMentions[name] = scrubRel(value);
+			}
+			nextModel.mentions = nextMentions;
+		}
+		models[id] = nextModel;
+	}
+	const nextSnapshot = {
+		...snapshot,
+		models,
+		expected_rels_to_chains: {},
+	};
+	const missingRefs: string[] = [];
+	const scan = (value: unknown, path: string) => {
+		if (missingRefs.length > 10) return;
+		if (typeof value === "string") {
+			if (value.startsWith("crdt:") && !validIds.has(value)) {
+				missingRefs.push(`${path} -> ${value}`);
+			}
+			return;
+		}
+		if (!value || typeof value !== "object") return;
+		if (Array.isArray(value)) {
+			value.forEach((item, index) => scan(item, `${path}[${index}]`));
+			return;
+		}
+		for (const [key, item] of Object.entries(value)) {
+			scan(item, `${path}.${key}`);
+		}
+	};
+	scan(nextSnapshot, "snapshot");
+	if (missingRefs.length > 0) {
+		throw new Error(`MiniCut document snapshot has missing refs:\n${missingRefs.join("\n")}`);
+	}
+	return nextSnapshot;
+};
+
+const enableUnloadNow = async (ctx: DktTestContext, enabled: boolean) => {
+	if (!enabled) return;
+	const runtime = ctx.runtime as {
+		enableUnload?: () => void;
+	};
+	runtime.enableUnload?.();
+	await waitForRuntimeIdle(ctx);
+};
+
+const seedBaselineOps = async (
+	storagePackage: DktTestContext["storagePackage"],
+	ops: unknown[],
+) => {
+	if (!storagePackage || ops.length === 0) return;
+	const crdtStorage = storagePackage.crdtStorage as {
+		appendOps?: (ops: unknown[]) => void;
+		markApplied?: (opIds: string[]) => void;
+		commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
+	};
+	crdtStorage.appendOps?.(ops);
+	crdtStorage.markApplied?.(
+		ops
+			.map((op) => (op as { op_id?: unknown } | null)?.op_id)
+			.filter((id): id is string => typeof id === "string"),
+	);
+	await crdtStorage.commitChanges?.({ reason: "minicut-maelstrom-baseline" });
+};
+
 const wrapPeer = async (
 	id: MiniCutPeerId,
 	ctx: DktTestContext,
 	network: DeterministicMiniCutNetwork,
-	aliasMaps: Map<MiniCutPeerId, NodeAliasMap>,
 ): Promise<MiniCutPeer> => {
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected active project");
-	const tracks = await ctx.queryRel(project, "tracks");
+	const tracksFromRel = await ctx.queryRel(project, "tracks");
+	const tracksFromAddr = (await queryAddr(project, "<< @all:tracks")) as RuntimeModel[];
+	const tracks = tracksFromRel.length > 0 ? tracksFromRel : tracksFromAddr;
 	const trackKinds = await Promise.all(
 		tracks.map(async (track) => ({
 			track,
@@ -109,9 +234,21 @@ const wrapPeer = async (
 	);
 	const videoTrack = trackKinds.find((item) => item.kind === "video")?.track;
 	const audioTrack = trackKinds.find((item) => item.kind === "audio")?.track;
-	if (!videoTrack || !audioTrack) throw new Error("Expected video and audio tracks");
+	if (!videoTrack || !audioTrack) {
+		throw new Error(`Expected video and audio tracks: ${JSON.stringify({
+			project: project._node_id,
+			tracksFromRel: tracksFromRel.length,
+			tracksFromAddr: tracksFromAddr.length,
+			projectRels: (project as { rels?: Record<string, unknown> }).rels,
+			tracks: trackKinds.map((item) => ({
+				id: item.track?._node_id,
+				modelName: item.track?.model_name,
+				kind: item.kind,
+			})),
+		})}`);
+	}
 
-	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message, aliasMaps.get(id) ?? new Map()));
+	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
 
 	return {
 		id,
@@ -156,22 +293,58 @@ const createPeer = async (
 	id: MiniCutPeerId,
 	network: DeterministicMiniCutNetwork,
 	options: SimulationOptions,
-	aliasMaps: Map<MiniCutPeerId, NodeAliasMap>,
-): Promise<MiniCutPeer> => {
+	snapshot?: unknown,
+	storagePackage?: MiniCutDktCrdtStorageOptions,
+): Promise<DktTestContext> => {
 	const ctx = await bootDktModels({
 		aggregateValidation: "error",
-		unloadModels: options.unloadModels,
+		unloadModels: false,
+		reinitFromSnapshot: snapshot,
 		crdt: {
 			enabled: true,
 			peerId: id,
 			profileId: PROFILE_ID,
 			profileVersion: PROFILE_VERSION,
-			storage: resolveStorage(options, id),
+			storage: storagePackage ?? resolveStorage(options, id),
 			transport: null,
 		},
 	});
-	await ctx.lockToRead(async () => {
-		await ctx.sessionRoot.dispatch("createProject", {
+	if (snapshot) {
+		await ctx.lockToRead(async () => {
+			const rawProjects = (await queryAddr(ctx.sessionRoot, "<< @all:pioneer.project")) as Array<RuntimeModel | string>;
+			const projects = rawProjects
+				.map((project) =>
+					typeof project === "string"
+						? getModelById(ctx.appModel, project)
+						: project,
+				)
+				.filter((project): project is RuntimeModel => Boolean(project && typeof project === "object" && "_node_id" in project));
+			const projectKinds = await Promise.all(
+				projects.map(async (project) => ({
+					project,
+					title: await ctx.queryAttr(project, "title"),
+				})),
+			);
+			const project =
+				projectKinds.find((item) => item.title === "MiniCut maelstrom project")
+					?.project ?? projects[0];
+			if (!project) throw new Error("Expected shared project in MiniCut maelstrom snapshot");
+			await ctx.sessionRoot.dispatch("syncActiveProjectRel", { project });
+		});
+	}
+	drainCrdtOutbox(ctx.runtime);
+	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
+	return ctx;
+};
+
+const createProjectOnPrimary = async (
+	primaryId: MiniCutPeerId,
+	contexts: Map<MiniCutPeerId, DktTestContext>,
+) => {
+	const primary = contexts.get(primaryId);
+	if (!primary) throw new Error(`Missing primary MiniCut maelstrom peer: ${primaryId}`);
+	await primary.lockToRead(async () => {
+		await primary.sessionRoot.dispatch("createProject", {
 			title: "MiniCut maelstrom project",
 			fps: 30,
 			width: 1920,
@@ -179,37 +352,32 @@ const createPeer = async (
 			duration: 12,
 		});
 	});
-	drainCrdtOutbox(ctx.runtime);
-	return wrapPeer(id, ctx, network, aliasMaps);
-};
-
-const addBaseGraphAliases = (
-	peers: Map<MiniCutPeerId, MiniCutPeer>,
-	aliasMaps: Map<MiniCutPeerId, NodeAliasMap>,
-) => {
-	for (const toPeer of peers.values()) {
-		const aliases = aliasMaps.get(toPeer.id);
-		if (!aliases) continue;
-		for (const fromPeer of peers.values()) {
-			if (fromPeer.id === toPeer.id) continue;
-			aliases.set(String(fromPeer.project._node_id), String(toPeer.project._node_id));
-			aliases.set(String(fromPeer.videoTrack._node_id), String(toPeer.videoTrack._node_id));
-			aliases.set(String(fromPeer.audioTrack._node_id), String(toPeer.audioTrack._node_id));
-		}
-	}
+	await waitForRuntimeIdle(primary);
+	drainCrdtOutbox(primary.runtime);
+	const project = (await primary.queryRel(primary.sessionRoot, "activeProject"))[0];
+	if (!project) throw new Error("Expected primary project after bootstrap");
 };
 
 export const createMiniCutCrdtSimulation = async (options: SimulationOptions) => {
 	const network = new DeterministicMiniCutNetwork();
 	const peers = new Map<MiniCutPeerId, MiniCutPeer>();
-	const aliasMaps = new Map<MiniCutPeerId, NodeAliasMap>();
-	for (const id of options.peers) {
-		aliasMaps.set(id, new Map());
+	const contexts = new Map<MiniCutPeerId, DktTestContext>();
+	const primaryId = options.peers[0];
+	if (!primaryId) throw new Error("MiniCut maelstrom requires at least one peer");
+	const primaryCtx = await createPeer(primaryId, network, options);
+	contexts.set(primaryId, primaryCtx);
+	await createProjectOnPrimary(primaryId, contexts);
+	const bootstrapSnapshot = await (
+		primaryCtx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
+	)?.getSnapshot?.();
+	if (!bootstrapSnapshot) throw new Error("MiniCut maelstrom primary peer has no bootstrap snapshot");
+	for (const id of options.peers.slice(1)) {
+		contexts.set(id, await createPeer(id, network, options, documentOnlySnapshot(bootstrapSnapshot)));
 	}
-	for (const id of options.peers) {
-		peers.set(id, await createPeer(id, network, options, aliasMaps));
+	for (const [id, ctx] of contexts) {
+		peers.set(id, await wrapPeer(id, ctx, network));
+		await enableUnloadNow(ctx, options.unloadModels === true);
 	}
-	addBaseGraphAliases(peers, aliasMaps);
 
 	return {
 		network,
@@ -222,16 +390,39 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 		async waitForIdle() {
 			await Promise.all([...peers.values()].map((peer) => waitForRuntimeIdle(peer.ctx)));
 		},
+		async syncFromPeer(sourceId: MiniCutPeerId, targetIds?: MiniCutPeerId[]) {
+			const source = peers.get(sourceId);
+			if (!source) throw new Error(`Unknown MiniCut maelstrom peer: ${sourceId}`);
+			const baselineOps = drainCrdtOutbox(source.ctx.runtime);
+			const snapshot = await toReinitableData(source.ctx.runtime);
+			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${sourceId} has no snapshot`);
+			const ids = targetIds ?? [...peers.keys()].filter((id) => id !== sourceId);
+			for (const id of ids) {
+				const current = peers.get(id);
+				if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
+				const storagePackage = current.ctx.storagePackage;
+				await current.ctx.close();
+				await seedBaselineOps(storagePackage, baselineOps);
+				const ctx = await createPeer(
+					id,
+					network,
+					options,
+					documentOnlySnapshot(snapshot),
+					storagePackage ?? resolveStorage(options, id),
+				);
+				const synced = await wrapPeer(id, ctx, network);
+				peers.set(id, synced);
+				await enableUnloadNow(ctx, options.unloadModels === true);
+			}
+		},
 		async reinitPeer(id: MiniCutPeerId) {
 			const current = peers.get(id);
 			if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
-			const snapshot = await (
-				current.ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
-			)?.getSnapshot?.();
+			const snapshot = await toReinitableData(current.ctx.runtime);
 			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${id} has no snapshot`);
 			const ctx = await bootDktModels({
 				aggregateValidation: "error",
-				unloadModels: options.unloadModels,
+				unloadModels: false,
 				reinitFromSnapshot: snapshot,
 				crdt: {
 					enabled: true,
@@ -242,9 +433,9 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 					transport: null,
 				},
 			});
-			const restarted = await wrapPeer(id, ctx, network, aliasMaps);
+			const restarted = await wrapPeer(id, ctx, network);
 			peers.set(id, restarted);
-			addBaseGraphAliases(peers, aliasMaps);
+			await enableUnloadNow(ctx, options.unloadModels === true);
 			return restarted;
 		},
 	};

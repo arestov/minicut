@@ -23,7 +23,10 @@ export const runMiniCutMetamorphicTrace = async (trace: MiniCutGeneratedTrace) =
 	const normalizedSummaries = [];
 	for (const variant of variants) {
 		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
-		const { clips } = await createMiniCutTimelineFixture([sim.peer("A"), sim.peer("B")]);
+		const { clips } = await createMiniCutTimelineFixture(
+			[sim.peer("A"), sim.peer("B")],
+			{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
+		);
 
 		await runMiniCutTrace(sim, [
 			...trace.steps,

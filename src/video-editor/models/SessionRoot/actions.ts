@@ -662,7 +662,10 @@ export const sessionSetActiveProjectAction = [
 	},
 	{
 		to: {
-			activeProject: ["<< activeProject", { method: "set_one" }],
+			activeProject: [
+				"<< activeProject",
+				{ method: "set_one", can_use_refs: true },
+			],
 		},
 		fn: [
 			["<< @all:pioneer.project", "activeProjectId"] as const,

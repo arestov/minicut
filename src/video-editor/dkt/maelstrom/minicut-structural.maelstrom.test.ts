@@ -24,26 +24,23 @@ const expectTimelineConflict = (model: ModelHandle) => {
 };
 
 const createMultiClipFixture = async (
-	peers: MiniCutPeer[],
+	sim: Awaited<ReturnType<typeof createMiniCutCrdtSimulation>>,
 	clipCount: number,
-	simNetwork?: { deliverAll: (options?: { duplicate?: boolean; reorder?: boolean; seed?: number }) => Promise<unknown> },
 ) => {
-	for (const peer of peers) {
-		for (let index = 0; index < clipCount; index += 1) {
-			await peer.dispatch(peer.videoTrack, "addClip", {
-				name: `maelstrom-clip-${index}.webm`,
-				mediaKind: "video",
-				start: index * 4,
-				in: 0,
-				duration: 4,
-			});
-		}
+	const source = sim.peer("A");
+	for (let index = 0; index < clipCount; index += 1) {
+		await source.dispatch(source.videoTrack, "addClip", {
+			name: `maelstrom-clip-${index}.webm`,
+			mediaKind: "video",
+			start: index * 4,
+			in: 0,
+			duration: 4,
+		});
 	}
-	peers[0]?.flushOutbound();
-	await simNetwork?.deliverAll({ reorder: false });
-	for (const peer of peers) {
-		peer.ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
-	}
+	source.flushOutbound();
+	await sim.syncFromPeer("A");
+	await sim.network.deliverAll({ reorder: false });
+	const peers = [sim.peer("A"), sim.peer("B")];
 	const clips = await Promise.all(peers.map((peer) => peer.ctx.queryRel(peer.videoTrack, "clips")));
 	for (let index = 0; index < clipCount; index += 1) {
 		const id = clips[0]?.[index]?._node_id;
@@ -57,7 +54,10 @@ const createMultiClipFixture = async (
 describe("MiniCut maelstrom structural conflicts", () => {
 	it("records delete vs effect edit as a timeline structural conflict", async () => {
 		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
-		const { clips } = await createMiniCutTimelineFixture([sim.peer("A"), sim.peer("B")]);
+		const { clips } = await createMiniCutTimelineFixture(
+			[sim.peer("A"), sim.peer("B")],
+			{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
+		);
 		const clipA = clips[0];
 		const clipB = clips[1];
 		for (const [peer, clip] of [[sim.peer("A"), clipA], [sim.peer("B"), clipB]] as const) {
@@ -85,7 +85,10 @@ describe("MiniCut maelstrom structural conflicts", () => {
 
 	it("records split vs delete as a timeline structural conflict", async () => {
 		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
-		const { clips } = await createMiniCutTimelineFixture([sim.peer("A"), sim.peer("B")]);
+		const { clips } = await createMiniCutTimelineFixture(
+			[sim.peer("A"), sim.peer("B")],
+			{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
+		);
 		const clipA = clips[0];
 		const clipB = clips[1];
 
@@ -102,7 +105,7 @@ describe("MiniCut maelstrom structural conflicts", () => {
 
 	it("records concurrent semantic moves as relation conflict meta", async () => {
 		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
-		const [clipsA, clipsB] = await createMultiClipFixture([sim.peer("A"), sim.peer("B")], 3, sim.network);
+		const [clipsA, clipsB] = await createMultiClipFixture(sim, 3);
 
 		await runMiniCutTrace(sim, [
 			network.partition(["A"], ["B"]),
