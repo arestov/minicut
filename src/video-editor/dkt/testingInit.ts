@@ -11,6 +11,7 @@
  */
 
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
+import { reinit } from "dkt/runtime/app/reinit.js";
 import { makeDktCrdtIndexedDBStorage } from "dkt/crdt/storage/indexeddb.js";
 import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { _getCurrentRel } from "dkt-all/libs/provoda/_internal/_listRels.js";
@@ -49,6 +50,8 @@ export type MiniCutDktCrdtRuntime = {
 		peekDurableLog?: () => unknown[];
 		receiveFromNetwork?: (model: AnyModel, message: unknown) => unknown;
 	};
+	restoreFromStorage?: () => Promise<void> | void;
+	projectCRDTMeta?: (model: AnyModel) => Promise<void> | void;
 };
 
 export type MiniCutDktCrdtStoragePackage = {
@@ -195,6 +198,7 @@ export type DktTestContext = {
 
 export type BootDktModelsOptions = {
 	interfaces?: Record<string, unknown>;
+	reinitFromSnapshot?: unknown;
 	graphSemantics?: {
 		inverseValidation?: "off" | "warn" | "error";
 	};
@@ -280,6 +284,10 @@ export const bootDktModels = async (
 		proxies: false,
 		warnUnexpectedAttrs: false,
 		unload_models: options.unloadModels === true,
+		unloadAllAfterTransaction: options.unloadModels === true,
+		diagnostics: {
+			suppressUnloadPinningWarning: true,
+		},
 		graphSemantics: options.graphSemantics,
 		aggregateValidation: options.aggregateValidation,
 		...(crdtRuntime ? { crdtRuntime } : null),
@@ -297,13 +305,23 @@ export const bootDktModels = async (
 		last_error?: Promise<unknown>;
 	};
 
+	const startPromise = options.reinitFromSnapshot
+		? reinit(
+				MiniCutAppRoot,
+				runtime,
+				options.reinitFromSnapshot,
+				options.interfaces ?? {},
+				{ reinit_all_attrs: true },
+			)
+		: runtime.start({
+				App: MiniCutAppRoot,
+				interfaces: options.interfaces ?? {},
+			});
+
 	const inited = (await raceWithProcessErrors([
 		runtime.last_error ?? neverPromise(),
 		errorsCatcher.last_error_prom,
-		runtime.start({
-			App: MiniCutAppRoot,
-			interfaces: options.interfaces ?? {},
-		}),
+		startPromise,
 	])) as {
 		app_model: AnyModel;
 		flow?: AnyModel;
@@ -363,6 +381,11 @@ export const bootDktModels = async (
 	]);
 
 	await computed();
+	if (options.reinitFromSnapshot) {
+		await crdtRuntime?.restoreFromStorage?.();
+		await crdtRuntime?.projectCRDTMeta?.(appModel);
+		await computed();
+	}
 
 	/**
 	 * Run an async function and wait for the DKT graph to settle.

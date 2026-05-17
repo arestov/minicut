@@ -1,7 +1,11 @@
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { drainCrdtOutbox } from "../../test/crdtAssertions";
 import { waitForRuntimeIdle } from "../../test/waitForRuntimeIdle";
-import { bootDktModels, type DktTestContext } from "../../testingInit";
+import {
+	bootDktModels,
+	type DktTestContext,
+	type MiniCutDktCrdtStorageOptions,
+} from "../../testingInit";
 import { DeterministicMiniCutNetwork, type MiniCutNetworkMessage, type MiniCutPeerId } from "./DeterministicMiniCutNetwork";
 
 type RuntimeModel = DktTestContext["sessionRoot"];
@@ -57,38 +61,35 @@ const receiveNetworkMessage = async (ctx: DktTestContext, message: MiniCutNetwor
 
 const attrNumber = (model: RuntimeModel, attrName: string): number => Number(model.states?.[attrName] ?? 0);
 
-const createPeer = async (id: MiniCutPeerId, network: DeterministicMiniCutNetwork): Promise<MiniCutPeer> => {
-	const ctx = await bootDktModels({
-		aggregateValidation: "error",
-		crdt: {
-			enabled: true,
-			peerId: id,
-			profileId: PROFILE_ID,
-			profileVersion: PROFILE_VERSION,
-			storage: "memory",
-			transport: null,
-		},
-	});
-	await ctx.lockToRead(async () => {
-		await ctx.sessionRoot.dispatch("createProject", {
-			title: "MiniCut maelstrom project",
-			fps: 30,
-			width: 1920,
-			height: 1080,
-			duration: 12,
-		});
-	});
+type SimulationOptions = {
+	peers: MiniCutPeerId[];
+	storage?: MiniCutDktCrdtStorageOptions | ((peerId: MiniCutPeerId) => MiniCutDktCrdtStorageOptions);
+	unloadModels?: boolean;
+};
+
+const resolveStorage = (
+	options: SimulationOptions,
+	id: MiniCutPeerId,
+): MiniCutDktCrdtStorageOptions =>
+	typeof options.storage === "function"
+		? options.storage(id)
+		: (options.storage ?? "memory");
+
+const wrapPeer = async (
+	id: MiniCutPeerId,
+	ctx: DktTestContext,
+	network: DeterministicMiniCutNetwork,
+): Promise<MiniCutPeer> => {
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected active project");
 	const tracks = await ctx.queryRel(project, "tracks");
 	const videoTrack = tracks.find((track) => ctx.getAttr(track, "kind") === "video");
 	const audioTrack = tracks.find((track) => ctx.getAttr(track, "kind") === "audio");
 	if (!videoTrack || !audioTrack) throw new Error("Expected video and audio tracks");
-	drainCrdtOutbox(ctx.runtime);
 
 	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
 
-	const peer: MiniCutPeer = {
+	return {
 		id,
 		ctx,
 		project,
@@ -129,15 +130,43 @@ const createPeer = async (id: MiniCutPeerId, network: DeterministicMiniCutNetwor
 			};
 		},
 	};
-
-	return peer;
 };
 
-export const createMiniCutCrdtSimulation = async (options: { peers: MiniCutPeerId[] }) => {
+const createPeer = async (
+	id: MiniCutPeerId,
+	network: DeterministicMiniCutNetwork,
+	options: SimulationOptions,
+): Promise<MiniCutPeer> => {
+	const ctx = await bootDktModels({
+		aggregateValidation: "error",
+		unloadModels: options.unloadModels,
+		crdt: {
+			enabled: true,
+			peerId: id,
+			profileId: PROFILE_ID,
+			profileVersion: PROFILE_VERSION,
+			storage: resolveStorage(options, id),
+			transport: null,
+		},
+	});
+	await ctx.lockToRead(async () => {
+		await ctx.sessionRoot.dispatch("createProject", {
+			title: "MiniCut maelstrom project",
+			fps: 30,
+			width: 1920,
+			height: 1080,
+			duration: 12,
+		});
+	});
+	drainCrdtOutbox(ctx.runtime);
+	return wrapPeer(id, ctx, network);
+};
+
+export const createMiniCutCrdtSimulation = async (options: SimulationOptions) => {
 	const network = new DeterministicMiniCutNetwork();
 	const peers = new Map<MiniCutPeerId, MiniCutPeer>();
 	for (const id of options.peers) {
-		peers.set(id, await createPeer(id, network));
+		peers.set(id, await createPeer(id, network, options));
 	}
 
 	return {
@@ -150,6 +179,30 @@ export const createMiniCutCrdtSimulation = async (options: { peers: MiniCutPeerI
 		},
 		async waitForIdle() {
 			await Promise.all([...peers.values()].map((peer) => waitForRuntimeIdle(peer.ctx)));
+		},
+		async reinitPeer(id: MiniCutPeerId) {
+			const current = peers.get(id);
+			if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
+			const snapshot = await (
+				current.ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
+			)?.getSnapshot?.();
+			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${id} has no snapshot`);
+			const ctx = await bootDktModels({
+				aggregateValidation: "error",
+				unloadModels: options.unloadModels,
+				reinitFromSnapshot: snapshot,
+				crdt: {
+					enabled: true,
+					peerId: id,
+					profileId: PROFILE_ID,
+					profileVersion: PROFILE_VERSION,
+					storage: current.ctx.storagePackage ?? resolveStorage(options, id),
+					transport: null,
+				},
+			});
+			const restarted = await wrapPeer(id, ctx, network);
+			peers.set(id, restarted);
+			return restarted;
 		},
 	};
 };
