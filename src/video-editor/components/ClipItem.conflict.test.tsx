@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
@@ -55,6 +55,67 @@ vi.mock("../../dkt-react-sync/hooks/useMany", async () => {
 });
 
 describe("ClipItem conflict UX", () => {
+	it("dispatches clip timing drag preview and final actions with one intent batch", () => {
+		const clipScope = { kind: "scope" as const, _nodeId: "clip:drag" };
+		mockState.dispatch.mockClear();
+		mockState.sessionDispatch.mockClear();
+		mockState.attrsByNode.clear();
+		mockState.relsByNode.clear();
+		mockState.attrsByNode.set(clipScope._nodeId, {
+			name: "drag.webm",
+			start: 1,
+			in: 0,
+			duration: 4,
+			opacity: { value: 1 },
+			color: "#2563eb",
+		});
+		mockState.relsByNode.set(clipScope._nodeId, {
+			effects: [],
+			crdtConflicts: [],
+		});
+
+		render(
+			<ScopeContext.Provider value={clipScope}>
+				<ClipItem
+					timelineZoom={40}
+					activeTool="select"
+					selectedEntityId={null}
+				/>
+			</ScopeContext.Provider>,
+		);
+
+		const clip = screen.getByRole("button", { name: /drag\.webm/i });
+		fireEvent.pointerDown(clip, {
+			clientX: 40,
+			pointerId: 1,
+			buttons: 1,
+		});
+		fireEvent.pointerMove(clip, {
+			clientX: 80,
+			pointerId: 1,
+			buttons: 1,
+		});
+		fireEvent.pointerUp(clip, {
+			clientX: 80,
+			pointerId: 1,
+			buttons: 0,
+		});
+
+		const previewCall = mockState.dispatch.mock.calls.find(
+			([actionName]) => actionName === "previewMoveBy",
+		);
+		const commitCall = mockState.dispatch.mock.calls.find(
+			([actionName]) => actionName === "commitTimelineAttrs",
+		);
+		expect(previewCall).toBeTruthy();
+		expect(commitCall).toBeTruthy();
+		expect(previewCall?.[1]).toEqual({ delta: 1 });
+		expect(previewCall?.[2]).toMatchObject({
+			intent: { batch_id: expect.stringMatching(/^clip-timing:clip:drag:/) },
+		});
+		expect(commitCall?.[2]).toEqual(previewCall?.[2]);
+	});
+
 	it("opens materialized conflict details and resolves through Clip DKT actions", async () => {
 		const clipScope = { kind: "scope" as const, _nodeId: "clip:1" };
 		const conflictScope = { kind: "scope" as const, _nodeId: "conflict:1" };

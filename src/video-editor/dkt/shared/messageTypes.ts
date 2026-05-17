@@ -24,6 +24,7 @@ export type DktDispatchActionMessage = {
 	actionName: string;
 	payload?: unknown;
 	scopeNodeId?: string | null;
+	meta?: unknown;
 };
 
 export type DktRuntimeReadyMessage = {

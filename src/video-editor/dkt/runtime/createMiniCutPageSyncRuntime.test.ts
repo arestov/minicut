@@ -153,6 +153,9 @@ describe("createMiniCutPageSyncRuntime", () => {
 		}
 		const stopShape = runtime.mountShape(rootScope, shape);
 		runtime.getDispatch(rootScope)("rename", { name: "Project 2" });
+		runtime.getDispatch(rootScope)("previewMoveBy", { delta: 1 }, {
+			intent: { batch_id: "clip-drag:1" },
+		});
 		stopShape();
 
 		expect(memory.sent).toContainEqual({
@@ -177,6 +180,13 @@ describe("createMiniCutPageSyncRuntime", () => {
 			actionName: "rename",
 			payload: { name: "Project 2" },
 			scopeNodeId: "root",
+		});
+		expect(memory.sent).toContainEqual({
+			type: DKT_MSG.DISPATCH_ACTION,
+			actionName: "previewMoveBy",
+			payload: { delta: 1 },
+			scopeNodeId: "root",
+			meta: { intent: { batch_id: "clip-drag:1" } },
 		});
 	});
 

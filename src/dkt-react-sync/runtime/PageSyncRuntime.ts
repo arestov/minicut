@@ -31,6 +31,7 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
 		actionName: string,
 		payload?: unknown,
 		scope?: ReactSyncScopeHandle | null,
+		meta?: unknown,
 	): void;
 	destroy(): void;
 	getSnapshot(): PageRootSnapshot;

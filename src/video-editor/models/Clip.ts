@@ -357,6 +357,51 @@ export const Clip = model({
 			},
 			fn: [["start", "in", "duration"] as const, reduceMoveBy],
 		},
+		previewMoveBy: {
+			intent: {
+				type: "clip.timing.drag",
+				lifecycle: "transient",
+				final: "commitTimelineAttrs",
+				cleanup: "cleanupTimelineGesture",
+				timeoutMs: 5000,
+			},
+			to: {
+				start: ["start"],
+			},
+			fn: [["start", "in", "duration"] as const, reduceMoveBy],
+		},
+		commitTimelineAttrs: {
+			intent: {
+				type: "clip.timing.drag",
+				lifecycle: "final",
+			},
+			to: {
+				start: ["start"],
+				in: ["in"],
+				duration: ["duration"],
+			},
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetTimelineAttrs(payload) ?? noop,
+			],
+		},
+		cleanupTimelineGesture: {
+			intent: {
+				type: "clip.timing.drag",
+				lifecycle: "cleanup",
+			},
+			to: {
+				start: ["start"],
+				in: ["in"],
+				duration: ["duration"],
+			},
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetTimelineAttrs(payload) ?? noop,
+			],
+		},
 		trim: {
 			to: {
 				start: ["start"],
@@ -375,6 +420,30 @@ export const Clip = model({
 			],
 		},
 		resize: {
+			to: {
+				start: ["start"],
+				in: ["in"],
+				duration: ["duration"],
+			},
+			fn: [
+				["$noop", "start", "in", "duration"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					start: unknown,
+					inPoint: unknown,
+					duration: unknown,
+				) => reduceResize(payload, start, inPoint, duration) ?? noop,
+			],
+		},
+		previewResize: {
+			intent: {
+				type: "clip.timing.drag",
+				lifecycle: "transient",
+				final: "commitTimelineAttrs",
+				cleanup: "cleanupTimelineGesture",
+				timeoutMs: 5000,
+			},
 			to: {
 				start: ["start"],
 				in: ["in"],

@@ -13,18 +13,37 @@ import {
 import { formatPercent, formatSeconds } from "./format";
 
 const MIN_CLIP_DURATION = 0.5;
+let nextClipGestureIntentId = 0;
 
 const clamp = (value: number, min: number, max: number): number => {
 	const safeMax = Math.max(min, max);
 	return Math.min(safeMax, Math.max(min, value));
 };
 
+type ClipTimelineAttrs = {
+	start: number;
+	in: number;
+	duration: number;
+	fadeIn: number;
+	fadeOut: number;
+};
+
 type ClipPointerDragState =
-	| { kind: "move"; startX: number }
+	| {
+			kind: "move";
+			startX: number;
+			lastClientX: number;
+			batchId: string;
+			original: ClipTimelineAttrs;
+			current: ClipTimelineAttrs;
+	  }
 	| {
 			kind: "resize-start" | "resize-end";
 			startX: number;
 			lastClientX: number;
+			batchId: string;
+			original: ClipTimelineAttrs;
+			current: ClipTimelineAttrs;
 	  };
 
 interface ClipItemProps {
@@ -114,6 +133,11 @@ const ClipConflictProjectionItem = ({
 	return null;
 };
 
+const createClipTimingBatchId = (clipId: string | null): string => {
+	nextClipGestureIntentId += 1;
+	return `clip-timing:${clipId ?? "unknown"}:${nextClipGestureIntentId}`;
+};
+
 export const ClipItem = ({
 	timelineZoom,
 	activeTool,
@@ -183,34 +207,77 @@ export const ClipItem = ({
 		const localTime = Math.max(0, (clientX - rect.left) / timelineZoom);
 		dispatch("splitSelfAt", { time: start + localTime });
 	};
-	const getMovePreviewDeltaPx = (deltaPx: number): number => {
-		const requestedStart = start + deltaPx / timelineZoom;
-		const clampedStart = clamp(requestedStart, 0, Number.POSITIVE_INFINITY);
-
-		return (clampedStart - start) * timelineZoom;
-	};
 	const getResizeDeltaSeconds = (
 		edge: "start" | "end",
 		deltaSeconds: number,
+		base: ClipTimelineAttrs = timelineAttrsPayload(),
 	): number => {
-		const clipEnd = start + duration;
+		const clipEnd = base.start + base.duration;
 
 		if (edge === "end") {
 			const nextEnd = clamp(
 				clipEnd + deltaSeconds,
-				start + MIN_CLIP_DURATION,
+				base.start + MIN_CLIP_DURATION,
 				Number.POSITIVE_INFINITY,
 			);
 			return nextEnd - clipEnd;
 		}
 
-		const minStart = Math.max(0, start - inPoint);
+		const minStart = Math.max(0, base.start - base.in);
 		const nextStart = clamp(
-			start + deltaSeconds,
+			base.start + deltaSeconds,
 			minStart,
 			clipEnd - MIN_CLIP_DURATION,
 		);
-		return nextStart - start;
+		return nextStart - base.start;
+	};
+	const makeTimingIntentMeta = (batchId: string) => ({
+		intent: { batch_id: batchId },
+	});
+	const timelineAttrsPayload = (): ClipTimelineAttrs => ({
+		start,
+		in: Number.isFinite(inPoint) ? inPoint : 0,
+		duration,
+		fadeIn: 0,
+		fadeOut: 0,
+	});
+	const commitTimelineGesture = (
+		batchId: string,
+		original: ClipTimelineAttrs,
+		finalAttrs: ClipTimelineAttrs,
+	): void => {
+		const meta = makeTimingIntentMeta(batchId);
+		dispatch("cleanupTimelineGesture", original, meta);
+		dispatch("commitTimelineAttrs", finalAttrs, meta);
+	};
+	const applyMoveDelta = (
+		state: Extract<ClipPointerDragState, { kind: "move" }>,
+		clientX: number,
+	): ClipTimelineAttrs | null => {
+		const deltaSeconds =
+			Math.round(((clientX - state.lastClientX) / timelineZoom) * 100) / 100;
+		if (deltaSeconds === 0) {
+			return null;
+		}
+
+		selectClip();
+		dispatch(
+			"previewMoveBy",
+			{ delta: deltaSeconds },
+			makeTimingIntentMeta(state.batchId),
+		);
+		dragState.current = {
+			...state,
+			lastClientX: state.lastClientX + deltaSeconds * timelineZoom,
+			current: {
+				...state.current,
+				start: Math.max(
+					0,
+					Math.round((state.current.start + deltaSeconds) * 10) / 10,
+				),
+			},
+		};
+		return dragState.current.current;
 	};
 	const applyResizeDelta = (
 		state: Extract<
@@ -218,21 +285,45 @@ export const ClipItem = ({
 			{ kind: "resize-start" | "resize-end" }
 		>,
 		clientX: number,
-	): void => {
+	): ClipTimelineAttrs | null => {
 		const edge = state.kind === "resize-start" ? "start" : "end";
 		const requestedDeltaSeconds =
 			Math.round(((clientX - state.lastClientX) / timelineZoom) * 100) / 100;
-		const deltaSeconds = getResizeDeltaSeconds(edge, requestedDeltaSeconds);
+		const deltaSeconds = getResizeDeltaSeconds(
+			edge,
+			requestedDeltaSeconds,
+			state.current,
+		);
 		if (deltaSeconds === 0) {
-			return;
+			return null;
 		}
 
 		selectClip();
-		dispatch("resize", { edge, delta: deltaSeconds });
+		dispatch(
+			"previewResize",
+			{ edge, delta: deltaSeconds },
+			makeTimingIntentMeta(state.batchId),
+		);
+		const nextCurrent =
+			edge === "end"
+				? {
+						...state.current,
+						duration:
+							Math.round((state.current.duration + deltaSeconds) * 10) / 10,
+					}
+				: {
+						...state.current,
+						start: Math.round((state.current.start + deltaSeconds) * 10) / 10,
+						in: Math.round((state.current.in + deltaSeconds) * 10) / 10,
+						duration:
+							Math.round((state.current.duration - deltaSeconds) * 10) / 10,
+					};
 		dragState.current = {
 			...state,
 			lastClientX: state.lastClientX + deltaSeconds * timelineZoom,
+			current: nextCurrent,
 		};
+		return nextCurrent;
 	};
 	const finishPointerDrag = (clientX: number): void => {
 		const state = dragState.current;
@@ -243,29 +334,20 @@ export const ClipItem = ({
 		}
 
 		if (state.kind === "resize-start" || state.kind === "resize-end") {
-			applyResizeDelta(state, clientX);
+			const finalAttrs =
+				applyResizeDelta(state, clientX) ?? timelineAttrsPayload();
+			commitTimelineGesture(state.batchId, state.original, finalAttrs);
 			return;
 		}
 
-		const deltaSeconds =
-			Math.round(((clientX - state.startX) / timelineZoom) * 100) / 100;
-		if (deltaSeconds === 0) {
-			return;
-		}
-
-		selectClip();
 		if (state.kind === "move" && activeTool === "select") {
-			dispatch("moveBy", { delta: deltaSeconds });
+			const finalAttrs = applyMoveDelta(state, clientX) ?? timelineAttrsPayload();
+			commitTimelineGesture(state.batchId, state.original, finalAttrs);
 			return;
 		}
 		if (state.kind === "move") {
 			return;
 		}
-
-		dispatch("resize", {
-			edge: state.kind === "resize-start" ? "start" : "end",
-			delta: deltaSeconds,
-		});
 	};
 
 	return (
@@ -322,7 +404,15 @@ export const ClipItem = ({
 				}
 
 				event.currentTarget.setPointerCapture?.(event.pointerId);
-				dragState.current = { kind: "move", startX: event.clientX };
+				const original = timelineAttrsPayload();
+				dragState.current = {
+					kind: "move",
+					startX: event.clientX,
+					lastClientX: event.clientX,
+					batchId: createClipTimingBatchId(clipId),
+					original,
+					current: original,
+				};
 			}}
 			onPointerMove={(event) => {
 				const state = dragState.current;
@@ -338,14 +428,22 @@ export const ClipItem = ({
 					return;
 				}
 
-				setDragPreviewDeltaPx(
-					getMovePreviewDeltaPx(event.clientX - state.startX),
-				);
+				if (state.kind === "move") {
+					applyMoveDelta(state, event.clientX);
+				}
 			}}
 			onPointerUp={(event) => {
 				finishPointerDrag(event.clientX);
 			}}
 			onPointerCancel={() => {
+				const state = dragState.current;
+				if (state) {
+					dispatch(
+						"cleanupTimelineGesture",
+						state.original,
+						makeTimingIntentMeta(state.batchId),
+					);
+				}
 				dragState.current = null;
 				setDragPreviewDeltaPx(0);
 			}}
@@ -358,10 +456,14 @@ export const ClipItem = ({
 					event.stopPropagation();
 					event.currentTarget.setPointerCapture?.(event.pointerId);
 					selectClip();
+					const original = timelineAttrsPayload();
 					dragState.current = {
 						kind: "resize-start",
 						startX: event.clientX,
 						lastClientX: event.clientX,
+						batchId: createClipTimingBatchId(clipId),
+						original,
+						current: original,
 					};
 				}}
 				onPointerUp={(event) => {
@@ -394,10 +496,14 @@ export const ClipItem = ({
 					event.stopPropagation();
 					event.currentTarget.setPointerCapture?.(event.pointerId);
 					selectClip();
+					const original = timelineAttrsPayload();
 					dragState.current = {
 						kind: "resize-end",
 						startX: event.clientX,
 						lastClientX: event.clientX,
+						batchId: createClipTimingBatchId(clipId),
+						original,
+						current: original,
 					};
 				}}
 				onPointerUp={(event) => {

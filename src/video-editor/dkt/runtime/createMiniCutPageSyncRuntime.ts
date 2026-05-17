@@ -214,32 +214,39 @@ export const createMiniCutPageSyncRuntime = ({
 		actionName: string,
 		payload?: unknown,
 		scope?: ReactSyncScopeHandle | null,
+		meta?: unknown,
 	) => {
 		if (!actionName) {
 			throw new Error("action name is required");
 		}
 
 		emit(
-			createDispatchActionMessage(actionName, payload, scope?._nodeId ?? null),
+			createDispatchActionMessage(
+				actionName,
+				payload,
+				scope?._nodeId ?? null,
+				meta,
+			),
 		);
 	};
 
 	const scopeDispatchCache = new WeakMap<
 		ReactSyncScopeHandle,
-		(actionName: string, payload?: unknown) => void
+		(actionName: string, payload?: unknown, meta?: unknown) => void
 	>();
 
 	const getDispatch = (
 		scope: ReactSyncScopeHandle | null,
-	): ((actionName: string, payload?: unknown) => void) => {
+	): ((actionName: string, payload?: unknown, meta?: unknown) => void) => {
 		if (!scope) {
-			return (actionName, payload) => dispatchAction(actionName, payload, null);
+			return (actionName, payload, meta) =>
+				dispatchAction(actionName, payload, null, meta);
 		}
 
 		let cached = scopeDispatchCache.get(scope);
 		if (!cached) {
-			cached = (actionName: string, payload?: unknown) =>
-				dispatchAction(actionName, payload, scope);
+			cached = (actionName: string, payload?: unknown, meta?: unknown) =>
+				dispatchAction(actionName, payload, scope, meta);
 			scopeDispatchCache.set(scope, cached);
 		}
 
@@ -387,8 +394,8 @@ export const createMiniCutPageSyncRuntime = ({
 			syncReceiver.subscribeNodeList(scope._nodeId, relName, listener),
 		mountShape: (scope, shape) =>
 			shapeRegistry.mount(shapeRuntime, scope, shape),
-		dispatch: (actionName, payload, scope) => {
-			dispatchAction(actionName, payload, scope);
+		dispatch: (actionName, payload, scope, meta) => {
+			dispatchAction(actionName, payload, scope, meta);
 		},
 		getDispatch,
 		getRootAttrs,

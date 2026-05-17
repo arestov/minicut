@@ -24,7 +24,12 @@ type AnyModel = {
 	states?: Record<string, unknown>;
 	input?: (callback: () => void | Promise<void>) => unknown;
 	queryRel?: (relName: string) => Promise<unknown> | unknown;
-	dispatch: (actionName: string, payload?: unknown) => Promise<void> | void;
+	dispatch: (
+		actionName: string,
+		payload?: unknown,
+		options?: unknown,
+		meta?: unknown,
+	) => Promise<void> | void;
 	start_page?: unknown;
 };
 

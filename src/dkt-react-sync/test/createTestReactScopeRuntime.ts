@@ -19,6 +19,7 @@ export const createTestReactScopeRuntime = ({
 		actionName: string;
 		payload: unknown;
 		scopeNodeId: string | null;
+		meta: unknown;
 	}>;
 	updateAttrs(nodeId: string, patch: Record<string, unknown>): void;
 	updateOne(nodeId: string, relName: string, nodeIdOrNull: string | null): void;
@@ -37,10 +38,11 @@ export const createTestReactScopeRuntime = ({
 		actionName: string;
 		payload: unknown;
 		scopeNodeId: string | null;
+		meta: unknown;
 	}> = [];
 	const scopeDispatchCache = new WeakMap<
 		ReactSyncScopeHandle,
-		(actionName: string, payload?: unknown) => void
+		(actionName: string, payload?: unknown, meta?: unknown) => void
 	>();
 
 	const getScope = (nodeId: string): ReactSyncScopeHandle => {
@@ -133,23 +135,24 @@ export const createTestReactScopeRuntime = ({
 		mountShape() {
 			return () => {};
 		},
-		dispatch(actionName, payload, scope) {
+		dispatch(actionName, payload, scope, meta) {
 			dispatchCalls.push({
 				actionName,
 				payload,
 				scopeNodeId: scope?._nodeId ?? null,
+				meta,
 			});
 		},
 		getDispatch(scope) {
 			if (!scope) {
-				return (actionName, payload) =>
-					this.dispatch(actionName, payload, null);
+				return (actionName, payload, meta) =>
+					this.dispatch(actionName, payload, null, meta);
 			}
 
 			let dispatch = scopeDispatchCache.get(scope);
 			if (!dispatch) {
-				dispatch = (actionName, payload) =>
-					this.dispatch(actionName, payload, scope);
+				dispatch = (actionName, payload, meta) =>
+					this.dispatch(actionName, payload, scope, meta);
 				scopeDispatchCache.set(scope, dispatch);
 			}
 

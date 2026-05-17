@@ -145,6 +145,55 @@ describe("MiniCut CRDT local dispatch staging", () => {
 		expectCrdtOutboxContains(ops, { kind: "attr", name: "duration", value: 3 });
 	});
 
+	it("Clip timing gesture previews locally and only publishes the final commit", async () => {
+		const { ctx, videoTrack } = await createCrdtContext();
+		const clip = await addClip(ctx, videoTrack);
+		drainCrdtOutbox(ctx.runtime);
+
+		await ctx.lockToRead(async () => {
+			await clip.dispatch(
+				"previewMoveBy",
+				{ delta: 1 },
+				null,
+				{ intent: { batch_id: "clip-drag:test" } },
+			);
+		});
+
+		expect(ctx.getAttr(clip, "start")).toBe(1);
+		expect(drainCrdtOutbox(ctx.runtime)).toEqual([]);
+
+		const dktStorage = ctx.storagePackage?.dktStorage as
+			| {
+					getSnapshot?: () => Promise<{
+						models?: Record<string, { attrs?: Record<string, unknown> }>;
+					}>;
+			  }
+			| undefined;
+		const previewSnapshot = await dktStorage?.getSnapshot?.();
+		expect(previewSnapshot?.models?.[String(clip._node_id)]?.attrs?.start ?? 0)
+			.toBe(0);
+
+		await ctx.lockToRead(async () => {
+			await clip.dispatch(
+				"cleanupTimelineGesture",
+				{ start: 0, in: 0, duration: 4, fadeIn: 0, fadeOut: 0 },
+				null,
+				{ intent: { batch_id: "clip-drag:test" } },
+			);
+			await clip.dispatch(
+				"commitTimelineAttrs",
+				{ start: 1, in: 0, duration: 4, fadeIn: 0, fadeOut: 0 },
+				null,
+				{ intent: { batch_id: "clip-drag:test" } },
+			);
+		});
+
+		const ops = drainCrdtOutbox(ctx.runtime);
+		expectCrdtOutboxContains(ops, { kind: "attr", name: "start", value: 1 });
+		const finalSnapshot = await dktStorage?.getSnapshot?.();
+		expect(finalSnapshot?.models?.[String(clip._node_id)]?.attrs?.start).toBe(1);
+	});
+
 	it("Effect.setEffectParams creates an mvr params op", async () => {
 		const { ctx, videoTrack } = await createCrdtContext();
 		const clip = await addClip(ctx, videoTrack);

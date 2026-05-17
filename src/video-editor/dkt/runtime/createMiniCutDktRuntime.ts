@@ -490,6 +490,7 @@ export const createMiniCutDktRuntime = (
 		scopeNodeId?: string | null,
 		sessionKey = "minicut-local",
 		sessionId?: string | null,
+		meta?: unknown,
 	): Promise<void> => {
 		const sessionRoot = await bootstrapSessionRoot(sessionKey, sessionId);
 		if (!sessionRoot) {
@@ -509,12 +510,8 @@ export const createMiniCutDktRuntime = (
 			target = scopedTarget;
 		}
 
-		await target.dispatch(
-			actionName,
-			payload,
-			null,
-			crdtResolutionAttemptMeta(actionName, payload, target) ?? undefined,
-		);
+		const resolutionMeta = crdtResolutionAttemptMeta(actionName, payload, target);
+		await target.dispatch(actionName, payload, null, resolutionMeta ?? meta);
 	};
 
 	const connect = (
@@ -652,6 +649,7 @@ export const createMiniCutDktRuntime = (
 						message.scopeNodeId,
 						activeSessionKey,
 						activeSessionId,
+						message.meta,
 					);
 					if (message.requestId) {
 						transport.send({
