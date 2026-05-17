@@ -33,7 +33,7 @@ describe("MiniCut CRDT storage profiles", () => {
 			});
 
 			const ops = drainCrdtOutbox(ctx.runtime);
-			expect(ctx.getAttr(project, "title")).toBe(`Renamed ${profile.name}`);
+			await expect(ctx.queryAttr(project, "title")).resolves.toBe(`Renamed ${profile.name}`);
 			expect(ops).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({

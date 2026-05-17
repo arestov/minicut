@@ -25,6 +25,7 @@ type AnyModel = {
 	states?: Record<string, unknown>;
 	input?: (callback: () => void | Promise<void>) => unknown;
 	queryRel?: (relName: string) => Promise<unknown> | unknown;
+	queryAttr?: (attrName: string) => Promise<unknown> | unknown;
 	dispatch: (
 		actionName: string,
 		payload?: unknown,
@@ -152,7 +153,22 @@ export const queryRel = async (
 };
 
 /**
- * Read a reactive attr from a model.
+ * Read a reactive attr through DKT query boundary.
+ * Use this in unload/lazy tests; sync state reads are only valid while the model is loaded.
+ */
+export const queryAttr = async (
+	model: AnyModel,
+	attrName: string,
+): Promise<unknown> => {
+	if (model.queryAttr) {
+		const value = await model.queryAttr(attrName);
+		return value ?? null;
+	}
+	return model.states?.[attrName] ?? null;
+};
+
+/**
+ * Read a reactive attr from a loaded model.
  * Missing attrs are normalized to null to match DKT default-state reads.
  */
 export const getAttr = (model: AnyModel, attrName: string): unknown =>
@@ -190,6 +206,7 @@ export type DktTestContext = {
 	 */
 	lockToRead: (fn: () => void | Promise<void>) => Promise<void>;
 	queryRel: typeof queryRel;
+	queryAttr: typeof queryAttr;
 	getAttr: typeof getAttr;
 	findByAttr: typeof findByAttr;
 	storagePackage: MiniCutDktCrdtStoragePackage | null;
@@ -415,6 +432,7 @@ export const bootDktModels = async (
 		computed,
 		lockToRead,
 		queryRel,
+		queryAttr,
 		getAttr,
 		findByAttr,
 		storagePackage,
