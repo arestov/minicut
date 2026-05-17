@@ -3,6 +3,7 @@ import type {
 	DomSyncTransportViewLike,
 } from "dkt/dom-sync/transport.js";
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
+import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
@@ -64,6 +65,13 @@ type MiniCutCrdtRuntimeLike = {
 	};
 };
 
+type MiniCutCrdtStoragePackage = {
+	dktStorage: unknown;
+	crdtStorage: unknown;
+	whenReady?: () => Promise<void> | void;
+	close?: () => Promise<void> | void;
+};
+
 type MiniCutCrdtOptions =
 	| false
 	| {
@@ -72,7 +80,7 @@ type MiniCutCrdtOptions =
 			peerId?: string;
 			profileId?: string;
 			profileVersion?: number;
-			storage?: "memory";
+			storage?: "memory" | MiniCutCrdtStoragePackage;
 			transport?: MiniCutCrdtTransport | null;
 		};
 
@@ -106,6 +114,7 @@ const createCrdtRuntimeForTests = (
 	options: MiniCutCrdtOptions | undefined,
 ): {
 	crdtRuntime: MiniCutCrdtRuntimeLike | null;
+	storagePackage: MiniCutCrdtStoragePackage | null;
 	peerId: string;
 	profileId: string;
 	profileVersion: number;
@@ -114,6 +123,7 @@ const createCrdtRuntimeForTests = (
 	if (!options || options.enabled !== true) {
 		return {
 			crdtRuntime: null,
+			storagePackage: null,
 			peerId: "minicut-local",
 			profileId: "minicut-crdt-v1",
 			profileVersion: 1,
@@ -123,12 +133,17 @@ const createCrdtRuntimeForTests = (
 	if (options.testOnly !== true) {
 		throw new Error("MiniCut CRDT runtime is test-only in this phase");
 	}
-	if (options.storage && options.storage !== "memory") {
-		throw new Error("MiniCut CRDT test runtime only supports memory storage");
-	}
 	const peerId = options.peerId ?? "minicut-test-worker";
+	const storagePackage =
+		options.storage && options.storage !== "memory"
+			? options.storage
+			: makeDktCrdtMemoryStorage();
 	return {
-		crdtRuntime: new DktCRDTEngine({ peer_id: peerId }) as MiniCutCrdtRuntimeLike,
+		crdtRuntime: new DktCRDTEngine({
+			peer_id: peerId,
+			storage: storagePackage.crdtStorage,
+		}) as MiniCutCrdtRuntimeLike,
+		storagePackage,
 		peerId,
 		profileId: options.profileId ?? "minicut-crdt-v1",
 		profileVersion: options.profileVersion ?? 1,
@@ -319,7 +334,11 @@ export const createMiniCutDktRuntime = (
 				const runtime = prepareAppRuntime({
 					sync_sender: true,
 					warnUnexpectedAttrs: true,
+					unload_models: false,
 					...(crdt.crdtRuntime ? { crdtRuntime: crdt.crdtRuntime } : null),
+					...(crdt.storagePackage
+						? { dkt_storage: crdt.storagePackage.dktStorage }
+						: null),
 					onError(error: unknown) {
 						for (const transport of activeTransports) {
 							transport.send({
@@ -668,6 +687,7 @@ export const createMiniCutDktRuntime = (
 						app.runtime.sync_sender.removeSyncStream(stream);
 					}
 				})
+				.then(() => crdt.storagePackage?.close?.())
 				.finally(() => {
 					stream = null;
 					transport.destroy();

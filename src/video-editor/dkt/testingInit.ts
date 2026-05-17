@@ -11,6 +11,7 @@
  */
 
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
+import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { _getCurrentRel } from "dkt-all/libs/provoda/_internal/_listRels.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
@@ -42,6 +43,13 @@ export type MiniCutDktCrdtRuntime = {
 		peekDurableLog?: () => unknown[];
 		receiveFromNetwork?: (model: AnyModel, message: unknown) => unknown;
 	};
+};
+
+export type MiniCutDktCrdtStoragePackage = {
+	dktStorage: unknown;
+	crdtStorage: unknown;
+	whenReady?: () => Promise<void> | void;
+	close?: () => Promise<void> | void;
 };
 
 type FlowErrorsCatcher = {
@@ -177,26 +185,34 @@ export type BootDktModelsOptions = {
 				peerId?: string;
 				profileId?: string;
 				profileVersion?: number;
-				storage?: "memory";
+				storage?: "memory" | MiniCutDktCrdtStoragePackage;
 				transport?: null;
 			};
 };
 
 const createCrdtRuntimeForTests = (
 	options: BootDktModelsOptions["crdt"],
-): MiniCutDktCrdtRuntime | null => {
+): {
+	crdtRuntime: MiniCutDktCrdtRuntime | null;
+	storagePackage: MiniCutDktCrdtStoragePackage | null;
+} => {
 	if (!options || options.enabled !== true) {
-		return null;
-	}
-	if (options.storage && options.storage !== "memory") {
-		throw new Error("MiniCut CRDT test runtime only supports memory storage");
+		return { crdtRuntime: null, storagePackage: null };
 	}
 	if (options.transport !== undefined && options.transport !== null) {
 		throw new Error("MiniCut CRDT bootDktModels only supports null transport");
 	}
-	return new DktCRDTEngine({
-		peer_id: options.peerId ?? "minicut-test-peer",
-	}) as MiniCutDktCrdtRuntime;
+	const storagePackage =
+		options.storage && options.storage !== "memory"
+			? options.storage
+			: makeDktCrdtMemoryStorage();
+	return {
+		crdtRuntime: new DktCRDTEngine({
+			peer_id: options.peerId ?? "minicut-test-peer",
+			storage: storagePackage.crdtStorage,
+		}) as MiniCutDktCrdtRuntime,
+		storagePackage,
+	};
 };
 
 /**
@@ -208,14 +224,16 @@ export const bootDktModels = async (
 	options: BootDktModelsOptions = {},
 ): Promise<DktTestContext> => {
 	const errorsCatcher = catchFlowErrors();
-	const crdtRuntime = createCrdtRuntimeForTests(options.crdt);
+	const { crdtRuntime, storagePackage } = createCrdtRuntimeForTests(options.crdt);
 	const runtime = prepareAppRuntime({
 		sync_sender: false,
 		proxies: false,
 		warnUnexpectedAttrs: false,
+		unload_models: false,
 		graphSemantics: options.graphSemantics,
 		aggregateValidation: options.aggregateValidation,
 		...(crdtRuntime ? { crdtRuntime } : null),
+		...(storagePackage ? { dkt_storage: storagePackage.dktStorage } : null),
 		onError: (err: unknown) => {
 			errorsCatcher.reject_error_prom(err);
 		},

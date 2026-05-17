@@ -1,4 +1,5 @@
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
+import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { describe, expect, it } from "vitest";
 import { bootDktModels } from "../testingInit";
 import {
@@ -84,6 +85,30 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 			profileVersion: 1,
 			hasRegistry: true,
 		});
+	});
+
+	it("accepts a public DKT CRDT storage package", async () => {
+		const storagePackage = makeDktCrdtMemoryStorage();
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				testOnly: true,
+				peerId: "worker-crdt-durable",
+				storage: storagePackage,
+				transport: null,
+			},
+		});
+
+		const dump = await runtime.debugDumpState();
+
+		expect(dump.crdt).toMatchObject({
+			enabled: true,
+			peerId: "worker-crdt-durable",
+			durableLogCount: 0,
+			hasRegistry: true,
+		});
+		await storagePackage.close?.();
 	});
 
 	it("stages local CRDT ops through bootDktModels dispatch", async () => {
