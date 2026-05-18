@@ -399,6 +399,9 @@ describe("SessionRoot action contracts", () => {
 				harness.ctx.getAttr(resource, "name") === "Session Forwarded Video",
 		);
 		expect(importedResource?._node_id).toBeTruthy();
+		if (!importedResource) {
+			throw new Error("Expected imported resource");
+		}
 
 		const beforeVideoClipIds = await readNodeIds(
 			harness.ctx,

@@ -24,8 +24,8 @@ describe("clip action reducer contracts", () => {
 			if (!patch) {
 				throw new Error("Expected patch");
 			}
-			expect(patch?.start).toBeGreaterThanOrEqual(0);
-			expect(isTenthsAligned(patch.start)).toBe(true);
+			expect(patch.start).toBeGreaterThanOrEqual(0);
+			expect(isTenthsAligned(patch.start ?? 0)).toBe(true);
 		}
 
 		expect(reduceTimelineMoveByAction({ delta: -1.2 }, { start: 0.2 })).toEqual(

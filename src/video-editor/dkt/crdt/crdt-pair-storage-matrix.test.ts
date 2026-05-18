@@ -9,9 +9,17 @@ import type { MiniCutCrdtStorageProfile } from "../test/crdtStorageMatrix";
 
 type Model = DktTestContext["sessionRoot"];
 
+const queryAddrLoose = queryAddr as unknown as (
+	model: Model,
+	addr: string,
+) => Promise<unknown>;
+
 const findVideoTrack = async (ctx: DktTestContext, project: Model) => {
 	const tracksFromRel = await ctx.queryRel(project, "tracks");
-	const tracksFromAddr = (await queryAddr(project, "<< @all:tracks")) as Model[];
+	const tracksFromAddr = (await queryAddrLoose(
+		project,
+		"<< @all:tracks",
+	)) as Model[];
 	const tracks = tracksFromRel.length > 0 ? tracksFromRel : tracksFromAddr;
 	const trackKinds = await Promise.all(
 		tracks.map(async (track) => ({

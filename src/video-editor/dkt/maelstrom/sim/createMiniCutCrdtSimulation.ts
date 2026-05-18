@@ -13,6 +13,11 @@ import { DeterministicMiniCutNetwork, type MiniCutNetworkMessage, type MiniCutPe
 
 type RuntimeModel = DktTestContext["sessionRoot"];
 
+const queryAddrLoose = queryAddr as unknown as (
+	model: RuntimeModel,
+	addr: string,
+) => Promise<unknown>;
+
 export type MiniCutPeer = {
 	id: MiniCutPeerId;
 	ctx: DktTestContext;
@@ -159,7 +164,7 @@ const queryVideoTrackClips = async (
 	const allClipsFromRel = await ctx.queryRel(ctx.appModel, "clip");
 	const allClips = allClipsFromRel.length > 0
 		? allClipsFromRel
-		: ((await queryAddr(ctx.appModel, "<< @all:clip")) as RuntimeModel[]);
+		: ((await queryAddrLoose(ctx.appModel, "<< @all:clip")) as RuntimeModel[]);
 	const pairs = await Promise.all(
 		allClips.map(async (clip) => ({
 			clip,
@@ -459,7 +464,7 @@ const wrapPeer = async (
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected active project");
 	const tracksFromRel = await ctx.queryRel(project, "tracks");
-	const tracksFromAddr = (await queryAddr(project, "<< @all:tracks")) as RuntimeModel[];
+	const tracksFromAddr = (await queryAddrLoose(project, "<< @all:tracks")) as RuntimeModel[];
 	const tracks = tracksFromRel.length > 0 ? tracksFromRel : tracksFromAddr;
 	const trackKinds = await Promise.all(
 		tracks.map(async (track) => ({
@@ -558,7 +563,7 @@ const createPeer = async (
 			"minicut-maelstrom-seed-snapshot",
 		);
 		await ctx.lockToRead(async () => {
-			const rawProjects = (await queryAddr(ctx.sessionRoot, "<< @all:pioneer.project")) as Array<RuntimeModel | string>;
+			const rawProjects = (await queryAddrLoose(ctx.sessionRoot, "<< @all:pioneer.project")) as Array<RuntimeModel | string>;
 			const projects = rawProjects
 				.map((project) =>
 					typeof project === "string"
