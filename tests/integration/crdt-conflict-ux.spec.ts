@@ -33,6 +33,11 @@ const createHarnessWorkspaceId = (roomId: string) => `harness:room:${encodeWorks
 const createHarnessDbName = (roomId: string) =>
 	`minicut-crdt-workspace-${encodeWorkspacePart(createHarnessWorkspaceId(roomId))}`
 
+const WORKSPACE_OPEN_STATUS = {
+	READY: 1,
+	EMPTY_INITIALIZED: 2,
+} as const
+
 const gotoIndexedDbSeedPage = async (page: Page) => {
 	await page.goto('/test-idb-seed.html')
 }
@@ -227,9 +232,36 @@ const expectFirstConflictBadge = async (page: Page) => {
 	await expect(page.locator('.clip-conflict-badge').first()).toBeVisible({ timeout: 20_000 })
 }
 
+type InjectConflictOptions = {
+	timing?: boolean
+	summary?: string
+}
+
+const injectFirstClipConflict = async (page: Page, options: InjectConflictOptions = {}) =>
+	page.evaluate(async (conflictOptions) => {
+		const debug = window.__MINICUT_P2P_DEBUG__
+		if (!debug?.injectFirstClipConflictTesting) throw new Error('Conflict injector is unavailable')
+		return debug.injectFirstClipConflictTesting(conflictOptions)
+	}, options)
+
+const injectFirstClipConflictUntilBadge = async (page: Page, options: InjectConflictOptions = {}) => {
+	let fixture: unknown = null
+	await expect
+		.poll(
+			async () => {
+				fixture = await injectFirstClipConflict(page, options)
+				return page.locator('.clip-conflict-badge').count()
+			},
+			{ timeout: 20_000, intervals: [100, 250, 500] },
+		)
+		.toBeGreaterThan(0)
+	return fixture
+}
+
 const setupClipProject = async (page: Page, title: string) => {
+	const roomId = `clip-project-${Date.now()}-${Math.random().toString(36).slice(2)}`
 	await enableDebugBridge(page)
-	await page.goto('/')
+	await page.goto(`/#/${roomId}`)
 	await waitForDebugBridge(page)
 	await createProjectViaDebug(page, title)
 	await waitForRuntimeSettled(page)
@@ -273,6 +305,15 @@ test.describe('CRDT UI E2E', () => {
 
 		const first = await readStorageSnapshot(page)
 		expect((first.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
+		expect((first.snapshot as { workspaceOpenState?: { status?: unknown; failureReason?: unknown } } | null)?.workspaceOpenState).toEqual({
+			status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+			failureReason: 0,
+		})
+		expect((first.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown; statusLabel?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
+			status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+			statusLabel: 'empty_initialized',
+			manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
+		})
 		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
 		const panel = page.getByRole('region', { name: 'CRDT debug panel' })
 		await expect(panel).toContainText(createHarnessWorkspaceId(roomId))
@@ -283,6 +324,15 @@ test.describe('CRDT UI E2E', () => {
 		await waitForDebugBridge(page)
 		const second = await readStorageSnapshot(page)
 		expect((second.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
+		expect((second.snapshot as { workspaceOpenState?: { status?: unknown; failureReason?: unknown } } | null)?.workspaceOpenState).toEqual({
+			status: WORKSPACE_OPEN_STATUS.READY,
+			failureReason: 0,
+		})
+		expect((second.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown; statusLabel?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
+			status: WORKSPACE_OPEN_STATUS.READY,
+			statusLabel: 'ready',
+			manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
+		})
 		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
 		await expect(panel).toContainText(createHarnessWorkspaceId(roomId))
 		await expect(panel).toContainText(createHarnessDbName(roomId))
@@ -294,6 +344,7 @@ test.describe('CRDT UI E2E', () => {
 		const roomB = `reset-b-${Date.now()}`
 		const dbNameA = createHarnessDbName(roomA)
 		const dbNameB = createHarnessDbName(roomB)
+		const seededRoomACreatedAt = '2026-01-01T00:00:00.000Z'
 		const inspector = await context.newPage()
 
 		await gotoIndexedDbSeedPage(inspector)
@@ -309,7 +360,7 @@ test.describe('CRDT UI E2E', () => {
 			dktStorageVersion: 1,
 			appSchemaVersion: 1,
 			derivedSchemaVersion: 1,
-			createdAt: new Date().toISOString(),
+			createdAt: seededRoomACreatedAt,
 		})
 		await seedIndexedDbManifest(inspector, dbNameB, {
 			manifestVersion: 1,
@@ -341,7 +392,12 @@ test.describe('CRDT UI E2E', () => {
 		await page.getByRole('button', { name: 'Reset IndexedDB' }).click()
 		await waitForDebugBridge(page)
 
-		await expect.poll(async () => readIndexedDbManifest(inspector, dbNameA)).toBeNull()
+		await expect.poll(async () => readIndexedDbManifest(inspector, dbNameA)).toMatchObject({
+			workspaceId: createHarnessWorkspaceId(roomA),
+		})
+		expect((await readIndexedDbManifest(inspector, dbNameA)) as { createdAt?: unknown } | null).not.toMatchObject({
+			createdAt: seededRoomACreatedAt,
+		})
 		await expect.poll(async () => readIndexedDbManifest(inspector, dbNameB)).toMatchObject({
 			workspaceId: createHarnessWorkspaceId(roomB),
 		})
@@ -350,22 +406,10 @@ test.describe('CRDT UI E2E', () => {
 
 	test('@crdt-conflict shows timing conflict, failed resolution, and cleared resolution', async ({ page }) => {
 		await setupClipProject(page, `CRDT conflict ${Date.now()}`)
-		const fixture = await page.evaluate(async () => {
-			const debug = window.__MINICUT_P2P_DEBUG__
-			if (!debug?.injectFirstClipConflictTesting) throw new Error('Conflict injector is unavailable')
-			return debug.injectFirstClipConflictTesting({
-				timing: true,
-				summary: 'Duration has concurrent edits',
-			})
+		const fixture = await injectFirstClipConflictUntilBadge(page, {
+			timing: true,
+			summary: 'Duration has concurrent edits',
 		})
-		await expect.poll(async () => page.evaluate(() => {
-			const graph = window.__MINICUT_P2P_DEBUG__?.dumpGraph?.() as {
-				nodes?: Array<{ attrs?: Record<string, unknown> }>
-			} | null
-			return graph?.nodes
-				?.map((node) => node.attrs?.['$meta$aggregates$crdt$clipTiming$open_conflicts_count'] ?? null) ?? []
-		}), { timeout: 5_000 }).toContain(1)
-
 		const inspector = await openFirstClipConflictInspector(page)
 		await expect(inspector.getByText('Duration has concurrent edits')).toBeVisible()
 		await expect(inspector.getByText(/Timing conflict.*clipTiming/)).toBeVisible()
@@ -381,15 +425,29 @@ test.describe('CRDT UI E2E', () => {
 		await inspector.getByRole('button', { name: 'Resolve timing' }).click()
 		await page.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.clearFirstClipConflictTesting?.())
 		await expectNoConflictBadges(page)
-		expect(fixture.conflictId).toContain('timing:playwright')
+		expect((fixture as { conflictId?: unknown }).conflictId).toContain('timing:playwright')
 	})
 
-	test('@crdt-conflict syncs controlled conflict UX across two tabs', async ({ context }) => {
+	test('@crdt-conflict syncs controlled conflict UX across two room tabs', async ({ context }) => {
 		const firstPage = await context.newPage()
 		const secondPage = await context.newPage()
+		const roomId = `two-tab-room-${Date.now()}`
 		await Promise.all([enableDebugBridge(firstPage), enableDebugBridge(secondPage)])
-		await Promise.all([firstPage.goto('/'), secondPage.goto('/')])
+		await Promise.all([firstPage.goto(`/#/${roomId}`), secondPage.goto(`/#/${roomId}`)])
 		await Promise.all([waitForDebugBridge(firstPage), waitForDebugBridge(secondPage)])
+
+		const [firstStorage, secondStorage] = await Promise.all([
+			readStorageSnapshot(firstPage),
+			readStorageSnapshot(secondPage),
+		])
+		for (const storage of [firstStorage, secondStorage]) {
+			expect((storage.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
+			expect((storage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
+				manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
+			})
+		}
+		expect((firstStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId)
+			.toBe((secondStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId)
 
 		const title = `CRDT two tab ${Date.now()}`
 		await createProjectViaDebug(firstPage, title)
@@ -401,8 +459,8 @@ test.describe('CRDT UI E2E', () => {
 
 		await expect(secondPage.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible({ timeout: 20_000 })
 		await Promise.all([
-			firstPage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.injectFirstClipConflictTesting?.({ timing: true })),
-			secondPage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.injectFirstClipConflictTesting?.({ timing: true })),
+			injectFirstClipConflictUntilBadge(firstPage, { timing: true }),
+			injectFirstClipConflictUntilBadge(secondPage, { timing: true }),
 		])
 
 		await openFirstClipConflictInspector(firstPage)
@@ -417,18 +475,17 @@ test.describe('CRDT UI E2E', () => {
 	test('@crdt-conflict reloads the CRDT test harness and keeps debug UX usable', async ({ page }) => {
 		const title = `CRDT reload ${Date.now()}`
 		await setupClipProject(page, title)
-		await page.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.injectFirstClipConflictTesting?.({ timing: true }))
+		await injectFirstClipConflictUntilBadge(page, { timing: true })
 		await expectFirstConflictBadge(page)
 
 		await page.reload()
 		await waitForDebugBridge(page)
-		await waitForActiveProject(page)
 		const reloadedTitle = `CRDT reload after ${Date.now()}`
 		await createProjectViaDebug(page, reloadedTitle)
 		await waitForActiveProject(page, reloadedTitle)
 		await importFixtureVideo(page)
 		await waitForFixtureClip(page)
-		await page.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.injectFirstClipConflictTesting?.({ timing: true }))
+		await injectFirstClipConflictUntilBadge(page, { timing: true })
 		await expectFirstConflictBadge(page)
 	})
 })

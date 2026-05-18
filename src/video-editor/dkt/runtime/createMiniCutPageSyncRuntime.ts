@@ -399,6 +399,7 @@ export const createMiniCutPageSyncRuntime = ({
 			}),
 		applyDebugSyncUpdateTesting: (list) => {
 			syncReceiver.handleSync(SYNCR_TYPES.UPDATE, list);
+			syncSnapshotWithReceiver();
 		},
 		dispatchAction,
 		getSnapshot: () => store.getSnapshot(),

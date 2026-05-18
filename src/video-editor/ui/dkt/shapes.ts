@@ -37,6 +37,12 @@ const clipShape = defineShape({
 		"opacity",
 		"transform",
 		"mediaKind",
+		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+		"$meta$aggregates$crdt$clipTiming$last_resolution_error",
+		"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+		"$meta$rels$crdt$clips$open_conflicts_count",
+		"$meta$model$crdt$open_conflicts_count",
+		"$meta$model$crdt$last_resolution_error",
 	],
 	one: {
 		resource: resourceShape,

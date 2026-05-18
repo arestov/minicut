@@ -830,7 +830,7 @@ export const createMiniCutDktRuntime = (
 					return;
 				}
 				case DKT_MSG.DEBUG_DUMP_REQUEST: {
-					const summary = await debugDumpState();
+					const summary = await debugDumpState(activeSessionKey);
 					const app = await bootstrapApp(activeSessionKey);
 					if (!app) {
 						transport.send({
@@ -901,10 +901,10 @@ export const createMiniCutDktRuntime = (
 		return { destroy };
 	};
 
-	const debugDumpState = async () => {
+	const debugDumpState = async (sessionKey = "minicut-local") => {
 		let app: Awaited<ReturnType<typeof bootstrapApp>> | null = null;
 		try {
-			app = await bootstrapApp();
+			app = await bootstrapApp(sessionKey);
 		} catch (error) {
 			lastRuntimeErrorMessage =
 				lastRuntimeErrorMessage ??

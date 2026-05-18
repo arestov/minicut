@@ -70,18 +70,6 @@ sharedWorkerScope.onconnect = (event: MessageEvent) => {
 		sessions: runtime.getActiveSessionKeys(),
 		connections: runtime.getConnectionCount(),
 	});
-	void runtime
-		.getRuntimeSnapshot()
-		.then((snapshot) => {
-			sendWorkerLog("runtime snapshot", snapshot);
-		})
-		.catch((error) => {
-			transport.send({
-				type: DKT_MSG.RUNTIME_ERROR,
-				message:
-					error instanceof Error ? error.stack || error.message : String(error),
-			});
-		});
 
 	const cleanup = () => {
 		unlistenDebug();

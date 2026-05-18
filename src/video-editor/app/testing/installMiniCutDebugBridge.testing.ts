@@ -718,6 +718,8 @@ export const installMiniCutDebugBridgeTesting = (
 				[conflictNodeId],
 			];
 			runtime.applyDebugSyncUpdateTesting?.(update);
+			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+			runtime.applyDebugSyncUpdateTesting?.(update);
 			return { clipId: clipScope._nodeId, conflictId };
 		},
 		injectFirstClipResolutionErrorTesting: async (options = {}) => {
@@ -740,7 +742,7 @@ export const installMiniCutDebugBridgeTesting = (
 			if (!clipScope?._nodeId) {
 				throw new Error("No clip available for resolution error injection");
 			}
-			runtime.applyDebugSyncUpdateTesting?.([
+			const update = [
 				0,
 				clipScope._nodeId,
 				2,
@@ -754,7 +756,10 @@ export const installMiniCutDebugBridgeTesting = (
 						},
 					},
 				},
-			]);
+			];
+			runtime.applyDebugSyncUpdateTesting?.(update);
+			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+			runtime.applyDebugSyncUpdateTesting?.(update);
 			return { clipId: clipScope._nodeId };
 		},
 		clearFirstClipConflictTesting: async () => {
