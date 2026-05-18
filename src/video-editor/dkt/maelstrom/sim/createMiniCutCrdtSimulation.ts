@@ -85,6 +85,9 @@ const receiveNetworkMessage = async (
 		}
 		pending.splice(0, pending.length, ...nextPending);
 	}
+	await ctx.storagePackage?.commitChanges?.({
+		reason: "minicut-maelstrom-receive",
+	});
 	await waitForRuntimeIdle(ctx);
 };
 
@@ -472,7 +475,9 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 				const current = peers.get(id);
 				if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
 				const storagePackage = current.ctx.storagePackage;
-				await current.ctx.close();
+				// Keep the durable package open while replacing the peer runtime.
+				// Closing it would invalidate the shared IndexedDB/LevelDB handle
+				// before baseline ops are seeded into the target store.
 				await seedBaselineOps(storagePackage, [
 					...baselineOps,
 					...syntheticBaselineOps,
@@ -494,6 +499,9 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 			if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
 			const snapshot = await toReinitableData(current.ctx.runtime);
 			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${id} has no snapshot`);
+			// Keep the durable storage package open: this simulates an app/runtime
+			// restart over the same store handle. Closing the package would close
+			// IndexedDB/LevelDB itself, making the reused test storage invalid.
 			const ctx = await bootDktModels({
 				aggregateValidation: "error",
 				unloadModels: false,

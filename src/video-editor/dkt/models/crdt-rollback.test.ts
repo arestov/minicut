@@ -48,7 +48,7 @@ const setupClip = async () => {
 };
 
 describe("MiniCut CRDT rollback", () => {
-	it("clears staged CRDT work when aggregate validation rejects timing", async () => {
+	it("rolls back invalid timing write and records aggregate conflict without staging ops", async () => {
 		const { ctx, clip } = await setupClip();
 
 		await ctx.lockToRead(async () => {
@@ -64,7 +64,16 @@ describe("MiniCut CRDT rollback", () => {
 		expectCrdtMetaCount(
 			clip,
 			"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
-			0,
+			1,
 		);
+		expect(ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.({
+			aggregate: "clipTiming",
+			status: "open",
+		})).toEqual([
+			expect.objectContaining({
+				field_name: "start",
+				kind: "group_invariant_violation",
+			}),
+		]);
 	});
 });
