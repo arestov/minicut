@@ -550,12 +550,14 @@ export const sessionHandleInitAction = [
 		fn: [
 			[
 				"activeProjectId",
+				"storageOpenStatus",
 				"<< @all:pioneer.project",
 				"< @all:title < pioneer.project",
 			] as const,
 			(
 				payload: unknown,
 				activeProjectId: unknown,
+				storageOpenStatus: unknown,
 				projects: unknown,
 				projectTitles: unknown,
 			) => {
@@ -580,6 +582,15 @@ export const sessionHandleInitAction = [
 						selectedEntityId: null,
 						cursor: 0,
 						existingProject: firstProject,
+					};
+				}
+
+				if (storageOpenStatus !== "empty") {
+					return {
+						activeProjectId: null,
+						pendingProjectInit: null,
+						selectedEntityId: null,
+						cursor: 0,
 					};
 				}
 

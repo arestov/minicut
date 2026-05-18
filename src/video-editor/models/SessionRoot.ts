@@ -46,6 +46,17 @@ export const EditorSessionRoot = model({
 			null,
 			{ aggregate: { name: "sessionProjection", role: "projection", as: "closedAt" } },
 		],
+		storageOpenStatus: [
+			"input",
+			"empty",
+			{
+				aggregate: {
+					name: "sessionProjection",
+					role: "projection",
+					as: "storageOpenStatus",
+				},
+			},
+		],
 		isCommonRoot: [
 			"input",
 			false,

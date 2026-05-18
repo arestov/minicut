@@ -7,6 +7,7 @@ import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
+import { createMiniCutStoredDktManifest } from "../storage/minicutWorkspaceManifest";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 
 type MemoryStoragePackage = ReturnType<typeof makeDktCrdtMemoryStorage>;
@@ -176,6 +177,58 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 			storageVersion: 1,
 			schemaVersion: 1,
 		});
+
+		connection.destroy();
+		await storagePackage.close?.();
+	});
+
+	it("does not create a default project or rewrite the manifest for ready room-backed storage", async () => {
+		const storagePackage = makeDktCrdtMemoryStorage() as MemoryStoragePackage & {
+			dktStorage: {
+				getManifest?: () => Promise<unknown>;
+				putManifest?: (value: unknown) => void;
+			};
+			commitChanges?: (meta?: unknown) => Promise<void>;
+			close?: () => Promise<void>;
+		};
+		const seededManifest = createMiniCutStoredDktManifest(
+			"harness:room:ready-room",
+		);
+		storagePackage.dktStorage.putManifest?.(seededManifest);
+		await storagePackage.commitChanges?.({ reason: "seed-ready-manifest" });
+
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				peerId: "worker-crdt-ready-bootstrap",
+				storage: storagePackage,
+				workspaceIdForSessionKey: (sessionKey) => `harness:room:${sessionKey}`,
+				transport: null,
+			},
+		});
+		const memory = createMemoryTransport();
+		const connection = runtime.connect(memory.transport);
+
+		memory.emit({
+			type: DKT_MSG.BOOTSTRAP,
+			sessionKey: "ready-room",
+		});
+		await waitFor(() =>
+			memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_READY),
+		);
+		await waitForIdle(memory);
+		await storagePackage.commitChanges?.({ reason: "ready-bootstrap" });
+
+		const dump = (await runtime.debugDumpState()) as {
+			runtimeModels?: readonly { modelName?: string | null }[];
+		};
+		expect(
+			dump.runtimeModels?.filter((model) => model.modelName === "project") ?? [],
+		).toHaveLength(0);
+		await expect(storagePackage.dktStorage.getManifest?.()).resolves.toEqual(
+			seededManifest,
+		);
 
 		connection.destroy();
 		await storagePackage.close?.();

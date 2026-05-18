@@ -82,6 +82,8 @@ type MiniCutCrdtRuntimeLike = {
 	};
 };
 
+type MiniCutStorageOpenStatus = "empty" | "ready" | "adopted_v0";
+
 type MiniCutCrdtStoragePackage = {
 	dktStorage: unknown;
 	crdtStorage: unknown;
@@ -564,12 +566,22 @@ export const createMiniCutDktRuntime = (
 			(resolve, reject) => {
 				const createSessionRoot = async () => {
 					try {
+						const crdt = crdtPromise ? await crdtPromise : null;
+						const storageOpenStatus =
+							crdt?.storageOpen &&
+							typeof crdt.storageOpen === "object" &&
+							"status" in crdt.storageOpen
+								? ((crdt.storageOpen as { status?: unknown }).status as
+										| MiniCutStorageOpenStatus
+										| undefined)
+								: "empty";
 						const sessionRoot = await hookSessionRoot(
 							app.appModel,
 							app.appModel.start_page,
 							{
 								sessionKey: resolvedSessionId,
 								route: null,
+								storageOpenStatus,
 							},
 						);
 						resolve(sessionRoot as RuntimeModelLike);
