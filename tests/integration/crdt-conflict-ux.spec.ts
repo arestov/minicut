@@ -162,7 +162,7 @@ test.describe('CRDT UI E2E', () => {
 		await expectNoConflictBadges(secondPage)
 	})
 
-	test('@crdt-conflict reloads the CRDT-enabled worker and keeps debug UX usable', async ({ page }) => {
+	test('@crdt-conflict reloads the CRDT test harness and keeps debug UX usable', async ({ page }) => {
 		const title = `CRDT reload ${Date.now()}`
 		await setupClipProject(page, title)
 		await page.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.injectFirstClipConflictTesting?.({ timing: true }))
