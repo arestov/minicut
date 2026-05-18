@@ -28,13 +28,40 @@ const opId = (op: unknown): string | null => {
 	return typeof value === "string" && value ? value : null;
 };
 
+const batchId = (batch: unknown): string | null => {
+	if (!batch || typeof batch !== "object") {
+		return null;
+	}
+	const value = (batch as { batch_id?: unknown; id?: unknown }).batch_id ??
+		(batch as { id?: unknown }).id;
+	return typeof value === "string" && value ? value : null;
+};
+
 const packetKey = (packet: MiniCutCrdtPacket): string => {
+	const batchIds = (packet.batches ?? []).map(batchId).filter(Boolean).join("|");
+	if (batchIds) {
+		return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:batches:${batchIds}`;
+	}
 	const opIds = (packet.ops ?? []).map(opId).filter(Boolean).join("|");
 	return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:${opIds || JSON.stringify(packet.vectorClock ?? null)}`;
 };
 
 const clonePacket = (packet: MiniCutCrdtPacket): MiniCutCrdtPacket => ({
 	...packet,
+	batches: packet.batches?.map((batch) =>
+		batch && typeof batch === "object" ? {
+			...(batch as Record<string, unknown>),
+			created_models: [
+				...((batch as { created_models?: unknown[] }).created_models ?? []),
+			],
+			tombstones: [
+				...((batch as { tombstones?: unknown[] }).tombstones ?? []),
+			],
+			ops: ((batch as { ops?: unknown[] }).ops ?? []).map((op) =>
+				op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
+			),
+		} : batch,
+	),
 	ops: packet.ops?.map((op) =>
 		op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
 	),
@@ -142,6 +169,7 @@ export const createInMemoryCrdtRelay = (options: RelayOptions = {}) => {
 						profileVersion: peer.profileVersion,
 						peerId: "relay",
 						vectorClock: message.vectorClock,
+						batches: room.log.flatMap((packet) => packet.batches ?? []),
 						ops: room.log.flatMap((packet) => packet.ops ?? []),
 					},
 				});

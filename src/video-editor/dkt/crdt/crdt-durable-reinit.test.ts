@@ -2,7 +2,7 @@ import { indexedDB } from "fake-indexeddb";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { describe, expect, it } from "vitest";
 import { bootDktModels, type DktTestContext } from "../testingInit";
-import { drainCrdtOutbox } from "../test/crdtAssertions";
+import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
 
 type Model = DktTestContext["sessionRoot"];
 
@@ -99,9 +99,19 @@ describe("MiniCut CRDT durable reinit", () => {
 			await restoredClip.dispatch("trim", { edge: "end", delta: -1 });
 		});
 		expect(restarted.getAttr(restoredClip, "duration")).toBe(3);
+		const batches = drainCrdtOutboxBatches(restarted.runtime);
 		expect(drainCrdtOutbox(restarted.runtime)).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ kind: "attr", name: "duration", value: 3 }),
+			]),
+		);
+		expect(batches).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					ops: expect.arrayContaining([
+						expect.objectContaining({ kind: "attr", name: "duration", value: 3 }),
+					]),
+				}),
 			]),
 		);
 
@@ -144,7 +154,8 @@ describe("MiniCut CRDT durable reinit", () => {
 		await sourceFromTarget.lockToRead(async () => {
 			await sourceProject.dispatch("renameProject", "Remote after restart");
 		});
-		const ops = drainCrdtOutbox(sourceFromTarget.runtime);
+		const batches = drainCrdtOutboxBatches(sourceFromTarget.runtime);
+		drainCrdtOutbox(sourceFromTarget.runtime);
 		const restartedTarget = await reinitContext(
 			target,
 			"durable-reinit-target",
@@ -154,10 +165,12 @@ describe("MiniCut CRDT durable reinit", () => {
 			String(targetProject._node_id),
 		);
 
-		await restartedTarget.runtime.crdt_runtime?.receiveCanonicalOps?.(
-			restoredTargetProject,
-			ops,
-		);
+		for (const batch of batches) {
+			await restartedTarget.runtime.crdt_runtime?.receiveCanonicalBatch?.(
+				restoredTargetProject,
+				batch,
+			);
+		}
 		await restartedTarget.computed();
 
 		expect(restartedTarget.getAttr(restoredTargetProject, "title")).toBe(

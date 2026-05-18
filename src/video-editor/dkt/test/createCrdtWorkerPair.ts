@@ -1,6 +1,7 @@
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { createInMemoryCrdtRelay } from "../crdt/createInMemoryCrdtRelay";
+import { sanitizeStorageValue } from "../crdt/sanitizeStoragePackage";
 import { createTestWorkerCrdtTransport } from "../crdt/createTestWorkerCrdtTransport";
 import type { MiniCutCrdtRelayMessage } from "../crdt/testRelayContracts";
 import {
@@ -8,7 +9,7 @@ import {
 	type DktTestContext,
 	type MiniCutDktCrdtStoragePackage,
 } from "../testingInit";
-import { drainCrdtOutbox } from "./crdtAssertions";
+import { drainCrdtOutbox, drainCrdtOutboxBatches } from "./crdtAssertions";
 import { waitForRuntimeIdle } from "./waitForRuntimeIdle";
 
 type RuntimeModel = DktTestContext["sessionRoot"];
@@ -57,7 +58,33 @@ const receiveOps = async (
 	if (message.type !== "crdt-ops" && message.type !== "crdt-sync-response") {
 		return;
 	}
+	await waitForRuntimeIdle(ctx);
+	const batches = message.packet.batches ?? [];
+	if (batches.length > 0) {
+		for (const batch of batches) {
+			const receiver =
+				ctx.runtime.crdt_runtime?.testing?.receiveFromNetwork ??
+				ctx.runtime.crdt_runtime?.receiveCanonicalBatch;
+			await receiver?.(ctx.appModel, cloneBatch(batch));
+			await ctx.storagePackage?.commitChanges?.({
+				reason: `minicut-worker-pair-receive:${
+					(batch as { batch_id?: unknown } | null)?.batch_id ?? "batch"
+				}`,
+			});
+			await waitForRuntimeIdle(ctx);
+		}
+		return;
+	}
 	const ops = message.packet.ops ?? [];
+	if (ops.length > 0) {
+		throw new Error("MiniCut CRDT worker pair delivery requires graph batches");
+	}
+};
+
+const receiveLegacyOpsForTests = async (
+	ctx: DktTestContext,
+	ops: unknown[],
+) => {
 	const opsByNode = new Map<string, unknown[]>();
 	for (const op of ops) {
 		const nodeId = (op as { node_id?: unknown } | null)?.node_id;
@@ -73,6 +100,20 @@ const receiveOps = async (
 		await ctx.runtime.crdt_runtime?.receiveCanonicalOps?.(target, nodeOps);
 	}
 	await waitForRuntimeIdle(ctx);
+};
+
+const cloneBatch = (batch: unknown): unknown => {
+	if (!batch || typeof batch !== "object") return batch;
+	return {
+		...(batch as Record<string, unknown>),
+		created_models: [
+			...((batch as { created_models?: unknown[] }).created_models ?? []),
+		],
+		tombstones: [...((batch as { tombstones?: unknown[] }).tombstones ?? [])],
+		ops: ((batch as { ops?: unknown[] }).ops ?? []).map((op) =>
+			op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
+		),
+	};
 };
 
 const findSharedProject = async (
@@ -190,6 +231,7 @@ const createPeer = async (
 	if (!videoTrack) {
 		throw new Error("Expected video track");
 	}
+	drainCrdtOutboxBatches(ctx.runtime);
 	drainCrdtOutbox(ctx.runtime);
 
 	return {
@@ -223,16 +265,28 @@ const seedBaselineOps = async (
 ) => {
 	if (!storagePackage || ops.length === 0) return;
 	const crdtStorage = storagePackage.crdtStorage as {
-		appendOps?: (ops: unknown[]) => void;
-		markApplied?: (opIds: string[]) => void;
+		appendBatches?: (batches: unknown[]) => void;
+		markBatchesApplied?: (batchIds: string[]) => void;
 		commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
 	};
-	crdtStorage.appendOps?.(ops);
-	crdtStorage.markApplied?.(
-		ops
+	const batch = {
+		schema_version: 1,
+		batch_id: `baseline:${ops
 			.map((op) => (op as { op_id?: unknown } | null)?.op_id)
-			.filter((id): id is string => typeof id === "string"),
-	);
+			.filter(Boolean)
+			.join(":")}`,
+		origin_peer_id: "baseline",
+		runtime_transaction_id: null,
+		intent: null,
+		clock: (ops.at(-1) as { clock?: unknown } | null)?.clock ?? null,
+		created_models: [],
+		tombstones: [],
+		ops: ops.map((op) =>
+			op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
+		),
+	};
+	crdtStorage.appendBatches?.([batch]);
+	crdtStorage.markBatchesApplied?.([batch.batch_id]);
 	await crdtStorage.commitChanges?.({ reason: "minicut-worker-pair-baseline" });
 };
 
@@ -279,7 +333,7 @@ const synthesizeMissingAttrBaselineOps = async (
 			const name = field.name;
 			if (!fieldId || !name) continue;
 			if (engine?.sidecar_state?.read?.(nodeId, fieldId)) continue;
-			const value = await peer.ctx.queryAttr(model, name);
+			const value = sanitizeStorageValue(await peer.ctx.queryAttr(model, name));
 			if (value == null) continue;
 			counter += 1;
 			ops.push({
@@ -333,6 +387,16 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		snapshot: await readDurableOrLiveSnapshot(a.ctx),
 		preferredProjectId: String(a.project._node_id),
 	});
+	const pendingReceives: Promise<void>[] = [];
+	const trackReceive = (promise: Promise<void>) => {
+		pendingReceives.push(promise);
+		void promise.finally(() => {
+			const index = pendingReceives.indexOf(promise);
+			if (index >= 0) {
+				pendingReceives.splice(index, 1);
+			}
+		});
+	};
 
 	const transportA = createTestWorkerCrdtTransport({
 		relay,
@@ -341,7 +405,7 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		profileId: options.profileId,
 		profileVersion: options.profileVersion,
 		onMessage: (message) => {
-			void receiveOps(a.ctx, message);
+			trackReceive(receiveOps(a.ctx, message));
 		},
 	});
 	const transportB = createTestWorkerCrdtTransport({
@@ -351,20 +415,26 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		profileId: options.profileId,
 		profileVersion: options.profileVersion,
 		onMessage: (message) => {
-			void receiveOps(b.ctx, message);
+			trackReceive(receiveOps(b.ctx, message));
 		},
 	});
 
 	a.flushOutbound = () => {
+		const batches = drainCrdtOutboxBatches(a.ctx.runtime);
 		const ops = drainCrdtOutbox(a.ctx.runtime);
-		if (ops.length) {
-			transportA.sendOps({ ops });
+		if (batches.length) {
+			transportA.sendOps({ batches });
+		} else if (ops.length) {
+			throw new Error("MiniCut CRDT worker pair outbound requires graph batches");
 		}
 	};
 	b.flushOutbound = () => {
+		const batches = drainCrdtOutboxBatches(b.ctx.runtime);
 		const ops = drainCrdtOutbox(b.ctx.runtime);
-		if (ops.length) {
-			transportB.sendOps({ ops });
+		if (batches.length) {
+			transportB.sendOps({ batches });
+		} else if (ops.length) {
+			throw new Error("MiniCut CRDT worker pair outbound requires graph batches");
 		}
 	};
 
@@ -375,14 +445,33 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		transportA,
 		transportB,
 		async waitForConvergence() {
+			await Promise.all([...pendingReceives]);
 			await waitForRuntimeIdle(a.ctx);
 			await waitForRuntimeIdle(b.ctx);
+			await Promise.all([...pendingReceives]);
 		},
 		async syncBaselineFrom(sourceId: PeerId = "A") {
 			const source = sourceId === "A" ? a : b;
 			const target = sourceId === "A" ? b : a;
 			const ops = drainCrdtOutbox(source.ctx.runtime);
+			const batches = drainCrdtOutboxBatches(source.ctx.runtime);
 			const syntheticBaselineOps = await synthesizeMissingAttrBaselineOps(source);
+			for (const batch of batches) {
+				await receiveOps(target.ctx, {
+					type: "crdt-ops",
+					roomId: options.roomId,
+					from: source.id,
+					packet: {
+						profileId: options.profileId,
+						profileVersion: options.profileVersion,
+						peerId: source.id,
+						batches: [batch],
+					},
+				});
+			}
+			if (ops.length > 0) {
+				await receiveLegacyOpsForTests(target.ctx, ops);
+			}
 			await replacePeerFromSnapshot(target, source, [
 				...ops,
 				...syntheticBaselineOps,

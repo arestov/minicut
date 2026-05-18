@@ -10,6 +10,20 @@ export type MiniCutNetworkMessage = {
 
 const clonePacket = (packet: MiniCutCrdtPacket): MiniCutCrdtPacket => ({
 	...packet,
+	batches: packet.batches?.map((batch) =>
+		batch && typeof batch === "object" ? {
+			...(batch as Record<string, unknown>),
+			created_models: [
+				...((batch as { created_models?: unknown[] }).created_models ?? []),
+			],
+			tombstones: [
+				...((batch as { tombstones?: unknown[] }).tombstones ?? []),
+			],
+			ops: ((batch as { ops?: unknown[] }).ops ?? []).map((op) =>
+				op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
+			),
+		} : batch,
+	),
 	ops: packet.ops?.map((op) =>
 		op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
 	),
@@ -19,9 +33,16 @@ const pairKey = (left: MiniCutPeerId, right: MiniCutPeerId): string =>
 	[left, right].sort().join(":" );
 
 const seededRank = (message: MiniCutNetworkMessage, seed: number): number => {
-	const text = `${seed}:${message.from}:${message.to}:${JSON.stringify(
-		message.packet.ops ?? [],
-	)}`;
+	const batchKeys = message.packet.batches?.map((batch) =>
+		String((batch as { batch_id?: unknown } | null)?.batch_id ?? ""),
+	);
+	const opKeys = message.packet.ops?.map((op) =>
+		String((op as { op_id?: unknown } | null)?.op_id ?? ""),
+	);
+	const text = `${seed}:${message.from}:${message.to}:${[
+		...(batchKeys ?? []),
+		...(opKeys ?? []),
+	].join("|")}`;
 	let hash = 2166136261;
 	for (let index = 0; index < text.length; index += 1) {
 		hash ^= text.charCodeAt(index);

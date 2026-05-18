@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { queryAddr } from "dkt/async/queryAddr.js";
 import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { bootDktModels, type DktTestContext } from "../testingInit";
-import { drainCrdtOutbox } from "../test/crdtAssertions";
+import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
 import { createMiniCutCrdtStorageProfiles } from "../test/crdtStorageMatrix";
 import type { MiniCutDktCrdtStorageOptions } from "../testingInit";
 import type { MiniCutCrdtStorageProfile } from "../test/crdtStorageMatrix";
@@ -125,6 +125,22 @@ const seedBaselineOps = async (ctx: DktTestContext, ops: unknown[]) => {
 	await crdtStorage?.commitChanges?.({ reason: "minicut-storage-matrix-baseline" });
 };
 
+const seedBaselineBatches = async (ctx: DktTestContext, batches: unknown[]) => {
+	if (batches.length === 0) return;
+	const crdtStorage = ctx.storagePackage?.crdtStorage as {
+		appendBatches?: (batches: unknown[]) => void;
+		markBatchesApplied?: (batchIds: string[]) => void;
+		commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
+	} | undefined;
+	crdtStorage?.appendBatches?.(batches);
+	crdtStorage?.markBatchesApplied?.(
+		batches
+			.map((batch) => (batch as { batch_id?: unknown } | null)?.batch_id)
+			.filter((id): id is string => typeof id === "string"),
+	);
+	await crdtStorage?.commitChanges?.({ reason: "minicut-storage-matrix-baseline" });
+};
+
 const seedDktSnapshot = async (ctx: DktTestContext, snapshot: unknown) => {
 	const dktStorage = ctx.storagePackage?.dktStorage as
 		| {
@@ -213,16 +229,12 @@ const addClip = async (ctx: DktTestContext, videoTrack: Model) => {
 	return clip;
 };
 
-const mapOpsToNode = (ops: unknown[], nodeId: string) =>
-	ops
-		.filter((op) => (op as { kind?: unknown }).kind === "attr")
-		.map((op) => ({ ...(op as object), node_id: nodeId }));
-
 describe("MiniCut CRDT pair storage matrix", () => {
 	for (const profile of createMiniCutCrdtStorageProfiles()) {
 		it(`applies mapped timing edits with ${profile.name}`, async () => {
 			const a = await createPeer("A", profile);
 			const clipA = await addClip(a.ctx, a.videoTrack);
+			const baselineBatches = drainCrdtOutboxBatches(a.ctx.runtime);
 			const baselineOps = drainCrdtOutbox(a.ctx.runtime);
 			const bStorage = storageForPeer(profile, "B");
 			const snapshot = await toReinitableData(a.ctx.runtime);
@@ -231,6 +243,7 @@ describe("MiniCut CRDT pair storage matrix", () => {
 				storage: bStorage,
 			});
 			await seedDktSnapshot(b.ctx, snapshot);
+			await seedBaselineBatches(b.ctx, baselineBatches);
 			await seedBaselineOps(b.ctx, baselineOps);
 			await b.ctx.runtime.crdt_runtime?.restoreFromStorage?.();
 			let clipB = (await b.ctx.queryRel(b.videoTrack, "clips"))[0];
@@ -251,10 +264,11 @@ describe("MiniCut CRDT pair storage matrix", () => {
 			await a.ctx.lockToRead(async () => {
 				await clipA.dispatch("trim", { edge: "start", delta: 1 });
 			});
-			await b.ctx.runtime.crdt_runtime?.receiveCanonicalOps?.(
-				clipB,
-				mapOpsToNode(drainCrdtOutbox(a.ctx.runtime), String(clipB._node_id)),
-			);
+			const batches = drainCrdtOutboxBatches(a.ctx.runtime);
+			drainCrdtOutbox(a.ctx.runtime);
+			for (const batch of batches) {
+				await b.ctx.runtime.crdt_runtime?.receiveCanonicalBatch?.(clipB, batch);
+			}
 			await b.ctx.computed();
 
 			await expect(b.ctx.queryAttr(clipB, "start")).resolves.toBe(1);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drainCrdtOutbox } from "../test/crdtAssertions";
+import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const pairOptions = (roomId: string) => ({
@@ -85,9 +85,10 @@ describe("MiniCut CRDT relay convergence", () => {
 		const pair = await createCrdtWorkerPair(pairOptions("room-duplicate"));
 
 		await pair.a.dispatch(pair.a.project, "renameProject", "Duplicate-safe title");
-		const ops = drainCrdtOutbox(pair.a.ctx.runtime);
-		pair.transportA.sendOps({ ops });
-		pair.transportA.sendOps({ ops });
+		const batches = drainCrdtOutboxBatches(pair.a.ctx.runtime);
+		drainCrdtOutbox(pair.a.ctx.runtime);
+		pair.transportA.sendOps({ batches });
+		pair.transportA.sendOps({ batches });
 		await pair.waitForConvergence();
 
 		await expect(pair.b.readProjectTitle()).resolves.toBe(
@@ -113,8 +114,12 @@ describe("MiniCut CRDT relay convergence", () => {
 					type: "crdt-sync-response",
 					requestId: "sync:late",
 					packet: expect.objectContaining({
-						ops: expect.arrayContaining([
-							expect.objectContaining({ name: "title" }),
+						batches: expect.arrayContaining([
+							expect.objectContaining({
+								ops: expect.arrayContaining([
+									expect.objectContaining({ name: "title" }),
+								]),
+							}),
 						]),
 					}),
 				}),

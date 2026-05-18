@@ -18,6 +18,7 @@ import { _getCurrentRel } from "dkt-all/libs/provoda/_internal/_listRels.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { MiniCutAppRoot } from "../models/AppRoot";
+import { sanitizeDktCrdtStoragePackage } from "./crdt/sanitizeStoragePackage";
 
 type AnyModel = {
 	_node_id?: string | null;
@@ -46,8 +47,10 @@ export type MiniCutDktCrdtRuntime = {
 	crdt_registry?: unknown;
 	receiveCanonicalOp?: (model: AnyModel, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: AnyModel, ops: unknown[]) => unknown;
+	receiveCanonicalBatch?: (model: AnyModel, batch: unknown) => unknown;
 	testing?: {
 		drainOutbox?: () => unknown[];
+		drainOutboxBatches?: () => unknown[];
 		peekDurableLog?: () => unknown[];
 		receiveFromNetwork?: (model: AnyModel, message: unknown) => unknown;
 	};
@@ -253,11 +256,11 @@ const createStoragePackage = async (
 		return makeDktCrdtMemoryStorage();
 	}
 	if (storage.type === "indexeddb") {
-		return makeDktCrdtIndexedDBStorage({
+		return sanitizeDktCrdtStoragePackage(await makeDktCrdtIndexedDBStorage({
 			dbName: storage.dbName,
 			version: storage.version,
 			indexedDB: storage.indexedDB,
-		}) as Promise<MiniCutDktCrdtStoragePackage>;
+		}) as MiniCutDktCrdtStoragePackage);
 	}
 	throw new Error("Unsupported MiniCut CRDT storage option");
 };

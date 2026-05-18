@@ -18,6 +18,9 @@ export const getCrdtDebugState = (runtime: RuntimeWithCrdt) => {
 export const drainCrdtOutbox = (runtime: RuntimeWithCrdt): unknown[] =>
 	runtime.crdt_runtime?.testing?.drainOutbox?.() ?? [];
 
+export const drainCrdtOutboxBatches = (runtime: RuntimeWithCrdt): unknown[] =>
+	runtime.crdt_runtime?.testing?.drainOutboxBatches?.() ?? [];
+
 export const expectCrdtOutboxContains = (
 	ops: readonly unknown[],
 	partial: Record<string, unknown>,

@@ -6,6 +6,7 @@ export type MiniCutCrdtPacket = {
 	profileVersion: number;
 	peerId: string;
 	vectorClock?: unknown;
+	batches?: unknown[];
 	ops?: unknown[];
 };
 

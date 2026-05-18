@@ -1,7 +1,8 @@
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { queryAddr } from "dkt/async/queryAddr.js";
 import { toReinitableData } from "dkt/runtime/app/reinit.js";
-import { drainCrdtOutbox } from "../../test/crdtAssertions";
+import { sanitizeStorageValue } from "../../crdt/sanitizeStoragePackage";
+import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../../test/crdtAssertions";
 import { waitForRuntimeIdle } from "../../test/waitForRuntimeIdle";
 import {
 	bootDktModels,
@@ -50,7 +51,27 @@ const receiveNetworkMessage = async (
 	ctx: DktTestContext,
 	message: MiniCutNetworkMessage,
 ) => {
+	await waitForRuntimeIdle(ctx);
+	const batches = message.packet.batches ?? [];
+	if (batches.length > 0) {
+		for (const batch of batches) {
+			const receiver =
+				ctx.runtime.crdt_runtime?.testing?.receiveFromNetwork ??
+				ctx.runtime.crdt_runtime?.receiveCanonicalBatch;
+			await receiver?.(ctx.appModel, cloneBatch(batch));
+			await ctx.storagePackage?.commitChanges?.({
+				reason: `minicut-maelstrom-receive:${
+					(batch as { batch_id?: unknown } | null)?.batch_id ?? "batch"
+				}`,
+			});
+			await waitForRuntimeIdle(ctx);
+		}
+		return;
+	}
 	const pending = [...(message.packet.ops ?? [])];
+	if (pending.length > 0) {
+		throw new Error("MiniCut maelstrom delivery requires graph batches");
+	}
 	while (pending.length > 0) {
 		const nextPending = [];
 		let applied = 0;
@@ -90,6 +111,20 @@ const receiveNetworkMessage = async (
 		reason: "minicut-maelstrom-receive",
 	});
 	await waitForRuntimeIdle(ctx);
+};
+
+const cloneBatch = (batch: unknown): unknown => {
+	if (!batch || typeof batch !== "object") return batch;
+	return {
+		...(batch as Record<string, unknown>),
+		created_models: [
+			...((batch as { created_models?: unknown[] }).created_models ?? []),
+		],
+		tombstones: [...((batch as { tombstones?: unknown[] }).tombstones ?? [])],
+		ops: ((batch as { ops?: unknown[] }).ops ?? []).map((op) =>
+			op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
+		),
+	};
 };
 
 const attrNumber = (model: RuntimeModel, attrName: string): number => Number(model.states?.[attrName] ?? 0);
@@ -307,16 +342,28 @@ const seedBaselineOps = async (
 ) => {
 	if (!storagePackage || ops.length === 0) return;
 	const crdtStorage = storagePackage.crdtStorage as {
-		appendOps?: (ops: unknown[]) => void;
-		markApplied?: (opIds: string[]) => void;
+		appendBatches?: (batches: unknown[]) => void;
+		markBatchesApplied?: (batchIds: string[]) => void;
 		commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
 	};
-	crdtStorage.appendOps?.(ops);
-	crdtStorage.markApplied?.(
-		ops
+	const batch = {
+		schema_version: 1,
+		batch_id: `baseline:${ops
 			.map((op) => (op as { op_id?: unknown } | null)?.op_id)
-			.filter((id): id is string => typeof id === "string"),
-	);
+			.filter(Boolean)
+			.join(":")}`,
+		origin_peer_id: "baseline",
+		runtime_transaction_id: null,
+		intent: null,
+		clock: (ops.at(-1) as { clock?: unknown } | null)?.clock ?? null,
+		created_models: [],
+		tombstones: [],
+		ops: ops.map((op) =>
+			op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
+		),
+	};
+	crdtStorage.appendBatches?.([batch]);
+	crdtStorage.markBatchesApplied?.([batch.batch_id]);
 	await crdtStorage.commitChanges?.({ reason: "minicut-maelstrom-baseline" });
 };
 
@@ -363,7 +410,7 @@ const synthesizeMissingAttrBaselineOps = async (
 			const name = field.name;
 			if (!fieldId || !name) continue;
 			if (engine?.sidecar_state?.read?.(nodeId, fieldId)) continue;
-			const value = await peer.ctx.queryAttr(model, name);
+			const value = sanitizeStorageValue(await peer.ctx.queryAttr(model, name));
 			if (value == null) continue;
 			counter += 1;
 			ops.push({
@@ -384,6 +431,7 @@ const synthesizeMissingAttrBaselineOps = async (
 	if (ops.length > 0) {
 		await seedBaselineOps(peer.ctx.storagePackage, ops);
 		await peer.ctx.runtime.crdt_runtime?.restoreFromStorage?.();
+		drainCrdtOutboxBatches(peer.ctx.runtime);
 		drainCrdtOutbox(peer.ctx.runtime);
 		await waitForRuntimeIdle(peer.ctx);
 	}
@@ -449,14 +497,17 @@ const wrapPeer = async (
 			});
 		},
 		flushOutbound() {
+			const batches = drainCrdtOutboxBatches(ctx.runtime);
 			const ops = drainCrdtOutbox(ctx.runtime);
-			if (ops.length > 0) {
+			if (batches.length > 0) {
 				network.enqueue(id, {
 					profileId: PROFILE_ID,
 					profileVersion: PROFILE_VERSION,
 					peerId: id,
-					ops,
+					batches,
 				});
+			} else if (ops.length > 0) {
+				throw new Error("MiniCut maelstrom outbound requires graph batches");
 			}
 		},
 		async readProjectTitle() {
@@ -537,6 +588,7 @@ const createPeer = async (
 			? "minicut-maelstrom-bootstrap-snapshot"
 			: "minicut-maelstrom-bootstrap",
 	});
+	drainCrdtOutboxBatches(ctx.runtime);
 	drainCrdtOutbox(ctx.runtime);
 	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
 	return ctx;
@@ -558,6 +610,7 @@ const createProjectOnPrimary = async (
 		});
 	});
 	await waitForRuntimeIdle(primary);
+	drainCrdtOutboxBatches(primary.runtime);
 	drainCrdtOutbox(primary.runtime);
 	const project = (await primary.queryRel(primary.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected primary project after bootstrap");
@@ -612,6 +665,7 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 			await source.ctx.storagePackage?.commitChanges?.({
 				reason: "minicut-maelstrom-sync-source",
 			});
+			const baselineBatches = drainCrdtOutboxBatches(source.ctx.runtime);
 			const baselineOps = drainCrdtOutbox(source.ctx.runtime);
 			const syntheticBaselineOps = await synthesizeMissingAttrBaselineOps(source);
 			const snapshot = await readDurableOrLiveSnapshot(source.ctx, options);
@@ -634,6 +688,9 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 					...baselineOps,
 					...syntheticBaselineOps,
 				]);
+				for (const batch of baselineBatches) {
+					await ctx.runtime.crdt_runtime?.receiveCanonicalBatch?.(ctx.appModel, batch);
+				}
 				await ctx.runtime.crdt_runtime?.restoreFromStorage?.();
 				const synced = await wrapPeer(id, ctx, network);
 				peers.set(id, synced);

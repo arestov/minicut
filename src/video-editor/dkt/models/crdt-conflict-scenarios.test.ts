@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drainCrdtOutbox } from "../test/crdtAssertions";
+import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const createPairWithClip = async (roomId: string) => {
@@ -149,13 +149,26 @@ const createPairWithResourceClip = async (roomId: string) => {
 	return { pair, resourceA, resourceB, clipA, clipB };
 };
 
-const exchangeOps = async (
+const drainBatches = (
 	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
-	opsA: unknown[],
-	opsB: unknown[],
+	peerId: "A" | "B",
 ) => {
-	pair.transportA.sendOps({ ops: opsA });
-	pair.transportB.sendOps({ ops: opsB });
+	const peer = peerId === "A" ? pair.a : pair.b;
+	const batches = drainCrdtOutboxBatches(peer.ctx.runtime);
+	const legacyOps = drainCrdtOutbox(peer.ctx.runtime);
+	if (legacyOps.length > 0 && batches.length === 0) {
+		throw new Error("MiniCut conflict scenarios require graph batches");
+	}
+	return batches;
+};
+
+const exchangeBatches = async (
+	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
+	batchesA: unknown[],
+	batchesB: unknown[],
+) => {
+	pair.transportA.sendOps({ batches: batchesA });
+	pair.transportB.sendOps({ batches: batchesB });
 	await pair.waitForConvergence();
 };
 
@@ -175,11 +188,11 @@ const createTimingConflict = async (roomId: string) => {
 	const { pair, clipA, clipB } = await createPairWithClip(roomId);
 
 	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
-	const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
+	const opsA = drainBatches(pair, "A");
 	await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -2 });
-	const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+	const opsB = drainBatches(pair, "B");
 
-	await exchangeOps(pair, opsA, opsB);
+	await exchangeBatches(pair, opsA, opsB);
 	const conflictId =
 		(await pair.a.ctx.queryAttr(
 			clipA,
@@ -329,14 +342,14 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			clipId: clipsA[1]?._node_id,
 			afterClipId: null,
 		});
-		const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
+		const opsA = drainBatches(pair, "A");
 		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
 			clipId: clipsB[1]?._node_id,
 			afterClipId: clipsB[2]?._node_id,
 		});
-		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+		const opsB = drainBatches(pair, "B");
 
-		await exchangeOps(pair, opsA, opsB);
+		await exchangeBatches(pair, opsA, opsB);
 
 		expect(
 			openConflictCount(pair.a.videoTrack, [
@@ -367,11 +380,11 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		}
 
 		await pair.a.dispatch(effectA, "setEffectParams", { params: { radius: 8 } });
-		drainCrdtOutbox(pair.a.ctx.runtime);
+		drainBatches(pair, "A");
 		await pair.b.dispatch(clipB, "removeSelf");
-		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+		const opsB = drainBatches(pair, "B");
 
-		pair.transportB.sendOps({ ops: opsB });
+		pair.transportB.sendOps({ batches: opsB });
 		await pair.waitForConvergence();
 
 		expect(
@@ -390,11 +403,11 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		);
 
 		await pair.a.dispatch(textA, "setTextContent", "Remote title edit");
-		drainCrdtOutbox(pair.a.ctx.runtime);
+		drainBatches(pair, "A");
 		await pair.b.dispatch(clipB, "removeSelf");
-		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+		const opsB = drainBatches(pair, "B");
 
-		pair.transportB.sendOps({ ops: opsB });
+		pair.transportB.sendOps({ batches: opsB });
 		await pair.waitForConvergence();
 
 		expect(
@@ -416,11 +429,11 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		);
 
 		await pair.a.dispatch(clipA, "splitSelfAt", { time: 2 });
-		drainCrdtOutbox(pair.a.ctx.runtime);
+		drainBatches(pair, "A");
 		await pair.b.dispatch(clipB, "removeSelf");
-		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+		const opsB = drainBatches(pair, "B");
 
-		pair.transportB.sendOps({ ops: opsB });
+		pair.transportB.sendOps({ batches: opsB });
 		await pair.waitForConvergence();
 
 		expect(
@@ -447,15 +460,15 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			clipId,
 			targetTrackId: audioTrackA._node_id,
 		});
-		const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
+		const opsA = drainBatches(pair, "A");
 
 		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
 			clipId: clipsB[0]?._node_id,
 			afterClipId: clipsB[1]?._node_id,
 		});
-		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
+		const opsB = drainBatches(pair, "B");
 
-		await exchangeOps(pair, opsA, opsB);
+		await exchangeBatches(pair, opsA, opsB);
 
 		expect(
 			openConflictCount(clipsB[0], [
@@ -480,8 +493,8 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		);
 
 		await pair.b.dispatch(resourceB, "removeSelf");
-		const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
-		pair.transportB.sendOps({ ops: opsB });
+		const opsB = drainBatches(pair, "B");
+		pair.transportB.sendOps({ batches: opsB });
 		await pair.waitForConvergence();
 
 		expect(
