@@ -9,6 +9,7 @@ import {
 	type DktTestContext,
 	type MiniCutDktCrdtStorageOptions,
 } from "../../testingInit";
+import { createMiniCutHarnessWorkspaceId } from "../../storage/minicutWorkspaceManifest";
 import { DeterministicMiniCutNetwork, type MiniCutNetworkMessage, type MiniCutPeerId } from "./DeterministicMiniCutNetwork";
 
 type RuntimeModel = DktTestContext["sessionRoot"];
@@ -186,6 +187,8 @@ const findPeerProjectById = async (
 
 type SimulationOptions = {
 	peers: MiniCutPeerId[];
+	roomId?: string;
+	workspaceIdForPeer?: (peerId: MiniCutPeerId) => string;
 	storage?: MiniCutDktCrdtStorageOptions | ((peerId: MiniCutPeerId) => MiniCutDktCrdtStorageOptions);
 	unloadModels?: boolean;
 };
@@ -197,6 +200,13 @@ const resolveStorage = (
 	typeof options.storage === "function"
 		? options.storage(id)
 		: (options.storage ?? "memory");
+
+const resolveWorkspaceId = (
+	options: SimulationOptions,
+	id: MiniCutPeerId,
+): string | undefined =>
+	options.workspaceIdForPeer?.(id) ??
+	(options.roomId ? createMiniCutHarnessWorkspaceId(`${options.roomId}:${id}`) : undefined);
 
 const documentOnlySnapshot = (snapshot: unknown): unknown => {
 	if (!snapshot || typeof snapshot !== "object") return snapshot;
@@ -268,7 +278,9 @@ const documentOnlySnapshot = (snapshot: unknown): unknown => {
 		}
 		if (!value || typeof value !== "object") return;
 		if (Array.isArray(value)) {
-			value.forEach((item, index) => scan(item, `${path}[${index}]`));
+			value.forEach((item, index) => {
+				scan(item, `${path}[${index}]`);
+			});
 			return;
 		}
 		for (const [key, item] of Object.entries(value)) {
@@ -553,6 +565,7 @@ const createPeer = async (
 			profileId: PROFILE_ID,
 			profileVersion: PROFILE_VERSION,
 			storage: storagePackage ?? resolveStorage(options, id),
+			workspaceId: resolveWorkspaceId(options, id),
 			transport: null,
 		},
 	});
@@ -721,6 +734,7 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 					profileId: PROFILE_ID,
 					profileVersion: PROFILE_VERSION,
 					storage: current.ctx.storagePackage ?? resolveStorage(options, id),
+					workspaceId: resolveWorkspaceId(options, id),
 					transport: null,
 				},
 			});
