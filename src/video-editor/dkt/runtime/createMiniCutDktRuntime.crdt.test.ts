@@ -138,6 +138,31 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 		});
 	});
 
+	it("enables production CRDT runtime with default IndexedDB storage", async () => {
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				peerId: `worker-crdt-production-${Date.now()}`,
+				storage: {
+					type: "indexeddb",
+					dbName: `minicut-worker-crdt-production-${Date.now()}`,
+					indexedDB,
+				},
+				transport: null,
+			},
+		});
+
+		const dump = await runtime.debugDumpState();
+
+		expect(dump.crdt).toMatchObject({
+			enabled: true,
+			hasRegistry: true,
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+	});
+
 	it("stages local CRDT ops through bootDktModels dispatch", async () => {
 		const ctx = await bootDktModels({
 			crdt: {

@@ -5,8 +5,16 @@ import {
 } from "../shared/messageTypes";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 
+const isCrdtWorkerEnabled = (): boolean =>
+	import.meta.env.VITE_MINICUT_CRDT === "1" ||
+	import.meta.env.VITE_MINICUT_CRDT === "true";
+
 export const createMiniCutDktWorkerModelRuntime = () => {
-	const runtime = createMiniCutDktRuntime({ enabled: true });
+	const runtime = createMiniCutDktRuntime({
+		enabled: true,
+		crdt: isCrdtWorkerEnabled() ? true : false,
+		unloadModels: isCrdtWorkerEnabled(),
+	});
 	const activeSessionKeys = new Set<string>();
 	const activeConnections = new Set<{ destroy(): void }>();
 

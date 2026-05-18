@@ -88,6 +88,7 @@ type MiniCutCrdtStorageOptions =
 
 type MiniCutCrdtOptions =
 	| false
+	| true
 	| {
 			enabled: true;
 			testOnly?: true;
@@ -154,7 +155,26 @@ const createStoragePackage = async (
 	throw new Error("Unsupported MiniCut CRDT storage option");
 };
 
-const createCrdtRuntimeForTests = async (
+const normalizeCrdtOptions = (
+	options: MiniCutCrdtOptions | undefined,
+): Exclude<MiniCutCrdtOptions, false | true> | null => {
+	if (options === true) {
+		return { enabled: true };
+	}
+	if (!options || options.enabled !== true) {
+		return null;
+	}
+	return options;
+};
+
+const defaultProductionCrdtStorage = (
+	peerId: string,
+): MiniCutCrdtStorageOptions => ({
+	type: "indexeddb",
+	dbName: `minicut-crdt-${peerId}`,
+});
+
+const createCrdtRuntime = async (
 	options: MiniCutCrdtOptions | undefined,
 ): Promise<{
 	crdtRuntime: MiniCutCrdtRuntimeLike | null;
@@ -164,7 +184,8 @@ const createCrdtRuntimeForTests = async (
 	profileVersion: number;
 	transport: MiniCutCrdtTransport | null;
 }> => {
-	if (!options || options.enabled !== true) {
+	const normalized = normalizeCrdtOptions(options);
+	if (!normalized) {
 		return {
 			crdtRuntime: null,
 			storagePackage: null,
@@ -174,11 +195,15 @@ const createCrdtRuntimeForTests = async (
 			transport: null,
 		};
 	}
-	if (options.testOnly !== true) {
-		throw new Error("MiniCut CRDT runtime is test-only in this phase");
-	}
-	const peerId = options.peerId ?? "minicut-test-worker";
-	const storagePackage = await createStoragePackage(options.storage);
+	const peerId =
+		normalized.peerId ??
+		(normalized.testOnly === true ? "minicut-test-worker" : "minicut-browser");
+	const storagePackage = await createStoragePackage(
+		normalized.storage ??
+			(normalized.testOnly === true
+				? "memory"
+				: defaultProductionCrdtStorage(peerId)),
+	);
 	return {
 		crdtRuntime: new DktCRDTEngine({
 			peer_id: peerId,
@@ -186,9 +211,9 @@ const createCrdtRuntimeForTests = async (
 		}) as MiniCutCrdtRuntimeLike,
 		storagePackage,
 		peerId,
-		profileId: options.profileId ?? "minicut-crdt-v1",
-		profileVersion: options.profileVersion ?? 1,
-		transport: options.transport ?? null,
+		profileId: normalized.profileId ?? "minicut-crdt-v1",
+		profileVersion: normalized.profileVersion ?? 1,
+		transport: normalized.transport ?? null,
 	};
 };
 
@@ -289,7 +314,7 @@ const crdtResolutionAttemptMeta = (
 export const createMiniCutDktRuntime = (
 	options: CreateMiniCutDktRuntimeOptions = {},
 ) => {
-	const crdtPromise = createCrdtRuntimeForTests(options.crdt);
+	const crdtPromise = createCrdtRuntime(options.crdt);
 	let crdtTransportCleanup: (() => void) | null = null;
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
