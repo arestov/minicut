@@ -9,10 +9,7 @@ describe("MiniCut maelstrom generated small traces", () => {
 	const seeds = process.env.MINICUT_CRDT_HEAVY_MAELSTROM === "1" ? HEAVY_SEEDS : DEFAULT_SEEDS;
 
 	for (const seed of seeds) {
-		it.skip(`keeps timing conflict summaries stable across delivery variants seed=${seed}`, async () => {
-			// TODO: enable once shared snapshot bootstrap carries CRDT sidecar
-			// baseline for generated clip fixtures. Keeping this skipped avoids
-			// reintroducing alias-map based same-id fixtures.
+		it(`keeps timing conflict summaries stable across delivery variants seed=${seed}`, async () => {
 			await runMiniCutMetamorphicTrace(generateMiniCutSmallTrace(seed));
 		});
 	}

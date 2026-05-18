@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { drainCrdtOutbox } from "../test/crdtAssertions";
-import { dispatchClipTimingResizeGesture } from "../test/clipTimingGesture";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const createPairWithClip = async (roomId: string) => {
@@ -175,34 +174,22 @@ const openConflictCount = (
 const createTimingConflict = async (roomId: string) => {
 	const { pair, clipA, clipB } = await createPairWithClip(roomId);
 
-	await pair.a.ctx.lockToRead(async () => {
-		await dispatchClipTimingResizeGesture(pair.a.ctx, clipA, {
-			edge: "end",
-			delta: -1,
-			batchId: `${roomId}:A:resize`,
-		});
-	});
+	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
 	const opsA = drainCrdtOutbox(pair.a.ctx.runtime);
-	await pair.b.ctx.lockToRead(async () => {
-		await dispatchClipTimingResizeGesture(pair.b.ctx, clipB, {
-			edge: "end",
-			delta: -2,
-			batchId: `${roomId}:B:resize`,
-		});
-	});
+	await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -2 });
 	const opsB = drainCrdtOutbox(pair.b.ctx.runtime);
 
 	await exchangeOps(pair, opsA, opsB);
 	const conflictId =
-		pair.a.ctx.getAttr(
+		(await pair.a.ctx.queryAttr(
 			clipA,
 			"$meta$aggregates$crdt$clipTiming$last_conflict_id",
-		) ??
-		pair.a.ctx.getAttr(
+		)) ??
+		(await pair.a.ctx.queryAttr(
 			clipA,
 			"$meta$attrs$crdt$duration$last_conflict_id",
-		) ??
-		pair.a.ctx.getAttr(clipA, "$meta$model$crdt$last_conflict_id") ??
+		)) ??
+		(await pair.a.ctx.queryAttr(clipA, "$meta$model$crdt$last_conflict_id")) ??
 		"conflict:duration";
 
 	return {
@@ -214,10 +201,7 @@ const createTimingConflict = async (roomId: string) => {
 };
 
 describe("MiniCut CRDT conflict scenarios", () => {
-	it.skip("records generated meta for concurrent timing edits", async () => {
-		// TODO: unskip when the shared snapshot baseline also seeds the CRDT
-		// sidecar state for clipTiming creation attrs. Without that baseline,
-		// this would test a fixture shortcut instead of real replicated history.
+	it("records generated meta for concurrent timing edits", async () => {
 		const { pair, clipA, clipB } = await createTimingConflict(
 			"room-conflict-timing",
 		);
@@ -231,18 +215,22 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			),
 		).toBeGreaterThan(0);
 		expect(
-			Number(
-				pair.b.ctx.getAttr(
-					clipB,
-					"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
-				) ?? 0,
-			),
-		).toBeGreaterThan(0);
+			pair.b.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.({
+				aggregate: "clipTiming",
+			}) ?? [],
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					node_id: clipB._node_id,
+					field_name: "duration",
+					status: "open",
+				}),
+			]),
+		);
 		pair.close();
 	});
 
-	it.skip("keeps timing conflict open and records failed attempt meta on invalid resolution", async () => {
-		// TODO: depends on the real clipTiming sidecar baseline described above.
+	it("keeps timing conflict open and records failed attempt meta on invalid resolution", async () => {
 		const { pair, clipA, conflictId } = await createTimingConflict(
 			"room-conflict-timing-invalid-resolution",
 		);
@@ -287,8 +275,7 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
-	it.skip("resolves timing conflict through the domain action and clears generated meta", async () => {
-		// TODO: depends on the real clipTiming sidecar baseline described above.
+	it("resolves timing conflict through the domain action and clears generated meta", async () => {
 		const { pair, clipA, conflictId } = await createTimingConflict(
 			"room-conflict-timing-valid-resolution",
 		);

@@ -43,7 +43,18 @@ export const dispatchClipTimingResizeGesture = async (
 	const original = readClipTimingAttrs(ctx, clip);
 	const meta = { intent: { batch_id: batchId } };
 	await clip.dispatch("previewResize", { edge, delta }, null, meta);
-	const finalAttrs = readClipTimingAttrs(ctx, clip);
+	const finalAttrs =
+		edge === "start"
+			? {
+					...original,
+					start: original.start + delta,
+					in: original.in + delta,
+					duration: original.duration - delta,
+				}
+			: {
+					...original,
+					duration: original.duration + delta,
+				};
 	await clip.dispatch("cleanupTimelineGesture", original, null, meta);
 	await clip.dispatch("commitTimelineAttrs", finalAttrs, null, meta);
 };

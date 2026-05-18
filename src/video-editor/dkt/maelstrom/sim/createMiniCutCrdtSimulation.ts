@@ -216,6 +216,76 @@ const seedBaselineOps = async (
 	await crdtStorage.commitChanges?.({ reason: "minicut-maelstrom-baseline" });
 };
 
+const isRuntimeModel = (value: unknown): value is RuntimeModel =>
+	Boolean(value && typeof value === "object" && "_node_id" in value);
+
+const baselineClock = (counter: number) => ({
+	wall_time: 1,
+	counter,
+	peer_id: "baseline",
+});
+
+const synthesizeMissingAttrBaselineOps = async (
+	peer: MiniCutPeer,
+): Promise<unknown[]> => {
+	const engine = peer.ctx.runtime.crdt_runtime as
+		| {
+				sidecar_state?: {
+					read?: (nodeId: string, fieldId: string) => unknown;
+				};
+		  }
+		| undefined;
+	const models = Object.values(
+		(peer.ctx.runtime as { models?: Record<string, RuntimeModel> }).models ?? {},
+	).filter(isRuntimeModel);
+	const ops: unknown[] = [];
+	let counter = 0;
+	for (const model of models) {
+		const nodeId = String(model._node_id ?? "");
+		if (!nodeId) continue;
+		const meta = model.constructor?.prototype?.__crdt_meta as
+			| {
+					enabled_fields?: Array<{
+						field_id?: string;
+						kind?: string;
+						model_name?: string;
+						name?: string;
+					}>;
+			  }
+			| undefined;
+		for (const field of meta?.enabled_fields ?? []) {
+			if (field.kind !== "attr") continue;
+			const fieldId = field.field_id;
+			const name = field.name;
+			if (!fieldId || !name) continue;
+			if (engine?.sidecar_state?.read?.(nodeId, fieldId)) continue;
+			const value = await peer.ctx.queryAttr(model, name);
+			if (value == null) continue;
+			counter += 1;
+			ops.push({
+				op_id: `baseline:${peer.id}:${nodeId}:${fieldId}`,
+				origin: "baseline",
+				peer_id: peer.id,
+				clock: baselineClock(counter),
+				node_id: nodeId,
+				model_name: field.model_name ?? model.model_name,
+				field_id: fieldId,
+				kind: "attr",
+				name,
+				operation: "set",
+				value,
+			});
+		}
+	}
+	if (ops.length > 0) {
+		await seedBaselineOps(peer.ctx.storagePackage, ops);
+		await peer.ctx.runtime.crdt_runtime?.restoreFromStorage?.();
+		drainCrdtOutbox(peer.ctx.runtime);
+		await waitForRuntimeIdle(peer.ctx);
+	}
+	return ops;
+};
+
 const wrapPeer = async (
 	id: MiniCutPeerId,
 	ctx: DktTestContext,
@@ -394,6 +464,7 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 			const source = peers.get(sourceId);
 			if (!source) throw new Error(`Unknown MiniCut maelstrom peer: ${sourceId}`);
 			const baselineOps = drainCrdtOutbox(source.ctx.runtime);
+			const syntheticBaselineOps = await synthesizeMissingAttrBaselineOps(source);
 			const snapshot = await toReinitableData(source.ctx.runtime);
 			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${sourceId} has no snapshot`);
 			const ids = targetIds ?? [...peers.keys()].filter((id) => id !== sourceId);
@@ -402,7 +473,10 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 				if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
 				const storagePackage = current.ctx.storagePackage;
 				await current.ctx.close();
-				await seedBaselineOps(storagePackage, baselineOps);
+				await seedBaselineOps(storagePackage, [
+					...baselineOps,
+					...syntheticBaselineOps,
+				]);
 				const ctx = await createPeer(
 					id,
 					network,
