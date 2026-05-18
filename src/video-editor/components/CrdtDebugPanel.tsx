@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
 	CRDT_HARNESS_INDEXEDDB_NAME,
+	createCrdtHarnessStorageMetadata,
 	scheduleCrdtHarnessReset,
 } from "../dkt/crdt/browserHarnessStorage";
 
 type DebugBridge = {
+	getSnapshot: () => unknown;
 	dumpGraph: () => unknown;
 	dumpWorkerState: () => Promise<unknown>;
 	getActiveProjectDetails: () => unknown;
@@ -13,6 +15,13 @@ type DebugBridge = {
 
 type CrdtDebugSnapshot = {
 	peerId: string;
+	roomId: string | null;
+	workspaceId: string;
+	dbName: string;
+	openStatus: string;
+	appSchemaVersion: number;
+	derivedSchemaVersion: number;
+	schemaDictionaryMode: string;
 	storageBackend: string;
 	outboxCount: number;
 	openConflictsCount: number;
@@ -24,6 +33,9 @@ type CrdtDebugSnapshot = {
 type CrdtDebugExport = {
 	exportedAt: string;
 	dbName: string;
+	roomId: string | null;
+	workspaceId: string;
+	openStatus: string;
 	snapshot: CrdtDebugSnapshot;
 	workerState: unknown;
 	graph: unknown;
@@ -101,6 +113,16 @@ const readRuntimeMessageError = (messages: unknown): string | null => {
 	return typeof value.type === "string" ? value.type : "runtime error";
 };
 
+const readStorageMetadata = (debug: DebugBridge | undefined) => {
+	const pageSnapshot = debug?.getSnapshot() as { sessionKey?: unknown } | null;
+	const roomId =
+		typeof pageSnapshot?.sessionKey === "string" &&
+		pageSnapshot.sessionKey !== "harness:standalone"
+			? pageSnapshot.sessionKey
+			: null;
+	return createCrdtHarnessStorageMetadata(roomId);
+};
+
 const formatDebugError = (error: unknown): string | null => {
 	if (!error) {
 		return null;
@@ -127,9 +149,17 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 	const debug = (window as typeof window & { __MINICUT_P2P_DEBUG__?: DebugBridge })
 		.__MINICUT_P2P_DEBUG__;
 	if (!debug) {
+		const storageMetadata = createCrdtHarnessStorageMetadata(null);
 		return {
 			peerId: "not installed",
-			storageBackend: CRDT_HARNESS_INDEXEDDB_NAME,
+			roomId: storageMetadata.roomId,
+			workspaceId: storageMetadata.workspaceId,
+			dbName: storageMetadata.dbName,
+			openStatus: "waiting",
+			appSchemaVersion: 1,
+			derivedSchemaVersion: 1,
+			schemaDictionaryMode: "none",
+			storageBackend: storageMetadata.dbName,
 			outboxCount: 0,
 			openConflictsCount: 0,
 			lastError: "debug bridge unavailable",
@@ -147,6 +177,19 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 		projectId?: unknown;
 	} | null;
 	const crdt = (workerState as { crdt?: Record<string, unknown> } | null)?.crdt;
+	const storageMetadata = readStorageMetadata(debug);
+	const storageOpen = crdt?.storageOpen as
+		| { ok?: unknown; status?: unknown; reason?: unknown; manifest?: unknown }
+		| null
+		| undefined;
+	const miniCutManifest = storageOpen?.manifest as
+		| {
+				appSchemaVersion?: unknown;
+				derivedSchemaVersion?: unknown;
+				schemaDictionaryMode?: unknown;
+		  }
+		| null
+		| undefined;
 	const crdtEnabled =
 		crdt?.enabled === true ||
 		(typeof projectDetails?.projectId === "string" &&
@@ -161,7 +204,30 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 				: typeof projectDetails?.projectId === "string"
 					? projectDetails.projectId
 					: "unknown",
-		storageBackend: CRDT_HARNESS_INDEXEDDB_NAME,
+		roomId: storageMetadata.roomId,
+		workspaceId: storageMetadata.workspaceId,
+		dbName: storageMetadata.dbName,
+		openStatus:
+			storageOpen?.ok === true && typeof storageOpen.status === "string"
+				? storageOpen.status
+				: storageOpen?.ok === false && typeof storageOpen.reason === "string"
+					? storageOpen.reason
+					: crdtEnabled
+						? "unknown"
+						: "disabled",
+		appSchemaVersion:
+			typeof miniCutManifest?.appSchemaVersion === "number"
+				? miniCutManifest.appSchemaVersion
+				: 1,
+		derivedSchemaVersion:
+			typeof miniCutManifest?.derivedSchemaVersion === "number"
+				? miniCutManifest.derivedSchemaVersion
+				: 1,
+		schemaDictionaryMode:
+			typeof miniCutManifest?.schemaDictionaryMode === "string"
+				? miniCutManifest.schemaDictionaryMode
+				: "none",
+		storageBackend: storageMetadata.dbName,
 		outboxCount: readNumber(crdt?.outboxCount),
 		openConflictsCount: summarizeOpenConflicts(graph),
 		lastError:
@@ -181,7 +247,10 @@ const readExport = async (
 		.__MINICUT_P2P_DEBUG__;
 	return {
 		exportedAt: new Date().toISOString(),
-		dbName: CRDT_HARNESS_INDEXEDDB_NAME,
+		dbName: snapshot.dbName,
+		roomId: snapshot.roomId,
+		workspaceId: snapshot.workspaceId,
+		openStatus: snapshot.openStatus,
 		snapshot,
 		workerState: debug ? await debug.dumpWorkerState().catch(String) : null,
 		graph: debug?.dumpGraph() ?? null,
@@ -209,6 +278,13 @@ export const CrdtDebugPanel = () => {
 	const [open, setOpen] = useState(false);
 	const [snapshot, setSnapshot] = useState<CrdtDebugSnapshot>({
 		peerId: "loading",
+		roomId: null,
+		workspaceId: createCrdtHarnessStorageMetadata(null).workspaceId,
+		dbName: CRDT_HARNESS_INDEXEDDB_NAME,
+		openStatus: "loading",
+		appSchemaVersion: 1,
+		derivedSchemaVersion: 1,
+		schemaDictionaryMode: "none",
 		storageBackend: CRDT_HARNESS_INDEXEDDB_NAME,
 		outboxCount: 0,
 		openConflictsCount: 0,
@@ -288,6 +364,22 @@ export const CrdtDebugPanel = () => {
 						<div>
 							<dt>storage</dt>
 							<dd>{snapshot.storageBackend}</dd>
+						</div>
+						<div>
+							<dt>workspace</dt>
+							<dd>{snapshot.workspaceId}</dd>
+						</div>
+						<div>
+							<dt>open</dt>
+							<dd>{snapshot.openStatus}</dd>
+						</div>
+						<div>
+							<dt>schema</dt>
+							<dd>
+								app {snapshot.appSchemaVersion} / derived{" "}
+								{snapshot.derivedSchemaVersion} / dict{" "}
+								{snapshot.schemaDictionaryMode}
+							</dd>
 						</div>
 						<div>
 							<dt>outbox</dt>

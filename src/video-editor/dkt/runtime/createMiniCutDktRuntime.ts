@@ -15,6 +15,7 @@ import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
+import { openMiniCutWorkspaceStorage } from "../storage/minicutWorkspaceManifest";
 import { dumpWorkerAppState } from "./workerStateDump";
 
 type RuntimeModelLike = {
@@ -99,6 +100,8 @@ type MiniCutCrdtOptions =
 			profileId?: string;
 			profileVersion?: number;
 			storage?: MiniCutCrdtStorageOptions;
+			defaultStorageDbNameForSessionKey?: (sessionKey: string) => string;
+			workspaceIdForSessionKey?: (sessionKey: string) => string;
 			transport?: MiniCutCrdtTransport | null;
 		};
 
@@ -179,6 +182,7 @@ const defaultProductionCrdtStorage = (
 
 const createCrdtRuntime = async (
 	options: MiniCutCrdtOptions | undefined,
+	openPolicySessionKey = "minicut-local",
 ): Promise<{
 	crdtRuntime: MiniCutCrdtRuntimeLike | null;
 	storagePackage: MiniCutCrdtStoragePackage | null;
@@ -186,6 +190,7 @@ const createCrdtRuntime = async (
 	profileId: string;
 	profileVersion: number;
 	transport: MiniCutCrdtTransport | null;
+	storageOpen: unknown;
 }> => {
 	const normalized = normalizeCrdtOptions(options);
 	if (!normalized) {
@@ -196,6 +201,7 @@ const createCrdtRuntime = async (
 			profileId: "minicut-crdt-v1",
 			profileVersion: 1,
 			transport: null,
+			storageOpen: null,
 		};
 	}
 	const peerId =
@@ -207,6 +213,13 @@ const createCrdtRuntime = async (
 				? "memory"
 				: defaultProductionCrdtStorage(peerId)),
 	);
+	const workspaceId = normalized.workspaceIdForSessionKey?.(openPolicySessionKey);
+	const storageOpen = workspaceId
+		? await openMiniCutWorkspaceStorage({
+				storage: storagePackage.dktStorage,
+				workspaceId,
+			})
+		: null;
 	return {
 		crdtRuntime: new DktCRDTEngine({
 			peer_id: peerId,
@@ -217,7 +230,34 @@ const createCrdtRuntime = async (
 		profileId: normalized.profileId ?? "minicut-crdt-v1",
 		profileVersion: normalized.profileVersion ?? 1,
 		transport: normalized.transport ?? null,
+		storageOpen,
 	};
+};
+
+const createCrdtRuntimeForSession = async (
+	options: MiniCutCrdtOptions | undefined,
+	sessionKey: string,
+): ReturnType<typeof createCrdtRuntime> => {
+	const normalized = normalizeCrdtOptions(options);
+	if (
+		!normalized ||
+		normalized.storage ||
+		normalized.testOnly === true ||
+		typeof normalized.defaultStorageDbNameForSessionKey !== "function"
+	) {
+		return createCrdtRuntime(options, sessionKey);
+	}
+
+	return createCrdtRuntime(
+		{
+			...normalized,
+			storage: {
+				type: "indexeddb",
+				dbName: normalized.defaultStorageDbNameForSessionKey(sessionKey),
+			},
+		},
+		sessionKey,
+	);
 };
 
 const stripAggregateSchema = (payload: unknown): unknown => {
@@ -317,7 +357,7 @@ const crdtResolutionAttemptMeta = (
 export const createMiniCutDktRuntime = (
 	options: CreateMiniCutDktRuntimeOptions = {},
 ) => {
-	const crdtPromise = createCrdtRuntime(options.crdt);
+	let crdtPromise: ReturnType<typeof createCrdtRuntime> | null = null;
 	let crdtTransportCleanup: (() => void) | null = null;
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
@@ -393,13 +433,14 @@ export const createMiniCutDktRuntime = (
 		}
 	};
 
-	const bootstrapApp = async () => {
+	const bootstrapApp = async (sessionKey = "minicut-local") => {
 		if (!enabled) {
 			return null;
 		}
 
 		if (!bootPromise) {
 			bootPromise = (async () => {
+				crdtPromise = createCrdtRuntimeForSession(options.crdt, sessionKey);
 				const crdt = await crdtPromise;
 				const runtime = prepareAppRuntime({
 					sync_sender: true,
@@ -469,7 +510,7 @@ export const createMiniCutDktRuntime = (
 		sessionKey = "minicut-local",
 		sessionId?: string | null,
 	): Promise<RuntimeModelLike | null> => {
-		const app = await bootstrapApp();
+		const app = await bootstrapApp(sessionKey);
 		if (!app) {
 			return null;
 		}
@@ -756,8 +797,8 @@ export const createMiniCutDktRuntime = (
 					}
 				})
 				.then(async () => {
-					const crdt = await crdtPromise;
-					await crdt.storagePackage?.close?.();
+					const crdt = crdtPromise ? await crdtPromise : null;
+					await crdt?.storagePackage?.close?.();
 				})
 				.finally(() => {
 					stream = null;
@@ -779,7 +820,9 @@ export const createMiniCutDktRuntime = (
 				crdt: { enabled: false },
 			};
 		}
-		const crdt = await crdtPromise;
+		const crdt = crdtPromise
+			? await crdtPromise
+			: await createCrdtRuntime(options.crdt);
 		const durableLog = app.runtime.crdt_runtime?.testing?.peekDurableLog?.();
 
 		return {
@@ -797,6 +840,7 @@ export const createMiniCutDktRuntime = (
 						outboxCount: app.runtime.crdt_runtime.outbox?.length ?? 0,
 						durableLogCount: durableLog?.length ?? 0,
 						hasRegistry: Boolean(app.runtime.crdt_runtime.crdt_registry),
+						storageOpen: crdt.storageOpen,
 					}
 				: { enabled: false },
 		};

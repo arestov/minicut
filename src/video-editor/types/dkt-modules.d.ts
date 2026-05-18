@@ -78,3 +78,18 @@ declare module "dkt-all/libs/provoda/_internal/_listRels.js" {
 declare module "dkt-all/libs/provoda/utils/getModelById.js" {
 	export const getModelById: (root: unknown, nodeId: string) => unknown;
 }
+
+declare module "dkt-all/libs/provoda/crdt/index.js" {
+	export const DktCRDTEngine: new (options: unknown) => unknown;
+}
+
+declare module "dkt-all/libs/provoda/crdt/storage/atomic/dktStorageOpenPolicy.js" {
+	export const inspectDktStorageForOpen: (
+		storage: unknown,
+		expected?: unknown,
+	) => Promise<unknown>;
+	export const adoptLegacyDktStorageV0: (
+		storage: unknown,
+		expected?: unknown,
+	) => Promise<{ manifest: unknown; record: unknown }>;
+}

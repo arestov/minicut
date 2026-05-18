@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { VideoEditorApp } from "../components/VideoEditorApp";
 import {
 	clearCrdtHarnessResetMarker,
+	createCrdtHarnessStorageMetadata,
 	isCrdtHarnessResetScheduled,
 	resetCrdtHarnessIndexedDB,
 } from "../dkt/crdt/browserHarnessStorage";
@@ -169,6 +170,7 @@ export const VideoEditorHarnessApp = ({
 	const [crdtHarnessResetReady, setCrdtHarnessResetReady] = useState(
 		() => !isCrdtHarnessResetScheduled(),
 	);
+	const resolvedRoom = useMemo(() => resolveBrowserRoom(), []);
 
 	useEffect(() => {
 		if (crdtHarnessResetReady || !isCrdtHarnessResetScheduled()) {
@@ -176,7 +178,10 @@ export const VideoEditorHarnessApp = ({
 		}
 
 		let cancelled = false;
-		void resetCrdtHarnessIndexedDB()
+		const storageMetadata = createCrdtHarnessStorageMetadata(
+			resolvedRoom?.roomId ?? null,
+		);
+		void resetCrdtHarnessIndexedDB(storageMetadata.dbName)
 			.catch((error) => {
 				const message = formatErrorMessage(error);
 				console.warn("[minicut] CRDT harness IndexedDB reset failed", error);
@@ -194,11 +199,19 @@ export const VideoEditorHarnessApp = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [crdtHarnessResetReady]);
+	}, [crdtHarnessResetReady, resolvedRoom]);
 
 	const resolvedDktBootstrapOptions = useMemo(() => {
 		if (dktBootstrapOptions !== undefined) {
 			return dktBootstrapOptions;
+		}
+
+		if (isCrdtHarnessEnabled()) {
+			return {
+				sessionKey:
+					resolvedRoom?.roomId ??
+					createCrdtHarnessStorageMetadata(null).workspaceId,
+			};
 		}
 
 		const randomPart =
@@ -206,8 +219,7 @@ export const VideoEditorHarnessApp = ({
 				? crypto.randomUUID()
 				: Math.random().toString(36).slice(2);
 		return { sessionKey: `minicut-${randomPart}` };
-	}, [dktBootstrapOptions]);
-	const resolvedRoom = useMemo(() => resolveBrowserRoom(), []);
+	}, [dktBootstrapOptions, resolvedRoom]);
 	const signalUrl = useMemo(() => resolveSignalUrl(), []);
 	const rtcConfig = useMemo(
 		() => createDefaultRtcConfig(resolveTurnIceServer()),

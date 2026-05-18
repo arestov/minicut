@@ -3,6 +3,10 @@ import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
+import {
+	createMiniCutHarnessWorkspaceId,
+	createMiniCutWorkspaceDbName,
+} from "../storage/minicutWorkspaceManifest";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 
 const isCrdtTestHarnessEnabled = (): boolean =>
@@ -13,7 +17,17 @@ export const createMiniCutDktWorkerModelRuntime = () => {
 	const enableCrdtTestHarness = isCrdtTestHarnessEnabled();
 	const runtime = createMiniCutDktRuntime({
 		enabled: true,
-		crdt: enableCrdtTestHarness ? true : false,
+		crdt: enableCrdtTestHarness
+			? {
+					enabled: true,
+					defaultStorageDbNameForSessionKey: (sessionKey) =>
+						createMiniCutWorkspaceDbName(
+							createMiniCutHarnessWorkspaceId(sessionKey),
+						),
+					workspaceIdForSessionKey: (sessionKey) =>
+						createMiniCutHarnessWorkspaceId(sessionKey),
+				}
+			: false,
 		unloadModels: enableCrdtTestHarness,
 	});
 	const activeSessionKeys = new Set<string>();
