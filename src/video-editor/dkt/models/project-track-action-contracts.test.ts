@@ -150,14 +150,10 @@ describe("Project action contracts", () => {
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 
-	it("importResource creates a resource and addResourceToTimeline routes it to the video track", async () => {
+	it("importResource creates a resource and addResourceToTimeline routes video plus embedded audio", async () => {
 		const harness = await createActionContractHarness();
 		const videoAppendStartBefore = harness.ctx.getAttr(
 			harness.videoTrack,
-			"appendStart",
-		);
-		const audioAppendStartBefore = harness.ctx.getAttr(
-			harness.audioTrack,
 			"appendStart",
 		);
 		const audioClipIdsBefore = await readNodeIds(
@@ -235,11 +231,28 @@ describe("Project action contracts", () => {
 		expect(harness.ctx.getAttr(harness.videoTrack, "appendStart")).toBe(
 			Number(videoAppendStartBefore) + 5,
 		);
-		expect(harness.ctx.getAttr(harness.audioTrack, "appendStart")).toBe(
-			audioAppendStartBefore,
+		const audioClips = await harness.ctx.queryRel(harness.audioTrack, "clips");
+		const createdAudioClip = audioClips.find(
+			(clip) => !audioClipIdsBefore.includes(String(clip._node_id)),
 		);
-		expect(await readNodeIds(harness.ctx, harness.audioTrack, "clips")).toEqual(
-			audioClipIdsBefore,
+		expect(createdAudioClip).toBeTruthy();
+		if (!createdAudioClip) {
+			throw new Error("expected created embedded audio clip");
+		}
+		expect(harness.ctx.getAttr(createdAudioClip, "start")).toBe(
+			videoAppendStartBefore,
+		);
+		expect(harness.ctx.getAttr(createdAudioClip, "mediaKind")).toBe("audio");
+		expect(harness.ctx.getAttr(createdAudioClip, "name")).toBe(
+			"Embedded audio",
+		);
+		const audioResourceRel = await harness.ctx.queryRel(
+			createdAudioClip,
+			"resource",
+		);
+		expect(audioResourceRel).toEqual([projectVideoResource]);
+		expect(harness.ctx.getAttr(harness.audioTrack, "appendStart")).toBe(
+			Number(videoAppendStartBefore) + 5,
 		);
 		await expectProjectGraphInvariants(harness.ctx);
 	});

@@ -420,12 +420,6 @@ describe("SessionRoot action contracts", () => {
 			"addActiveProjectResourceToTimeline",
 			String(importedResource._node_id),
 		);
-		await dispatchAndSettle(
-			harness.ctx,
-			harness.sessionRoot,
-			"addActiveProjectEmbeddedAudioToTimeline",
-			{ resourceId: String(importedResource._node_id) },
-		);
 
 		const afterVideoClipIds = await readNodeIds(
 			harness.ctx,

@@ -41,8 +41,10 @@ const getProfileVideoPath = async (): Promise<string> => {
 	}
 
 	for (const url of wikipediaVideoCandidates) {
+		const controller = new AbortController()
+		const timeoutId = setTimeout(() => controller.abort(), 5_000)
 		try {
-			const response = await fetch(url)
+			const response = await fetch(url, { signal: controller.signal })
 			if (!response.ok) {
 				continue
 			}
@@ -53,6 +55,8 @@ const getProfileVideoPath = async (): Promise<string> => {
 			}
 		} catch {
 			// Network is optional for this profile harness; local fixture keeps it runnable offline.
+		} finally {
+			clearTimeout(timeoutId)
 		}
 	}
 

@@ -499,6 +499,15 @@ export const Project = model({
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
+					audioClip: [
+						"<< clip << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
+					],
 					videoClips: [
 						"<< primaryVideoTrack.clips",
 						{

@@ -244,13 +244,6 @@ export const executeImportFilesTask = async ({
 					resourceId,
 					env.pageRuntime?.getRootScope() ?? projectScope,
 				);
-				if (kind === "video") {
-					env.dkt.dispatch(
-						"addActiveProjectEmbeddedAudioToTimeline",
-						{ resourceId },
-						env.pageRuntime?.getRootScope() ?? projectScope,
-					);
-				}
 				await waitForProjectTimelineClips(env, projectScope);
 			}
 

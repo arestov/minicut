@@ -124,6 +124,92 @@ describe("addResourceToTimeline append start", () => {
 		await expectProjectGraphInvariants(ctx);
 	});
 
+	it("addResourceToTimeline adds embedded audio beside video after a text clip", async () => {
+		const { ctx, project, videoTrack, audioTrack } =
+			await setupProjectWithVideoClip();
+
+		await ctx.lockToRead(async () => {
+			await project.dispatch("addTextClipToVideoTrack", {
+				name: "Title",
+				mediaKind: "text",
+				start: 0,
+				in: 0,
+				duration: 2,
+				text: {
+					content: "Title",
+					style: { fontFamily: "Inter", fontSize: 40, color: "#ffffff" },
+					box: { x: 0.1, y: 0.1, width: 0.6, height: 0.2 },
+				},
+			});
+		});
+
+		await ctx.lockToRead(async () => {
+			await project.dispatch("importResource", {
+				name: "Video With Audio",
+				kind: "video",
+				url: "http://test/video.webm",
+				mime: "video/webm",
+				duration: 3,
+				size: 1200,
+				source: { kind: "local", ownerPeerId: "test-peer" },
+				status: "ready",
+				data: {
+					status: "ready",
+					chunkSize: 1024,
+					chunks: {},
+					ranges: { loaded: [[0, 1200]], requested: [] },
+					loadedBytes: 1200,
+				},
+			});
+		});
+
+		const resources = await ctx.queryRel(project, "resources");
+		const videoResource = resources.find(
+			(resource) => ctx.getAttr(resource, "name") === "Video With Audio",
+		);
+		if (!videoResource?._node_id) {
+			throw new Error("Expected imported video resource");
+		}
+
+		await ctx.lockToRead(async () => {
+			await project.dispatch("addResourceToTimeline", videoResource._node_id);
+		});
+
+		const videoClips = await ctx.queryRel(videoTrack, "clips");
+		const audioClips = await ctx.queryRel(audioTrack, "clips");
+		let createdVideoClip: (typeof videoClips)[number] | undefined;
+		for (const clip of videoClips) {
+			const resourceRel = await ctx.queryRel(clip, "resource");
+			if (resourceRel[0]?._node_id === videoResource._node_id) {
+				createdVideoClip = clip;
+				break;
+			}
+		}
+		let createdAudioClip: (typeof audioClips)[number] | undefined;
+		for (const clip of audioClips) {
+			const resourceRel = await ctx.queryRel(clip, "resource");
+			if (resourceRel[0]?._node_id === videoResource._node_id) {
+				createdAudioClip = clip;
+				break;
+			}
+		}
+
+		expectClipTiming(ctx, createdVideoClip, {
+			resourceId: String(videoResource._node_id),
+			start: 2,
+			duration: 3,
+		});
+		expectClipTiming(ctx, createdAudioClip, {
+			resourceId: String(videoResource._node_id),
+			start: 2,
+			duration: 3,
+		});
+		expect(ctx.getAttr(createdAudioClip, "mediaKind")).toBe("audio");
+		expect(ctx.getAttr(videoTrack, "appendStart")).toBe(5);
+		expect(ctx.getAttr(audioTrack, "appendStart")).toBe(5);
+		await expectProjectGraphInvariants(ctx);
+	});
+
 	it("addResourceToTimeline places audio clip after existing audio clips", async () => {
 		const { ctx, project, audioTrack } = await setupProjectWithVideoClip();
 

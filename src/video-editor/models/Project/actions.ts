@@ -692,9 +692,28 @@ export const reduceAddResourceToTimeline = (
 		},
 	};
 
-	return kind === "audio"
-		? { ...result, audioClips: { use_ref_id: "timelineClip" } }
-		: { ...result, videoClips: { use_ref_id: "timelineClip" } };
+	if (kind === "audio") {
+		return { ...result, audioClips: { use_ref_id: "timelineClip" } };
+	}
+
+	if (kind !== "video") {
+		return { ...result, videoClips: { use_ref_id: "timelineClip" } };
+	}
+
+	return {
+		...result,
+		audioClip: {
+			attrs: createTimelineClipAttrs(
+				resolvedResource,
+				{ name: "Embedded audio", mediaKind: "audio" },
+				start,
+			),
+			rels: { track: audioTrack, resource: resolvedResource },
+			hold_ref_id: "timelineEmbeddedAudioClip",
+		},
+		videoClips: { use_ref_id: "timelineClip" },
+		audioClips: { use_ref_id: "timelineEmbeddedAudioClip" },
+	};
 };
 
 export const reduceAddEmbeddedAudio = (

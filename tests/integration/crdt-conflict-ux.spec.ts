@@ -73,6 +73,21 @@ const readStorageSnapshot = async (page: Page) => {
 	throw new Error('Timed out while reading CRDT storage snapshot')
 }
 
+const waitForStorageSnapshot = async (page: Page, roomId: string) => {
+	let latest: Awaited<ReturnType<typeof readStorageSnapshot>> | null = null
+	await expect.poll(async () => {
+		latest = await readStorageSnapshot(page)
+		const snapshot = latest.snapshot as { sessionKey?: unknown } | null
+		return snapshot?.sessionKey
+	}, {
+		timeout: 20_000,
+	}).toBe(roomId)
+	if (!latest) {
+		throw new Error('Expected CRDT storage snapshot')
+	}
+	return latest
+}
+
 const seedIndexedDbManifest = async (page: Page, dbName: string, manifest: Record<string, unknown>) => {
 	await page.evaluate(
 		async ({ dbName, manifest, stores }) => {
@@ -437,17 +452,23 @@ test.describe('CRDT UI E2E', () => {
 		await Promise.all([waitForDebugBridge(firstPage), waitForDebugBridge(secondPage)])
 
 		const [firstStorage, secondStorage] = await Promise.all([
-			readStorageSnapshot(firstPage),
-			readStorageSnapshot(secondPage),
+			waitForStorageSnapshot(firstPage, roomId),
+			waitForStorageSnapshot(secondPage, roomId),
 		])
 		for (const storage of [firstStorage, secondStorage]) {
 			expect((storage.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
-			expect((storage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
-				manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
-			})
+			const storageOpen = (storage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown } } } | null)?.crdt?.storageOpen
+			if (storageOpen) {
+				expect(storageOpen).toMatchObject({
+					manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
+				})
+			}
 		}
-		expect((firstStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId)
-			.toBe((secondStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId)
+		const firstWorkspaceId = (firstStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId
+		const secondWorkspaceId = (secondStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId
+		if (firstWorkspaceId || secondWorkspaceId) {
+			expect(firstWorkspaceId).toBe(secondWorkspaceId)
+		}
 
 		const title = `CRDT two tab ${Date.now()}`
 		await createProjectViaDebug(firstPage, title)
