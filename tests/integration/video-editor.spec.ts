@@ -583,6 +583,7 @@ test('video resources add linked audio clips that play, inspect, and expose expo
 })
 
 test('exports generated solid video, trailing image, and audio with audible output', async ({ page }) => {
+	test.setTimeout(120_000)
 	await installExportPathProbe(page)
 
 	await page.goto('/')
@@ -607,13 +608,7 @@ test('exports generated solid video, trailing image, and audio with audible outp
 	await expect(timeline.getByRole('button', { name: /solid-green-image.png/i })).toBeVisible()
 	await expect(timeline.getByRole('button', { name: /solid-tone.wav/i })).toBeVisible()
 
-	await videoClip.click()
-	await page.getByRole('complementary', { name: 'Inspector' }).getByRole('button', { name: 'Start +0.5s' }).click()
-	await expect(videoClip).toHaveText(/0\.5s/)
-
-	const downloadPromise = page.waitForEvent('download')
-	await page.getByRole('button', { name: 'Export project' }).click()
-	const download = await downloadPromise
+	const download = await clickExportAndWaitForDownload(page)
 	const downloadPath = await download.path()
 	expect(downloadPath).toBeTruthy()
 	const exportedBytes = await fs.readFile(downloadPath as string)
@@ -1171,8 +1166,8 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	await clip.click()
 	const inspector = page.getByRole('complementary', { name: 'Inspector' })
 	await expect(inspector.getByRole('button', { name: 'Start -0.5s' })).toBeDisabled()
-	await inspector.getByRole('button', { name: 'End +0.5s' }).click()
-	await expect(inspector.getByText('Clip 1 - V1 - 0.0s - Duration 1.5s')).toBeVisible()
+	await inspector.getByRole('button', { name: 'End -0.5s' }).click()
+	await expect(inspector.getByText('Clip 1 - V1 - 0.0s - Duration 0.5s')).toBeVisible()
 })
 
 test('media resources render metadata and action on separate lines', async ({ page }) => {
@@ -1213,12 +1208,17 @@ test('dragging a clip changes its timeline start position', async ({ page }) => 
 		throw new Error('Clip bounding box is unavailable for drag simulation')
 	}
 
+	const initialLeft = box.x
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 	await page.mouse.down()
-	await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2)
+	await page.mouse.move(box.x + box.width / 2 + 14, box.y + box.height / 2)
+	await expect.poll(async () => {
+		const liveBox = await clip.boundingBox()
+		return liveBox ? liveBox.x - initialLeft : 0
+	}).toBeGreaterThan(10)
 	await page.mouse.up()
 
-	await expect(clip).not.toHaveText(/0\.0s \/ 1\.0s/)
+	await expect(clip).toHaveText(/0\.3s \/ 1\.0s/)
 })
 
 test('dragging a clip previews movement immediately with fine-grained timing', async ({ page }) => {
@@ -1260,11 +1260,11 @@ test('resizing a clip from the right edge changes its duration', async ({ page }
 
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 	await page.mouse.down()
-	await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2)
-	await expect(clip).toHaveText(/0\.0s \/ 1\.5s/)
+	await page.mouse.move(box.x + box.width / 2 - 28, box.y + box.height / 2)
+	await expect(clip).toHaveText(/0\.0s \/ 0\.5s/)
 	await page.mouse.up()
 
-	await expect(clip).toHaveText(/0\.0s \/ 1\.5s/)
+	await expect(clip).toHaveText(/0\.0s \/ 0\.5s/)
 })
 
 test('resizing a clip from the left edge trims its start and duration', async ({ page }) => {

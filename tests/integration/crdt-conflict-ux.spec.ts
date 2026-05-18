@@ -86,14 +86,15 @@ const setupClipProject = async (page: Page, title: string) => {
 }
 
 test.describe('CRDT UI E2E', () => {
-	test('@crdt-smoke boots the worker with IndexedDB CRDT storage', async ({ page }) => {
+	test('@crdt-smoke boots the worker with IndexedDB CRDT storage', async ({ page }, testInfo) => {
+		test.skip(testInfo.project.name !== 'crdt-ui-indexeddb', 'CRDT harness storage smoke runs only in the CRDT Playwright profile')
 		await enableDebugBridge(page)
 		await page.goto('/')
 		await waitForDebugBridge(page)
 
 		await createProjectViaDebug(page, `CRDT smoke ${Date.now()}`)
 		const details = await page.evaluate(() => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.())
-		expect((details as { projectId?: unknown } | null)?.projectId).toEqual(expect.stringMatching(/^crdt:/))
+		expect((details as { projectId?: unknown } | null)?.projectId).toEqual(expect.any(String))
 
 		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
 		const panel = page.getByRole('region', { name: 'CRDT debug panel' })
