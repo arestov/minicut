@@ -436,7 +436,9 @@ export const createAudioExportMixer = async (
 							// Best-effort: metadata might still lag for some browsers.
 						}
 						clip.element.volume = 1;
-						clip.element.playsInline = true;
+						if (clip.element instanceof HTMLVideoElement) {
+							clip.element.playsInline = true;
+						}
 						clip.element.muted = true;
 						void clip.element
 							.play()

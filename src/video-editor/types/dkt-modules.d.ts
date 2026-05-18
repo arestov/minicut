@@ -17,10 +17,36 @@ declare module "dkt/runtime/app/prepare.js" {
 	export const prepare: (options?: unknown) => unknown;
 }
 
+declare module "dkt/runtime/app/reinit.js" {
+	export const reinit: (...args: unknown[]) => unknown;
+	export const toReinitableData: (...args: unknown[]) => unknown;
+}
+
+declare module "dkt/crdt/storage/indexeddb.js" {
+	export type DktCrdtStoragePackageLike = {
+		dktStorage: unknown;
+		crdtStorage: unknown;
+		commitChanges?: (meta?: unknown) => Promise<void> | void;
+		whenReady?: () => Promise<void> | void;
+		close?: () => Promise<void> | void;
+	};
+	export const makeDktCrdtIndexedDBStorage: (
+		options?: unknown,
+	) => DktCrdtStoragePackageLike;
+}
+
+declare module "dkt/crdt/storage/memory.js" {
+	import type { DktCrdtStoragePackageLike } from "dkt/crdt/storage/indexeddb.js";
+	export const makeDktCrdtMemoryStorage: (
+		options?: unknown,
+	) => DktCrdtStoragePackageLike;
+}
+
 declare module "dkt/dom-sync/transport.js" {
 	export interface DomSyncTransportLike<Message = unknown> {
 		send(message: Message, transferList?: Transferable[]): void;
 		listen(listener: (message: Message) => void): () => void;
+		onDisconnect?(listener: () => void): () => void;
 		destroy(): void;
 	}
 

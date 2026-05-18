@@ -240,7 +240,7 @@ export const createVideoEditorHarness = (
 							"source",
 							"status",
 							"data",
-						]) as ResourceAttrs;
+						]) as unknown as ResourceAttrs;
 
 						return {
 							resourceId,

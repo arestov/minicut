@@ -24,7 +24,10 @@ type AnyModel = {
 	_node_id?: string | null;
 	model_name?: string | null;
 	states?: Record<string, unknown>;
+	getAttr: (name: string) => unknown;
+	getNesting: (name: string) => unknown;
 	input?: (callback: () => void | Promise<void>) => unknown;
+	whenReady?: (fn?: () => void) => Promise<void> | void;
 	queryRel?: (relName: string) => Promise<unknown> | unknown;
 	queryAttr?: (attrName: string) => Promise<unknown> | unknown;
 	dispatch: (
@@ -39,12 +42,22 @@ type AnyModel = {
 type RuntimeWithCallsFlow = {
 	calls_flow?: AnyModel;
 	whenAllReady?: (fn: () => void) => void;
+	input?: (fn: () => void | Promise<void>) => unknown;
+	last_error?: Promise<unknown>;
+};
+
+type RuntimeStartResult = {
+	app_model: AnyModel;
+	flow?: AnyModel;
 };
 
 export type MiniCutDktCrdtRuntime = {
 	peer_id?: string;
 	outbox?: unknown[];
 	crdt_registry?: unknown;
+	conflict_store?: {
+		readConflicts?: () => readonly unknown[];
+	};
 	receiveCanonicalOp?: (model: AnyModel, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: AnyModel, ops: unknown[]) => unknown;
 	receiveCanonicalBatch?: (model: AnyModel, batch: unknown) => unknown;
@@ -61,6 +74,7 @@ export type MiniCutDktCrdtRuntime = {
 export type MiniCutDktCrdtStoragePackage = {
 	dktStorage: unknown;
 	crdtStorage: unknown;
+	commitChanges?: (meta?: unknown) => Promise<void> | void;
 	whenReady?: () => Promise<void> | void;
 	close?: () => Promise<void> | void;
 };
@@ -143,9 +157,10 @@ const raceWithProcessErrors = async <Value>(
  * Query a rel on a model. Returns [] when rel is empty/null.
  */
 export const queryRel = async (
-	model: AnyModel,
+	model: AnyModel | null | undefined,
 	relName: string,
 ): Promise<AnyModel[]> => {
+	if (!model) return [];
 	const result = model.queryRel
 		? await model.queryRel(relName)
 		: _getCurrentRel(model as Parameters<typeof _getCurrentRel>[0], relName);
@@ -160,9 +175,10 @@ export const queryRel = async (
  * Use this in unload/lazy tests; sync state reads are only valid while the model is loaded.
  */
 export const queryAttr = async (
-	model: AnyModel,
+	model: AnyModel | null | undefined,
 	attrName: string,
 ): Promise<unknown> => {
+	if (!model) return null;
 	if (model.queryAttr) {
 		const value = await model.queryAttr(attrName);
 		return value ?? null;
@@ -174,8 +190,10 @@ export const queryAttr = async (
  * Read a reactive attr from a loaded model.
  * Missing attrs are normalized to null to match DKT default-state reads.
  */
-export const getAttr = (model: AnyModel, attrName: string): unknown =>
-	model.states?.[attrName] ?? null;
+export const getAttr = (
+	model: AnyModel | null | undefined,
+	attrName: string,
+): unknown => model?.states?.[attrName] ?? null;
 
 /**
  * Find a model in a flat root rel by a named attr value.
@@ -193,7 +211,7 @@ export const findByAttr = async (
 export type DktTestContext = {
 	appModel: AnyModel;
 	sessionRoot: AnyModel;
-	runtime: {
+	runtime: RuntimeWithCallsFlow & {
 		crdt_runtime?: MiniCutDktCrdtRuntime | null;
 		applyExternalGraphPatch?: (
 			patch: unknown,
@@ -253,14 +271,16 @@ const createStoragePackage = async (
 		return storage;
 	}
 	if (!storage || storage === "memory" || storage.type === "memory") {
-		return makeDktCrdtMemoryStorage();
+		return makeDktCrdtMemoryStorage() as MiniCutDktCrdtStoragePackage;
 	}
 	if (storage.type === "indexeddb") {
-		return sanitizeDktCrdtStoragePackage(await makeDktCrdtIndexedDBStorage({
-			dbName: storage.dbName,
-			version: storage.version,
-			indexedDB: storage.indexedDB,
-		}) as MiniCutDktCrdtStoragePackage);
+		return sanitizeDktCrdtStoragePackage(
+			(await makeDktCrdtIndexedDBStorage({
+				dbName: storage.dbName,
+				version: storage.version,
+				indexedDB: storage.indexedDB,
+			})) as MiniCutDktCrdtStoragePackage,
+		);
 	}
 	throw new Error("Unsupported MiniCut CRDT storage option");
 };
@@ -325,14 +345,14 @@ export const bootDktModels = async (
 		last_error?: Promise<unknown>;
 	};
 
-	const startPromise = options.reinitFromSnapshot
-		? reinit(
+	const startPromise: Promise<RuntimeStartResult> = options.reinitFromSnapshot
+		? (Promise.resolve(reinit(
 				MiniCutAppRoot,
 				runtime,
 				options.reinitFromSnapshot,
 				options.interfaces ?? {},
 				{ reinit_all_attrs: true },
-			)
+			)) as Promise<RuntimeStartResult>)
 		: runtime.start({
 				App: MiniCutAppRoot,
 				interfaces: options.interfaces ?? {},
@@ -417,8 +437,8 @@ export const bootDktModels = async (
 			errorsCatcher.last_error_prom,
 			new Promise<void>((resolve, reject) => {
 				if (runtime.input) {
-					runtime.input(async () => {
-						await fn().then(resolve, reject);
+					runtime.input(() => {
+							void Promise.resolve(fn()).then(resolve, reject);
 					});
 					return;
 				}

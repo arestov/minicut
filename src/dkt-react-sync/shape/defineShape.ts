@@ -42,7 +42,13 @@ export const shapeOf = <P, T extends ComponentType<P>>(
 	});
 
 	const WrappedComponent = (props: ComponentProps<T>) =>
-		createElement(MountedShape, { shape }, createElement(component, props));
+		createElement(MountedShape, {
+			shape,
+			children: createElement(
+				component as ComponentType<ComponentProps<T>>,
+				props,
+			),
+		});
 
 	WrappedComponent.displayName =
 		component.displayName || component.name || "ShapedComponent";

@@ -1,4 +1,4 @@
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../../dkt-react-sync/scope/ScopeHandle";
 import type { EditorActionEnvironment } from "../editorActionEnvironment";
 
 // TEST-ONLY helpers: keep polling waits out of shared production adapters.

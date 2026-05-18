@@ -48,16 +48,17 @@ const storageForPeer = (
 	profile: MiniCutCrdtStorageProfile,
 	peerId: string,
 ): MiniCutDktCrdtStorageOptions => {
-	if (profile.storage === "memory" || profile.storage.type === "memory") {
-		return profile.storage;
+	const { storage } = profile;
+	if (storage === "memory") {
+		return storage;
 	}
-	if (profile.storage.type === "indexeddb") {
-		return {
-			...profile.storage,
-			dbName: `${profile.storage.dbName}-${peerId}`,
-		};
+	if ("type" in storage && storage.type === "memory") {
+		return storage;
 	}
-	return profile.storage;
+	if ("type" in storage && storage.type === "indexeddb") {
+		return { ...storage, dbName: `${storage.dbName}-${peerId}` };
+	}
+	return storage;
 };
 
 const createPeer = async (

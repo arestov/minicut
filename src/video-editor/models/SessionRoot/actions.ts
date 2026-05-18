@@ -92,15 +92,11 @@ type DktActionDescriptor = {
 	when_deps?: readonly string[];
 	when_fn?: (...args: unknown[]) => boolean;
 	fn:
-		| ((payload: unknown) => DktSessionActionPatch | null)
+		| ((payload: unknown) => unknown)
 		| readonly [
 				readonly string[],
-				(
-					payload: unknown,
-					...deps: unknown[]
-				) => DktSessionActionPatch | Record<string, unknown> | null,
+				(payload: unknown, ...deps: unknown[]) => unknown,
 		  ]
-		| ((payload: unknown) => Record<string, unknown> | null);
 };
 
 type DktActionWithSteps = {
@@ -408,7 +404,7 @@ export const reduceSessionTickPlaybackAction = (
 				previewStructure: PreviewStructure;
 			}
 		>,
-): Pick<SessionStateFields, "cursor" | "previewBuffer"> | null => {
+): Partial<Pick<SessionStateFields, "cursor" | "previewBuffer">> | null => {
 	if (!state.isPlaying) {
 		return null;
 	}

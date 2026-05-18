@@ -150,6 +150,7 @@ describe("Timeline wiring", () => {
 		useManyMock.mockReturnValue([]);
 
 		const { dispatches } = renderWithScope(<TimelineView />, {
+			kind: "scope",
 			_nodeId: "project:timeline",
 		});
 
@@ -227,6 +228,7 @@ describe("Inspector wiring", () => {
 		});
 
 		const { dispatches } = renderWithScope(<InspectorEditTabPanel />, {
+			kind: "scope",
 			_nodeId: "clip:inspector",
 		});
 

@@ -10,7 +10,7 @@ export type ProjectGraphNode = {
 
 export const expectClipTiming = (
 	ctx: DktTestContext,
-	clip: { _node_id?: string | null } | null | undefined,
+	clip: DktTestContext["sessionRoot"] | null | undefined,
 	expected: Partial<{
 		start: number;
 		in: number;

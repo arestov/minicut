@@ -4,6 +4,7 @@ import {
 	dispatchAndSettle,
 } from "../dkt/models/action-contract-test-harness";
 import type {
+	ExportRenderer,
 	ExportRenderRequest,
 	ExportRenderResult,
 } from "../render/exportRenderer";
@@ -34,7 +35,7 @@ const createTestEnv = ({
 	resolveResourceUrl,
 	dktDispatches,
 }: {
-	renderer: { render: ReturnType<typeof vi.fn> };
+	renderer: ExportRenderer;
 	taskPort: ReturnType<typeof createRuntimeTaskFacade>;
 	resolveResourceUrl: (resourceId: string, fallbackUrl: string) => string;
 	dktDispatches: Array<{ actionName: string; payload: unknown }>;

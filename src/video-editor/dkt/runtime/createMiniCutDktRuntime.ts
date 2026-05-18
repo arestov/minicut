@@ -56,6 +56,9 @@ type MiniCutCrdtRuntimeLike = {
 	peer_id?: string;
 	outbox?: unknown[];
 	crdt_registry?: unknown;
+	conflict_store?: {
+		readConflicts?: () => readonly unknown[];
+	};
 	receiveCanonicalOp?: (model: RuntimeModelLike, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: RuntimeModelLike, ops: unknown[]) => unknown;
 	receiveCanonicalBatch?: (model: RuntimeModelLike, batch: unknown) => unknown;
@@ -73,6 +76,7 @@ type MiniCutCrdtRuntimeLike = {
 type MiniCutCrdtStoragePackage = {
 	dktStorage: unknown;
 	crdtStorage: unknown;
+	commitChanges?: (meta?: unknown) => Promise<void> | void;
 	whenReady?: () => Promise<void> | void;
 	close?: () => Promise<void> | void;
 };
@@ -149,14 +153,16 @@ const createStoragePackage = async (
 		return storage;
 	}
 	if (!storage || storage === "memory" || storage.type === "memory") {
-		return makeDktCrdtMemoryStorage();
+		return makeDktCrdtMemoryStorage() as MiniCutCrdtStoragePackage;
 	}
 	if (storage.type === "indexeddb") {
-		return sanitizeDktCrdtStoragePackage(await makeDktCrdtIndexedDBStorage({
-			dbName: storage.dbName,
-			version: storage.version,
-			indexedDB: storage.indexedDB,
-		}) as MiniCutCrdtStoragePackage);
+		return sanitizeDktCrdtStoragePackage(
+			(await makeDktCrdtIndexedDBStorage({
+				dbName: storage.dbName,
+				version: storage.version,
+				indexedDB: storage.indexedDB,
+			})) as MiniCutCrdtStoragePackage,
+		);
 	}
 	throw new Error("Unsupported MiniCut CRDT storage option");
 };
