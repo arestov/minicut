@@ -23,6 +23,7 @@ export type MiniCutPeer = {
 	readProjectTitle: () => Promise<unknown>;
 	readVideoClipIds: () => Promise<string[]>;
 	readConflictSummary: () => MiniCutConflictSummary;
+	queryVideoClips: () => Promise<RuntimeModel[]>;
 };
 
 export type MiniCutConflictSummary = {
@@ -92,6 +93,56 @@ const receiveNetworkMessage = async (
 };
 
 const attrNumber = (model: RuntimeModel, attrName: string): number => Number(model.states?.[attrName] ?? 0);
+
+const queryVideoTrackClips = async (
+	ctx: DktTestContext,
+	videoTrack: RuntimeModel,
+): Promise<RuntimeModel[]> => {
+	const clipsFromRel = await ctx.queryRel(videoTrack, "clips");
+	if (clipsFromRel.length > 0) return clipsFromRel;
+	const snapshot = await (
+		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
+	)?.getSnapshot?.();
+	const snapshotClipRefs =
+		((snapshot as { models?: Record<string, { rels?: Record<string, unknown> }> } | null)
+			?.models?.[String(videoTrack._node_id)]?.rels?.clips);
+	if (Array.isArray(snapshotClipRefs) && snapshotClipRefs.length > 0) {
+		return snapshotClipRefs
+			.map((item) => {
+				const id =
+					typeof item === "string"
+						? item
+						: String((item as { _node_id?: unknown } | null)?._node_id ?? "");
+				const model = id
+					? ((ctx.runtime as { models?: Record<string, RuntimeModel> }).models?.[id] ??
+						(getModelById(ctx.appModel, id) as RuntimeModel | null))
+					: null;
+				return model;
+			})
+			.filter((item): item is RuntimeModel => Boolean(item));
+	}
+	const allClipsFromRel = await ctx.queryRel(ctx.appModel, "clip");
+	const allClips = allClipsFromRel.length > 0
+		? allClipsFromRel
+		: ((await queryAddr(ctx.appModel, "<< @all:clip")) as RuntimeModel[]);
+	const pairs = await Promise.all(
+		allClips.map(async (clip) => ({
+			clip,
+			track: (await ctx.queryRel(clip, "track"))[0],
+		})),
+	);
+	return pairs
+		.filter((item) => item.track?._node_id === videoTrack._node_id)
+		.map((item) => item.clip);
+};
+
+const findPeerProjectById = async (
+	ctx: DktTestContext,
+	projectId: string,
+): Promise<RuntimeModel | null> => {
+	const projects = await ctx.queryRel(ctx.appModel, "project");
+	return projects.find((item) => String(item._node_id) === projectId) ?? null;
+};
 
 type SimulationOptions = {
 	peers: MiniCutPeerId[];
@@ -189,6 +240,56 @@ const documentOnlySnapshot = (snapshot: unknown): unknown => {
 		throw new Error(`MiniCut document snapshot has missing refs:\n${missingRefs.join("\n")}`);
 	}
 	return nextSnapshot;
+};
+
+const seedGraphStorageFromSnapshot = async (
+	ctx: DktTestContext,
+	snapshot: unknown,
+	reason: string,
+) => {
+	const dktStorage = ctx.storagePackage?.dktStorage as
+		| {
+				createModel?: (
+					id: string,
+					modelName: string,
+					attrs?: Record<string, unknown>,
+					rels?: Record<string, unknown>,
+					mentions?: Record<string, unknown>,
+				) => Promise<unknown> | unknown;
+				createExpectedRel?: (key: string, data: unknown) => Promise<unknown> | unknown;
+				putProjectMeta?: (meta: unknown) => Promise<unknown> | unknown;
+				commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
+		  }
+		| undefined;
+	if (!dktStorage?.createModel) return;
+	const raw = snapshot as {
+		models?: Record<string, {
+			attrs?: Record<string, unknown>;
+			model_name?: string;
+			rels?: Record<string, unknown>;
+			mentions?: Record<string, unknown> | null;
+		}>;
+		expected_rels_to_chains?: Record<string, unknown>;
+		meta?: unknown;
+	} | null;
+	if (!raw?.models) return;
+	for (const [id, model] of Object.entries(raw.models)) {
+		if (!model?.model_name) continue;
+		await dktStorage.createModel(
+			id,
+			model.model_name,
+			model.attrs ?? {},
+			model.rels ?? {},
+			model.mentions ?? {},
+		);
+	}
+	for (const [key, data] of Object.entries(raw.expected_rels_to_chains ?? {})) {
+		await dktStorage.createExpectedRel?.(key, data);
+	}
+	if (raw.meta !== undefined) {
+		await dktStorage.putProjectMeta?.(raw.meta);
+	}
+	await dktStorage.commitChanges?.({ reason });
 };
 
 const enableUnloadNow = async (ctx: DktTestContext, enabled: boolean) => {
@@ -289,6 +390,19 @@ const synthesizeMissingAttrBaselineOps = async (
 	return ops;
 };
 
+const readDurableOrLiveSnapshot = async (
+	ctx: DktTestContext,
+	options: SimulationOptions,
+): Promise<unknown> => {
+	if (options.unloadModels !== true) {
+		return toReinitableData(ctx.runtime);
+	}
+	const durableSnapshot = await (
+		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
+	)?.getSnapshot?.();
+	return durableSnapshot ?? await toReinitableData(ctx.runtime);
+};
+
 const wrapPeer = async (
 	id: MiniCutPeerId,
 	ctx: DktTestContext,
@@ -349,8 +463,11 @@ const wrapPeer = async (
 			return ctx.queryAttr(project, "title");
 		},
 		async readVideoClipIds() {
-			const clips = await ctx.queryRel(videoTrack, "clips");
+			const clips = await queryVideoTrackClips(ctx, videoTrack);
 			return clips.map((clip) => String(clip._node_id));
+		},
+		async queryVideoClips() {
+			return queryVideoTrackClips(ctx, videoTrack);
 		},
 		readConflictSummary() {
 			return {
@@ -368,6 +485,7 @@ const createPeer = async (
 	options: SimulationOptions,
 	snapshot?: unknown,
 	storagePackage?: MiniCutDktCrdtStorageOptions,
+	preferredProjectId?: string,
 ): Promise<DktTestContext> => {
 	const ctx = await bootDktModels({
 		aggregateValidation: "error",
@@ -383,6 +501,11 @@ const createPeer = async (
 		},
 	});
 	if (snapshot) {
+		await seedGraphStorageFromSnapshot(
+			ctx,
+			snapshot,
+			"minicut-maelstrom-seed-snapshot",
+		);
 		await ctx.lockToRead(async () => {
 			const rawProjects = (await queryAddr(ctx.sessionRoot, "<< @all:pioneer.project")) as Array<RuntimeModel | string>;
 			const projects = rawProjects
@@ -399,12 +522,21 @@ const createPeer = async (
 				})),
 			);
 			const project =
+				(preferredProjectId
+					? await findPeerProjectById(ctx, preferredProjectId)
+					: null) ??
 				projectKinds.find((item) => item.title === "MiniCut maelstrom project")
 					?.project ?? projects[0];
 			if (!project) throw new Error("Expected shared project in MiniCut maelstrom snapshot");
 			await ctx.sessionRoot.dispatch("syncActiveProjectRel", { project });
 		});
 	}
+	await waitForRuntimeIdle(ctx);
+	await ctx.storagePackage?.commitChanges?.({
+		reason: snapshot
+			? "minicut-maelstrom-bootstrap-snapshot"
+			: "minicut-maelstrom-bootstrap",
+	});
 	drainCrdtOutbox(ctx.runtime);
 	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
 	return ctx;
@@ -435,6 +567,7 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 	const network = new DeterministicMiniCutNetwork();
 	const peers = new Map<MiniCutPeerId, MiniCutPeer>();
 	const contexts = new Map<MiniCutPeerId, DktTestContext>();
+	const snapshots = new Map<MiniCutPeerId, unknown>();
 	const primaryId = options.peers[0];
 	if (!primaryId) throw new Error("MiniCut maelstrom requires at least one peer");
 	const primaryCtx = await createPeer(primaryId, network, options);
@@ -445,7 +578,16 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 	)?.getSnapshot?.();
 	if (!bootstrapSnapshot) throw new Error("MiniCut maelstrom primary peer has no bootstrap snapshot");
 	for (const id of options.peers.slice(1)) {
-		contexts.set(id, await createPeer(id, network, options, documentOnlySnapshot(bootstrapSnapshot)));
+		const snapshot = documentOnlySnapshot(bootstrapSnapshot);
+		snapshots.set(id, snapshot);
+		contexts.set(id, await createPeer(
+			id,
+			network,
+			options,
+			snapshot,
+			undefined,
+			String((await primaryCtx.queryRel(primaryCtx.sessionRoot, "activeProject"))[0]?._node_id ?? ""),
+		));
 	}
 	for (const [id, ctx] of contexts) {
 		peers.set(id, await wrapPeer(id, ctx, network));
@@ -466,38 +608,43 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 		async syncFromPeer(sourceId: MiniCutPeerId, targetIds?: MiniCutPeerId[]) {
 			const source = peers.get(sourceId);
 			if (!source) throw new Error(`Unknown MiniCut maelstrom peer: ${sourceId}`);
+			await waitForRuntimeIdle(source.ctx);
+			await source.ctx.storagePackage?.commitChanges?.({
+				reason: "minicut-maelstrom-sync-source",
+			});
 			const baselineOps = drainCrdtOutbox(source.ctx.runtime);
 			const syntheticBaselineOps = await synthesizeMissingAttrBaselineOps(source);
-			const snapshot = await toReinitableData(source.ctx.runtime);
+			const snapshot = await readDurableOrLiveSnapshot(source.ctx, options);
 			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${sourceId} has no snapshot`);
 			const ids = targetIds ?? [...peers.keys()].filter((id) => id !== sourceId);
 			for (const id of ids) {
 				const current = peers.get(id);
 				if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
-				const storagePackage = current.ctx.storagePackage;
-				// Keep the durable package open while replacing the peer runtime.
-				// Closing it would invalidate the shared IndexedDB/LevelDB handle
-				// before baseline ops are seeded into the target store.
-				await seedBaselineOps(storagePackage, [
-					...baselineOps,
-					...syntheticBaselineOps,
-				]);
+				const storagePackage = resolveStorage(options, id);
+				const targetSnapshot = documentOnlySnapshot(snapshot);
 				const ctx = await createPeer(
 					id,
 					network,
 					options,
-					documentOnlySnapshot(snapshot),
-					storagePackage ?? resolveStorage(options, id),
+					targetSnapshot,
+					storagePackage,
+					String(source.project._node_id),
 				);
+				await seedBaselineOps(ctx.storagePackage, [
+					...baselineOps,
+					...syntheticBaselineOps,
+				]);
+				await ctx.runtime.crdt_runtime?.restoreFromStorage?.();
 				const synced = await wrapPeer(id, ctx, network);
 				peers.set(id, synced);
+				snapshots.set(id, targetSnapshot);
 				await enableUnloadNow(ctx, options.unloadModels === true);
 			}
 		},
 		async reinitPeer(id: MiniCutPeerId) {
 			const current = peers.get(id);
 			if (!current) throw new Error(`Unknown MiniCut maelstrom peer: ${id}`);
-			const snapshot = await toReinitableData(current.ctx.runtime);
+			const snapshot = await readDurableOrLiveSnapshot(current.ctx, options) ?? snapshots.get(id);
 			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${id} has no snapshot`);
 			// Keep the durable storage package open: this simulates an app/runtime
 			// restart over the same store handle. Closing the package would close
@@ -515,8 +662,22 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 					transport: null,
 				},
 			});
+			await seedGraphStorageFromSnapshot(
+				ctx,
+				snapshot,
+				"minicut-maelstrom-reinit-seed-snapshot",
+			);
+			await ctx.lockToRead(async () => {
+				const project =
+					await findPeerProjectById(ctx, String(current.project._node_id)) ??
+					getModelById(ctx.appModel, String(current.project._node_id));
+				if (project) {
+					await ctx.sessionRoot.dispatch("syncActiveProjectRel", { project });
+				}
+			});
 			const restarted = await wrapPeer(id, ctx, network);
 			peers.set(id, restarted);
+			snapshots.set(id, snapshot);
 			await enableUnloadNow(ctx, options.unloadModels === true);
 			return restarted;
 		},

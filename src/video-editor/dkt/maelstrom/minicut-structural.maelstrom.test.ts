@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { createMiniCutTimelineFixture } from "./fixtures/createMiniCutTimelineFixture";
 import { expectNoPendingNetwork } from "./sim/MiniCutInvariantChecker";
+import { createMiniCutMaelstromProfiles } from "./sim/MiniCutMaelstromProfiles";
 import { network, user } from "./sim/MiniCutScenarioDSL";
 import { runMiniCutTrace } from "./sim/MiniCutTraceRunner";
-import { createMiniCutCrdtSimulation, type MiniCutPeer } from "./sim/createMiniCutCrdtSimulation";
+import {
+	createMiniCutCrdtSimulation,
+	type MiniCutPeer,
+} from "./sim/createMiniCutCrdtSimulation";
 
 type ModelHandle = MiniCutPeer["project"];
 
-const metaCount = (model: ModelHandle, attrs: string[]): number =>
+const metaCount = async (peer: MiniCutPeer, model: ModelHandle, attrs: string[]): Promise<number> =>
 	Math.max(
 		0,
-		...attrs.map((attrName) => Number(model.states?.[attrName] ?? 0)),
+		...(await Promise.all(attrs.map(async (attrName) =>
+			Number(await peer.ctx.queryAttr(model, attrName) ?? 0),
+		))),
 	);
 
-const expectTimelineConflict = (model: ModelHandle) => {
+const expectTimelineConflict = async (peer: MiniCutPeer, model: ModelHandle) => {
 	expect(
-		metaCount(model, [
+		await metaCount(peer, model, [
 			"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
 			"$meta$rels$crdt$clips$open_conflicts_count",
 			"$meta$model$crdt$open_conflicts_count",
@@ -41,7 +47,7 @@ const createMultiClipFixture = async (
 	await sim.syncFromPeer("A");
 	await sim.network.deliverAll({ reorder: false });
 	const peers = [sim.peer("A"), sim.peer("B")];
-	const clips = await Promise.all(peers.map((peer) => peer.ctx.queryRel(peer.videoTrack, "clips")));
+	const clips = await Promise.all(peers.map((peer) => peer.queryVideoClips()));
 	for (let index = 0; index < clipCount; index += 1) {
 		const id = clips[0]?.[index]?._node_id;
 		if (!id || clips.some((peerClips) => peerClips[index]?._node_id !== id)) {
@@ -52,81 +58,95 @@ const createMultiClipFixture = async (
 };
 
 describe("MiniCut maelstrom structural conflicts", () => {
-	it("records delete vs effect edit as a timeline structural conflict", async () => {
-		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
-		const { clips } = await createMiniCutTimelineFixture(
-			[sim.peer("A"), sim.peer("B")],
-			{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
-		);
-		const clipA = clips[0];
-		const clipB = clips[1];
-		for (const [peer, clip] of [[sim.peer("A"), clipA], [sim.peer("B"), clipB]] as const) {
-			await peer.dispatch(clip, "addEffect", {
-				kind: "blur",
-				name: "Blur",
-				params: { radius: 2 },
+	for (const profile of createMiniCutMaelstromProfiles()) {
+		it(`records delete vs effect edit as a timeline structural conflict with ${profile.name}`, async () => {
+			const sim = await createMiniCutCrdtSimulation({
+				peers: ["A", "B"],
+				storage: profile.storage,
+				unloadModels: profile.unloadModels,
 			});
-			peer.ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
-		}
-		const effectA = (await sim.peer("A").ctx.queryRel(clipA, "effects"))[0];
-		if (!effectA) throw new Error("Expected effect fixture");
+			const { clips } = await createMiniCutTimelineFixture(
+				[sim.peer("A"), sim.peer("B")],
+				{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
+			);
+			const clipA = clips[0];
+			const clipB = clips[1];
+			for (const [peer, clip] of [[sim.peer("A"), clipA], [sim.peer("B"), clipB]] as const) {
+				await peer.dispatch(clip, "addEffect", {
+					kind: "blur",
+					name: "Blur",
+					params: { radius: 2 },
+				});
+				peer.ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
+			}
+			const effectA = (await sim.peer("A").ctx.queryRel(clipA, "effects"))[0];
+			if (!effectA) throw new Error("Expected effect fixture");
 
-		await sim.peer("A").dispatch(effectA, "setEffectParams", { params: { radius: 8 } });
-		sim.peer("A").ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
-		await runMiniCutTrace(sim, [
-			user("B").dispatch("removeSelf", undefined, { target: "clip" }),
-			network.deliverAll({ duplicate: true, reorder: true, seed: 21 }),
-		], { clipByPeer: { B: clipB } });
+			await sim.peer("A").dispatch(effectA, "setEffectParams", { params: { radius: 8 } });
+			sim.peer("A").ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
+			await runMiniCutTrace(sim, [
+				user("B").dispatch("removeSelf", undefined, { target: "clip" }),
+				network.deliverAll({ duplicate: true, reorder: true, seed: 21 }),
+			], { clipByPeer: { B: clipB } });
 
-		expectTimelineConflict(sim.peer("A").videoTrack);
-		expect((await sim.peer("A").ctx.queryRel(clipA, "effects"))[0]?._node_id).toBe(effectA._node_id);
-		expectNoPendingNetwork(sim.network);
-	});
+			await expectTimelineConflict(sim.peer("A"), sim.peer("A").videoTrack);
+			expect((await sim.peer("A").ctx.queryRel(clipA, "effects"))[0]?._node_id).toBe(effectA._node_id);
+			expectNoPendingNetwork(sim.network);
+		});
 
-	it("records split vs delete as a timeline structural conflict", async () => {
-		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
-		const { clips } = await createMiniCutTimelineFixture(
-			[sim.peer("A"), sim.peer("B")],
-			{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
-		);
-		const clipA = clips[0];
-		const clipB = clips[1];
+		it(`records split vs delete as a timeline structural conflict with ${profile.name}`, async () => {
+			const sim = await createMiniCutCrdtSimulation({
+				peers: ["A", "B"],
+				storage: profile.storage,
+				unloadModels: profile.unloadModels,
+			});
+			const { clips } = await createMiniCutTimelineFixture(
+				[sim.peer("A"), sim.peer("B")],
+				{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
+			);
+			const clipA = clips[0];
+			const clipB = clips[1];
 
-		await sim.peer("A").dispatch(clipA, "splitSelfAt", { time: 2 });
-		sim.peer("A").ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
-		await runMiniCutTrace(sim, [
-			user("B").dispatch("removeSelf", undefined, { target: "clip" }),
-			network.deliverAll({ duplicate: true, reorder: true, seed: 22 }),
-		], { clipByPeer: { B: clipB } });
+			await sim.peer("A").dispatch(clipA, "splitSelfAt", { time: 2 });
+			sim.peer("A").ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
+			await runMiniCutTrace(sim, [
+				user("B").dispatch("removeSelf", undefined, { target: "clip" }),
+				network.deliverAll({ duplicate: true, reorder: true, seed: 22 }),
+			], { clipByPeer: { B: clipB } });
 
-		expectTimelineConflict(sim.peer("A").videoTrack);
-		expectNoPendingNetwork(sim.network);
-	});
+			await expectTimelineConflict(sim.peer("A"), sim.peer("A").videoTrack);
+			expectNoPendingNetwork(sim.network);
+		});
 
-	it("records concurrent semantic moves as relation conflict meta", async () => {
-		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
-		const [clipsA, clipsB] = await createMultiClipFixture(sim, 3);
+		it(`records concurrent semantic moves as relation conflict meta with ${profile.name}`, async () => {
+			const sim = await createMiniCutCrdtSimulation({
+				peers: ["A", "B"],
+				storage: profile.storage,
+				unloadModels: profile.unloadModels,
+			});
+			const [clipsA, clipsB] = await createMultiClipFixture(sim, 3);
 
-		await runMiniCutTrace(sim, [
-			network.partition(["A"], ["B"]),
-			user("A").dispatch("moveClipWithinTrack", {
-				clipId: clipsA[1]?._node_id,
-				afterClipId: null,
-			}, { target: "videoTrack" }),
-			user("B").dispatch("moveClipWithinTrack", {
-				clipId: clipsB[1]?._node_id,
-				afterClipId: clipsB[2]?._node_id,
-			}, { target: "videoTrack" }),
-			network.heal(),
-			network.deliverAll({ duplicate: true, reorder: true, seed: 23 }),
-		]);
+			await runMiniCutTrace(sim, [
+				network.partition(["A"], ["B"]),
+				user("A").dispatch("moveClipWithinTrack", {
+					clipId: clipsA[1]?._node_id,
+					afterClipId: null,
+				}, { target: "videoTrack" }),
+				user("B").dispatch("moveClipWithinTrack", {
+					clipId: clipsB[1]?._node_id,
+					afterClipId: clipsB[2]?._node_id,
+				}, { target: "videoTrack" }),
+				network.heal(),
+				network.deliverAll({ duplicate: true, reorder: true, seed: 23 }),
+			]);
 
-		expect(
-			metaCount(sim.peer("A").videoTrack, [
-				"$meta$rels$crdt$clips$open_conflicts_count",
-				"$meta$model$crdt$open_conflicts_count",
-			]),
-		).toBeGreaterThan(0);
-		expectNoPendingNetwork(sim.network);
-	});
+			expect(
+				await metaCount(sim.peer("A"), sim.peer("A").videoTrack, [
+					"$meta$rels$crdt$clips$open_conflicts_count",
+					"$meta$model$crdt$open_conflicts_count",
+				]),
+			).toBeGreaterThan(0);
+			expectNoPendingNetwork(sim.network);
+		});
+	}
 });

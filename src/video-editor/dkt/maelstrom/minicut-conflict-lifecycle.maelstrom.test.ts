@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { drainCrdtOutbox } from "../test/crdtAssertions";
 import { createMiniCutTimelineFixture } from "./fixtures/createMiniCutTimelineFixture";
 import { expectNoPendingNetwork, expectTimingConflictOpen } from "./sim/MiniCutInvariantChecker";
+import { createMiniCutMaelstromProfiles } from "./sim/MiniCutMaelstromProfiles";
 import { clipTimingGesture, network } from "./sim/MiniCutScenarioDSL";
 import { runMiniCutTrace } from "./sim/MiniCutTraceRunner";
 import { createMiniCutCrdtSimulation } from "./sim/createMiniCutCrdtSimulation";
@@ -26,8 +27,13 @@ const readOpenTimingConflictId = (runtime: unknown, clipId: unknown): string => 
 };
 
 describe("MiniCut maelstrom conflict lifecycle", () => {
-	it("keeps invalid timing resolution local and clears meta after valid resolve", async () => {
-		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
+	for (const profile of createMiniCutMaelstromProfiles()) {
+	it(`keeps invalid timing resolution local and clears meta after valid resolve with ${profile.name}`, async () => {
+		const sim = await createMiniCutCrdtSimulation({
+			peers: ["A", "B"],
+			storage: profile.storage,
+			unloadModels: profile.unloadModels,
+		});
 		const { clips } = await createMiniCutTimelineFixture(
 			[sim.peer("A"), sim.peer("B")],
 			{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
@@ -43,9 +49,9 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 			network.deliverAll({ duplicate: true, reorder: true, seed: 13 }),
 		], { clipByPeer: { A: clipA, B: clipB } });
 
-		expectTimingConflictOpen(sim.peer("A"), clipA);
+		await expectTimingConflictOpen(sim.peer("A"), clipA);
 		const conflictId = readOpenTimingConflictId(sim.peer("A").ctx.runtime, clipA._node_id);
-		const previousDuration = sim.peer("A").ctx.getAttr(clipA, "duration");
+		const previousDuration = await sim.peer("A").ctx.queryAttr(clipA, "duration");
 
 		await sim.peer("A").dispatch(
 			clipA,
@@ -61,8 +67,8 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 			},
 		);
 
-		expect(sim.peer("A").ctx.getAttr(clipA, "duration")).toBe(previousDuration);
-		expect(sim.peer("A").ctx.getAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error"))
+		expect(await sim.peer("A").ctx.queryAttr(clipA, "duration")).toBe(previousDuration);
+		expect(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error"))
 			.toEqual(expect.objectContaining({ code: "duration_non_positive" }));
 		expect(drainCrdtOutbox(sim.peer("A").ctx.runtime)).toEqual([]);
 
@@ -80,11 +86,12 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 			},
 		);
 
-		expect(sim.peer("A").ctx.getAttr(clipA, "duration")).toBe(3);
-		expect(Number(sim.peer("A").ctx.getAttr(clipA, "$meta$aggregates$crdt$clipTiming$open_conflicts_count") ?? 0)).toBe(0);
-		expect(sim.peer("A").ctx.getAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error") ?? null).toBeNull();
+		expect(await sim.peer("A").ctx.queryAttr(clipA, "duration")).toBe(3);
+		expect(Number(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$open_conflicts_count") ?? 0)).toBe(0);
+		expect(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error") ?? null).toBeNull();
 		await sim.network.replayDelivered(4);
-		expect(Number(sim.peer("A").ctx.getAttr(clipA, "$meta$aggregates$crdt$clipTiming$open_conflicts_count") ?? 0)).toBe(0);
+		expect(Number(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$open_conflicts_count") ?? 0)).toBe(0);
 		expectNoPendingNetwork(sim.network);
 	});
+	}
 });

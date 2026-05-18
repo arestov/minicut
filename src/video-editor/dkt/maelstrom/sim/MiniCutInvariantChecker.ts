@@ -2,8 +2,8 @@ import { expect } from "vitest";
 import type { MiniCutPeer } from "./createMiniCutCrdtSimulation";
 import type { DeterministicMiniCutNetwork } from "./DeterministicMiniCutNetwork";
 
-const metaCount = (model: { states?: Record<string, unknown> }, attrName: string): number =>
-	Number(model.states?.[attrName] ?? 0);
+const metaCount = async (peer: MiniCutPeer, model: MiniCutPeer["project"], attrName: string): Promise<number> =>
+	Number(await peer.ctx.queryAttr(model, attrName) ?? 0);
 
 export const expectNoPendingNetwork = (network: DeterministicMiniCutNetwork) => {
 	expect(network.pending()).toEqual([]);
@@ -24,12 +24,12 @@ export const expectUniqueVideoClipIds = async (peer: MiniCutPeer) => {
 	expect(new Set(clipIds).size).toBe(clipIds.length);
 };
 
-export const expectTimingConflictOpen = (peer: MiniCutPeer, clip: { states?: Record<string, unknown> }) => {
+export const expectTimingConflictOpen = async (peer: MiniCutPeer, clip: MiniCutPeer["project"]) => {
 	expect(
 		Math.max(
-			metaCount(clip, "$meta$aggregates$crdt$clipTiming$open_conflicts_count"),
-			metaCount(clip, "$meta$attrs$crdt$duration$open_conflicts_count"),
-			metaCount(clip, "$meta$model$crdt$open_conflicts_count"),
+			await metaCount(peer, clip, "$meta$aggregates$crdt$clipTiming$open_conflicts_count"),
+			await metaCount(peer, clip, "$meta$attrs$crdt$duration$open_conflicts_count"),
+			await metaCount(peer, clip, "$meta$model$crdt$open_conflicts_count"),
 		),
 		`${peer.id} expected open timing conflict`,
 	).toBeGreaterThan(0);

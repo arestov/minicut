@@ -8,17 +8,35 @@ type TraceContext = {
 	clipByPeer?: Partial<Record<MiniCutPeer["id"], MiniCutPeer["project"]>>;
 };
 
-const targetForStep = (peer: MiniCutPeer, step: Extract<MiniCutTraceStep, { type: "dispatch" }>, ctx: TraceContext) => {
+const targetForStep = async (peer: MiniCutPeer, step: Extract<MiniCutTraceStep, { type: "dispatch" }>, ctx: TraceContext) => {
 	if (step.target === "project") return peer.project;
 	if (step.target === "videoTrack") return peer.videoTrack;
-	const clip = ctx.clipByPeer?.[peer.id];
-	if (!clip) throw new Error(`Trace target clip was not provided for peer ${peer.id}`);
-	return clip;
+	return clipTargetForPeer(peer, ctx);
 };
 
-const clipTargetForPeer = (peer: MiniCutPeer, ctx: TraceContext) => {
+const ensureClipTargetCarriers = async (peer: MiniCutPeer, clip: MiniCutPeer["project"]) => {
+	const start = await peer.ctx.queryAttr(clip, "start");
+	const inPoint = await peer.ctx.queryAttr(clip, "in");
+	const duration = await peer.ctx.queryAttr(clip, "duration");
+	await peer.ctx.queryRel(clip, "resource");
+	if (
+		typeof start !== "number" ||
+		typeof inPoint !== "number" ||
+		typeof duration !== "number"
+	) {
+		throw new Error(`Trace target clip timing carrier is incomplete for peer ${peer.id}: ${JSON.stringify({
+			clip: clip._node_id,
+			start,
+			in: inPoint,
+			duration,
+		})}`);
+	}
+};
+
+const clipTargetForPeer = async (peer: MiniCutPeer, ctx: TraceContext) => {
 	const clip = ctx.clipByPeer?.[peer.id];
 	if (!clip) throw new Error(`Trace target clip was not provided for peer ${peer.id}`);
+	await ensureClipTargetCarriers(peer, clip);
 	return clip;
 };
 
@@ -40,14 +58,15 @@ export const runMiniCutTrace = async (simulation: Simulation, steps: MiniCutTrac
 					break;
 				case "dispatch": {
 					const peer = simulation.peer(step.peerId);
-					await peer.dispatch(targetForStep(peer, step, ctx), step.actionName, step.payload, step.meta);
+					await peer.dispatch(await targetForStep(peer, step, ctx), step.actionName, step.payload, step.meta);
 					peer.flushOutbound();
 					break;
 				}
 				case "clipTimingResizeGesture": {
 					const peer = simulation.peer(step.peerId);
+					const clip = await clipTargetForPeer(peer, ctx);
 					await peer.ctx.lockToRead(async () => {
-						await dispatchClipTimingResizeGesture(peer.ctx, clipTargetForPeer(peer, ctx), {
+						await dispatchClipTimingResizeGesture(peer.ctx, clip, {
 							edge: step.edge,
 							delta: step.delta,
 							batchId: step.batchId,

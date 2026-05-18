@@ -36,10 +36,27 @@ export const createMiniCutTimelineFixture = async (
 		}
 	}
 	const livePeers = peers.map((peer) => options?.getPeer?.(peer.id) ?? peer);
-	const clips = await Promise.all(livePeers.map((peer) => peer.ctx.queryRel(peer.videoTrack, "clips")));
+	const clips = await Promise.all(livePeers.map((peer) => peer.queryVideoClips()));
 	const firstClipId = clips[0]?.[0]?._node_id;
 	if (!firstClipId || clips.some((peerClips) => peerClips[0]?._node_id !== firstClipId)) {
-		throw new Error("Expected matching maelstrom fixture clip ids across peers");
+		const snapshots = await Promise.all(livePeers.map(async (peer) => (
+			peer.ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> } | undefined
+		)?.getSnapshot?.()));
+		throw new Error(`Expected matching maelstrom fixture clip ids across peers: ${JSON.stringify(
+			livePeers.map((peer, index) => ({
+				peer: peer.id,
+				project: peer.project?._node_id,
+				videoTrack: peer.videoTrack?._node_id,
+				storageTrackRels: (snapshots[index] as { models?: Record<string, { rels?: unknown }> } | null)
+					?.models?.[String(peer.videoTrack?._node_id)]?.rels,
+				clips: clips[index]?.map((clip) => ({
+					id: clip?._node_id,
+					name: clip?.states?.name,
+					start: clip?.states?.start,
+					duration: clip?.states?.duration,
+				})),
+			})),
+		)}`);
 	}
 	return {
 		clipId: firstClipId,

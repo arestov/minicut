@@ -5,6 +5,7 @@ import { network } from "./MiniCutScenarioDSL";
 import { runMiniCutTrace } from "./MiniCutTraceRunner";
 import { normalizeMiniCutSummary, readMiniCutPublicSummary } from "./MiniCutPublicSummary";
 import { createMiniCutCrdtSimulation } from "./createMiniCutCrdtSimulation";
+import type { MiniCutMaelstromProfile } from "./MiniCutMaelstromProfiles";
 import type { MiniCutGeneratedTrace } from "./MiniCutSmallTraceGenerator";
 
 type DeliveryVariant = {
@@ -19,10 +20,17 @@ const variants: DeliveryVariant[] = [
 	{ name: "duplicated-reordered", duplicate: true, reorder: true, seedOffset: 1000 },
 ];
 
-export const runMiniCutMetamorphicTrace = async (trace: MiniCutGeneratedTrace) => {
+export const runMiniCutMetamorphicTrace = async (
+	trace: MiniCutGeneratedTrace,
+	profile?: MiniCutMaelstromProfile,
+) => {
 	const normalizedSummaries = [];
 	for (const variant of variants) {
-		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
+		const sim = await createMiniCutCrdtSimulation({
+			peers: ["A", "B"],
+			storage: profile?.storage,
+			unloadModels: profile?.unloadModels,
+		});
 		const { clips } = await createMiniCutTimelineFixture(
 			[sim.peer("A"), sim.peer("B")],
 			{ syncFromPeer: sim.syncFromPeer, getPeer: sim.peer },
@@ -37,8 +45,8 @@ export const runMiniCutMetamorphicTrace = async (trace: MiniCutGeneratedTrace) =
 			}),
 		], { clipByPeer: { A: clips[0], B: clips[1] } });
 
-		expectTimingConflictOpen(sim.peer("A"), clips[0]);
-		expectTimingConflictOpen(sim.peer("B"), clips[1]);
+		await expectTimingConflictOpen(sim.peer("A"), clips[0]);
+		await expectTimingConflictOpen(sim.peer("B"), clips[1]);
 		expectNoPendingNetwork(sim.network);
 		normalizedSummaries.push({
 			variant: variant.name,

@@ -28,6 +28,7 @@ type PeerRuntime = {
 	flushOutbound: () => void;
 	readProjectTitle: () => Promise<unknown>;
 	readVideoClipIds: () => Promise<string[]>;
+	queryVideoClips: () => Promise<RuntimeModel[]>;
 };
 
 type Options = {
@@ -74,7 +75,10 @@ const receiveOps = async (
 	await waitForRuntimeIdle(ctx);
 };
 
-const findSharedProject = async (ctx: DktTestContext): Promise<RuntimeModel> => {
+const findSharedProject = async (
+	ctx: DktTestContext,
+	preferredProjectId?: string,
+): Promise<RuntimeModel> => {
 	const projects = await ctx.queryRel(ctx.appModel, "project");
 	const projectKinds = await Promise.all(
 		projects.map(async (project) => ({
@@ -83,12 +87,60 @@ const findSharedProject = async (ctx: DktTestContext): Promise<RuntimeModel> => 
 		})),
 	);
 	const project =
+		(preferredProjectId
+			? projects.find((item) => String(item._node_id) === preferredProjectId)
+			: null) ??
 		projectKinds.find((item) => item.title === "CRDT worker pair project")
 			?.project ?? projects[0];
 	if (!project) {
 		throw new Error("Expected shared project");
 	}
 	return project;
+};
+
+const readDurableOrLiveSnapshot = async (ctx: DktTestContext): Promise<unknown> => {
+	const durableSnapshot = await (
+		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
+	)?.getSnapshot?.();
+	return durableSnapshot ?? await toReinitableData(ctx.runtime);
+};
+
+const queryVideoTrackClips = async (
+	ctx: DktTestContext,
+	videoTrack: RuntimeModel,
+): Promise<RuntimeModel[]> => {
+	const clips = await ctx.queryRel(videoTrack, "clips");
+	if (clips.length > 0) return clips;
+	const snapshot = await (
+		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
+	)?.getSnapshot?.();
+	const snapshotClipRefs =
+		(snapshot as { models?: Record<string, { rels?: Record<string, unknown> }> } | null)
+			?.models?.[String(videoTrack._node_id)]?.rels?.clips;
+	if (Array.isArray(snapshotClipRefs) && snapshotClipRefs.length > 0) {
+		return snapshotClipRefs
+			.map((item) => {
+				const id =
+					typeof item === "string"
+						? item
+						: String((item as { _node_id?: unknown } | null)?._node_id ?? "");
+				return id
+					? ((ctx.runtime as { models?: Record<string, RuntimeModel> }).models?.[id] ??
+						(getModelById(ctx.appModel, id) as RuntimeModel | null))
+					: null;
+			})
+			.filter((item): item is RuntimeModel => Boolean(item));
+	}
+	const allClips = await ctx.queryRel(ctx.appModel, "clip");
+	const pairs = await Promise.all(
+		allClips.map(async (clip) => ({
+			clip,
+			track: (await ctx.queryRel(clip, "track"))[0],
+		})),
+	);
+	return pairs
+		.filter((item) => item.track?._node_id === videoTrack._node_id)
+		.map((item) => item.clip);
 };
 
 const bindPeerProject = async (ctx: DktTestContext, project: RuntimeModel) => {
@@ -102,6 +154,7 @@ const createPeer = async (
 	options: {
 		snapshot?: unknown;
 		storagePackage?: MiniCutDktCrdtStoragePackage | null;
+		preferredProjectId?: string;
 	} = {},
 ): Promise<PeerRuntime> => {
 	const ctx = await bootDktModels({
@@ -114,7 +167,7 @@ const createPeer = async (
 		},
 	});
 	if (options.snapshot) {
-		await bindPeerProject(ctx, await findSharedProject(ctx));
+		await bindPeerProject(ctx, await findSharedProject(ctx, options.preferredProjectId));
 	} else {
 		await ctx.lockToRead(async () => {
 			await ctx.sessionRoot.dispatch("createProject", {
@@ -154,9 +207,12 @@ const createPeer = async (
 			return ctx.queryAttr(project, "title");
 		},
 		async readVideoClipIds() {
-			return (await ctx.queryRel(videoTrack, "clips")).map((clip) =>
+			return (await queryVideoTrackClips(ctx, videoTrack)).map((clip) =>
 				String(clip._node_id),
 			);
+		},
+		async queryVideoClips() {
+			return queryVideoTrackClips(ctx, videoTrack);
 		},
 	};
 };
@@ -255,11 +311,18 @@ const replacePeerFromSnapshot = async (
 	source: PeerRuntime,
 	ops: unknown[],
 ) => {
-	const snapshot = await toReinitableData(source.ctx.runtime);
+	await source.ctx.storagePackage?.commitChanges?.({
+		reason: "minicut-worker-pair-sync-source",
+	});
+	const snapshot = await readDurableOrLiveSnapshot(source.ctx);
 	const storagePackage = target.ctx.storagePackage;
 	await target.ctx.close();
 	await seedBaselineOps(storagePackage, ops);
-	const next = await createPeer(target.id, { snapshot, storagePackage });
+	const next = await createPeer(target.id, {
+		snapshot,
+		storagePackage,
+		preferredProjectId: String(source.project._node_id),
+	});
 	Object.assign(target, next);
 };
 
@@ -267,7 +330,8 @@ export const createCrdtWorkerPair = async (options: Options) => {
 	const relay = createInMemoryCrdtRelay();
 	const a = await createPeer("A");
 	const b = await createPeer("B", {
-		snapshot: await toReinitableData(a.ctx.runtime),
+		snapshot: await readDurableOrLiveSnapshot(a.ctx),
+		preferredProjectId: String(a.project._node_id),
 	});
 
 	const transportA = createTestWorkerCrdtTransport({

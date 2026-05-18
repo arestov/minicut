@@ -1,24 +1,24 @@
 import type { MiniCutPeer } from "./createMiniCutCrdtSimulation";
 
-const count = (model: { states?: Record<string, unknown> }, attrName: string): number =>
-	Number(model.states?.[attrName] ?? 0);
+const count = async (peer: MiniCutPeer, model: MiniCutPeer["project"], attrName: string): Promise<number> =>
+	Number(await peer.ctx.queryAttr(model, attrName) ?? 0);
 
 export const readMiniCutPublicSummary = async (peers: MiniCutPeer[]) => {
 	const peerSummaries = [];
 	for (const peer of peers) {
-		const clips = await peer.ctx.queryRel(peer.videoTrack, "clips");
+		const clips = await peer.queryVideoClips();
 		peerSummaries.push({
 			peerId: peer.id,
 			projectTitle: await peer.readProjectTitle(),
 			videoClipIds: await peer.readVideoClipIds(),
-			clips: clips.map((clip) => ({
-				id: clip._node_id,
-				start: peer.ctx.getAttr(clip, "start"),
-				in: peer.ctx.getAttr(clip, "in"),
-				duration: peer.ctx.getAttr(clip, "duration"),
-				openTiming: count(clip, "$meta$aggregates$crdt$clipTiming$open_conflicts_count"),
-				openModel: count(clip, "$meta$model$crdt$open_conflicts_count"),
-			})),
+			clips: await Promise.all(clips.map(async (clip) => ({
+					id: clip._node_id,
+					start: await peer.ctx.queryAttr(clip, "start"),
+					in: await peer.ctx.queryAttr(clip, "in"),
+					duration: await peer.ctx.queryAttr(clip, "duration"),
+					openTiming: await count(peer, clip, "$meta$aggregates$crdt$clipTiming$open_conflicts_count"),
+					openModel: await count(peer, clip, "$meta$model$crdt$open_conflicts_count"),
+				}))),
 		});
 	}
 	return peerSummaries;
