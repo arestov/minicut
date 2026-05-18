@@ -9,6 +9,7 @@ export const DKT_MSG = {
 	RUNTIME_READY: "dkt:runtime-ready",
 	RUNTIME_ERROR: "dkt:runtime-error",
 	RUNTIME_LOG: "dkt:runtime-log",
+	WORKSPACE_OPEN_STATE: "dkt:workspace-open-state",
 	WAIT_IDLE: "dkt:wait-idle",
 	SYNC_HANDLE: "dkt:sync-handle",
 	SYNC_UPDATE_STRUCTURE_USAGE: "dkt:sync-update-structure-usage",
@@ -39,6 +40,17 @@ export type DktRuntimeErrorMessage = {
 	type: typeof DKT_MSG.RUNTIME_ERROR;
 	requestId?: string;
 	message: unknown;
+};
+
+export type DktWorkspaceOpenStateMessage = {
+	type: typeof DKT_MSG.WORKSPACE_OPEN_STATE;
+	state: {
+		status: number;
+		failureReason: number;
+	};
+	statusLabel?: string;
+	failureReasonLabel?: string;
+	message?: string;
 };
 
 export type DktSyncHandleMessage = {
@@ -101,6 +113,7 @@ export type MiniCutDktTransportMessage =
 	| DktP2PSessionLostMessage
 	| DktRuntimeReadyMessage
 	| DktRuntimeErrorMessage
+	| DktWorkspaceOpenStateMessage
 	| DktRuntimeLogMessage
 	| DktSyncHandleMessage
 	| DktSyncUpdateStructureUsageMessage

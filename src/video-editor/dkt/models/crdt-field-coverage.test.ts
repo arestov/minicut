@@ -175,6 +175,7 @@ const MODEL_CASES: ModelCase[] = [
 				sessionKey: "projection",
 				route: "projection",
 				closedAt: "projection",
+				storageOpenStatus: "projection",
 				isCommonRoot: "projection",
 				tabId: "projection",
 				activeProjectId: "projection",

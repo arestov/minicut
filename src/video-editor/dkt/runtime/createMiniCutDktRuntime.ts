@@ -21,8 +21,17 @@ import {
 import {
 	openMiniCutWorkspaceStorage,
 	stageMiniCutWorkspaceManifest,
+	type MiniCutWorkspaceOpenResult,
 } from "../storage/minicutWorkspaceManifest";
 import { dumpWorkerAppState } from "./workerStateDump";
+import {
+	WORKSPACE_OPEN_STATUS,
+	WORKSPACE_OPENING_STATE,
+	WORKSPACE_EMPTY_INITIALIZED_STATE,
+	getWorkspaceOpenFailureLabel,
+	getWorkspaceOpenStatusLabel,
+	type WorkspaceOpenState,
+} from "./workspaceOpenState";
 
 type RuntimeModelLike = {
 	_node_id?: string | null;
@@ -81,8 +90,6 @@ type MiniCutCrdtRuntimeLike = {
 		) => unknown;
 	};
 };
-
-type MiniCutStorageOpenStatus = "empty" | "ready" | "adopted_v0";
 
 type MiniCutCrdtStoragePackage = {
 	dktStorage: unknown;
@@ -207,7 +214,8 @@ const createCrdtRuntime = async (
 	profileId: string;
 	profileVersion: number;
 	transport: MiniCutCrdtTransport | null;
-	storageOpen: unknown;
+	storageOpen: MiniCutWorkspaceOpenResult | null;
+	workspaceOpenState: WorkspaceOpenState | null;
 }> => {
 	const normalized = normalizeCrdtOptions(options);
 	if (!normalized) {
@@ -219,6 +227,7 @@ const createCrdtRuntime = async (
 			profileVersion: 1,
 			transport: null,
 			storageOpen: null,
+			workspaceOpenState: null,
 		};
 	}
 	const peerId =
@@ -237,7 +246,11 @@ const createCrdtRuntime = async (
 				workspaceId,
 			})
 		: null;
-	if (storageOpen?.ok === true && storageOpen.status === "empty" && workspaceId) {
+	if (
+		storageOpen?.ok === true &&
+		storageOpen.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED &&
+		workspaceId
+	) {
 		const stagedManifest = stageMiniCutWorkspaceManifest({
 			storage: storagePackage.dktStorage,
 			workspaceId,
@@ -257,6 +270,7 @@ const createCrdtRuntime = async (
 		profileVersion: normalized.profileVersion ?? 1,
 		transport: normalized.transport ?? null,
 		storageOpen,
+		workspaceOpenState: storageOpen?.openState ?? null,
 	};
 };
 
@@ -394,6 +408,32 @@ export const createMiniCutDktRuntime = (
 		DomSyncTransportLike<MiniCutDktTransportMessage>
 	>();
 	const enabled = options.enabled === true;
+	let lastWorkspaceOpenState: WorkspaceOpenState | null = WORKSPACE_OPENING_STATE;
+	let lastRuntimeErrorMessage: string | null = null;
+
+	const publishWorkspaceOpenState = (
+		state: WorkspaceOpenState,
+		message?: string,
+	): void => {
+		lastWorkspaceOpenState = state;
+		for (const transport of activeTransports) {
+			transport.send({
+				type: DKT_MSG.WORKSPACE_OPEN_STATE,
+				state,
+				statusLabel: getWorkspaceOpenStatusLabel(state.status),
+				failureReasonLabel: getWorkspaceOpenFailureLabel(state.failureReason),
+				...(message ? { message } : null),
+			});
+		}
+	};
+
+	const formatWorkspaceOpenError = (
+		storageOpen: Extract<MiniCutWorkspaceOpenResult, { ok: false }>,
+	): string =>
+		`CRDT harness storage open failed: ${storageOpen.failureReasonLabel.replace(
+			/_/g,
+			" ",
+		)}`;
 
 	const logRuntime = (message: string, details?: unknown) => {
 		for (const transport of activeTransports) {
@@ -468,21 +508,16 @@ export const createMiniCutDktRuntime = (
 			bootPromise = (async () => {
 				crdtPromise = createCrdtRuntimeForSession(options.crdt, sessionKey);
 				const crdt = await crdtPromise;
-				if (crdt.storageOpen && typeof crdt.storageOpen === "object") {
-					const storageOpen = crdt.storageOpen as {
-						ok?: unknown;
-						reason?: unknown;
-					};
-					if (storageOpen.ok === false) {
-						const reason =
-							typeof storageOpen.reason === "string"
-								? storageOpen.reason.replace(/_/g, " ")
-								: "storage open failed";
-						throw new Error(
-							`CRDT harness storage open failed: ${reason}`,
-						);
-					}
+				if (crdt.workspaceOpenState) {
+					publishWorkspaceOpenState(crdt.workspaceOpenState);
 				}
+				if (crdt.storageOpen?.ok === false) {
+					const message = formatWorkspaceOpenError(crdt.storageOpen);
+					lastRuntimeErrorMessage = message;
+					publishWorkspaceOpenState(crdt.storageOpen.openState, message);
+					throw new Error(message);
+				}
+				lastRuntimeErrorMessage = null;
 				const runtime = prepareAppRuntime({
 					sync_sender: true,
 					warnUnexpectedAttrs: true,
@@ -568,13 +603,8 @@ export const createMiniCutDktRuntime = (
 					try {
 						const crdt = crdtPromise ? await crdtPromise : null;
 						const storageOpenStatus =
-							crdt?.storageOpen &&
-							typeof crdt.storageOpen === "object" &&
-							"status" in crdt.storageOpen
-								? ((crdt.storageOpen as { status?: unknown }).status as
-										| MiniCutStorageOpenStatus
-										| undefined)
-								: "empty";
+							crdt?.workspaceOpenState?.status ??
+							WORKSPACE_EMPTY_INITIALIZED_STATE.status;
 						const sessionRoot = await hookSessionRoot(
 							app.appModel,
 							app.appModel.start_page,
@@ -872,13 +902,40 @@ export const createMiniCutDktRuntime = (
 	};
 
 	const debugDumpState = async () => {
-		const app = await bootstrapApp();
+		let app: Awaited<ReturnType<typeof bootstrapApp>> | null = null;
+		try {
+			app = await bootstrapApp();
+		} catch (error) {
+			lastRuntimeErrorMessage =
+				lastRuntimeErrorMessage ??
+				(error instanceof Error ? error.message : String(error));
+			const crdt = crdtPromise ? await crdtPromise.catch(() => null) : null;
+			return {
+				enabled,
+				booted: false,
+				sessions: [...sessionRootPromises.keys()],
+				modelsCount: 0,
+				workspaceOpenState: lastWorkspaceOpenState,
+				runtimeError: lastRuntimeErrorMessage,
+				crdt: crdt?.storageOpen
+					? {
+							enabled: Boolean(crdt.crdtRuntime),
+							peerId: crdt.peerId,
+							profileId: crdt.profileId,
+							profileVersion: crdt.profileVersion,
+							storageOpen: crdt.storageOpen,
+						}
+					: { enabled: false },
+			};
+		}
 		if (!app) {
 			return {
 				enabled,
 				booted: false,
 				sessions: [...sessionRootPromises.keys()],
 				modelsCount: 0,
+				workspaceOpenState: lastWorkspaceOpenState,
+				runtimeError: lastRuntimeErrorMessage,
 				crdt: { enabled: false },
 			};
 		}
@@ -893,6 +950,8 @@ export const createMiniCutDktRuntime = (
 			sessions: [...sessionRootPromises.keys()],
 			modelsCount: Object.keys(app.runtime.models ?? {}).length,
 			rootNodeId: app.appModel._node_id ?? null,
+			workspaceOpenState: lastWorkspaceOpenState,
+			runtimeError: lastRuntimeErrorMessage,
 			crdt: app.runtime.crdt_runtime
 				? {
 						enabled: true,

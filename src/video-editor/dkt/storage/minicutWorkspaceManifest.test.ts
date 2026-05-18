@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+	WORKSPACE_OPEN_FAILURE,
+	WORKSPACE_OPEN_STATUS,
+} from "../runtime/workspaceOpenState";
+import {
 	createMiniCutExpectedManifest,
 	createMiniCutHarnessDbName,
 	createMiniCutHarnessWorkspaceId,
@@ -62,14 +66,23 @@ describe("MiniCut workspace manifest", () => {
 		);
 	});
 
-	it("maps empty DKT storage to MiniCut empty without writing initial graph", async () => {
+	it("maps empty DKT storage to MiniCut empty-initialized without writing initial graph", async () => {
 		const storage = createMemoryDktStorage();
 		const result = await openMiniCutWorkspaceStorage({
 			storage,
 			workspaceId: "harness:room:empty",
 		});
 
-		expect(result).toMatchObject({ ok: true, status: "empty" });
+		expect(result).toMatchObject({
+			ok: true,
+			status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+			statusLabel: "empty_initialized",
+			sourceStatus: "empty",
+			openState: {
+				status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+				failureReason: WORKSPACE_OPEN_FAILURE.NONE,
+			},
+		});
 		expect(storage.readManifest()).toBeNull();
 	});
 
@@ -83,7 +96,16 @@ describe("MiniCut workspace manifest", () => {
 			workspaceId: "harness:room:ready",
 		});
 
-		expect(result).toMatchObject({ ok: true, status: "ready" });
+		expect(result).toMatchObject({
+			ok: true,
+			status: WORKSPACE_OPEN_STATUS.READY,
+			statusLabel: "ready",
+			sourceStatus: "ready",
+			openState: {
+				status: WORKSPACE_OPEN_STATUS.READY,
+				failureReason: WORKSPACE_OPEN_FAILURE.NONE,
+			},
+		});
 	});
 
 	it("maps newer DKT storage to a user-facing unsupported newer version reason", async () => {
@@ -103,7 +125,9 @@ describe("MiniCut workspace manifest", () => {
 
 		expect(result).toMatchObject({
 			ok: false,
-			reason: "unsupported_newer_version",
+			status: WORKSPACE_OPEN_STATUS.FAILED,
+			failureReason: WORKSPACE_OPEN_FAILURE.UNSUPPORTED_NEWER_VERSION,
+			failureReasonLabel: "unsupported_newer_version",
 		});
 	});
 
@@ -117,7 +141,12 @@ describe("MiniCut workspace manifest", () => {
 			workspaceId: "harness:room:expected",
 		});
 
-		expect(result).toMatchObject({ ok: false, reason: "incompatible" });
+		expect(result).toMatchObject({
+			ok: false,
+			status: WORKSPACE_OPEN_STATUS.FAILED,
+			failureReason: WORKSPACE_OPEN_FAILURE.INCOMPATIBLE,
+			failureReasonLabel: "incompatible",
+		});
 	});
 
 	it("adopts legacy v0 DKT storage when schema exists", async () => {
@@ -128,7 +157,11 @@ describe("MiniCut workspace manifest", () => {
 			workspaceId: "harness:room:legacy",
 		});
 
-		expect(result).toMatchObject({ ok: true, status: "adopted_v0" });
+		expect(result).toMatchObject({
+			ok: true,
+			status: WORKSPACE_OPEN_STATUS.READY,
+			sourceStatus: "adopted_v0",
+		});
 		expect(storage.readManifest()).toMatchObject({
 			storageVersion: 1,
 			schemaVersion: 1,

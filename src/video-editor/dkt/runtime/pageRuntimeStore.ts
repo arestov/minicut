@@ -7,6 +7,7 @@ export const createEmptyPageRuntimeSnapshot = (): PageRootSnapshot => ({
 	rootNodeId: null,
 	sessionId: null,
 	sessionKey: null,
+	workspaceOpenState: null,
 	runtimeError: null,
 });
 

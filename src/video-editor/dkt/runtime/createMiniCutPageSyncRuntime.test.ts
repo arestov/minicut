@@ -6,6 +6,10 @@ import {
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import { createMiniCutPageSyncRuntime } from "./createMiniCutPageSyncRuntime";
+import {
+	WORKSPACE_OPEN_FAILURE,
+	WORKSPACE_OPEN_STATUS,
+} from "./workspaceOpenState";
 
 const createMemoryTransport = () => {
 	const listeners = new Set<(message: MiniCutDktTransportMessage) => void>();
@@ -236,5 +240,34 @@ describe("createMiniCutPageSyncRuntime", () => {
 		});
 
 		expect(runtime.getSnapshot().runtimeError).toContain("storage open failed");
+	});
+
+	it("stores workspace open failure control state without a root graph", () => {
+		const memory = createMemoryTransport();
+		const runtime = createMiniCutPageSyncRuntime({
+			transport: memory.transport,
+		});
+
+		memory.emit({
+			type: DKT_MSG.WORKSPACE_OPEN_STATE,
+			state: {
+				status: WORKSPACE_OPEN_STATUS.FAILED,
+				failureReason: WORKSPACE_OPEN_FAILURE.UNSUPPORTED_NEWER_VERSION,
+			},
+			statusLabel: "failed",
+			failureReasonLabel: "unsupported_newer_version",
+			message: "CRDT harness storage open failed: unsupported newer version",
+		});
+
+		expect(runtime.getSnapshot()).toMatchObject({
+			booted: false,
+			ready: false,
+			rootNodeId: null,
+			workspaceOpenState: {
+				status: WORKSPACE_OPEN_STATUS.FAILED,
+				failureReason: WORKSPACE_OPEN_FAILURE.UNSUPPORTED_NEWER_VERSION,
+			},
+			runtimeError: "CRDT harness storage open failed: unsupported newer version",
+		});
 	});
 });

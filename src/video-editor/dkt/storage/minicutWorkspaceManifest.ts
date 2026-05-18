@@ -2,6 +2,17 @@ import {
 	adoptLegacyDktStorageV0,
 	inspectDktStorageForOpen,
 } from "dkt-all/libs/provoda/crdt/storage/atomic/dktStorageOpenPolicy.js";
+import {
+	WORKSPACE_EMPTY_INITIALIZED_STATE,
+	WORKSPACE_OPEN_FAILURE,
+	WORKSPACE_OPEN_STATUS,
+	WORKSPACE_READY_STATE,
+	createWorkspaceOpenFailedState,
+	getWorkspaceOpenFailureLabel,
+	getWorkspaceOpenStatusLabel,
+	type WorkspaceOpenFailure,
+	type WorkspaceOpenState,
+} from "../runtime/workspaceOpenState";
 
 export const MINICUT_APP_ID = "minicut";
 export const MINICUT_APP_SCHEMA_VERSION = 1;
@@ -20,23 +31,35 @@ export type MiniCutWorkspaceManifest = {
 	schemaDictionaryMode: typeof MINICUT_SCHEMA_DICTIONARY_MODE;
 };
 
-export type MiniCutWorkspaceOpenStatus = "empty" | "ready" | "adopted_v0";
+export type MiniCutWorkspaceSourceOpenStatus = "empty" | "ready" | "adopted_v0";
+
+export type MiniCutWorkspaceOpenFailure = Exclude<
+	WorkspaceOpenFailure,
+	typeof WORKSPACE_OPEN_FAILURE.NONE
+>;
+
+export type MiniCutWorkspaceReadyStatus =
+	| typeof WORKSPACE_OPEN_STATUS.READY
+	| typeof WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED;
 
 export type MiniCutWorkspaceOpenResult =
 	| {
 			ok: true;
-			status: MiniCutWorkspaceOpenStatus;
+			status: MiniCutWorkspaceReadyStatus;
+			statusLabel: string;
+			sourceStatus: MiniCutWorkspaceSourceOpenStatus;
+			openState: WorkspaceOpenState;
 			storage: unknown;
 			manifest: MiniCutWorkspaceManifest;
 			dktManifest: unknown;
 	  }
 	| {
 			ok: false;
-			reason:
-				| "unsupported_newer_version"
-				| "incompatible"
-				| "migration_required"
-				| "storage_error";
+			status: typeof WORKSPACE_OPEN_STATUS.FAILED;
+			statusLabel: string;
+			failureReason: MiniCutWorkspaceOpenFailure;
+			failureReasonLabel: string;
+			openState: WorkspaceOpenState;
 			error: unknown;
 			manifest: MiniCutWorkspaceManifest;
 			dktManifest?: unknown;
@@ -129,6 +152,60 @@ const createDktExpectedOpenPolicy = (manifest: MiniCutWorkspaceManifest) => ({
 	schemaDictionaryMode: manifest.schemaDictionaryMode,
 });
 
+const createReadyOpenResult = ({
+	status,
+	sourceStatus,
+	storage,
+	manifest,
+	dktManifest,
+}: {
+	status: MiniCutWorkspaceReadyStatus;
+	sourceStatus: MiniCutWorkspaceSourceOpenStatus;
+	storage: unknown;
+	manifest: MiniCutWorkspaceManifest;
+	dktManifest: unknown;
+}): Extract<MiniCutWorkspaceOpenResult, { ok: true }> => {
+	const openState =
+		status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED
+			? WORKSPACE_EMPTY_INITIALIZED_STATE
+			: WORKSPACE_READY_STATE;
+	return {
+		ok: true,
+		status,
+		statusLabel: getWorkspaceOpenStatusLabel(status),
+		sourceStatus,
+		openState,
+		storage,
+		manifest,
+		dktManifest,
+	};
+};
+
+const createFailedOpenResult = ({
+	failureReason,
+	error,
+	manifest,
+	dktManifest,
+}: {
+	failureReason: MiniCutWorkspaceOpenFailure;
+	error: unknown;
+	manifest: MiniCutWorkspaceManifest;
+	dktManifest?: unknown;
+}): Extract<MiniCutWorkspaceOpenResult, { ok: false }> => {
+	const openState = createWorkspaceOpenFailedState(failureReason);
+	return {
+		ok: false,
+		status: WORKSPACE_OPEN_STATUS.FAILED,
+		statusLabel: getWorkspaceOpenStatusLabel(WORKSPACE_OPEN_STATUS.FAILED),
+		failureReason,
+		failureReasonLabel: getWorkspaceOpenFailureLabel(failureReason),
+		openState,
+		error,
+		manifest,
+		...(dktManifest === undefined ? null : { dktManifest }),
+	};
+};
+
 export const stageMiniCutWorkspaceManifest = ({
 	storage,
 	workspaceId,
@@ -166,7 +243,13 @@ export const openMiniCutWorkspaceStorage = async ({
 		)) as DktStorageOpenInspection;
 
 		if (inspected.kind === "empty") {
-			return { ok: true, status: "empty", storage, manifest, dktManifest: null };
+			return createReadyOpenResult({
+				status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+				sourceStatus: "empty",
+				storage,
+				manifest,
+				dktManifest: null,
+			});
 		}
 		if (inspected.kind === "ready") {
 			const inspectedWorkspaceId =
@@ -175,57 +258,57 @@ export const openMiniCutWorkspaceStorage = async ({
 					? ((inspected.manifest as { workspaceId?: string }).workspaceId ?? null)
 					: null;
 			if (inspectedWorkspaceId && inspectedWorkspaceId !== workspaceId) {
-				return {
-					ok: false,
-					reason: "incompatible",
+				return createFailedOpenResult({
+					failureReason: WORKSPACE_OPEN_FAILURE.INCOMPATIBLE,
 					error: inspected,
 					manifest,
 					dktManifest: inspected.manifest,
-				};
+				});
 			}
-			return {
-				ok: true,
-				status: "ready",
+			return createReadyOpenResult({
+				status: WORKSPACE_OPEN_STATUS.READY,
+				sourceStatus: "ready",
 				storage,
 				manifest,
 				dktManifest: inspected.manifest,
-			};
+			});
 		}
 		if (inspected.kind === "legacy_v0") {
 			if (!adoptLegacyV0) {
-				return {
-					ok: false,
-					reason: "migration_required",
+				return createFailedOpenResult({
+					failureReason: WORKSPACE_OPEN_FAILURE.MIGRATION_REQUIRED,
 					error: inspected,
 					manifest,
-				};
+				});
 			}
 			const adopted = await adoptLegacyDktStorageV0(storage, expected);
-			return {
-				ok: true,
-				status: "adopted_v0",
+			return createReadyOpenResult({
+				status: WORKSPACE_OPEN_STATUS.READY,
+				sourceStatus: "adopted_v0",
 				storage,
 				manifest,
 				dktManifest: adopted.manifest,
-			};
+			});
 		}
 		if (inspected.kind === "newer_storage") {
-			return {
-				ok: false,
-				reason: "unsupported_newer_version",
+			return createFailedOpenResult({
+				failureReason: WORKSPACE_OPEN_FAILURE.UNSUPPORTED_NEWER_VERSION,
 				error: inspected,
 				manifest,
 				dktManifest: inspected.manifest,
-			};
+			});
 		}
-		return {
-			ok: false,
-			reason: "incompatible",
+		return createFailedOpenResult({
+			failureReason: WORKSPACE_OPEN_FAILURE.INCOMPATIBLE,
 			error: inspected,
 			manifest,
 			dktManifest: "manifest" in inspected ? inspected.manifest : undefined,
-		};
+		});
 	} catch (error) {
-		return { ok: false, reason: "storage_error", error, manifest };
+		return createFailedOpenResult({
+			failureReason: WORKSPACE_OPEN_FAILURE.STORAGE_ERROR,
+			error: error,
+			manifest,
+		});
 	}
 };

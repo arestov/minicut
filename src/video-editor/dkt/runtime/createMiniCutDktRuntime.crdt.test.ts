@@ -9,6 +9,10 @@ import {
 } from "../shared/messageTypes";
 import { createMiniCutStoredDktManifest } from "../storage/minicutWorkspaceManifest";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
+import {
+	WORKSPACE_OPEN_FAILURE,
+	WORKSPACE_OPEN_STATUS,
+} from "./workspaceOpenState";
 
 type MemoryStoragePackage = ReturnType<typeof makeDktCrdtMemoryStorage>;
 
@@ -221,8 +225,23 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 		await storagePackage.commitChanges?.({ reason: "ready-bootstrap" });
 
 		const dump = (await runtime.debugDumpState()) as {
+			workspaceOpenState?: { status?: unknown; failureReason?: unknown } | null;
 			runtimeModels?: readonly { modelName?: string | null }[];
 		};
+		expect(dump.workspaceOpenState).toEqual({
+			status: WORKSPACE_OPEN_STATUS.READY,
+			failureReason: WORKSPACE_OPEN_FAILURE.NONE,
+		});
+		expect(
+			memory.sent.find(
+				(message) => message.type === DKT_MSG.WORKSPACE_OPEN_STATE,
+			),
+		).toMatchObject({
+			state: {
+				status: WORKSPACE_OPEN_STATUS.READY,
+				failureReason: WORKSPACE_OPEN_FAILURE.NONE,
+			},
+		});
 		expect(
 			dump.runtimeModels?.filter((model) => model.modelName === "project") ?? [],
 		).toHaveLength(0);
@@ -276,6 +295,38 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 			(message) => message.type === DKT_MSG.RUNTIME_ERROR,
 		) as { message?: unknown } | undefined;
 		expect(errorMessage?.message).toContain("unsupported newer version");
+
+		const workspaceStateMessage = memory.sent.find(
+			(message) => message.type === DKT_MSG.WORKSPACE_OPEN_STATE,
+		) as
+			| {
+					state?: { status?: unknown; failureReason?: unknown };
+					failureReasonLabel?: unknown;
+			  }
+			| undefined;
+		expect(workspaceStateMessage).toMatchObject({
+			state: {
+				status: WORKSPACE_OPEN_STATUS.FAILED,
+				failureReason: WORKSPACE_OPEN_FAILURE.UNSUPPORTED_NEWER_VERSION,
+			},
+			failureReasonLabel: "unsupported_newer_version",
+		});
+
+		const dump = (await runtime.debugDumpState()) as {
+			booted?: unknown;
+			workspaceOpenState?: { status?: unknown; failureReason?: unknown } | null;
+			runtimeModels?: readonly { modelName?: string | null }[];
+		};
+		expect(dump.booted).toBe(false);
+		expect(dump.workspaceOpenState).toEqual({
+			status: WORKSPACE_OPEN_STATUS.FAILED,
+			failureReason: WORKSPACE_OPEN_FAILURE.UNSUPPORTED_NEWER_VERSION,
+		});
+		expect(
+			dump.runtimeModels?.filter(
+				(model) => model.modelName === "session_root" || model.modelName === "project",
+			) ?? [],
+		).toHaveLength(0);
 
 		connection.destroy();
 		await storagePackage.close?.();

@@ -288,6 +288,16 @@ export const createMiniCutPageSyncRuntime = ({
 				);
 				return;
 			}
+			case DKT_MSG.WORKSPACE_OPEN_STATE: {
+				const current = store.getSnapshot();
+				store.setSnapshot(
+					createPageRuntimeSnapshotWithVersion(current, {
+						workspaceOpenState: message.state,
+						...(message.message ? { runtimeError: message.message } : null),
+					}),
+				);
+				return;
+			}
 			case DKT_MSG.RUNTIME_LOG: {
 				console.info("[minicut:dkt-runtime]", message.message);
 				return;

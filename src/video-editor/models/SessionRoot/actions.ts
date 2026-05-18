@@ -9,6 +9,7 @@ import {
 	type PreviewStructure,
 } from "../../read-model/previewComps";
 import { type ExportPlan, normalizeExportPlan } from "../../render/renderPlan";
+import { WORKSPACE_OPEN_STATUS } from "../../dkt/runtime/workspaceOpenState";
 import { PROJECT_CREATION_SHAPE } from "../Project";
 import { normalizeResourceCreationAttrs } from "../Project/actions";
 import { RESOURCE_CREATION_SHAPE } from "../Resource";
@@ -585,7 +586,7 @@ export const sessionHandleInitAction = [
 					};
 				}
 
-				if (storageOpenStatus !== "empty") {
+				if (storageOpenStatus !== WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED) {
 					return {
 						activeProjectId: null,
 						pendingProjectInit: null,

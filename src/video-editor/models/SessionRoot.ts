@@ -4,6 +4,7 @@ import type { ExportProgressState } from "../app/exportProgressState";
 import type { ExportRequestState } from "../app/exportRequestState";
 import type { PreviewBuffer } from "../read-model/previewComps";
 import { dktSessionActions } from "./SessionRoot/actions";
+import { WORKSPACE_OPEN_STATUS } from "../dkt/runtime/workspaceOpenState";
 import {
 	reducePreviewFrame,
 	reducePreviewStructure,
@@ -48,7 +49,7 @@ export const EditorSessionRoot = model({
 		],
 		storageOpenStatus: [
 			"input",
-			"empty",
+			WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
 			{
 				aggregate: {
 					name: "sessionProjection",

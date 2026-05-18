@@ -9,6 +9,7 @@ export interface PageRootSnapshot {
 	rootNodeId: string | null;
 	sessionId: string | null;
 	sessionKey: string | null;
+	workspaceOpenState: { status: number; failureReason: number } | null;
 	runtimeError: string | null;
 }
 
