@@ -57,7 +57,7 @@ type MiniCutCrdtRuntimeLike = {
 	outbox?: unknown[];
 	crdt_registry?: unknown;
 	conflict_store?: {
-		readConflicts?: () => readonly unknown[];
+		readConflicts: () => readonly unknown[];
 	};
 	receiveCanonicalOp?: (model: RuntimeModelLike, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: RuntimeModelLike, ops: unknown[]) => unknown;

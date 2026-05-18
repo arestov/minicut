@@ -56,7 +56,7 @@ export type MiniCutDktCrdtRuntime = {
 	outbox?: unknown[];
 	crdt_registry?: unknown;
 	conflict_store?: {
-		readConflicts?: () => readonly unknown[];
+		readConflicts: () => readonly unknown[];
 	};
 	receiveCanonicalOp?: (model: AnyModel, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: AnyModel, ops: unknown[]) => unknown;
