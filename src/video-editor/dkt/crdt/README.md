@@ -64,6 +64,8 @@ The browser reload test intentionally does not claim durable restore of a specif
 
 When a room-backed workspace opens empty, MiniCut stages the expected manifest before the first durable commit. That keeps the next open on the same bookmarked room in the explicit manifest/open-policy path instead of falling back to implicit legacy-v0 detection.
 
+`CLEAR_LOCAL_WORKSPACE_STORAGE` is a debug/test harness command only. In the browser harness it clears the local IndexedDB namespace derived from the current room/workspace and reloads/reopens the page; it is not product workspace delete/reset semantics. Product delete/reset must use a separate future operation and UX contract.
+
 ## Relay Harness
 
 `createInMemoryCrdtRelay` is schema-agnostic. Packets carry room, peer, profile, vector clock, and canonical ops only. The relay rejects profile mismatches and peer spoofing, avoids echoing to the sender, dedupes packets, keeps a bounded per-room log, and supports sync requests.

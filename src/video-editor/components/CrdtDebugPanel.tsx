@@ -4,6 +4,11 @@ import {
 	createCrdtHarnessStorageMetadata,
 	scheduleCrdtHarnessReset,
 } from "../dkt/crdt/browserHarnessStorage";
+import {
+	WORKSPACE_OPEN_FAILURE,
+	getWorkspaceOpenFailureLabel,
+	getWorkspaceOpenStatusLabel,
+} from "../dkt/runtime/workspaceOpenState";
 
 type DebugBridge = {
 	getSnapshot: () => unknown;
@@ -19,6 +24,9 @@ type CrdtDebugSnapshot = {
 	workspaceId: string;
 	dbName: string;
 	openStatus: string;
+	openStatusCode: number | null;
+	openFailureReason: number | null;
+	openFailureReasonLabel: string | null;
 	appSchemaVersion: number;
 	derivedSchemaVersion: number;
 	schemaDictionaryMode: string;
@@ -156,6 +164,9 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 			workspaceId: storageMetadata.workspaceId,
 			dbName: storageMetadata.dbName,
 			openStatus: "waiting",
+			openStatusCode: null,
+			openFailureReason: null,
+			openFailureReasonLabel: null,
 			appSchemaVersion: 1,
 			derivedSchemaVersion: 1,
 			schemaDictionaryMode: "none",
@@ -179,9 +190,36 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 	const crdt = (workerState as { crdt?: Record<string, unknown> } | null)?.crdt;
 	const storageMetadata = readStorageMetadata(debug);
 	const storageOpen = crdt?.storageOpen as
-		| { ok?: unknown; status?: unknown; reason?: unknown; manifest?: unknown }
+		| {
+				ok?: unknown;
+				status?: unknown;
+				statusLabel?: unknown;
+				failureReason?: unknown;
+				failureReasonLabel?: unknown;
+				openState?: { status?: unknown; failureReason?: unknown };
+				manifest?: unknown;
+		  }
 		| null
 		| undefined;
+	const workspaceOpenState =
+		storageOpen?.openState ??
+		((workerState as { workspaceOpenState?: unknown } | null)
+			?.workspaceOpenState as
+			| { status?: unknown; failureReason?: unknown }
+			| null
+			| undefined);
+	const openStatusCode =
+		typeof workspaceOpenState?.status === "number"
+			? workspaceOpenState.status
+			: typeof storageOpen?.status === "number"
+				? storageOpen.status
+				: null;
+	const openFailureReason =
+		typeof workspaceOpenState?.failureReason === "number"
+			? workspaceOpenState.failureReason
+			: typeof storageOpen?.failureReason === "number"
+				? storageOpen.failureReason
+				: null;
 	const miniCutManifest = storageOpen?.manifest as
 		| {
 				appSchemaVersion?: unknown;
@@ -208,13 +246,23 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 		workspaceId: storageMetadata.workspaceId,
 		dbName: storageMetadata.dbName,
 		openStatus:
-			storageOpen?.ok === true && typeof storageOpen.status === "string"
-				? storageOpen.status
-				: storageOpen?.ok === false && typeof storageOpen.reason === "string"
-					? storageOpen.reason
+			typeof storageOpen?.statusLabel === "string"
+				? storageOpen.statusLabel
+				: openStatusCode !== null
+					? getWorkspaceOpenStatusLabel(openStatusCode)
+					: typeof storageOpen?.failureReasonLabel === "string"
+						? storageOpen.failureReasonLabel
 					: crdtEnabled
 						? "unknown"
 						: "disabled",
+		openStatusCode,
+		openFailureReason,
+		openFailureReasonLabel:
+			openFailureReason === null || openFailureReason === WORKSPACE_OPEN_FAILURE.NONE
+				? null
+				: typeof storageOpen?.failureReasonLabel === "string"
+					? storageOpen.failureReasonLabel
+					: getWorkspaceOpenFailureLabel(openFailureReason),
 		appSchemaVersion:
 			typeof miniCutManifest?.appSchemaVersion === "number"
 				? miniCutManifest.appSchemaVersion
@@ -282,6 +330,9 @@ export const CrdtDebugPanel = () => {
 		workspaceId: createCrdtHarnessStorageMetadata(null).workspaceId,
 		dbName: CRDT_HARNESS_INDEXEDDB_NAME,
 		openStatus: "loading",
+		openStatusCode: null,
+		openFailureReason: null,
+		openFailureReasonLabel: null,
 		appSchemaVersion: 1,
 		derivedSchemaVersion: 1,
 		schemaDictionaryMode: "none",
@@ -327,7 +378,7 @@ export const CrdtDebugPanel = () => {
 	const resetState = () => {
 		if (
 			window.confirm(
-				"Reset the local CRDT harness IndexedDB state and reload this page?",
+				"Clear this room's local CRDT harness IndexedDB state and reload this page? This debug action is not product workspace delete/reset.",
 			)
 		) {
 			scheduleCrdtHarnessReset();
@@ -371,7 +422,23 @@ export const CrdtDebugPanel = () => {
 						</div>
 						<div>
 							<dt>open</dt>
-							<dd>{snapshot.openStatus}</dd>
+							<dd>
+								{snapshot.openStatus}
+								{snapshot.openStatusCode === null
+									? ""
+									: ` (${snapshot.openStatusCode})`}
+							</dd>
+						</div>
+						<div>
+							<dt>open failure</dt>
+							<dd>
+								{snapshot.openFailureReasonLabel ??
+									getWorkspaceOpenFailureLabel(WORKSPACE_OPEN_FAILURE.NONE)}
+								{snapshot.openFailureReason === null ||
+								snapshot.openFailureReason === WORKSPACE_OPEN_FAILURE.NONE
+									? ""
+									: ` (${snapshot.openFailureReason})`}
+							</dd>
 						</div>
 						<div>
 							<dt>schema</dt>

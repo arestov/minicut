@@ -7,6 +7,9 @@ export const CRDT_HARNESS_INDEXEDDB_NAME = createMiniCutHarnessDbName(null);
 
 export const CRDT_HARNESS_RESET_MARKER = "minicut:crdt-harness-reset";
 
+export const CLEAR_LOCAL_WORKSPACE_STORAGE_DEBUG_COMMAND =
+	"CLEAR_LOCAL_WORKSPACE_STORAGE";
+
 export const isCrdtHarnessResetScheduled = (): boolean =>
 	typeof window !== "undefined" &&
 	window.sessionStorage.getItem(CRDT_HARNESS_RESET_MARKER) === "1";
@@ -41,6 +44,8 @@ export const resetCrdtHarnessIndexedDB = (
 	dbName = CRDT_HARNESS_INDEXEDDB_NAME,
 ): Promise<void> =>
 	new Promise((resolve, reject) => {
+		// Debug/test-only: clears one local room/workspace DB. This is not product
+		// workspace delete/reset semantics and must not be reused as that command.
 		if (typeof indexedDB === "undefined") {
 			reject(new Error("IndexedDB is unavailable"));
 			return;
