@@ -12,6 +12,7 @@ import { useActions } from "../../dkt-react-sync/hooks/useActions";
 import { useAttrs } from "../../dkt-react-sync/hooks/useAttrs";
 import { useReactScopeRuntime } from "../../dkt-react-sync/hooks/useReactScopeRuntime";
 import { useScope } from "../../dkt-react-sync/hooks/useScope";
+import { CrdtDebugPanel } from "./CrdtDebugPanel";
 import { Inspector } from "./Inspector";
 import { MediaBin } from "./MediaBin";
 import { createPreviewMediaElementRegistry } from "./mediaElementRegistry";
@@ -23,6 +24,10 @@ const playbackUiFrameMs = 1000 / 30;
 const inspectorWidthMin = 240;
 const inspectorWidthMax = 460;
 const previewWidthMin = 360;
+const showCrdtDebugHarnessPanel =
+	import.meta.env.DEV &&
+	(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "1" ||
+		import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "true");
 
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value));
@@ -190,6 +195,7 @@ export const VideoEditorApp = () => {
 	return (
 		<div className="ve-shell">
 			<PlaybackLoop />
+			{showCrdtDebugHarnessPanel ? <CrdtDebugPanel /> : null}
 			<Toolbar />
 			<main className="ve-main">
 				<div

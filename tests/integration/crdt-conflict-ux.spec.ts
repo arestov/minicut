@@ -94,6 +94,12 @@ test.describe('CRDT UI E2E', () => {
 		await createProjectViaDebug(page, `CRDT smoke ${Date.now()}`)
 		const details = await page.evaluate(() => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.())
 		expect((details as { projectId?: unknown } | null)?.projectId).toEqual(expect.stringMatching(/^crdt:/))
+
+		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
+		const panel = page.getByRole('region', { name: 'CRDT debug panel' })
+		await expect(panel).toContainText('CRDT harness')
+		await expect(panel).toContainText('indexeddb harness')
+		await expect(panel).toContainText('ready')
 	})
 
 	test('@crdt-conflict shows timing conflict, failed resolution, and cleared resolution', async ({ page }) => {
