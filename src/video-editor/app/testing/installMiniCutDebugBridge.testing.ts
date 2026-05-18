@@ -32,6 +32,12 @@ type MiniCutDebugBridge = {
 		summary?: string;
 		timing?: boolean;
 	}) => Promise<{ clipId: string; conflictId: string }>;
+	injectFirstClipResolutionErrorTesting: (options?: {
+		code?: string;
+		message?: string;
+		fieldCode?: string;
+	}) => Promise<{ clipId: string }>;
+	clearFirstClipConflictTesting: () => Promise<{ clipId: string }>;
 	setCursor: (cursor: number) => void;
 	dispatchCreateProject: (title?: string) => Promise<void>;
 };
@@ -133,6 +139,13 @@ export const installMiniCutDebugBridgeTesting = (
 	const getActiveProjectScope = () => getActiveProjectScopeTesting(harness);
 	const waitForRuntimeSettled = () =>
 		harness.pageRuntime?.waitForRuntimeSettled?.() ?? Promise.resolve();
+	const syncKey = (name: string): string | number => {
+		const graph = harness.pageRuntime?.debugDumpGraph?.() as {
+			dict?: readonly (string | undefined)[];
+		} | null;
+		const index = graph?.dict?.indexOf(name) ?? -1;
+		return index >= 0 ? index : name;
+	};
 
 	const debug: MiniCutDebugBridge = {
 		getSnapshot: () => harness.pageRuntime?.getSnapshot() ?? null,
@@ -651,8 +664,17 @@ export const installMiniCutDebugBridgeTesting = (
 			if (!runtime || !projectScope) {
 				throw new Error("No active project");
 			}
-			const trackScope = runtime.readMany(projectScope, "tracks")[0];
-			const clipScope = trackScope ? runtime.readMany(trackScope, "clips")[0] : null;
+			const clipScope =
+				runtime.readMany(projectScope, "tracks")
+					.flatMap((trackScope) => runtime.readMany(trackScope, "clips"))
+					.find((candidate) => {
+						const attrs = runtime.readAttrs(candidate, ["mediaKind", "name"]) as {
+							mediaKind?: unknown;
+							name?: unknown;
+						};
+						return attrs.mediaKind === "video" || attrs.name === "fixture-video.webm";
+					}) ??
+				null;
 			if (!clipScope?._nodeId) {
 				throw new Error("No clip available for conflict injection");
 			}
@@ -666,38 +688,111 @@ export const installMiniCutDebugBridgeTesting = (
 				0,
 				clipScope._nodeId,
 				timing ? 4 : 8,
-				"$meta$model$crdt$open_conflicts_count",
+				syncKey("$meta$model$crdt$open_conflicts_count"),
 				1,
 				...(timing
-					? ["$meta$aggregates$crdt$clipTiming$open_conflicts_count", 1]
+					? [syncKey("$meta$aggregates$crdt$clipTiming$open_conflicts_count"), 1]
 					: [
-							"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+							syncKey("$meta$aggregates$crdt$timelineMembership$open_conflicts_count"),
 							1,
-							"$meta$rels$crdt$clips$open_conflicts_count",
+							syncKey("$meta$rels$crdt$clips$open_conflicts_count"),
 							1,
-							"$meta$model$crdt$last_conflict_id",
+							syncKey("$meta$model$crdt$last_conflict_id"),
 							conflictId,
 						]),
 				0,
 				conflictNodeId,
 				timing ? 10 : 8,
-				"id",
+				syncKey("id"),
 				conflictId,
-				"kind",
+				syncKey("kind"),
 				kind,
-				"scope",
+				syncKey("scope"),
 				scope,
-				"summary",
+				syncKey("summary"),
 				summary,
-				...(timing ? ["decision", { start: 0, in: 0, duration: 3 }] : []),
+				...(timing ? [syncKey("decision"), { start: 0, in: 0, duration: 3 }] : []),
 				1,
 				clipScope._nodeId,
-				"crdtConflicts",
+				syncKey("crdtConflicts"),
 				[conflictNodeId],
 			];
 			runtime.applyDebugSyncUpdateTesting?.(update);
-			await waitForRuntimeSettled();
 			return { clipId: clipScope._nodeId, conflictId };
+		},
+		injectFirstClipResolutionErrorTesting: async (options = {}) => {
+			const runtime = harness.pageRuntime;
+			const projectScope = getActiveProjectScope();
+			if (!runtime || !projectScope) {
+				throw new Error("No active project");
+			}
+			const clipScope =
+				runtime.readMany(projectScope, "tracks")
+					.flatMap((trackScope) => runtime.readMany(trackScope, "clips"))
+					.find((candidate) => {
+						const attrs = runtime.readAttrs(candidate, ["mediaKind", "name"]) as {
+							mediaKind?: unknown;
+							name?: unknown;
+						};
+						return attrs.mediaKind === "video" || attrs.name === "fixture-video.webm";
+					}) ??
+				null;
+			if (!clipScope?._nodeId) {
+				throw new Error("No clip available for resolution error injection");
+			}
+			runtime.applyDebugSyncUpdateTesting?.([
+				0,
+				clipScope._nodeId,
+				2,
+				syncKey("$meta$aggregates$crdt$clipTiming$last_resolution_error"),
+				{
+					code: options.code ?? "duration_non_positive",
+					message: options.message ?? "Duration must be greater than 0",
+					fields: {
+						duration: {
+							code: options.fieldCode ?? "duration_must_be_positive",
+						},
+					},
+				},
+			]);
+			return { clipId: clipScope._nodeId };
+		},
+		clearFirstClipConflictTesting: async () => {
+			const runtime = harness.pageRuntime;
+			const projectScope = getActiveProjectScope();
+			if (!runtime || !projectScope) {
+				throw new Error("No active project");
+			}
+			const clipScope =
+				runtime.readMany(projectScope, "tracks")
+					.flatMap((trackScope) => runtime.readMany(trackScope, "clips"))
+					.find((candidate) => {
+						const attrs = runtime.readAttrs(candidate, ["mediaKind", "name"]) as {
+							mediaKind?: unknown;
+							name?: unknown;
+						};
+						return attrs.mediaKind === "video" || attrs.name === "fixture-video.webm";
+					}) ??
+				null;
+			if (!clipScope?._nodeId) {
+				throw new Error("No clip available for conflict clear");
+			}
+			runtime.applyDebugSyncUpdateTesting?.([
+				0,
+				clipScope._nodeId,
+				6,
+				syncKey("$meta$model$crdt$open_conflicts_count"),
+				0,
+				syncKey("$meta$aggregates$crdt$clipTiming$open_conflicts_count"),
+				0,
+				syncKey("$meta$aggregates$crdt$clipTiming$last_resolution_error"),
+				null,
+				1,
+				clipScope._nodeId,
+				syncKey("crdtConflicts"),
+				[],
+			]);
+			return { clipId: clipScope._nodeId };
 		},
 		setCursor: (cursor: number) => {
 			harness.actions.setCursor(cursor);
