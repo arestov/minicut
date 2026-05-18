@@ -183,6 +183,25 @@ button:disabled {
 	color: #991b1b;
 }
 
+.crdt-debug__actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.crdt-debug__actions button {
+	flex: 1;
+	height: 30px;
+	padding: 0 8px;
+	border-radius: 6px;
+	font-size: 12px;
+}
+
+.crdt-debug__message {
+	margin: 8px 0 0;
+	color: #475569;
+}
+
 .ve-button {
 	display: inline-flex;
 	align-items: center;

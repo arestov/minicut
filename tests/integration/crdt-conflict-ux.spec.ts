@@ -98,8 +98,10 @@ test.describe('CRDT UI E2E', () => {
 		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
 		const panel = page.getByRole('region', { name: 'CRDT debug panel' })
 		await expect(panel).toContainText('CRDT harness')
-		await expect(panel).toContainText('indexeddb harness')
+		await expect(panel).toContainText('minicut-crdt-minicut-browser')
 		await expect(panel).toContainText('ready')
+		await expect(panel.getByRole('button', { name: 'Export JSON' })).toBeVisible()
+		await expect(panel.getByRole('button', { name: 'Reset IndexedDB' })).toBeVisible()
 	})
 
 	test('@crdt-conflict shows timing conflict, failed resolution, and cleared resolution', async ({ page }) => {

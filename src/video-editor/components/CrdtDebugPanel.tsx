@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+	CRDT_HARNESS_INDEXEDDB_NAME,
+	scheduleCrdtHarnessReset,
+} from "../dkt/crdt/browserHarnessStorage";
 
 type DebugBridge = {
 	dumpGraph: () => unknown;
@@ -14,6 +18,16 @@ type CrdtDebugSnapshot = {
 	openConflictsCount: number;
 	lastError: string | null;
 	status: string;
+};
+
+type CrdtDebugExport = {
+	exportedAt: string;
+	dbName: string;
+	snapshot: CrdtDebugSnapshot;
+	workerState: unknown;
+	graph: unknown;
+	runtimeMessages: unknown;
+	project: unknown;
 };
 
 const readNumber = (value: unknown): number =>
@@ -92,7 +106,7 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 	if (!debug) {
 		return {
 			peerId: "not installed",
-			storageBackend: "indexeddb harness",
+			storageBackend: CRDT_HARNESS_INDEXEDDB_NAME,
 			outboxCount: 0,
 			openConflictsCount: 0,
 			lastError: "debug bridge unavailable",
@@ -125,7 +139,7 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 				: typeof projectDetails?.projectId === "string"
 					? projectDetails.projectId
 					: "unknown",
-		storageBackend: "indexeddb harness",
+		storageBackend: CRDT_HARNESS_INDEXEDDB_NAME,
 		outboxCount: readNumber(crdt?.outboxCount),
 		openConflictsCount: summarizeOpenConflicts(graph),
 		lastError:
@@ -134,16 +148,48 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 	};
 };
 
+const readExport = async (
+	snapshot: CrdtDebugSnapshot,
+): Promise<CrdtDebugExport> => {
+	const debug = (window as typeof window & { __MINICUT_P2P_DEBUG__?: DebugBridge })
+		.__MINICUT_P2P_DEBUG__;
+	return {
+		exportedAt: new Date().toISOString(),
+		dbName: CRDT_HARNESS_INDEXEDDB_NAME,
+		snapshot,
+		workerState: debug ? await debug.dumpWorkerState().catch(String) : null,
+		graph: debug?.dumpGraph() ?? null,
+		runtimeMessages: debug?.getRuntimeMessages() ?? null,
+		project: debug?.getActiveProjectDetails() ?? null,
+	};
+};
+
+const downloadJson = (filename: string, value: unknown): void => {
+	const blob = new Blob([JSON.stringify(value, null, 2)], {
+		type: "application/json",
+	});
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = filename;
+	link.rel = "noopener";
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	URL.revokeObjectURL(url);
+};
+
 export const CrdtDebugPanel = () => {
 	const [open, setOpen] = useState(false);
 	const [snapshot, setSnapshot] = useState<CrdtDebugSnapshot>({
 		peerId: "loading",
-		storageBackend: "indexeddb harness",
+		storageBackend: CRDT_HARNESS_INDEXEDDB_NAME,
 		outboxCount: 0,
 		openConflictsCount: 0,
 		lastError: null,
 		status: "loading",
 	});
+	const [toolMessage, setToolMessage] = useState<string | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -161,6 +207,29 @@ export const CrdtDebugPanel = () => {
 			window.clearInterval(interval);
 		};
 	}, [open]);
+
+	const exportState = () => {
+		void readExport(snapshot)
+			.then((value) => {
+				downloadJson(`minicut-crdt-harness-${Date.now()}.json`, value);
+				setToolMessage("Exported JSON snapshot");
+			})
+			.catch((error) => {
+				setToolMessage(
+					error instanceof Error ? error.message : "Export failed",
+				);
+			});
+	};
+
+	const resetState = () => {
+		if (
+			window.confirm(
+				"Reset the local CRDT harness IndexedDB state and reload this page?",
+			)
+		) {
+			scheduleCrdtHarnessReset();
+		}
+	};
 
 	return (
 		<div className="crdt-debug">
@@ -204,6 +273,17 @@ export const CrdtDebugPanel = () => {
 					</dl>
 					{snapshot.lastError ? (
 						<p className="crdt-debug__error">{snapshot.lastError}</p>
+					) : null}
+					<div className="crdt-debug__actions">
+						<button type="button" onClick={exportState}>
+							Export JSON
+						</button>
+						<button type="button" onClick={resetState}>
+							Reset IndexedDB
+						</button>
+					</div>
+					{toolMessage ? (
+						<p className="crdt-debug__message">{toolMessage}</p>
 					) : null}
 				</section>
 			) : null}

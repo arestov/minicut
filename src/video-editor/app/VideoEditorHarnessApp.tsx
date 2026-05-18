@@ -1,5 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { VideoEditorApp } from "../components/VideoEditorApp";
+import {
+	clearCrdtHarnessResetMarker,
+	isCrdtHarnessResetScheduled,
+	resetCrdtHarnessIndexedDB,
+} from "../dkt/crdt/browserHarnessStorage";
 import { createDefaultRtcConfig } from "../p2p/PageP2PManager";
 import { DktEditorRoot } from "../ui/dkt/DktEditorRoot";
 import {
@@ -148,6 +153,32 @@ export const VideoEditorHarnessApp = ({
 	dktBootstrapOptions,
 	harness: providedHarness,
 }: VideoEditorHarnessAppProps) => {
+	const [crdtHarnessResetReady, setCrdtHarnessResetReady] = useState(
+		() => !isCrdtHarnessResetScheduled(),
+	);
+
+	useEffect(() => {
+		if (crdtHarnessResetReady || !isCrdtHarnessResetScheduled()) {
+			return;
+		}
+
+		let cancelled = false;
+		void resetCrdtHarnessIndexedDB()
+			.catch((error) => {
+				console.warn("[minicut] CRDT harness IndexedDB reset failed", error);
+			})
+			.finally(() => {
+				clearCrdtHarnessResetMarker();
+				if (!cancelled) {
+					setCrdtHarnessResetReady(true);
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [crdtHarnessResetReady]);
+
 	const resolvedDktBootstrapOptions = useMemo(() => {
 		if (dktBootstrapOptions !== undefined) {
 			return dktBootstrapOptions;
@@ -167,6 +198,9 @@ export const VideoEditorHarnessApp = ({
 	);
 	const mediaTransferOptions = useMemo(() => resolveMediaTransferOptions(), []);
 	const ownedHarness = useMemo(() => {
+		if (!crdtHarnessResetReady) {
+			return null;
+		}
 		if (providedHarness) {
 			return providedHarness;
 		}
@@ -202,6 +236,7 @@ export const VideoEditorHarnessApp = ({
 			platform: createBrowserHarnessPlatform({ authorityOptions }),
 		});
 	}, [
+		crdtHarnessResetReady,
 		mediaTransferOptions,
 		providedHarness,
 		resolvedRoom,
@@ -211,6 +246,9 @@ export const VideoEditorHarnessApp = ({
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
+			return;
+		}
+		if (!ownedHarness) {
 			return;
 		}
 
@@ -241,6 +279,10 @@ export const VideoEditorHarnessApp = ({
 			cleanup?.();
 		};
 	}, [ownedHarness]);
+
+	if (!ownedHarness) {
+		return <div className="ve-shell">Resetting CRDT harness storage...</div>;
+	}
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>
