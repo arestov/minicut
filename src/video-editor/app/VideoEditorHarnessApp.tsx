@@ -25,6 +25,18 @@ interface VideoEditorHarnessAppProps {
 
 const LAST_ROOM_STORAGE_KEY = "minicut:last-room-id";
 
+const formatErrorMessage = (error: unknown): string =>
+	error instanceof Error
+		? error.message
+		: typeof error === "string"
+			? error
+			: "Unexpected error";
+
+const isCrdtHarnessEnabled = (): boolean =>
+	import.meta.env.DEV &&
+	(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "1" ||
+		import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "true");
+
 const normalizeList = (raw: string | null | undefined): string[] =>
 	String(raw ?? "")
 		.split(",")
@@ -153,6 +165,7 @@ export const VideoEditorHarnessApp = ({
 	dktBootstrapOptions,
 	harness: providedHarness,
 }: VideoEditorHarnessAppProps) => {
+	const [crdtHarnessError, setCrdtHarnessError] = useState<string | null>(null);
 	const [crdtHarnessResetReady, setCrdtHarnessResetReady] = useState(
 		() => !isCrdtHarnessResetScheduled(),
 	);
@@ -165,7 +178,11 @@ export const VideoEditorHarnessApp = ({
 		let cancelled = false;
 		void resetCrdtHarnessIndexedDB()
 			.catch((error) => {
+				const message = formatErrorMessage(error);
 				console.warn("[minicut] CRDT harness IndexedDB reset failed", error);
+				if (!cancelled) {
+					setCrdtHarnessError(`CRDT harness storage reset failed: ${message}`);
+				}
 			})
 			.finally(() => {
 				clearCrdtHarnessResetMarker();
@@ -271,6 +288,9 @@ export const VideoEditorHarnessApp = ({
 				cleanup = installMiniCutDebugBridgeTesting(ownedHarness);
 			})
 			.catch((error) => {
+				setCrdtHarnessError(
+					`CRDT harness debug bridge failed to start: ${formatErrorMessage(error)}`,
+				);
 				console.warn("[minicut] debug bridge installation failed", error);
 			});
 
@@ -281,11 +301,33 @@ export const VideoEditorHarnessApp = ({
 	}, [ownedHarness]);
 
 	if (!ownedHarness) {
-		return <div className="ve-shell">Resetting CRDT harness storage...</div>;
+		return (
+			<div className="ve-shell ve-shell--status">
+				<div className="crdt-harness-notice" role="status">
+					<strong>Resetting CRDT harness storage</strong>
+					<span>IndexedDB will be reopened after the reset completes.</span>
+				</div>
+				{crdtHarnessError ? (
+					<div className="crdt-harness-notice crdt-harness-notice--error" role="alert">
+						<strong>CRDT harness error</strong>
+						<span>{crdtHarnessError}</span>
+					</div>
+				) : null}
+			</div>
+		);
 	}
 
 	return (
 		<VideoEditorProvider value={ownedHarness}>
+			{isCrdtHarnessEnabled() && crdtHarnessError ? (
+				<div className="crdt-harness-notice crdt-harness-notice--error" role="alert">
+					<strong>CRDT harness error</strong>
+					<span>{crdtHarnessError}</span>
+					<button type="button" onClick={() => setCrdtHarnessError(null)}>
+						Dismiss
+					</button>
+				</div>
+			) : null}
 			<DktEditorRoot
 				runtime={ownedHarness.pageRuntime}
 				bootstrapOptions={resolvedDktBootstrapOptions}

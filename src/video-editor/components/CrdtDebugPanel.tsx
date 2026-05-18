@@ -18,6 +18,7 @@ type CrdtDebugSnapshot = {
 	openConflictsCount: number;
 	lastError: string | null;
 	status: string;
+	bootError: string | null;
 };
 
 type CrdtDebugExport = {
@@ -100,6 +101,28 @@ const readRuntimeMessageError = (messages: unknown): string | null => {
 	return typeof value.type === "string" ? value.type : "runtime error";
 };
 
+const formatDebugError = (error: unknown): string | null => {
+	if (!error) {
+		return null;
+	}
+	if (error instanceof Error) {
+		return error.message;
+	}
+	if (typeof error === "string") {
+		return error;
+	}
+	if (typeof error === "object") {
+		const value = error as { message?: unknown; error?: unknown };
+		if (typeof value.message === "string") {
+			return value.message;
+		}
+		if (typeof value.error === "string") {
+			return value.error;
+		}
+	}
+	return "CRDT harness boot failed";
+};
+
 const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 	const debug = (window as typeof window & { __MINICUT_P2P_DEBUG__?: DebugBridge })
 		.__MINICUT_P2P_DEBUG__;
@@ -111,6 +134,7 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 			openConflictsCount: 0,
 			lastError: "debug bridge unavailable",
 			status: "waiting",
+			bootError: "Debug bridge is unavailable",
 		};
 	}
 
@@ -128,9 +152,7 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 		(typeof projectDetails?.projectId === "string" &&
 			projectDetails.projectId.startsWith("crdt:"));
 	const workerError =
-		(workerState as { error?: unknown } | null)?.error instanceof Error
-			? (workerState as { error: Error }).error.message
-			: null;
+		formatDebugError((workerState as { error?: unknown } | null)?.error) ?? null;
 
 	return {
 		peerId:
@@ -145,6 +167,10 @@ const readSnapshot = async (): Promise<CrdtDebugSnapshot> => {
 		lastError:
 			summarizeLastError(graph) ?? readRuntimeMessageError(messages) ?? workerError,
 		status: crdtEnabled ? "ready" : "disabled",
+		bootError:
+			crdtEnabled || workerError
+				? workerError
+				: "CRDT runtime is not enabled in this harness",
 	};
 };
 
@@ -188,6 +214,7 @@ export const CrdtDebugPanel = () => {
 		openConflictsCount: 0,
 		lastError: null,
 		status: "loading",
+		bootError: null,
 	});
 	const [toolMessage, setToolMessage] = useState<string | null>(null);
 
@@ -273,6 +300,11 @@ export const CrdtDebugPanel = () => {
 					</dl>
 					{snapshot.lastError ? (
 						<p className="crdt-debug__error">{snapshot.lastError}</p>
+					) : null}
+					{snapshot.bootError ? (
+						<p className="crdt-debug__error">
+							CRDT boot/storage issue: {snapshot.bootError}
+						</p>
 					) : null}
 					<div className="crdt-debug__actions">
 						<button type="button" onClick={exportState}>

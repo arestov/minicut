@@ -202,6 +202,45 @@ button:disabled {
 	color: #475569;
 }
 
+.crdt-harness-notice {
+	position: fixed;
+	right: 14px;
+	top: 70px;
+	z-index: 90;
+	display: flex;
+	max-width: min(420px, calc(100vw - 28px));
+	flex-direction: column;
+	gap: 4px;
+	padding: 12px 14px;
+	border: 1px solid #cbd5e1;
+	border-radius: 8px;
+	background: rgba(248, 250, 252, 0.98);
+	box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+	color: #0f172a;
+	font-size: 13px;
+}
+
+.crdt-harness-notice--error {
+	border-color: #fecaca;
+	background: #fef2f2;
+	color: #991b1b;
+}
+
+.crdt-harness-notice button {
+	align-self: flex-start;
+	height: 28px;
+	margin-top: 4px;
+	padding: 0 10px;
+	border-radius: 6px;
+	font-size: 12px;
+}
+
+.ve-shell--status {
+	align-items: center;
+	justify-content: center;
+	color: #475569;
+}
+
 .ve-button {
 	display: inline-flex;
 	align-items: center;

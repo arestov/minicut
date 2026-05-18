@@ -102,6 +102,8 @@ test.describe('CRDT UI E2E', () => {
 		await expect(panel).toContainText('ready')
 		await expect(panel.getByRole('button', { name: 'Export JSON' })).toBeVisible()
 		await expect(panel.getByRole('button', { name: 'Reset IndexedDB' })).toBeVisible()
+		await expect(panel).not.toContainText('CRDT boot/storage issue')
+		await expect(page.getByRole('alert')).toHaveCount(0)
 	})
 
 	test('@crdt-conflict shows timing conflict, failed resolution, and cleared resolution', async ({ page }) => {
