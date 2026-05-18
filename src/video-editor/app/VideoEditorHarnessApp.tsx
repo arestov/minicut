@@ -201,6 +201,23 @@ export const VideoEditorHarnessApp = ({
 		};
 	}, [crdtHarnessResetReady, resolvedRoom]);
 
+	useEffect(() => {
+		if (!isCrdtHarnessEnabled() || !providedHarness?.pageRuntime) {
+			return;
+		}
+
+		const runtime = providedHarness.pageRuntime;
+		const syncRuntimeError = () => {
+			const snapshot = runtime.getSnapshot() as { runtimeError?: unknown };
+			if (typeof snapshot.runtimeError === "string" && snapshot.runtimeError) {
+				setCrdtHarnessError(snapshot.runtimeError);
+			}
+		};
+
+		syncRuntimeError();
+		return runtime.subscribe(syncRuntimeError);
+	}, [providedHarness]);
+
 	const resolvedDktBootstrapOptions = useMemo(() => {
 		if (dktBootstrapOptions !== undefined) {
 			return dktBootstrapOptions;
@@ -236,7 +253,13 @@ export const VideoEditorHarnessApp = ({
 
 		if (!resolvedRoom || !signalUrl) {
 			return createVideoEditorHarness(undefined, {
-				platform: createBrowserHarnessPlatform(),
+				platform: createBrowserHarnessPlatform({
+					authorityOptions: resolvedRoom
+						? {
+								workerName: `minicut-video-editor-dkt-runtime:${resolvedRoom.roomId}`,
+							}
+						: undefined,
+				}),
 			});
 		}
 
@@ -310,6 +333,23 @@ export const VideoEditorHarnessApp = ({
 			cancelled = true;
 			cleanup?.();
 		};
+	}, [ownedHarness]);
+
+	useEffect(() => {
+		if (!isCrdtHarnessEnabled() || !ownedHarness?.pageRuntime) {
+			return;
+		}
+
+		const runtime = ownedHarness.pageRuntime;
+		const syncRuntimeError = () => {
+			const snapshot = runtime.getSnapshot() as { runtimeError?: unknown };
+			if (typeof snapshot.runtimeError === "string" && snapshot.runtimeError) {
+				setCrdtHarnessError(snapshot.runtimeError);
+			}
+		};
+
+		syncRuntimeError();
+		return runtime.subscribe(syncRuntimeError);
 	}, [ownedHarness]);
 
 	if (!ownedHarness) {

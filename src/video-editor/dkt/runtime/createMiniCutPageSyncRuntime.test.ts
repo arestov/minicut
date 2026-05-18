@@ -77,6 +77,7 @@ describe("createMiniCutPageSyncRuntime", () => {
 			ready: true,
 			sessionKey: "session:1",
 			rootNodeId: "root",
+			runtimeError: null,
 		});
 		expect(runtime.getRootScope()?._nodeId).toBe("root");
 		expect(runtime.getRootAttrs(["name"]).name).toBe("Project 1");
@@ -221,5 +222,19 @@ describe("createMiniCutPageSyncRuntime", () => {
 		});
 
 		await settlePromise;
+	});
+
+	it("stores runtime errors in the page snapshot", () => {
+		const memory = createMemoryTransport();
+		const runtime = createMiniCutPageSyncRuntime({
+			transport: memory.transport,
+		});
+
+		memory.emit({
+			type: DKT_MSG.RUNTIME_ERROR,
+			message: "storage open failed",
+		});
+
+		expect(runtime.getSnapshot().runtimeError).toContain("storage open failed");
 	});
 });

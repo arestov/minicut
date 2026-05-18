@@ -69,9 +69,13 @@ describe("createMiniCutEditorSession", () => {
 		session.dispatchAction("setCursor", 1.25, null);
 
 		expect(mockState.runtime.bootstrap).toHaveBeenCalledWith({
-			sessionId: "minicut-local",
-			sessionKey: "minicut-local",
+			sessionId: expect.any(String),
+			sessionKey: expect.any(String),
 		});
+		const bootstrapCall = mockState.runtime.bootstrap.mock.calls[0]?.[0] as
+			| { sessionId?: unknown; sessionKey?: unknown }
+			| undefined;
+		expect(bootstrapCall?.sessionId).toBe(bootstrapCall?.sessionKey);
 		expect(mockState.runtime.dispatchAction).toHaveBeenCalledWith(
 			"setCursor",
 			1.25,
@@ -109,5 +113,20 @@ describe("createMiniCutEditorSession", () => {
 				}),
 			}),
 		);
+	});
+
+	test("uses the room id as the local session key even without P2P", async () => {
+		resetBrowserUrl("/#/room-local");
+		const { createMiniCutEditorSession } = await import(
+			"./createMiniCutEditorSession"
+		);
+		const session = createMiniCutEditorSession();
+
+		session.bootstrap();
+
+		expect(mockState.runtime.bootstrap).toHaveBeenCalledWith({
+			sessionId: "room-local",
+			sessionKey: "room-local",
+		});
 	});
 });

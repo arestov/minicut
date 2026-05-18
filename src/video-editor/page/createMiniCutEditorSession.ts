@@ -148,10 +148,15 @@ const createBrowserHarness = (
 	signalUrl: string | null,
 ): VideoEditorHarness => {
 	const mediaTransferOptions = resolveMediaTransferOptions();
+	const workerName = resolvedRoom
+		? `minicut-video-editor-dkt-runtime:${resolvedRoom.roomId}`
+		: undefined;
 	if (!resolvedRoom || !signalUrl) {
 		return createVideoEditorHarness(undefined, {
 			mediaTransferOptions,
-			platform: createBrowserHarnessPlatform(),
+			platform: createBrowserHarnessPlatform({
+				authorityOptions: { workerName },
+			}),
 		});
 	}
 
@@ -204,7 +209,7 @@ export const createMiniCutEditorSession = (): MiniCutEditorSession => {
 	const signalUrl = resolveSignalUrl();
 	const harness = createBrowserHarness(room, signalUrl);
 	const runtime = harness.pageRuntime;
-	const sessionKey = signalUrl && room ? room.roomId : DEFAULT_SESSION_KEY;
+	const sessionKey = room?.roomId ?? DEFAULT_SESSION_KEY;
 	const sessionId =
 		signalUrl && room
 			? `${room.roomId}:peer:${
@@ -212,7 +217,7 @@ export const createMiniCutEditorSession = (): MiniCutEditorSession => {
 						? crypto.randomUUID()
 						: Math.random().toString(36).slice(2)
 				}`
-			: DEFAULT_SESSION_KEY;
+			: sessionKey;
 
 	return {
 		harness,

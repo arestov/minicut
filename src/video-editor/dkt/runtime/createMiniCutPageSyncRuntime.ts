@@ -197,6 +197,7 @@ export const createMiniCutPageSyncRuntime = ({
 					rootNodeId: null,
 					sessionId: options?.sessionId ?? null,
 					sessionKey: options?.sessionKey ?? null,
+					runtimeError: null,
 				}),
 			);
 		}
@@ -282,6 +283,7 @@ export const createMiniCutPageSyncRuntime = ({
 						sessionKey: message.sessionKey ?? current.sessionKey,
 						rootNodeId: message.rootNodeId ?? syncReceiver.getRootNodeId(),
 						ready: Boolean(message.rootNodeId ?? syncReceiver.getRootNodeId()),
+						runtimeError: null,
 					}),
 				);
 				return;
@@ -292,6 +294,15 @@ export const createMiniCutPageSyncRuntime = ({
 			}
 			case DKT_MSG.RUNTIME_ERROR: {
 				console.error("[minicut:dkt-runtime:error]", message.message);
+				const current = store.getSnapshot();
+				store.setSnapshot(
+					createPageRuntimeSnapshotWithVersion(current, {
+						runtimeError:
+							typeof message.message === "string"
+								? message.message
+								: String(message.message),
+					}),
+				);
 				return;
 			}
 			case DKT_MSG.EXPORT_REQUEST: {
@@ -318,6 +329,7 @@ export const createMiniCutPageSyncRuntime = ({
 						ready: false,
 						rootNodeId: null,
 						sessionId: null,
+						runtimeError: null,
 					}),
 				);
 				emit(createBootstrapMessage({ sessionKey }));

@@ -59,6 +59,24 @@ const encodeWorkspacePart = (value: string): string =>
 		`%${char.charCodeAt(0).toString(16).toUpperCase()}`,
 	);
 
+export const createMiniCutStoredDktManifest = (workspaceId: string) => {
+	const manifest = createMiniCutExpectedManifest(workspaceId);
+	return {
+		manifestVersion: 1,
+		storageVersion: manifest.dktStorageVersion,
+		schemaVersion: manifest.appSchemaVersion,
+		appId: manifest.appId,
+		profileId: "minicut-crdt-v1",
+		schemaDictionaryMode: manifest.schemaDictionaryMode,
+		kind: manifest.kind,
+		workspaceId: manifest.workspaceId,
+		dktStorageVersion: manifest.dktStorageVersion,
+		appSchemaVersion: manifest.appSchemaVersion,
+		derivedSchemaVersion: manifest.derivedSchemaVersion,
+		createdAt: new Date().toISOString(),
+	};
+};
+
 export const createMiniCutExpectedManifest = (
 	workspaceId: string,
 ): MiniCutWorkspaceManifest => ({
@@ -111,6 +129,25 @@ const createDktExpectedOpenPolicy = (manifest: MiniCutWorkspaceManifest) => ({
 	schemaDictionaryMode: manifest.schemaDictionaryMode,
 });
 
+export const stageMiniCutWorkspaceManifest = ({
+	storage,
+	workspaceId,
+}: {
+	storage: unknown;
+	workspaceId: string;
+}) => {
+	if (
+		!storage ||
+		typeof storage !== "object" ||
+		typeof (storage as { putManifest?: unknown }).putManifest !== "function"
+	) {
+		return null;
+	}
+	const manifest = createMiniCutStoredDktManifest(workspaceId);
+	(storage as { putManifest: (value: unknown) => void }).putManifest(manifest);
+	return manifest;
+};
+
 export const openMiniCutWorkspaceStorage = async ({
 	storage,
 	workspaceId,
@@ -132,6 +169,20 @@ export const openMiniCutWorkspaceStorage = async ({
 			return { ok: true, status: "empty", storage, manifest, dktManifest: null };
 		}
 		if (inspected.kind === "ready") {
+			const inspectedWorkspaceId =
+				typeof (inspected.manifest as { workspaceId?: unknown } | null)
+					?.workspaceId === "string"
+					? ((inspected.manifest as { workspaceId?: string }).workspaceId ?? null)
+					: null;
+			if (inspectedWorkspaceId && inspectedWorkspaceId !== workspaceId) {
+				return {
+					ok: false,
+					reason: "incompatible",
+					error: inspected,
+					manifest,
+					dktManifest: inspected.manifest,
+				};
+			}
 			return {
 				ok: true,
 				status: "ready",

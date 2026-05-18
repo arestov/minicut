@@ -4,6 +4,20 @@ MiniCut keeps CRDT transport behind explicit test/runtime harness options. The p
 
 The browser CRDT profile is a test harness for conflict UX and storage smoke coverage. It is enabled with `VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS=1`; do not treat it as the product multi-tab/offline CRDT mode.
 
+For room-backed harness opens, MiniCut now treats storage identity as:
+
+```text
+roomId -> workspaceId -> dbName -> open policy -> restore/init
+```
+
+Where:
+
+- `roomId` is the bookmarked URL/collaboration identity;
+- `workspaceId` is a deterministic storage identity derived 1:1 from `roomId`;
+- `dbName` is the IndexedDB namespace derived from `workspaceId`;
+- `projectId` remains graph state inside the workspace and does not select storage;
+- `sessionId` and session root node ids are runtime identities and do not select storage.
+
 ## Test Runtime
 
 Use `createMiniCutDktRuntime({ crdt: { enabled: true, peerId, transport } })` or `bootDktModels({ crdt: { enabled: true, peerId } })` in tests. Both paths inject DKT's CRDT runtime through `prepareAppRuntime({ crdtRuntime })` and leave the default production worker bridge semantics unchanged.
@@ -37,13 +51,18 @@ npm run test:integration:crdt
 This profile checks:
 
 - CRDT harness boot with IndexedDB storage;
+- deterministic room bookmark -> workspace/db resolution across reloads;
 - ClipConflictBadge -> ConflictInspectorPanel;
 - invalid timing resolve -> durable-style error meta rendered in the inspector;
 - valid clear -> conflict badge disappears;
+- reset clears the selected room workspace DB without touching another room workspace DB;
+- newer/incompatible storage open policy failures surface a user-facing harness error;
 - controlled two-tab conflict UX;
 - browser reload of the CRDT test harness.
 
 The browser reload test intentionally does not claim durable restore of a specific MiniCut project. Durable app-state restore is proven in runtime/storage tests. A product browser E2E for project restore, offline, rejoin, and real multi-peer transport belongs to a future app-level CRDT session runtime, not to the current production worker bridge.
+
+When a room-backed workspace opens empty, MiniCut stages the expected manifest before the first durable commit. That keeps the next open on the same bookmarked room in the explicit manifest/open-policy path instead of falling back to implicit legacy-v0 detection.
 
 ## Relay Harness
 

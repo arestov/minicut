@@ -27,6 +27,8 @@ export interface AuthorityResourceBindings {
 }
 
 export interface CreateAuthorityClientOptions {
+	workerUrl?: string | URL;
+	workerName?: string;
 	p2p?: {
 		roomId: string;
 		signalUrl: string;
@@ -72,5 +74,8 @@ export const createAuthorityClient = (
 		});
 	}
 
-	return createFallbackAuthorityClient();
+	return createFallbackAuthorityClient({
+		workerUrl: options.workerUrl,
+		name: options.workerName,
+	});
 };

@@ -9,6 +9,8 @@ import {
 } from "../shared/messageTypes";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 
+type MemoryStoragePackage = ReturnType<typeof makeDktCrdtMemoryStorage>;
+
 const waitFor = async (predicate: () => boolean): Promise<void> => {
 	for (let attempt = 0; attempt < 400; attempt += 1) {
 		if (predicate()) {
@@ -109,6 +111,120 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 			durableLogCount: 0,
 			hasRegistry: true,
 		});
+		await storagePackage.close?.();
+	});
+
+	it("stages a workspace manifest for empty room-backed storage", async () => {
+		const storagePackage = makeDktCrdtMemoryStorage() as MemoryStoragePackage & {
+			dktStorage: { getManifest?: () => Promise<unknown> };
+			commitChanges?: (meta?: unknown) => Promise<void>;
+			close?: () => Promise<void>;
+		};
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				peerId: "worker-crdt-manifest-stage",
+				storage: storagePackage,
+				workspaceIdForSessionKey: (sessionKey) => `harness:room:${sessionKey}`,
+				transport: null,
+			},
+		});
+
+		await runtime.debugDumpState();
+		await storagePackage.commitChanges?.({ reason: "test-stage-manifest" });
+
+		await expect(storagePackage.dktStorage.getManifest?.()).resolves.toMatchObject({
+			workspaceId: "harness:room:minicut-local",
+			storageVersion: 1,
+			schemaVersion: 1,
+		});
+		await storagePackage.close?.();
+	});
+
+	it("uses the bootstrapped session key when opening room-backed storage", async () => {
+		const storagePackage = makeDktCrdtMemoryStorage() as MemoryStoragePackage & {
+			dktStorage: { getManifest?: () => Promise<unknown> };
+			commitChanges?: (meta?: unknown) => Promise<void>;
+			close?: () => Promise<void>;
+		};
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				peerId: "worker-crdt-transport-room",
+				storage: storagePackage,
+				workspaceIdForSessionKey: (sessionKey) => `harness:room:${sessionKey}`,
+				transport: null,
+			},
+		});
+		const memory = createMemoryTransport();
+		const connection = runtime.connect(memory.transport);
+
+		memory.emit({
+			type: DKT_MSG.BOOTSTRAP,
+			sessionKey: "room-from-bootstrap",
+		});
+		await waitFor(() =>
+			memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_READY),
+		);
+		await waitForIdle(memory);
+		await storagePackage.commitChanges?.({ reason: "test-bootstrap-session-key" });
+
+		await expect(storagePackage.dktStorage.getManifest?.()).resolves.toMatchObject({
+			workspaceId: "harness:room:room-from-bootstrap",
+			storageVersion: 1,
+			schemaVersion: 1,
+		});
+
+		connection.destroy();
+		await storagePackage.close?.();
+	});
+
+	it("reports a runtime error for unsupported newer workspace storage", async () => {
+		const storagePackage = makeDktCrdtMemoryStorage() as MemoryStoragePackage & {
+			dktStorage: { putManifest?: (value: unknown) => void };
+			commitChanges?: (meta?: unknown) => Promise<void>;
+			close?: () => Promise<void>;
+		};
+		storagePackage.dktStorage.putManifest?.({
+			manifestVersion: 1,
+			storageVersion: 99,
+			schemaVersion: 1,
+			appId: "minicut",
+			profileId: "minicut-crdt-v1",
+			schemaDictionaryMode: "none",
+			workspaceId: "harness:room:newer-room",
+		});
+		await storagePackage.commitChanges?.({ reason: "seed-newer-manifest" });
+
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				peerId: "worker-crdt-newer-storage",
+				storage: storagePackage,
+				workspaceIdForSessionKey: (sessionKey) => `harness:room:${sessionKey}`,
+				transport: null,
+			},
+		});
+		const memory = createMemoryTransport();
+		const connection = runtime.connect(memory.transport);
+
+		memory.emit({
+			type: DKT_MSG.BOOTSTRAP,
+			sessionKey: "newer-room",
+		});
+		await waitFor(() =>
+			memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_ERROR),
+		);
+
+		const errorMessage = memory.sent.find(
+			(message) => message.type === DKT_MSG.RUNTIME_ERROR,
+		) as { message?: unknown } | undefined;
+		expect(errorMessage?.message).toContain("unsupported newer version");
+
+		connection.destroy();
 		await storagePackage.close?.();
 	});
 

@@ -38,15 +38,32 @@ type RuntimeModelLike = {
 	) => Promise<readonly RuntimeModelLike[]> | readonly RuntimeModelLike[];
 };
 
-const serializeRef = (value: unknown): unknown => {
+const serializeRef = (value: unknown, seen = new WeakSet<object>()): unknown => {
 	if (value == null) {
 		return null;
 	}
 	if (Array.isArray(value)) {
-		return value.map(serializeRef);
+		return value.map((item) => serializeRef(item, seen));
+	}
+	if (typeof value === "function") {
+		return "[function]";
 	}
 	if (typeof value === "object" && "_node_id" in value) {
 		return (value as { _node_id?: unknown })._node_id ?? null;
+	}
+	if (typeof value === "object") {
+		if (seen.has(value as object)) {
+			return "[circular]";
+		}
+		seen.add(value as object);
+		if (value instanceof Date) {
+			return value.toISOString();
+		}
+		const serializedEntries = Object.entries(value as Record<string, unknown>).map(
+			([key, nestedValue]) => [key, serializeRef(nestedValue, seen)] as const,
+		);
+		seen.delete(value as object);
+		return Object.fromEntries(serializedEntries);
 	}
 	return value;
 };

@@ -9,6 +9,7 @@ export interface PageRootSnapshot {
 	rootNodeId: string | null;
 	sessionId: string | null;
 	sessionKey: string | null;
+	runtimeError: string | null;
 }
 
 export interface PageSyncRuntime extends ReactScopeRuntime {

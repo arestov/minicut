@@ -56,7 +56,10 @@ export type MiniCutDktCrdtRuntime = {
 	outbox?: unknown[];
 	crdt_registry?: unknown;
 	conflict_store?: {
-		readConflicts: () => readonly unknown[];
+		readConflicts: (filter?: unknown) => readonly {
+			conflict_id?: unknown;
+			[key: string]: unknown;
+		}[];
 	};
 	receiveCanonicalOp?: (model: AnyModel, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: AnyModel, ops: unknown[]) => unknown;
@@ -396,7 +399,7 @@ export const bootDktModels = async (
 	};
 
 	// Create session root (needed for SessionRoot-level actions like splitSelectedClip)
-	const sessionRoot = await raceWithProcessErrors([
+	const sessionRoot = (await raceWithProcessErrors([
 		runtime.last_error ?? neverPromise(),
 		errorsCatcher.last_error_prom,
 		new Promise<AnyModel>((resolve, reject) => {
@@ -418,7 +421,7 @@ export const bootDktModels = async (
 				doHook();
 			}
 		}),
-	]);
+	])) as AnyModel;
 
 	await computed();
 	if (options.reinitFromSnapshot) {

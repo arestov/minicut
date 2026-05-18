@@ -3,9 +3,11 @@ import {
 	createMiniCutExpectedManifest,
 	createMiniCutHarnessDbName,
 	createMiniCutHarnessWorkspaceId,
+	createMiniCutStoredDktManifest,
 	createMiniCutWorkspaceDbName,
 	openMiniCutWorkspaceStorage,
 	readRoomIdFromMiniCutHarnessWorkspaceId,
+	stageMiniCutWorkspaceManifest,
 } from "./minicutWorkspaceManifest";
 
 const createMemoryDktStorage = (initial: {
@@ -73,14 +75,7 @@ describe("MiniCut workspace manifest", () => {
 
 	it("maps matching DKT manifest to MiniCut ready", async () => {
 		const storage = createMemoryDktStorage({
-			manifest: {
-				manifestVersion: 1,
-				storageVersion: 1,
-				schemaVersion: 1,
-				appId: "minicut",
-				profileId: "minicut-crdt-v1",
-				schemaDictionaryMode: "none",
-			},
+			manifest: createMiniCutStoredDktManifest("harness:room:ready"),
 		});
 
 		const result = await openMiniCutWorkspaceStorage({
@@ -112,6 +107,19 @@ describe("MiniCut workspace manifest", () => {
 		});
 	});
 
+	it("treats a mismatched stored workspace id as incompatible", async () => {
+		const storage = createMemoryDktStorage({
+			manifest: createMiniCutStoredDktManifest("harness:room:other"),
+		});
+
+		const result = await openMiniCutWorkspaceStorage({
+			storage,
+			workspaceId: "harness:room:expected",
+		});
+
+		expect(result).toMatchObject({ ok: false, reason: "incompatible" });
+	});
+
 	it("adopts legacy v0 DKT storage when schema exists", async () => {
 		const storage = createMemoryDktStorage({ schema: { clip: {} } });
 
@@ -129,5 +137,23 @@ describe("MiniCut workspace manifest", () => {
 			adoptedFrom: "legacy_v0",
 		});
 		expect(storage.readMigrations()).toHaveLength(1);
+	});
+
+	it("stages a stored DKT manifest for empty workspaces", () => {
+		const storage = createMemoryDktStorage();
+		const staged = stageMiniCutWorkspaceManifest({
+			storage,
+			workspaceId: "harness:room:stage",
+		});
+
+		expect(staged).toMatchObject({
+			workspaceId: "harness:room:stage",
+			storageVersion: 1,
+			schemaVersion: 1,
+			profileId: "minicut-crdt-v1",
+		});
+		expect(storage.readManifest()).toMatchObject({
+			workspaceId: "harness:room:stage",
+		});
 	});
 });

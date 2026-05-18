@@ -1,4 +1,9 @@
-import { type ComponentProps, type ComponentType, createElement } from "react";
+import {
+	type ComponentProps,
+	type ComponentType,
+	type ReactNode,
+	createElement,
+} from "react";
 import { MountedShape } from "./MountedShape";
 
 const SHAPE_META = Symbol.for("dkt.react_sync.shape");
@@ -42,13 +47,19 @@ export const shapeOf = <P, T extends ComponentType<P>>(
 	});
 
 	const WrappedComponent = (props: ComponentProps<T>) =>
-		createElement(MountedShape, {
+		createElement(
+			MountedShape as ComponentType<{
+				shape: DefinedReactShape;
+				children: ReactNode;
+			}>,
+			{
 			shape,
 			children: createElement(
-				component as ComponentType<ComponentProps<T>>,
-				props,
+				component as ComponentType<Record<string, unknown>>,
+				props as Record<string, unknown>,
 			),
-		});
+			},
+		);
 
 	WrappedComponent.displayName =
 		component.displayName || component.name || "ShapedComponent";

@@ -10,12 +10,18 @@ import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { MiniCutAppRoot } from "../../models/AppRoot";
-import { sanitizeDktCrdtStoragePackage } from "../crdt/sanitizeStoragePackage";
+import {
+	sanitizeDktCrdtStoragePackage,
+	sanitizeStorageValue,
+} from "../crdt/sanitizeStoragePackage";
 import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
-import { openMiniCutWorkspaceStorage } from "../storage/minicutWorkspaceManifest";
+import {
+	openMiniCutWorkspaceStorage,
+	stageMiniCutWorkspaceManifest,
+} from "../storage/minicutWorkspaceManifest";
 import { dumpWorkerAppState } from "./workerStateDump";
 
 type RuntimeModelLike = {
@@ -57,7 +63,10 @@ type MiniCutCrdtRuntimeLike = {
 	outbox?: unknown[];
 	crdt_registry?: unknown;
 	conflict_store?: {
-		readConflicts: () => readonly unknown[];
+		readConflicts: (filter?: unknown) => readonly {
+			conflict_id?: unknown;
+			[key: string]: unknown;
+		}[];
 	};
 	receiveCanonicalOp?: (model: RuntimeModelLike, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: RuntimeModelLike, ops: unknown[]) => unknown;
@@ -226,6 +235,15 @@ const createCrdtRuntime = async (
 				workspaceId,
 			})
 		: null;
+	if (storageOpen?.ok === true && storageOpen.status === "empty" && workspaceId) {
+		const stagedManifest = stageMiniCutWorkspaceManifest({
+			storage: storagePackage.dktStorage,
+			workspaceId,
+		});
+		if (stagedManifest) {
+			storageOpen.dktManifest = stagedManifest;
+		}
+	}
 	return {
 		crdtRuntime: new DktCRDTEngine({
 			peer_id: peerId,
@@ -448,6 +466,21 @@ export const createMiniCutDktRuntime = (
 			bootPromise = (async () => {
 				crdtPromise = createCrdtRuntimeForSession(options.crdt, sessionKey);
 				const crdt = await crdtPromise;
+				if (crdt.storageOpen && typeof crdt.storageOpen === "object") {
+					const storageOpen = crdt.storageOpen as {
+						ok?: unknown;
+						reason?: unknown;
+					};
+					if (storageOpen.ok === false) {
+						const reason =
+							typeof storageOpen.reason === "string"
+								? storageOpen.reason.replace(/_/g, " ")
+								: "storage open failed";
+						throw new Error(
+							`CRDT harness storage open failed: ${reason}`,
+						);
+					}
+				}
 				const runtime = prepareAppRuntime({
 					sync_sender: true,
 					warnUnexpectedAttrs: true,
@@ -613,12 +646,14 @@ export const createMiniCutDktRuntime = (
 			sessionKey?: string,
 			sessionId?: string,
 		): Promise<void> => {
-			const app = await bootstrapApp();
+			const nextSessionKey = sessionKey || "minicut-local";
+			const nextSessionId = sessionId || nextSessionKey;
+			activeSessionKey = nextSessionKey;
+			activeSessionId = nextSessionId;
+			const app = await bootstrapApp(activeSessionKey);
 			if (!app) {
 				throw new Error("MiniCut DKT runtime is disabled");
 			}
-			activeSessionKey = sessionKey || "minicut-local";
-			activeSessionId = sessionId || activeSessionKey;
 			const sessionRoot = await bootstrapSessionRoot(
 				activeSessionKey,
 				activeSessionId,
@@ -753,16 +788,23 @@ export const createMiniCutDktRuntime = (
 					return;
 				}
 				case DKT_MSG.DEBUG_DUMP_REQUEST: {
-					const app = await bootstrapApp();
+					const summary = await debugDumpState();
+					const app = await bootstrapApp(activeSessionKey);
 					if (!app) {
-						transport.send({ type: DKT_MSG.DEBUG_DUMP_RESPONSE, dump: null });
+						transport.send({
+							type: DKT_MSG.DEBUG_DUMP_RESPONSE,
+							dump: summary,
+						});
 						return;
 					}
 					const dump = await dumpWorkerAppState(
 						app.appModel,
 						app.runtime.models ?? {},
 					);
-					transport.send({ type: DKT_MSG.DEBUG_DUMP_RESPONSE, dump });
+					transport.send({
+						type: DKT_MSG.DEBUG_DUMP_RESPONSE,
+						dump: sanitizeStorageValue({ ...dump, ...summary }),
+					});
 					return;
 				}
 			}
@@ -796,7 +838,9 @@ export const createMiniCutDktRuntime = (
 			unlistenDisconnect();
 			crdtTransportCleanup?.();
 			crdtTransportCleanup = null;
-			void bootstrapApp()
+			void Promise.resolve()
+				.then(() => bootstrapApp(activeSessionKey))
+				.catch(() => null)
 				.then((app) => {
 					if (app && stream) {
 						app.runtime.sync_sender.removeSyncStream(stream);

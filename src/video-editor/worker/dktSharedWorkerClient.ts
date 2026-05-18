@@ -130,7 +130,7 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 				this.#onSyncMessage?.(message);
 				break;
 			case DKT_MSG.RUNTIME_ERROR:
-				this.#onError?.(new Error(String(message.message)));
+				console.error("[minicut:dkt-runtime:error]", message.message);
 				break;
 		}
 	}

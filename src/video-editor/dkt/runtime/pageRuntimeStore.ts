@@ -7,6 +7,7 @@ export const createEmptyPageRuntimeSnapshot = (): PageRootSnapshot => ({
 	rootNodeId: null,
 	sessionId: null,
 	sessionKey: null,
+	runtimeError: null,
 });
 
 export const createPageRuntimeSnapshotWithVersion = (
