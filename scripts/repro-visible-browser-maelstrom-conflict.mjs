@@ -283,6 +283,9 @@ const main = async () => {
 	stage = 'drain baseline'
 	const baselineA = await drain(a.page, 'A baseline')
 	log('drained baseline', { baselineA: summarizeBatches(baselineA) })
+	if (baselineA.length === 0) {
+		throw new Error('CRDT harness produced no baseline batches. Start the app with VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS=1.')
+	}
 	stage = 'receive baseline'
 	await receive(b.page, baselineA, 'B receives A baseline')
 	log('B received baseline')
@@ -302,6 +305,9 @@ const main = async () => {
 	const batchesA = await drain(a.page, 'A conflict')
 	const batchesB = await drain(b.page, 'B conflict')
 	log('drained conflict batches', { A: batchesA.length, B: batchesB.length })
+	if (batchesA.length === 0 || batchesB.length === 0) {
+		throw new Error(`Expected conflict batches from both peers, got A=${batchesA.length}, B=${batchesB.length}`)
+	}
 	stage = 'cross deliver conflict batches'
 	await Promise.all([
 		receive(a.page, batchesB, 'A receives B conflict'),
