@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import type { MouseEvent } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 
 type ConflictBadgeModel = {
 	states?: Record<string, unknown>;
@@ -75,12 +75,16 @@ export const ClipConflictBadge = ({
 		});
 		onOpen?.();
 	};
+	const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+		event.stopPropagation();
+	};
 
 	return (
 		<button
 			type="button"
 			className="clip-conflict-badge"
 			title="Open conflicts"
+			onPointerDown={handlePointerDown}
 			onClick={handleClick}
 			aria-label={`${count} open conflict${count === 1 ? "" : "s"}`}
 		>

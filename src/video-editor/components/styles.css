@@ -1587,6 +1587,11 @@ button:disabled {
 	overflow: hidden;
 }
 
+.ve-clip:has(.ve-clip-conflict-popover) {
+	overflow: visible;
+	z-index: 10;
+}
+
 .ve-clip__title {
 	display: flex;
 	align-items: center;
@@ -1597,6 +1602,11 @@ button:disabled {
 .ve-clip__title,
 .ve-clip__title * {
 	pointer-events: none;
+}
+
+.ve-clip__title .clip-conflict-badge,
+.ve-clip__title .clip-conflict-badge * {
+	pointer-events: auto;
 }
 
 .ve-clip__badge {
@@ -1616,6 +1626,8 @@ button:disabled {
 }
 
 .clip-conflict-badge {
+	position: relative;
+	z-index: 2;
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;

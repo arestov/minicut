@@ -159,6 +159,10 @@ describe("ClipItem conflict UX", () => {
 		expect(mockState.dispatch).toHaveBeenCalledWith("loadConflicts", {
 			scope: { model: "clip", include_structural: true },
 		});
+		expect(mockState.sessionDispatch).not.toHaveBeenCalledWith(
+			"selectEntity",
+			"clip:1",
+		);
 		await waitFor(() =>
 			expect(screen.getByText("Duration has concurrent edits")).toBeInTheDocument(),
 		);
