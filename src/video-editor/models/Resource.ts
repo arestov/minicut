@@ -36,6 +36,7 @@ export const RESOURCE_CREATION_SHAPE = {
 export const Resource = model({
 	model_name: "resource",
 	crdt: {
+		mode: "collaborative",
 		attrs: {
 			"$meta$removed": "lww",
 			name: "lww",
@@ -47,13 +48,13 @@ export const Resource = model({
 			height: "lww",
 			size: "lww",
 			source: "lww",
-			status: null,
+			status: { sync: false, reason: "effect-runtime" },
 			data: "lww",
-			timelineAddRequest: null,
+			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		},
 		rels: {
 			project: "lww",
-			clips: null,
+			clips: "or-set",
 		},
 	},
 	attrs: {

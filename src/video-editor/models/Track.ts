@@ -35,6 +35,7 @@ export const Track = model({
 		},
 	},
 	crdt: {
+		mode: "collaborative",
 		attrs: {
 			kind: "lww",
 			name: "lww",
@@ -42,9 +43,8 @@ export const Track = model({
 			locked: "lww",
 			isVisible: "lww",
 			height: "lww",
-			trackDuration: null,
-			clipCount: null,
-			appendStart: null,
+			trackDuration: { sync: false, reason: "projection" },
+			clipCount: { sync: false, reason: "projection" },
 		},
 		rels: {
 			clips: ["sequence", { conflictMeta: true }],
@@ -89,6 +89,7 @@ export const Track = model({
 					role: "primary",
 					as: "clips",
 					traversal: "owned-subtree",
+					conflictAnchor: true,
 				},
 			},
 		],

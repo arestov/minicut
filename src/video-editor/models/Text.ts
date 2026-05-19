@@ -15,6 +15,7 @@ export const Text = model({
 		},
 	},
 	crdt: {
+		mode: "collaborative",
 		attrs: {
 			content: "lww",
 			style: "lww",
@@ -43,7 +44,7 @@ export const Text = model({
 		content: [
 			"input",
 			"Text",
-			{ aggregate: { name: "textBoxStyle", as: "content" } },
+			{ aggregate: { name: "textBoxStyle", as: "content", conflictAnchor: true } },
 		],
 		style: [
 			"input",

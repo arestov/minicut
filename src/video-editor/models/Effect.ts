@@ -24,6 +24,7 @@ export const Effect = model({
 		},
 	},
 	crdt: {
+		mode: "collaborative",
 		attrs: {
 			name: "lww",
 			kind: "lww",
@@ -34,7 +35,7 @@ export const Effect = model({
 		},
 		rels: {
 			clip: "lww",
-			project: null,
+			project: "lww",
 		},
 	},
 	attrs: {
@@ -78,7 +79,7 @@ export const Effect = model({
 		params: [
 			"input",
 			defaultEffectAttrs.params,
-			{ aggregate: { name: "effectParams", as: "params" } },
+			{ aggregate: { name: "effectParams", as: "params", conflictAnchor: true } },
 		],
 		color: [
 			"input",

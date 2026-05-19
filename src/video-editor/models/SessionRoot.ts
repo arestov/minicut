@@ -31,6 +31,7 @@ export const EditorSessionRoot = model({
 			write: "local-only",
 		},
 	},
+	crdt: { mode: "local" },
 	attrs: {
 		sessionKey: [
 			"input",
