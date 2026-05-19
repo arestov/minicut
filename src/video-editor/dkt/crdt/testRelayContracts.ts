@@ -1,13 +1,30 @@
 export type MiniCutCrdtPeerId = string;
 export type MiniCutCrdtRoomId = string;
 
+export type DktCrdtWireMessage = {
+	type: "dkt-crdt-batches";
+	protocol: "dkt-crdt-graph-v1";
+	from: string;
+	profile_id?: string;
+	profile_version?: number;
+	batches: unknown[];
+	[key: string]: unknown;
+};
+
 export type MiniCutCrdtPacket = {
 	profileId: string;
 	profileVersion: number;
 	peerId: string;
+	payload?: DktCrdtWireMessage;
 	vectorClock?: unknown;
 	batches?: unknown[];
 	ops?: unknown[];
+};
+
+export type DktCrdtTransport = {
+	send(message: DktCrdtWireMessage): void | Promise<void>;
+	subscribe(listener: (message: DktCrdtWireMessage) => void): () => void;
+	close?(): void | Promise<void>;
 };
 
 export type MiniCutCrdtRelayMessage =

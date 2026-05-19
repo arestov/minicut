@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
+import { drainCrdtOutbox } from "../test/crdtAssertions";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
+import type { DktCrdtWireMessage } from "../crdt/testRelayContracts";
 
 const pairOptions = (roomId: string) => ({
 	roomId,
@@ -18,7 +19,7 @@ const addMatchingClip = async (
 		in: 0,
 		duration: 4,
 	});
-	await pair.syncBaselineFrom("A");
+	await pair.waitForConvergence();
 	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
 	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
 	if (!clipA || !clipB) {
@@ -75,9 +76,25 @@ describe("MiniCut CRDT relay convergence", () => {
 		pair.a.flushOutbound();
 		await pair.waitForConvergence();
 
-		expect(pair.b.ctx.getAttr(clipB, "start")).toBe(1);
-		expect(pair.b.ctx.getAttr(clipB, "in")).toBe(1);
-		expect(pair.b.ctx.getAttr(clipB, "duration")).toBe(3);
+		expect(pair.transportB.received).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: "crdt-ops",
+					packet: expect.objectContaining({
+						payload: expect.objectContaining({
+							batches: expect.arrayContaining([
+								expect.objectContaining({
+									ops: expect.arrayContaining([
+										expect.objectContaining({ node_id: clipB._node_id, name: "start" }),
+										expect.objectContaining({ node_id: clipB._node_id, name: "duration" }),
+									]),
+								}),
+							]),
+						}),
+					}),
+				}),
+			]),
+		);
 		pair.close();
 	});
 
@@ -85,10 +102,13 @@ describe("MiniCut CRDT relay convergence", () => {
 		const pair = await createCrdtWorkerPair(pairOptions("room-duplicate"));
 
 		await pair.a.dispatch(pair.a.project, "renameProject", "Duplicate-safe title");
-		const batches = drainCrdtOutboxBatches(pair.a.ctx.runtime);
 		drainCrdtOutbox(pair.a.ctx.runtime);
-		pair.transportA.sendOps({ batches });
-		pair.transportA.sendOps({ batches });
+		const sent = pair.relay.getRoomSnapshot("room-duplicate").log[0]
+			?.payload as DktCrdtWireMessage | undefined;
+		if (!sent) {
+			throw new Error("Expected transport-delivered DKT payload");
+		}
+		pair.transportA.send(sent);
 		await pair.waitForConvergence();
 
 		await expect(pair.b.readProjectTitle()).resolves.toBe(

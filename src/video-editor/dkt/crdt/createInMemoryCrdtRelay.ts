@@ -38,6 +38,13 @@ const batchId = (batch: unknown): string | null => {
 };
 
 const packetKey = (packet: MiniCutCrdtPacket): string => {
+	const payloadBatchIds = (packet.payload?.batches ?? [])
+		.map(batchId)
+		.filter(Boolean)
+		.join("|");
+	if (payloadBatchIds) {
+		return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:payload:${payloadBatchIds}`;
+	}
 	const batchIds = (packet.batches ?? []).map(batchId).filter(Boolean).join("|");
 	if (batchIds) {
 		return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:batches:${batchIds}`;
@@ -48,6 +55,9 @@ const packetKey = (packet: MiniCutCrdtPacket): string => {
 
 const clonePacket = (packet: MiniCutCrdtPacket): MiniCutCrdtPacket => ({
 	...packet,
+	payload: packet.payload
+		? (JSON.parse(JSON.stringify(packet.payload)) as MiniCutCrdtPacket["payload"])
+		: undefined,
 	batches: packet.batches?.map((batch) =>
 		batch && typeof batch === "object" ? {
 			...(batch as Record<string, unknown>),
@@ -169,7 +179,19 @@ export const createInMemoryCrdtRelay = (options: RelayOptions = {}) => {
 						profileVersion: peer.profileVersion,
 						peerId: "relay",
 						vectorClock: message.vectorClock,
-						batches: room.log.flatMap((packet) => packet.batches ?? []),
+						payload: {
+							type: "dkt-crdt-batches",
+							protocol: "dkt-crdt-graph-v1",
+							from: "relay",
+							profile_id: peer.profileId,
+							profile_version: peer.profileVersion,
+							batches: room.log.flatMap(
+								(packet) => packet.payload?.batches ?? packet.batches ?? [],
+							),
+						},
+						batches: room.log.flatMap(
+							(packet) => packet.payload?.batches ?? packet.batches ?? [],
+						),
 						ops: room.log.flatMap((packet) => packet.ops ?? []),
 					},
 				});

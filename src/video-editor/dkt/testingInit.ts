@@ -18,6 +18,7 @@ import { _getCurrentRel } from "dkt-all/libs/provoda/_internal/_listRels.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { MiniCutAppRoot } from "../models/AppRoot";
+import type { DktCrdtTransport } from "./crdt/testRelayContracts";
 import { sanitizeDktCrdtStoragePackage } from "./crdt/sanitizeStoragePackage";
 import {
 	openMiniCutWorkspaceStorage,
@@ -81,6 +82,9 @@ export type MiniCutDktCrdtRuntime = {
 	};
 	restoreFromStorage?: () => Promise<void> | void;
 	projectCRDTMeta?: (model: AnyModel) => Promise<void> | void;
+	transport_receive_tail?: Promise<unknown>;
+	flushTransportOutbox?: () => unknown;
+	attachTransport?: (transport: DktCrdtTransport, options: { baseModel: AnyModel }) => void;
 };
 
 export type MiniCutDktCrdtStoragePackage = {
@@ -267,7 +271,7 @@ export type BootDktModelsOptions = {
 				storage?: MiniCutDktCrdtStorageOptions;
 				workspaceId?: string;
 				workspaceIdForSessionKey?: (sessionKey: string) => string;
-				transport?: null;
+				transport?: DktCrdtTransport | null;
 			};
 };
 
@@ -308,12 +312,10 @@ const createCrdtRuntimeForTests = async (
 	crdtRuntime: MiniCutDktCrdtRuntime | null;
 	storagePackage: MiniCutDktCrdtStoragePackage | null;
 	storageOpen: MiniCutWorkspaceOpenResult | null;
+	transport: DktCrdtTransport | null;
 }> => {
 	if (!options || options.enabled !== true) {
-		return { crdtRuntime: null, storagePackage: null, storageOpen: null };
-	}
-	if (options.transport !== undefined && options.transport !== null) {
-		throw new Error("MiniCut CRDT bootDktModels only supports null transport");
+		return { crdtRuntime: null, storagePackage: null, storageOpen: null, transport: null };
 	}
 	const storagePackage = await createStoragePackage(options.storage);
 	const workspaceId =
@@ -346,9 +348,13 @@ const createCrdtRuntimeForTests = async (
 		crdtRuntime: new DktCRDTEngine({
 			peer_id: options.peerId ?? "minicut-test-peer",
 			storage: storagePackage.crdtStorage,
+			profile_id: options.profileId ?? "minicut-crdt-v1",
+			profile_version: options.profileVersion ?? 1,
+			...(options.transport ? { transport: options.transport } : null),
 		}) as MiniCutDktCrdtRuntime,
 		storagePackage,
 		storageOpen,
+		transport: options.transport ?? null,
 	};
 };
 
@@ -361,7 +367,7 @@ export const bootDktModels = async (
 	options: BootDktModelsOptions = {},
 ): Promise<DktTestContext> => {
 	const errorsCatcher = catchFlowErrors();
-	const { crdtRuntime, storagePackage, storageOpen } = await createCrdtRuntimeForTests(
+	const { crdtRuntime, storagePackage, storageOpen, transport } = await createCrdtRuntimeForTests(
 		options.crdt,
 	);
 	const runtime = prepareAppRuntime({
@@ -413,6 +419,9 @@ export const bootDktModels = async (
 	};
 
 	const appModel = inited.app_model;
+	if (crdtRuntime && transport && crdtRuntime.attachTransport) {
+		crdtRuntime.attachTransport(transport, { baseModel: appModel });
+	}
 	const runtimeWithCallsFlow = runtime as RuntimeWithCallsFlow;
 	const flow = inited.flow || runtimeWithCallsFlow.calls_flow;
 

@@ -1,5 +1,7 @@
 import type { createInMemoryCrdtRelay } from "./createInMemoryCrdtRelay";
+import { createMiniCutRoomCrdtTransport } from "./createMiniCutRoomCrdtTransport";
 import type {
+	DktCrdtWireMessage,
 	MiniCutCrdtPacket,
 	MiniCutCrdtRelayMessage,
 } from "./testRelayContracts";
@@ -16,22 +18,32 @@ type Options = {
 };
 
 export const createTestWorkerCrdtTransport = (options: Options) => {
-	const received: MiniCutCrdtRelayMessage[] = [];
-	const stop = options.relay.join({
+	const transport = createMiniCutRoomCrdtTransport({
+		relay: options.relay,
 		roomId: options.roomId,
 		peerId: options.peerId,
 		profileId: options.profileId,
 		profileVersion: options.profileVersion,
-		onMessage(message) {
-			received.push(message);
+		onRelayMessage(message) {
 			options.onMessage?.(message);
 		},
 	});
 
 	return {
+		...transport,
 		peerId: options.peerId,
-		received,
 		sendOps(packet: Omit<MiniCutCrdtPacket, "peerId" | "profileId" | "profileVersion">) {
+			if (packet.batches?.length) {
+				transport.send({
+					type: "dkt-crdt-batches",
+					protocol: "dkt-crdt-graph-v1",
+					from: options.peerId,
+					profile_id: options.profileId,
+					profile_version: options.profileVersion,
+					batches: packet.batches,
+				} as DktCrdtWireMessage);
+				return;
+			}
 			options.relay.dispatch({
 				type: "crdt-ops",
 				roomId: options.roomId,
@@ -43,18 +55,6 @@ export const createTestWorkerCrdtTransport = (options: Options) => {
 					...packet,
 				},
 			});
-		},
-		requestSync(requestId: string, vectorClock: unknown = null) {
-			options.relay.dispatch({
-				type: "crdt-sync-request",
-				roomId: options.roomId,
-				from: options.peerId,
-				requestId,
-				vectorClock,
-			});
-		},
-		close() {
-			stop();
 		},
 	};
 };

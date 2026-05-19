@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sanitizeStorageValue } from "../crdt/sanitizeStoragePackage";
-import { drainCrdtOutboxBatches } from "../test/crdtAssertions";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
-import { waitForRuntimeIdle } from "../test/waitForRuntimeIdle";
 
 const pairOptions = (roomId: string) => ({
 	roomId,
@@ -54,14 +52,22 @@ const batchOps = (batches: unknown[]): Array<Record<string, unknown>> =>
 const allOpsHaveClock = (batches: unknown[]): boolean =>
 	batchOps(batches).every((op) => Boolean(op.clock));
 
+const readRelayBatches = (
+	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
+	roomId: string,
+): unknown[] =>
+	pair.relay
+		.getRoomSnapshot(roomId)
+		.log.flatMap((packet) => packet.payload?.batches ?? packet.batches ?? []);
+
 describe("MiniCut CRDT browser-like wire batches", () => {
 	it("keeps graph batches JSON-serializable before browser-style receive", async () => {
-		const pair = await createCrdtWorkerPair(
-			pairOptions("wire-json-roundtrip"),
-		);
+		const roomId = "wire-json-roundtrip";
+		const pair = await createCrdtWorkerPair(pairOptions(roomId));
 
 		await importVideoAndAddToTimeline(pair);
-		const rawBatches = drainCrdtOutboxBatches(pair.a.ctx.runtime);
+		await pair.waitForConvergence();
+		const rawBatches = readRelayBatches(pair, roomId);
 
 		expect(rawBatches.length).toBeGreaterThan(0);
 		expect(allOpsHaveClock(rawBatches)).toBe(true);
@@ -69,14 +75,6 @@ describe("MiniCut CRDT browser-like wire batches", () => {
 
 		const wireBatches = jsonRoundTrip(rawBatches);
 		expect(allOpsHaveClock(wireBatches)).toBe(true);
-
-		const receiver =
-			pair.b.ctx.runtime.crdt_runtime?.testing?.receiveFromNetwork ??
-			pair.b.ctx.runtime.crdt_runtime?.receiveCanonicalBatch;
-		for (const batch of wireBatches) {
-			await receiver?.(pair.b.ctx.appModel, batch);
-			await waitForRuntimeIdle(pair.b.ctx);
-		}
 
 		const targetResource = (await pair.b.ctx.queryRel(pair.b.project, "resources"))
 			.find((item) => pair.b.ctx.getAttr(item, "name") === "wire-video.webm");
@@ -90,12 +88,12 @@ describe("MiniCut CRDT browser-like wire batches", () => {
 	});
 
 	it("does not drop op clocks when using the current debug sanitize boundary", async () => {
-		const pair = await createCrdtWorkerPair(
-			pairOptions("wire-sanitize-roundtrip"),
-		);
+		const roomId = "wire-sanitize-roundtrip";
+		const pair = await createCrdtWorkerPair(pairOptions(roomId));
 
 		await importVideoAndAddToTimeline(pair);
-		const rawBatches = drainCrdtOutboxBatches(pair.a.ctx.runtime);
+		await pair.waitForConvergence();
+		const rawBatches = readRelayBatches(pair, roomId);
 		const sanitizedBatches = sanitizeStorageValue(rawBatches) as unknown[];
 
 		expect(rawBatches.length).toBeGreaterThan(0);

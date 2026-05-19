@@ -196,6 +196,7 @@ const createPeer = async (
 		snapshot?: unknown;
 		storagePackage?: MiniCutDktCrdtStoragePackage | null;
 		preferredProjectId?: string;
+		transport?: unknown;
 	} = {},
 ): Promise<PeerRuntime> => {
 	const ctx = await bootDktModels({
@@ -233,6 +234,11 @@ const createPeer = async (
 	}
 	drainCrdtOutboxBatches(ctx.runtime);
 	drainCrdtOutbox(ctx.runtime);
+	if (options.transport) {
+		(ctx.runtime.crdt_runtime as {
+			attachTransport?: (transport: unknown, options: { baseModel: RuntimeModel }) => void;
+		} | null)?.attachTransport?.(options.transport, { baseModel: ctx.appModel });
+	}
 
 	return {
 		id: peerId,
@@ -244,7 +250,13 @@ const createPeer = async (
 				await target.dispatch(actionName, payload, null, meta);
 			});
 		},
-		flushOutbound() {},
+		flushOutbound() {
+			const runtime = ctx.runtime.crdt_runtime as
+				| { flushTransportOutbox?: () => unknown }
+				| null
+				| undefined;
+			runtime?.flushTransportOutbox?.();
+		},
 		async readProjectTitle() {
 			return ctx.queryAttr(project, "title");
 		},
@@ -382,31 +394,12 @@ const replacePeerFromSnapshot = async (
 
 export const createCrdtWorkerPair = async (options: Options) => {
 	const relay = createInMemoryCrdtRelay();
-	const a = await createPeer("A");
-	const b = await createPeer("B", {
-		snapshot: await readDurableOrLiveSnapshot(a.ctx),
-		preferredProjectId: String(a.project._node_id),
-	});
-	const pendingReceives: Promise<void>[] = [];
-	const trackReceive = (promise: Promise<void>) => {
-		pendingReceives.push(promise);
-		void promise.finally(() => {
-			const index = pendingReceives.indexOf(promise);
-			if (index >= 0) {
-				pendingReceives.splice(index, 1);
-			}
-		});
-	};
-
 	const transportA = createTestWorkerCrdtTransport({
 		relay,
 		roomId: options.roomId,
 		peerId: "A",
 		profileId: options.profileId,
 		profileVersion: options.profileVersion,
-		onMessage: (message) => {
-			trackReceive(receiveOps(a.ctx, message));
-		},
 	});
 	const transportB = createTestWorkerCrdtTransport({
 		relay,
@@ -414,28 +407,21 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		peerId: "B",
 		profileId: options.profileId,
 		profileVersion: options.profileVersion,
-		onMessage: (message) => {
-			trackReceive(receiveOps(b.ctx, message));
-		},
+	});
+	const a = await createPeer("A", { transport: transportA });
+	const b = await createPeer("B", {
+		transport: transportB,
+		snapshot: await readDurableOrLiveSnapshot(a.ctx),
+		preferredProjectId: String(a.project._node_id),
 	});
 
-	a.flushOutbound = () => {
-		const batches = drainCrdtOutboxBatches(a.ctx.runtime);
-		const ops = drainCrdtOutbox(a.ctx.runtime);
-		if (batches.length) {
-			transportA.sendOps({ batches });
-		} else if (ops.length) {
-			throw new Error("MiniCut CRDT worker pair outbound requires graph batches");
-		}
-	};
-	b.flushOutbound = () => {
-		const batches = drainCrdtOutboxBatches(b.ctx.runtime);
-		const ops = drainCrdtOutbox(b.ctx.runtime);
-		if (batches.length) {
-			transportB.sendOps({ batches });
-		} else if (ops.length) {
-			throw new Error("MiniCut CRDT worker pair outbound requires graph batches");
-		}
+	const waitForTransport = async () => {
+		await Promise.all([
+			(a.ctx.runtime.crdt_runtime as { transport_receive_tail?: Promise<unknown> } | null)
+				?.transport_receive_tail,
+			(b.ctx.runtime.crdt_runtime as { transport_receive_tail?: Promise<unknown> } | null)
+				?.transport_receive_tail,
+		]);
 	};
 
 	return {
@@ -445,10 +431,10 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		transportA,
 		transportB,
 		async waitForConvergence() {
-			await Promise.all([...pendingReceives]);
+			await waitForTransport();
 			await waitForRuntimeIdle(a.ctx);
 			await waitForRuntimeIdle(b.ctx);
-			await Promise.all([...pendingReceives]);
+			await waitForTransport();
 		},
 		async syncBaselineFrom(sourceId: PeerId = "A") {
 			const source = sourceId === "A" ? a : b;

@@ -14,6 +14,7 @@ import {
 	sanitizeDktCrdtStoragePackage,
 	sanitizeStorageValue,
 } from "../crdt/sanitizeStoragePackage";
+import type { DktCrdtTransport } from "../crdt/testRelayContracts";
 import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
@@ -57,6 +58,9 @@ type RuntimeModelLike = {
 };
 
 export type MiniCutCrdtTransport = {
+	send?: DktCrdtTransport["send"];
+	subscribe?: DktCrdtTransport["subscribe"];
+	close?: DktCrdtTransport["close"];
 	attach?: (
 		crdtRuntime: MiniCutCrdtRuntimeLike,
 		context: {
@@ -268,6 +272,11 @@ const createCrdtRuntime = async (
 		crdtRuntime: new DktCRDTEngine({
 			peer_id: peerId,
 			storage: storagePackage.crdtStorage,
+			profile_id: normalized.profileId ?? "minicut-crdt-v1",
+			profile_version: normalized.profileVersion ?? 1,
+			...(normalized.transport?.send && normalized.transport.subscribe
+				? { transport: normalized.transport }
+				: null),
 		}) as MiniCutCrdtRuntimeLike,
 		storagePackage,
 		peerId,
@@ -700,7 +709,11 @@ export const createMiniCutDktRuntime = (
 						},
 					},
 				});
-				if (crdt.crdtRuntime && crdt.transport?.attach) {
+				if (
+					crdt.crdtRuntime &&
+					crdt.transport?.attach &&
+					!(crdt.transport.send && crdt.transport.subscribe)
+				) {
 					const cleanup = crdt.transport.attach(crdt.crdtRuntime, {
 						peerId: crdt.peerId,
 						profileId: crdt.profileId,
