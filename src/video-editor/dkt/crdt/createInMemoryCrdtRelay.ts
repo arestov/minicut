@@ -19,15 +19,6 @@ type RelayOptions = {
 
 const DEFAULT_MAX_LOG_PACKETS = 100;
 
-const opId = (op: unknown): string | null => {
-	if (!op || typeof op !== "object") {
-		return null;
-	}
-	const value = (op as { op_id?: unknown; id?: unknown }).op_id ??
-		(op as { id?: unknown }).id;
-	return typeof value === "string" && value ? value : null;
-};
-
 const batchId = (batch: unknown): string | null => {
 	if (!batch || typeof batch !== "object") {
 		return null;
@@ -38,43 +29,16 @@ const batchId = (batch: unknown): string | null => {
 };
 
 const packetKey = (packet: MiniCutCrdtPacket): string => {
-	const payloadBatchIds = (packet.payload?.batches ?? [])
+	const payloadBatchIds = packet.payload.batches
 		.map(batchId)
 		.filter(Boolean)
 		.join("|");
-	if (payloadBatchIds) {
-		return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:payload:${payloadBatchIds}`;
-	}
-	const batchIds = (packet.batches ?? []).map(batchId).filter(Boolean).join("|");
-	if (batchIds) {
-		return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:batches:${batchIds}`;
-	}
-	const opIds = (packet.ops ?? []).map(opId).filter(Boolean).join("|");
-	return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:${opIds || JSON.stringify(packet.vectorClock ?? null)}`;
+	return `${packet.peerId}:${packet.profileId}:${packet.profileVersion}:payload:${payloadBatchIds || JSON.stringify(packet.payload)}`;
 };
 
 const clonePacket = (packet: MiniCutCrdtPacket): MiniCutCrdtPacket => ({
 	...packet,
-	payload: packet.payload
-		? (JSON.parse(JSON.stringify(packet.payload)) as MiniCutCrdtPacket["payload"])
-		: undefined,
-	batches: packet.batches?.map((batch) =>
-		batch && typeof batch === "object" ? {
-			...(batch as Record<string, unknown>),
-			created_models: [
-				...((batch as { created_models?: unknown[] }).created_models ?? []),
-			],
-			tombstones: [
-				...((batch as { tombstones?: unknown[] }).tombstones ?? []),
-			],
-			ops: ((batch as { ops?: unknown[] }).ops ?? []).map((op) =>
-				op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
-			),
-		} : batch,
-	),
-	ops: packet.ops?.map((op) =>
-		op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
-	),
+	payload: JSON.parse(JSON.stringify(packet.payload)) as MiniCutCrdtPacket["payload"],
 });
 
 export const createInMemoryCrdtRelay = (options: RelayOptions = {}) => {
@@ -149,6 +113,9 @@ export const createInMemoryCrdtRelay = (options: RelayOptions = {}) => {
 				if (message.packet.peerId !== message.from) {
 					throw new Error("CRDT relay rejected spoofed packet peerId");
 				}
+				if (message.packet.payload.type !== "dkt-crdt-batches") {
+					throw new Error("CRDT relay rejected non-DKT payload");
+				}
 				if (
 					message.packet.profileId !== peer.profileId ||
 					message.packet.profileVersion !== peer.profileVersion
@@ -185,14 +152,8 @@ export const createInMemoryCrdtRelay = (options: RelayOptions = {}) => {
 							from: "relay",
 							profile_id: peer.profileId,
 							profile_version: peer.profileVersion,
-							batches: room.log.flatMap(
-								(packet) => packet.payload?.batches ?? packet.batches ?? [],
-							),
+							batches: room.log.flatMap((packet) => packet.payload.batches),
 						},
-						batches: room.log.flatMap(
-							(packet) => packet.payload?.batches ?? packet.batches ?? [],
-						),
-						ops: room.log.flatMap((packet) => packet.ops ?? []),
 					},
 				});
 				return;

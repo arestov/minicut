@@ -17,10 +17,6 @@ export const DKT_MSG = {
 	// Debug-only: request/receive a full worker model state dump
 	DEBUG_DUMP_REQUEST: "dkt:debug-dump-request",
 	DEBUG_DUMP_RESPONSE: "dkt:debug-dump-response",
-	DEBUG_CRDT_DRAIN_REQUEST: "dkt:debug-crdt-drain-request",
-	DEBUG_CRDT_DRAIN_RESPONSE: "dkt:debug-crdt-drain-response",
-	DEBUG_CRDT_RECEIVE_REQUEST: "dkt:debug-crdt-receive-request",
-	DEBUG_CRDT_RECEIVE_RESPONSE: "dkt:debug-crdt-receive-response",
 } as const;
 
 export type DktDispatchActionMessage = {
@@ -103,29 +99,6 @@ export type DktP2PSessionLostMessage = {
 	reason: string;
 };
 
-export type DktDebugCrdtDrainRequestMessage = {
-	type: typeof DKT_MSG.DEBUG_CRDT_DRAIN_REQUEST;
-	requestId: string;
-};
-
-export type DktDebugCrdtDrainResponseMessage = {
-	type: typeof DKT_MSG.DEBUG_CRDT_DRAIN_RESPONSE;
-	requestId: string;
-	batches: unknown[];
-};
-
-export type DktDebugCrdtReceiveRequestMessage = {
-	type: typeof DKT_MSG.DEBUG_CRDT_RECEIVE_REQUEST;
-	requestId: string;
-	batches: unknown[];
-};
-
-export type DktDebugCrdtReceiveResponseMessage = {
-	type: typeof DKT_MSG.DEBUG_CRDT_RECEIVE_RESPONSE;
-	requestId: string;
-	result: unknown;
-};
-
 export type MiniCutDktTransportMessage =
 	| {
 			type: typeof DKT_MSG.BOOTSTRAP;
@@ -148,8 +121,4 @@ export type MiniCutDktTransportMessage =
 	| DktRuntimeIdleRequestMessage
 	| DktRuntimeIdleResponseMessage
 	| { type: typeof DKT_MSG.DEBUG_DUMP_REQUEST }
-	| { type: typeof DKT_MSG.DEBUG_DUMP_RESPONSE; dump: unknown }
-	| DktDebugCrdtDrainRequestMessage
-	| DktDebugCrdtDrainResponseMessage
-	| DktDebugCrdtReceiveRequestMessage
-	| DktDebugCrdtReceiveResponseMessage;
+	| { type: typeof DKT_MSG.DEBUG_DUMP_RESPONSE; dump: unknown };

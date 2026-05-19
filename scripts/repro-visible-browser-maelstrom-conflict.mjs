@@ -107,104 +107,6 @@ const importAndAddFixture = async (page) => {
 	await withTimeout('wait for import settle', debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
 }
 
-const drain = async (page, label = 'page') =>
-	withTimeout(
-		'drain CRDT batches',
-		debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.drainCrdtBatchesTesting?.() ?? []),
-		20_000,
-	).then((batches) => {
-		pushTrace('crdt:drain', {
-			label,
-			summary: summarizeBatches(batches),
-			batches,
-		})
-		return batches
-	}).catch(async (error) => {
-		const messages = await debugEval(page, () => window.__MINICUT_P2P_DEBUG__?.getRuntimeMessages?.() ?? [])
-			.catch(() => [])
-		pushTrace('crdt:drain:error', {
-			label,
-			error: error instanceof Error ? error.stack || error.message : String(error),
-			runtimeMessages: messages,
-		})
-		throw new Error(`${error.message}\nruntimeMessages=${JSON.stringify(messages).slice(-4000)}`)
-	})
-
-const summarizeBatches = (batches) => ({
-	count: batches.length,
-	ops: batches.reduce((sum, batch) => sum + ((batch?.ops ?? []).length), 0),
-	createdModels: batches.flatMap((batch, batchIndex) =>
-		(batch?.created_models ?? []).map((record, recordIndex) => ({
-			batchIndex,
-			recordIndex,
-			nodeId: record?.node_id ?? null,
-			modelName: record?.model_name ?? null,
-			attrKeys: record?.attrs && typeof record.attrs === 'object' ? Object.keys(record.attrs).slice(0, 12) : [],
-			relKeys: record?.rels && typeof record.rels === 'object' ? Object.keys(record.rels) : [],
-			rels: record?.rels ?? null,
-		})),
-	).slice(0, 12),
-	sampleOps: batches.flatMap((batch, batchIndex) =>
-		(batch?.ops ?? []).map((op, opIndex) => ({
-			batchIndex,
-			opIndex,
-			nodeId: op?.node_id ?? null,
-			fieldId: op?.field_id ?? null,
-			kind: op?.kind ?? null,
-			name: op?.name ?? null,
-			operation: op?.operation ?? null,
-			value:
-				op?.value && typeof op.value === 'object'
-					? {
-							keys: Object.keys(op.value).slice(0, 8),
-							nodeId: op.value._node_id ?? op.value.node_id ?? op.value.nodeId ?? null,
-							modelName: op.value.model_name ?? op.value.modelName ?? null,
-						}
-					: op?.value ?? null,
-		})),
-	).slice(0, 12),
-	missingClock: batches.flatMap((batch, batchIndex) =>
-		(batch?.ops ?? [])
-			.map((op, opIndex) => ({ batchIndex, opIndex, op }))
-			.filter((item) => item.op && typeof item.op === 'object' && !item.op.clock)
-			.map((item) => ({
-				batchIndex: item.batchIndex,
-				opIndex: item.opIndex,
-				keys: Object.keys(item.op),
-				type: item.op.type ?? item.op.op_type ?? null,
-				nodeId: item.op.node_id ?? null,
-			})),
-	),
-})
-
-const receive = async (page, batches, label = 'page') => {
-	pushTrace('crdt:receive:start', {
-		label,
-		summary: summarizeBatches(batches),
-		batches,
-	})
-	return (
-	withTimeout('receive CRDT batches', debugEval(page, async (incoming) => {
-		await window.__MINICUT_P2P_DEBUG__?.receiveCrdtBatchesTesting?.(incoming)
-		await window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()
-	}, batches), 20_000).then(
-		(value) => value,
-		async (error) => {
-			const body = await page.locator('body').innerText({ timeout: 2_000 }).catch(() => '')
-			const messages = await debugEval(page, () => window.__MINICUT_P2P_DEBUG__?.getRuntimeMessages?.() ?? [])
-				.catch(() => [])
-			pushTrace('crdt:receive:error', {
-				label,
-				error: error instanceof Error ? error.stack || error.message : String(error),
-				body,
-				runtimeMessages: messages,
-			})
-			throw new Error(`${error.message}\n${body}`)
-		},
-	)
-	)
-}
-
 const resizeFirstClipEnd = async (page, deltaPx) => {
 	const clip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()
 	await clip.click()
@@ -280,20 +182,10 @@ const main = async () => {
 	stage = 'import baseline'
 	await importAndAddFixture(a.page)
 	log('A imported baseline')
-	stage = 'drain baseline'
-	const baselineA = await drain(a.page, 'A baseline')
-	log('drained baseline', { baselineA: summarizeBatches(baselineA) })
-	if (baselineA.length === 0) {
-		throw new Error('CRDT harness produced no baseline batches. Start the app with VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS=1.')
-	}
-	stage = 'receive baseline'
-	await receive(b.page, baselineA, 'B receives A baseline')
-	log('B received baseline')
-	stage = 'wait baseline visible'
+	stage = 'wait transport baseline visible'
 	await b.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()
 		.waitFor({ state: 'visible', timeout: 20_000 })
-	const baselineB = await drain(b.page, 'B after baseline')
-	log('drained B after baseline', { baselineB: baselineB.length })
+	log('B received baseline through transport')
 
 	stage = 'concurrent resize'
 	await Promise.all([
@@ -301,19 +193,12 @@ const main = async () => {
 		resizeFirstClipEnd(b.page, -56),
 	])
 	log('both resized')
-	stage = 'drain conflict batches'
-	const batchesA = await drain(a.page, 'A conflict')
-	const batchesB = await drain(b.page, 'B conflict')
-	log('drained conflict batches', { A: batchesA.length, B: batchesB.length })
-	if (batchesA.length === 0 || batchesB.length === 0) {
-		throw new Error(`Expected conflict batches from both peers, got A=${batchesA.length}, B=${batchesB.length}`)
-	}
-	stage = 'cross deliver conflict batches'
+	stage = 'wait transport conflict delivery'
 	await Promise.all([
-		receive(a.page, batchesB, 'A receives B conflict'),
-		receive(b.page, batchesA, 'B receives A conflict'),
+		withTimeout('wait A settle after conflict', debugEval(a.page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000),
+		withTimeout('wait B settle after conflict', debugEval(b.page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000),
 	])
-	log('cross-delivered conflict batches')
+	log('transport delivered conflict edits')
 
 	await waitFor('visible conflict badges', async () => {
 		const [summaryA, summaryB] = await Promise.all([projectSummary(a.page), projectSummary(b.page)])
@@ -328,12 +213,6 @@ const main = async () => {
 		roomId: ROOM_ID,
 		targets: { A: a.targetUrl, B: b.targetUrl },
 		profiles: { A: profileA, B: profileB },
-		batches: {
-			baselineA: baselineA.length,
-			baselineB: baselineB.length,
-			conflictA: batchesA.length,
-			conflictB: batchesB.length,
-		},
 		summary: { A: summaryA, B: summaryB },
 		keepOpen: KEEP_OPEN,
 		tracePath: TRACE_PATH,

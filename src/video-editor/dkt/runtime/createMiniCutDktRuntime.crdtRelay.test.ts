@@ -134,13 +134,15 @@ describe("MiniCut CRDT relay convergence", () => {
 					type: "crdt-sync-response",
 					requestId: "sync:late",
 					packet: expect.objectContaining({
-						batches: expect.arrayContaining([
-							expect.objectContaining({
-								ops: expect.arrayContaining([
-									expect.objectContaining({ name: "title" }),
-								]),
-							}),
-						]),
+						payload: expect.objectContaining({
+							batches: expect.arrayContaining([
+								expect.objectContaining({
+									ops: expect.arrayContaining([
+										expect.objectContaining({ name: "title" }),
+									]),
+								}),
+							]),
+						}),
 					}),
 				}),
 			]),

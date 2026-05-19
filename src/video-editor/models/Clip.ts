@@ -59,7 +59,12 @@ export const Clip = model({
 					!Number.isFinite(inPoint) ||
 					!Number.isFinite(duration)
 				) {
-					if (ctx.phase === "local" && ctx.summary?.staged_ops?.length) {
+					if (
+						ctx.summary?.staged_ops?.length ||
+						Object.values(ctx.members).some(
+							(member) => member.value == null || member.status === "missing",
+						)
+					) {
 						return { ok: true };
 					}
 					return conflict("timing_not_finite");

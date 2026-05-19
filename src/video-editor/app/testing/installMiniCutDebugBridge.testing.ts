@@ -19,8 +19,6 @@ type MiniCutDebugBridge = {
 	getRole: () => string | null;
 	isRuntimeReady: () => boolean;
 	waitForRuntimeSettled: () => Promise<void>;
-	drainCrdtBatchesTesting: () => Promise<unknown[]>;
-	receiveCrdtBatchesTesting: (batches: unknown[]) => Promise<unknown>;
 	getPeerId: () => string | null;
 	createProject: (title?: string) => void;
 	dispatchRootAction: (actionName: string, payload?: unknown) => Promise<void>;
@@ -809,10 +807,6 @@ export const installMiniCutDebugBridgeTesting = (
 			return waitForRuntimeSettled();
 		},
 		waitForRuntimeSettled,
-		drainCrdtBatchesTesting: async () =>
-			harness.pageRuntime?.drainDebugCrdtBatchesTesting?.() ?? [],
-		receiveCrdtBatchesTesting: async (batches: unknown[]) =>
-			harness.pageRuntime?.receiveDebugCrdtBatchesTesting?.(batches) ?? null,
 	};
 
 	window.__MINICUT_P2P_DEBUG__ = debug;

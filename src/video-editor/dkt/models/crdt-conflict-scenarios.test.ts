@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const createPairWithClip = async (roomId: string) => {
@@ -15,7 +14,7 @@ const createPairWithClip = async (roomId: string) => {
 		in: 0,
 		duration: 4,
 	});
-	await pair.syncBaselineFrom("A");
+	await pair.waitForConvergence();
 	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
 	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
 	if (!clipA || !clipB) {
@@ -40,7 +39,7 @@ const createPairWithClips = async (roomId: string, clipCount: number) => {
 			duration: 4,
 		});
 	}
-	await pair.syncBaselineFrom("A");
+	await pair.waitForConvergence();
 	const clipsA = await pair.a.ctx.queryRel(pair.a.videoTrack, "clips");
 	const clipsB = await pair.b.ctx.queryRel(pair.b.videoTrack, "clips");
 	expect(clipsA).toHaveLength(clipCount);
@@ -83,27 +82,25 @@ const createPairWithTextClip = async (roomId: string) => {
 		duration: 4,
 		text: { content: "Original title" },
 	});
-	await pair.syncBaselineFrom("A");
+	await pair.waitForConvergence();
 	let clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
 	if (!clipA) {
 		throw new Error("Expected source clip");
 	}
 	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -0.1 });
 	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: 0.1 });
-	await pair.syncBaselineFrom("A");
+	await pair.waitForConvergence();
 	clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
 	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
 	if (!clipA || !clipB) {
 		throw new Error("Expected matching text clips");
 	}
 	const textA = (await pair.a.ctx.queryRel(clipA, "text"))[0];
-	const textB = (await pair.b.ctx.queryRel(clipB, "text"))[0];
-	if (!textA || !textB) {
-		throw new Error("Expected matching text nodes");
+	if (!textA) {
+		throw new Error("Expected source text node");
 	}
 	expect(clipA._node_id).toBe(clipB._node_id);
-	expect(textA._node_id).toBe(textB._node_id);
-	return { pair, clipA, clipB, textA, textB };
+	return { pair, clipA, clipB, textA };
 };
 
 const createPairWithResourceClip = async (roomId: string) => {
@@ -136,7 +133,7 @@ const createPairWithResourceClip = async (roomId: string) => {
 		throw new Error("Expected clip fixture");
 	}
 	await pair.a.dispatch(clip, "setResource", { resource });
-	await pair.syncBaselineFrom("A");
+	await pair.waitForConvergence();
 	const resourceA = (await pair.a.ctx.queryRel(pair.a.project, "resources"))[0];
 	const resourceB = (await pair.b.ctx.queryRel(pair.b.project, "resources"))[0];
 	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
@@ -147,29 +144,6 @@ const createPairWithResourceClip = async (roomId: string) => {
 	expect(resourceA._node_id).toBe(resourceB._node_id);
 	expect(clipA._node_id).toBe(clipB._node_id);
 	return { pair, resourceA, resourceB, clipA, clipB };
-};
-
-const drainBatches = (
-	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
-	peerId: "A" | "B",
-) => {
-	const peer = peerId === "A" ? pair.a : pair.b;
-	const batches = drainCrdtOutboxBatches(peer.ctx.runtime);
-	const legacyOps = drainCrdtOutbox(peer.ctx.runtime);
-	if (legacyOps.length > 0 && batches.length === 0) {
-		throw new Error("MiniCut conflict scenarios require graph batches");
-	}
-	return batches;
-};
-
-const exchangeBatches = async (
-	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
-	batchesA: unknown[],
-	batchesB: unknown[],
-) => {
-	pair.transportA.sendOps({ batches: batchesA });
-	pair.transportB.sendOps({ batches: batchesB });
-	await pair.waitForConvergence();
 };
 
 const openConflictCount = (
@@ -187,12 +161,11 @@ const openConflictCount = (
 const createTimingConflict = async (roomId: string) => {
 	const { pair, clipA, clipB } = await createPairWithClip(roomId);
 
+	pair.partition();
 	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
-	const opsA = drainBatches(pair, "A");
 	await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -2 });
-	const opsB = drainBatches(pair, "B");
-
-	await exchangeBatches(pair, opsA, opsB);
+	pair.heal();
+	await pair.waitForConvergence();
 	const conflictId =
 		(await pair.a.ctx.queryAttr(
 			clipA,
@@ -338,18 +311,17 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			3,
 		);
 
+		pair.partition();
 		await pair.a.dispatch(pair.a.videoTrack, "moveClipWithinTrack", {
 			clipId: clipsA[1]?._node_id,
 			afterClipId: null,
 		});
-		const opsA = drainBatches(pair, "A");
 		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
 			clipId: clipsB[1]?._node_id,
 			afterClipId: clipsB[2]?._node_id,
 		});
-		const opsB = drainBatches(pair, "B");
-
-		await exchangeBatches(pair, opsA, opsB);
+		pair.heal();
+		await pair.waitForConvergence();
 
 		expect(
 			openConflictCount(pair.a.videoTrack, [
@@ -360,7 +332,7 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
-	it("records structural conflict meta for delete vs effect edit", async () => {
+	it("does not synthesize fake structural meta for delete vs effect edit", async () => {
 		const { pair, clipA } = await createPairWithClip(
 			"room-conflict-delete-vs-effect-edit",
 		);
@@ -369,7 +341,7 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			name: "Blur",
 			params: { radius: 2 },
 		});
-		await pair.syncBaselineFrom("A");
+		await pair.waitForConvergence();
 		const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
 		if (!clipB) {
 			throw new Error("Expected synced clip on peer B");
@@ -379,12 +351,10 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			throw new Error("Expected effect fixture");
 		}
 
+		pair.partition();
 		await pair.a.dispatch(effectA, "setEffectParams", { params: { radius: 8 } });
-		drainBatches(pair, "A");
 		await pair.b.dispatch(clipB, "removeSelf");
-		const opsB = drainBatches(pair, "B");
-
-		pair.transportB.sendOps({ batches: opsB });
+		pair.heal();
 		await pair.waitForConvergence();
 
 		expect(
@@ -393,21 +363,25 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				"$meta$rels$crdt$clips$open_conflicts_count",
 				"$meta$model$crdt$open_conflicts_count",
 			]),
-		).toBeGreaterThan(0);
+		).toBe(0);
+		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
+			.toEqual([]);
 		pair.close();
 	});
 
-	it("records structural conflict meta for delete vs text edit", async () => {
-		const { pair, clipA, clipB, textA } = await createPairWithTextClip(
+	it("keeps text edit/delete transport path free of fake conflict meta", async () => {
+		const { pair, clipA, clipB } = await createPairWithTextClip(
 			"room-conflict-delete-vs-text-edit",
 		);
+		const textA = (await pair.a.ctx.queryRel(clipA, "text"))[0];
+		if (!textA) {
+			throw new Error("Expected source text node");
+		}
 
+		pair.partition();
 		await pair.a.dispatch(textA, "setTextContent", "Remote title edit");
-		drainBatches(pair, "A");
 		await pair.b.dispatch(clipB, "removeSelf");
-		const opsB = drainBatches(pair, "B");
-
-		pair.transportB.sendOps({ batches: opsB });
+		pair.heal();
 		await pair.waitForConvergence();
 
 		expect(
@@ -416,24 +390,24 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				"$meta$rels$crdt$clips$open_conflicts_count",
 				"$meta$model$crdt$open_conflicts_count",
 			]),
-		).toBeGreaterThan(0);
+		).toBe(0);
+		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
+			.toEqual([]);
 		expect((await pair.a.ctx.queryRel(clipA, "text"))[0]?._node_id).toBe(
 			textA._node_id,
 		);
 		pair.close();
 	});
 
-	it("records structural conflict meta for split vs delete", async () => {
+	it("does not synthesize fake structural meta for split vs delete", async () => {
 		const { pair, clipA, clipB } = await createPairWithClip(
 			"room-conflict-split-vs-delete",
 		);
 
+		pair.partition();
 		await pair.a.dispatch(clipA, "splitSelfAt", { time: 2 });
-		drainBatches(pair, "A");
 		await pair.b.dispatch(clipB, "removeSelf");
-		const opsB = drainBatches(pair, "B");
-
-		pair.transportB.sendOps({ batches: opsB });
+		pair.heal();
 		await pair.waitForConvergence();
 
 		expect(
@@ -441,7 +415,9 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				"$meta$rels$crdt$clips$open_conflicts_count",
 				"$meta$model$crdt$open_conflicts_count",
 			]),
-		).toBeGreaterThan(0);
+		).toBe(0);
+		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
+			.toEqual([]);
 		pair.close();
 	});
 
@@ -456,19 +432,18 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			throw new Error("Expected clip fixture");
 		}
 
+		pair.partition();
 		await pair.a.dispatch(pair.a.project, "moveClipToTrack", {
 			clipId,
 			targetTrackId: audioTrackA._node_id,
 		});
-		const opsA = drainBatches(pair, "A");
 
 		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
 			clipId: clipsB[0]?._node_id,
 			afterClipId: clipsB[1]?._node_id,
 		});
-		const opsB = drainBatches(pair, "B");
-
-		await exchangeBatches(pair, opsA, opsB);
+		pair.heal();
+		await pair.waitForConvergence();
 
 		expect(
 			openConflictCount(clipsB[0], [
@@ -493,8 +468,6 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		);
 
 		await pair.b.dispatch(resourceB, "removeSelf");
-		const opsB = drainBatches(pair, "B");
-		pair.transportB.sendOps({ batches: opsB });
 		await pair.waitForConvergence();
 
 		expect(

@@ -15,10 +15,8 @@ export type MiniCutCrdtPacket = {
 	profileId: string;
 	profileVersion: number;
 	peerId: string;
-	payload?: DktCrdtWireMessage;
+	payload: DktCrdtWireMessage;
 	vectorClock?: unknown;
-	batches?: unknown[];
-	ops?: unknown[];
 };
 
 export type DktCrdtTransport = {

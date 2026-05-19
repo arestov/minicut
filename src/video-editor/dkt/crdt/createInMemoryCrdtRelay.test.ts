@@ -85,7 +85,7 @@ describe("createInMemoryCrdtRelay", () => {
 			profileVersion: 1,
 		});
 
-		a.sendOps({ ops: [{ op_id: "op:1", value: "title" }] });
+		a.send(makeWireMessage("A"));
 
 		expect(a.received).toEqual([]);
 		expect(b.received).toEqual([
@@ -116,7 +116,7 @@ describe("createInMemoryCrdtRelay", () => {
 					profileId: "minicut-crdt-v1",
 					profileVersion: 1,
 					peerId: "B",
-					ops: [],
+					payload: makeWireMessage("B"),
 				},
 			}),
 		).toThrow("spoofed");
@@ -149,10 +149,16 @@ describe("createInMemoryCrdtRelay", () => {
 			profileVersion: 1,
 		});
 
-		a.sendOps({ ops: [{ op_id: "op:1", value: 1 }] });
-		a.sendOps({ ops: [{ op_id: "op:1", value: 1 }] });
-		a.sendOps({ ops: [{ op_id: "op:2", value: 2 }] });
-		a.sendOps({ ops: [{ op_id: "op:3", value: 3 }] });
+		a.send(makeWireMessage("A"));
+		a.send(makeWireMessage("A"));
+		a.send({
+			...makeWireMessage("A"),
+			batches: [{ ...makeWireMessage("A").batches[0], batch_id: "A:batch:2" }],
+		});
+		a.send({
+			...makeWireMessage("A"),
+			batches: [{ ...makeWireMessage("A").batches[0], batch_id: "A:batch:3" }],
+		});
 
 		expect(b.received.filter((message) => message.type === "crdt-ops"))
 			.toHaveLength(3);
@@ -167,10 +173,12 @@ describe("createInMemoryCrdtRelay", () => {
 			to: "B",
 			requestId: "sync:1",
 			packet: {
-				ops: [
-					expect.objectContaining({ op_id: "op:2" }),
-					expect.objectContaining({ op_id: "op:3" }),
-				],
+				payload: expect.objectContaining({
+					batches: [
+						expect.objectContaining({ batch_id: "A:batch:2" }),
+						expect.objectContaining({ batch_id: "A:batch:3" }),
+					],
+				}),
 			},
 		});
 	});

@@ -7,6 +7,7 @@ import {
 	createMiniCutHarnessWorkspaceId,
 	createMiniCutWorkspaceDbName,
 } from "../storage/minicutWorkspaceManifest";
+import { createBroadcastChannelCrdtTransport } from "../crdt/createBroadcastChannelCrdtTransport";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 
 const isCrdtTestHarnessEnabled = (): boolean =>
@@ -22,6 +23,13 @@ export const createMiniCutDktWorkerModelRuntime = () => {
 					enabled: true,
 					peerIdForSession: (sessionKey, sessionId) =>
 						`minicut-browser:${sessionKey}:${sessionId}`,
+					transportForSession: (sessionKey, context) =>
+						createBroadcastChannelCrdtTransport({
+							channelName: `minicut-crdt:${sessionKey}`,
+							peerId: context.peerId,
+							profileId: context.profileId,
+							profileVersion: context.profileVersion,
+						}),
 					defaultStorageDbNameForSessionKey: (sessionKey) =>
 						createMiniCutWorkspaceDbName(
 							createMiniCutHarnessWorkspaceId(sessionKey),
