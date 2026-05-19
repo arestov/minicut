@@ -21,31 +21,23 @@ const makeWireMessage = (from: string) => ({
 			created_models: [{ node_id: "crdt:child", model_name: "clip", tombstone: false }],
 			tombstones: [],
 			action_trace: {
-				trace_version: 1,
-				frames: [{ frame_id: 1, frame_kind: "action", action_name: "addClip" }],
+				trace_version: 2,
+				frames: [
+					{
+						frame_id: 1,
+						parent_frame_id: null,
+						scheduled_by_frame_id: null,
+						target_node_id: "crdt:project",
+						target_model_name: "project",
+					},
+				],
 				produced_ops: [
 					{
 						frame_id: 1,
 						op_id: `${from}:op:1`,
-						kind: "attr",
-						node_id: "crdt:child",
-						model_name: "clip",
-						field_name: "name",
 					},
 				],
-				produced_creates: [{ frame_id: 1, node_id: "crdt:child", model_name: "clip" }],
-				read_fingerprints: [
-					{
-						frame_id: 1,
-						node_id: "crdt:project",
-						model_name: "project",
-						field_kind: "attr",
-						field_name: "title",
-						policy: "crdt",
-						value_hash: "hash",
-						value_json: "\"Project\"",
-					},
-				],
+				produced_creates: [{ frame_id: 1, node_id: "crdt:child" }],
 			},
 			ops: [
 				{
@@ -251,6 +243,77 @@ describe("createInMemoryCrdtRelay", () => {
 		expect(() =>
 			a.send({ ...makeWireMessage("A"), profile_id: "other-profile" }),
 		).toThrow("profile mismatch");
+		a.close();
+	});
+
+	it("rejects legacy or malformed action trace payloads", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-trace-guard",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const sendTrace = (actionTrace: unknown) =>
+			a.send({
+				...makeWireMessage("A"),
+				batches: [
+					{
+						...makeWireMessage("A").batches[0],
+						action_trace: actionTrace,
+					},
+				],
+			});
+
+		expect(() =>
+			sendTrace({
+				trace_version: 1,
+				frames: [],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("non-v2 action_trace");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1, action_name: "addClip" }],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("legacy action_trace frame field");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1 }],
+				produced_ops: [{ frame_id: 1, op_id: "missing:op" }],
+				produced_creates: [],
+			}),
+		).toThrow("produced op missing from batch");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1 }],
+				produced_ops: [],
+				produced_creates: [{ frame_id: 1, node_id: "missing:node" }],
+			}),
+		).toThrow("produced create missing from batch");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1, parent_frame_id: 1 }],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("cyclic action_trace frame tree");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1, scheduled_by_frame_id: 2 }],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("unknown action_trace scheduler frame");
 		a.close();
 	});
 
