@@ -25,6 +25,10 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
 	debugMessages(): readonly unknown[];
 	/** Debug-only: requests a full serialised worker model state. Promise resolves when the worker responds. */
 	requestDebugDump?(): Promise<unknown>;
+	/** Test-only: drains worker CRDT graph batches without delivering them. */
+	drainDebugCrdtBatchesTesting?(): Promise<unknown[]>;
+	/** Test-only: delivers worker CRDT graph batches from another peer. */
+	receiveDebugCrdtBatchesTesting?(batches: unknown[]): Promise<unknown>;
 	/** Debug-only: waits for the DKT worker and page sync runtime to settle. */
 	waitForRuntimeSettled?(): Promise<void>;
 	/** Test-only: applies a compact sync update to the page read model. */

@@ -122,6 +122,8 @@ type MiniCutCrdtOptions =
 			profileId?: string;
 			profileVersion?: number;
 			storage?: MiniCutCrdtStorageOptions;
+			peerIdForSession?: (sessionKey: string, sessionId: string) => string;
+			peerIdForSessionKey?: (sessionKey: string) => string;
 			defaultStorageDbNameForSessionKey?: (sessionKey: string) => string;
 			workspaceIdForSessionKey?: (sessionKey: string) => string;
 			transport?: MiniCutCrdtTransport | null;
@@ -153,6 +155,9 @@ type RuntimeLike = {
 	model_data_schema?: Record<string, unknown>;
 	crdt_runtime?: MiniCutCrdtRuntimeLike | null;
 };
+
+const getSyncShapeRequestNodeId = (data: unknown): string | null =>
+	Array.isArray(data) && typeof data[0] === "string" ? data[0] : null;
 
 const isStoragePackage = (
 	value: MiniCutCrdtStorageOptions | undefined,
@@ -277,6 +282,7 @@ const createCrdtRuntime = async (
 const createCrdtRuntimeForSession = async (
 	options: MiniCutCrdtOptions | undefined,
 	sessionKey: string,
+	sessionId = sessionKey,
 ): ReturnType<typeof createCrdtRuntime> => {
 	const normalized = normalizeCrdtOptions(options);
 	if (
@@ -291,6 +297,12 @@ const createCrdtRuntimeForSession = async (
 	return createCrdtRuntime(
 		{
 			...normalized,
+			peerId:
+				typeof normalized.peerIdForSession === "function"
+					? normalized.peerIdForSession(sessionKey, sessionId)
+					: typeof normalized.peerIdForSessionKey === "function"
+					? normalized.peerIdForSessionKey(sessionKey)
+					: normalized.peerId,
 			storage: {
 				type: "indexeddb",
 				dbName: normalized.defaultStorageDbNameForSessionKey(sessionKey),
@@ -313,6 +325,122 @@ const stripAggregateSchema = (payload: unknown): unknown => {
 	const sanitizedSchema = { ...(payload as Record<string, unknown>) };
 	delete sanitizedSchema.$aggregates;
 	return sanitizedSchema;
+};
+
+const jsonWireRoundTrip = <T,>(value: T): T =>
+	JSON.parse(JSON.stringify(value)) as T;
+
+const firstNodeIdFromCrdtBatch = (batch: unknown): string | null => {
+	const ops = (batch as { ops?: unknown[] } | null)?.ops;
+	if (!Array.isArray(ops)) {
+		return null;
+	}
+	for (const op of ops) {
+		const nodeId = (op as { node_id?: unknown } | null)?.node_id;
+		if (typeof nodeId === "string" && nodeId) {
+			return nodeId;
+		}
+	}
+	return null;
+};
+
+const describeDebugCrdtValue = (value: unknown): unknown => {
+	if (Array.isArray(value)) {
+		return value.map(describeDebugCrdtValue);
+	}
+	if (!value || typeof value !== "object") {
+		return value;
+	}
+	const record = value as Record<string, unknown>;
+	return {
+		node_id:
+			record._node_id ??
+			record.node_id ??
+			record.nodeId ??
+			record.id ??
+			null,
+		model_name: record.model_name ?? record.modelName ?? null,
+		keys: Object.keys(record).slice(0, 8),
+	};
+};
+
+const describeDebugCrdtBatch = (batch: unknown): unknown => {
+	if (!batch || typeof batch !== "object") {
+		return batch;
+	}
+	const record = batch as Record<string, unknown>;
+	return {
+		schema_version: record.schema_version,
+		batch_id: record.batch_id,
+		origin_peer_id: record.origin_peer_id,
+		created_models: ((record.created_models as unknown[] | undefined) ?? []).map(
+			(item, index) => {
+				const model = item as Record<string, unknown> | null;
+				return {
+					index,
+					node_id: model?.node_id ?? null,
+					model_name: model?.model_name ?? null,
+					attr_keys:
+						model?.attrs && typeof model.attrs === "object"
+							? Object.keys(model.attrs as Record<string, unknown>)
+							: [],
+					rels: model?.rels ?? null,
+				};
+			},
+		),
+		ops: ((record.ops as unknown[] | undefined) ?? []).map((item, index) => {
+			const op = item as Record<string, unknown> | null;
+			return {
+				index,
+				node_id: op?.node_id ?? null,
+				field_id: op?.field_id ?? null,
+				kind: op?.kind ?? null,
+				name: op?.name ?? null,
+				operation: op?.operation ?? null,
+				value: describeDebugCrdtValue(op?.value),
+				has_clock: Boolean(op?.clock),
+				clock: op?.clock ?? null,
+			};
+		}),
+	};
+};
+
+const logDebugCrdtBatches = (
+	label: string,
+	batches: unknown[],
+	extra?: Record<string, unknown>,
+) => {
+	console.log(
+		`[minicut:crdt-debug] ${label}`,
+		{
+			...(extra ?? null),
+			count: batches.length,
+			batches: batches.map(describeDebugCrdtBatch),
+		},
+	);
+};
+
+const publishDebugCrdtBatches = (
+	transports: Set<DomSyncTransportViewLike<MiniCutDktTransportMessage>>,
+	label: string,
+	batches: unknown[],
+	extra?: Record<string, unknown>,
+) => {
+	const message = {
+		channel: "crdt-debug",
+		message: label,
+		details: {
+			...(extra ?? null),
+			count: batches.length,
+			batches: batches.map(describeDebugCrdtBatch),
+		},
+	};
+	for (const transport of transports) {
+		transport.send({
+			type: DKT_MSG.RUNTIME_LOG,
+			message,
+		});
+	}
 };
 
 const createWorkerStream = (
@@ -499,14 +627,21 @@ export const createMiniCutDktRuntime = (
 		}
 	};
 
-	const bootstrapApp = async (sessionKey = "minicut-local") => {
+	const bootstrapApp = async (
+		sessionKey = "minicut-local",
+		sessionId = sessionKey,
+	) => {
 		if (!enabled) {
 			return null;
 		}
 
 		if (!bootPromise) {
 			bootPromise = (async () => {
-				crdtPromise = createCrdtRuntimeForSession(options.crdt, sessionKey);
+				crdtPromise = createCrdtRuntimeForSession(
+					options.crdt,
+					sessionKey,
+					sessionId,
+				);
 				const crdt = await crdtPromise;
 				if (crdt.workspaceOpenState) {
 					publishWorkspaceOpenState(crdt.workspaceOpenState);
@@ -586,7 +721,7 @@ export const createMiniCutDktRuntime = (
 		sessionKey = "minicut-local",
 		sessionId?: string | null,
 	): Promise<RuntimeModelLike | null> => {
-		const app = await bootstrapApp(sessionKey);
+		const app = await bootstrapApp(sessionKey, sessionId ?? sessionKey);
 		if (!app) {
 			return null;
 		}
@@ -692,7 +827,7 @@ export const createMiniCutDktRuntime = (
 			const nextSessionId = sessionId || nextSessionKey;
 			activeSessionKey = nextSessionKey;
 			activeSessionId = nextSessionId;
-			const app = await bootstrapApp(activeSessionKey);
+			const app = await bootstrapApp(activeSessionKey, activeSessionId);
 			if (!app) {
 				throw new Error("MiniCut DKT runtime is disabled");
 			}
@@ -826,6 +961,14 @@ export const createMiniCutDktRuntime = (
 					if (!app || !stream) {
 						throw new Error("MiniCut DKT sync stream is not bootstrapped");
 					}
+					const nodeId = getSyncShapeRequestNodeId(message.data);
+					if (nodeId && !app.runtime.models?.[nodeId]) {
+						logRuntime("ignore shape request for unknown model", {
+							nodeId,
+							sessionKey: activeSessionKey,
+						});
+						return;
+					}
 					app.runtime.sync_sender.requireShapeForModel(stream.id, message.data);
 					return;
 				}
@@ -846,6 +989,86 @@ export const createMiniCutDktRuntime = (
 					transport.send({
 						type: DKT_MSG.DEBUG_DUMP_RESPONSE,
 						dump: sanitizeStorageValue({ ...dump, ...summary }),
+					});
+					return;
+				}
+				case DKT_MSG.DEBUG_CRDT_DRAIN_REQUEST: {
+					const app = await bootstrapApp(activeSessionKey);
+					const rawBatches =
+						app?.runtime.crdt_runtime?.testing?.drainOutboxBatches?.() ?? [];
+					const batches = jsonWireRoundTrip(rawBatches) as unknown[];
+					logDebugCrdtBatches("drain outgoing batches", batches, {
+						sessionKey: activeSessionKey,
+						requestId: message.requestId,
+					});
+					publishDebugCrdtBatches(
+						activeTransports,
+						"drain outgoing batches",
+						batches,
+						{
+							sessionKey: activeSessionKey,
+							requestId: message.requestId,
+						},
+					);
+					transport.send({
+						type: DKT_MSG.DEBUG_CRDT_DRAIN_RESPONSE,
+						requestId: message.requestId,
+						batches,
+					});
+					return;
+				}
+				case DKT_MSG.DEBUG_CRDT_RECEIVE_REQUEST: {
+					const app = await bootstrapApp(activeSessionKey);
+					if (!app?.runtime.crdt_runtime) {
+						throw new Error("MiniCut CRDT runtime is not enabled");
+					}
+					logDebugCrdtBatches("receive incoming batches", message.batches, {
+						sessionKey: activeSessionKey,
+						requestId: message.requestId,
+					});
+					publishDebugCrdtBatches(
+						activeTransports,
+						"receive incoming batches",
+						message.batches,
+						{
+							sessionKey: activeSessionKey,
+							requestId: message.requestId,
+						},
+					);
+					for (const batch of message.batches) {
+						const firstNodeId = firstNodeIdFromCrdtBatch(batch);
+						const target = app.appModel;
+						logRuntime("debug CRDT receive target", {
+							requestId: message.requestId,
+							batchId: (batch as { batch_id?: unknown }).batch_id,
+							firstNodeId,
+							targetNodeId: (target as { _node_id?: unknown })._node_id,
+							targetModelName: (target as { model_name?: unknown }).model_name,
+						});
+						const receiver =
+							app.runtime.crdt_runtime.testing?.receiveFromNetwork ??
+							app.runtime.crdt_runtime.receiveCanonicalBatch;
+						await receiver?.(target, batch);
+						const crdt = crdtPromise ? await crdtPromise : null;
+						await crdt?.storagePackage?.commitChanges?.({
+							reason: "browser-maelstrom-debug-receive",
+						});
+					}
+					await new Promise<void>((resolve) => {
+						if (typeof app.runtime.whenAllReady === "function") {
+							app.runtime.whenAllReady(() => resolve());
+							return;
+						}
+						if (typeof app.appModel.input === "function") {
+							app.appModel.input?.(() => resolve());
+							return;
+						}
+						resolve();
+					});
+					transport.send({
+						type: DKT_MSG.DEBUG_CRDT_RECEIVE_RESPONSE,
+						requestId: message.requestId,
+						result: { received: message.batches.length },
 					});
 					return;
 				}

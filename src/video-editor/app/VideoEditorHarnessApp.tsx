@@ -162,6 +162,18 @@ const resolveMediaTransferOptions = (): {
 	};
 };
 
+const resolveCrdtHarnessPeerId = (): string | null => {
+	if (typeof window === "undefined") {
+		return null;
+	}
+	const raw = new URLSearchParams(window.location.search).get("crdtPeerId");
+	if (!raw) {
+		return null;
+	}
+	const normalized = raw.trim().replace(/[^a-zA-Z0-9:_-]/g, "-").slice(0, 80);
+	return normalized || null;
+};
+
 export const VideoEditorHarnessApp = ({
 	dktBootstrapOptions,
 	harness: providedHarness,
@@ -224,10 +236,12 @@ export const VideoEditorHarnessApp = ({
 		}
 
 		if (isCrdtHarnessEnabled()) {
+			const sessionKey =
+				resolvedRoom?.roomId ?? createCrdtHarnessStorageMetadata(null).workspaceId;
+			const peerId = resolveCrdtHarnessPeerId();
 			return {
-				sessionKey:
-					resolvedRoom?.roomId ??
-					createCrdtHarnessStorageMetadata(null).workspaceId,
+				sessionKey,
+				...(peerId ? { sessionId: `${sessionKey}:peer:${peerId}` } : null),
 			};
 		}
 

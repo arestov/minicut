@@ -44,6 +44,10 @@ export const createMiniCutPageSyncRuntime = ({
 	>();
 	const debugMessageLog: unknown[] = [];
 	let pendingDumpResolve: ((result: unknown) => void) | null = null;
+	const pendingCrdtDebugResolves = new Map<
+		string,
+		(result: unknown) => void
+	>();
 	const pendingIdleResolves = new Map<
 		string,
 		{
@@ -350,6 +354,19 @@ export const createMiniCutPageSyncRuntime = ({
 				pendingDumpResolve = null;
 				return;
 			}
+			case DKT_MSG.DEBUG_CRDT_DRAIN_RESPONSE:
+			case DKT_MSG.DEBUG_CRDT_RECEIVE_RESPONSE: {
+				const resolve = pendingCrdtDebugResolves.get(message.requestId);
+				if (resolve) {
+					pendingCrdtDebugResolves.delete(message.requestId);
+					resolve(
+						message.type === DKT_MSG.DEBUG_CRDT_DRAIN_RESPONSE
+							? message.batches
+							: message.result,
+					);
+				}
+				return;
+			}
 			case DKT_MSG.IDLE: {
 				if (typeof message.requestId === "string") {
 					const pending = pendingIdleResolves.get(message.requestId);
@@ -378,6 +395,28 @@ export const createMiniCutPageSyncRuntime = ({
 			new Promise<unknown>((resolve) => {
 				pendingDumpResolve = resolve;
 				emit({ type: DKT_MSG.DEBUG_DUMP_REQUEST });
+			}),
+		drainDebugCrdtBatchesTesting: () =>
+			new Promise<unknown[]>((resolve) => {
+				const requestId = `crdt-drain:${Date.now()}:${Math.random()
+					.toString(36)
+					.slice(2)}`;
+				pendingCrdtDebugResolves.set(requestId, (result) => {
+					resolve(Array.isArray(result) ? result : []);
+				});
+				emit({ type: DKT_MSG.DEBUG_CRDT_DRAIN_REQUEST, requestId });
+			}),
+		receiveDebugCrdtBatchesTesting: (batches) =>
+			new Promise<unknown>((resolve) => {
+				const requestId = `crdt-receive:${Date.now()}:${Math.random()
+					.toString(36)
+					.slice(2)}`;
+				pendingCrdtDebugResolves.set(requestId, resolve);
+				emit({
+					type: DKT_MSG.DEBUG_CRDT_RECEIVE_REQUEST,
+					requestId,
+					batches: batches.slice(),
+				});
 			}),
 		waitForRuntimeSettled: () =>
 			new Promise<void>((resolve, reject) => {

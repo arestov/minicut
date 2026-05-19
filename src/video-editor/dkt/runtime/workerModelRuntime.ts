@@ -20,6 +20,8 @@ export const createMiniCutDktWorkerModelRuntime = () => {
 		crdt: enableCrdtTestHarness
 			? {
 					enabled: true,
+					peerIdForSession: (sessionKey, sessionId) =>
+						`minicut-browser:${sessionKey}:${sessionId}`,
 					defaultStorageDbNameForSessionKey: (sessionKey) =>
 						createMiniCutWorkspaceDbName(
 							createMiniCutHarnessWorkspaceId(sessionKey),
