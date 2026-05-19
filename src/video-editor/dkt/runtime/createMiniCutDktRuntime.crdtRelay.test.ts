@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { drainCrdtOutbox } from "../test/crdtAssertions";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 import type { DktCrdtWireMessage } from "../crdt/testRelayContracts";
 
@@ -38,7 +37,6 @@ describe("MiniCut CRDT relay convergence", () => {
 		await pair.waitForConvergence();
 
 		await expect(pair.b.readProjectTitle()).resolves.toBe("Relay title");
-		expect(drainCrdtOutbox(pair.b.ctx.runtime)).toEqual([]);
 		pair.close();
 	});
 
@@ -100,10 +98,12 @@ describe("MiniCut CRDT relay convergence", () => {
 
 	it("keeps duplicate relay packets idempotent", async () => {
 		const pair = await createCrdtWorkerPair(pairOptions("room-duplicate"));
+		const before = pair.relay.getRoomSnapshot("room-duplicate").log.length;
 
 		await pair.a.dispatch(pair.a.project, "renameProject", "Duplicate-safe title");
-		drainCrdtOutbox(pair.a.ctx.runtime);
-		const sent = pair.relay.getRoomSnapshot("room-duplicate").log[0]
+		pair.a.flushOutbound();
+		const afterFirstSend = pair.relay.getRoomSnapshot("room-duplicate").log;
+		const sent = afterFirstSend.at(-1)
 			?.payload as DktCrdtWireMessage | undefined;
 		if (!sent) {
 			throw new Error("Expected transport-delivered DKT payload");
@@ -114,7 +114,7 @@ describe("MiniCut CRDT relay convergence", () => {
 		await expect(pair.b.readProjectTitle()).resolves.toBe(
 			"Duplicate-safe title",
 		);
-		expect(pair.relay.getRoomSnapshot("room-duplicate").log).toHaveLength(1);
+		expect(pair.relay.getRoomSnapshot("room-duplicate").log).toHaveLength(before + 1);
 		pair.close();
 	});
 

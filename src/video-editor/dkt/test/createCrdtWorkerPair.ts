@@ -2,12 +2,8 @@ import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { createInMemoryCrdtRelay } from "../crdt/createInMemoryCrdtRelay";
 import { createTestWorkerCrdtTransport } from "../crdt/createTestWorkerCrdtTransport";
-import {
-	bootDktModels,
-	type DktTestContext,
-	type MiniCutDktCrdtStoragePackage,
-} from "../testingInit";
-import { drainCrdtOutbox, drainCrdtOutboxBatches } from "./crdtAssertions";
+import { bootDktModels, type DktTestContext } from "../testingInit";
+import type { DktCrdtTransport } from "../crdt/testRelayContracts";
 import { waitForRuntimeIdle } from "./waitForRuntimeIdle";
 
 type RuntimeModel = DktTestContext["sessionRoot"];
@@ -59,13 +55,6 @@ const findSharedProject = async (
 	return project;
 };
 
-const readDurableOrLiveSnapshot = async (ctx: DktTestContext): Promise<unknown> => {
-	const durableSnapshot = await (
-		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
-	)?.getSnapshot?.();
-	return durableSnapshot ?? await toReinitableData(ctx.runtime);
-};
-
 const queryVideoTrackClips = async (
 	ctx: DktTestContext,
 	videoTrack: RuntimeModel,
@@ -110,33 +99,29 @@ const bindPeerProject = async (ctx: DktTestContext, project: RuntimeModel) => {
 	});
 };
 
-const createPeer = async (
+const readDurableOrLiveSnapshot = async (ctx: DktTestContext): Promise<unknown> => {
+	const durableSnapshot = await (
+		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
+	)?.getSnapshot?.();
+	return durableSnapshot ?? await toReinitableData(ctx.runtime);
+};
+
+const bootPeerContext = async (
 	peerId: PeerId,
-	options: {
-		snapshot?: unknown;
-		storagePackage?: MiniCutDktCrdtStoragePackage | null;
-		preferredProjectId?: string;
-		transport?: unknown;
-	} = {},
-): Promise<PeerRuntime> => {
-	const ctx = await bootDktModels({
-		reinitFromSnapshot: options.snapshot,
+	transport: DktCrdtTransport,
+	snapshot?: unknown,
+): Promise<DktTestContext> =>
+	bootDktModels({
+		reinitFromSnapshot: snapshot,
 		crdt: {
 			enabled: true,
 			peerId,
-			storage: options.storagePackage ?? "memory",
-			transport: null,
+			storage: "memory",
+			transport,
 		},
 	});
-	if (options.snapshot) {
-		await bindPeerProject(ctx, await findSharedProject(ctx, options.preferredProjectId));
-	} else {
-		await ctx.lockToRead(async () => {
-			await ctx.sessionRoot.dispatch("createProject", {
-				title: "CRDT worker pair project",
-			});
-		});
-	}
+
+const wrapPeer = async (peerId: PeerId, ctx: DktTestContext): Promise<PeerRuntime> => {
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) {
 		throw new Error("Expected active project");
@@ -151,13 +136,6 @@ const createPeer = async (
 	const videoTrack = trackKinds.find((item) => item.kind === "video")?.track;
 	if (!videoTrack) {
 		throw new Error("Expected video track");
-	}
-	drainCrdtOutboxBatches(ctx.runtime);
-	drainCrdtOutbox(ctx.runtime);
-	if (options.transport) {
-		(ctx.runtime.crdt_runtime as {
-			attachTransport?: (transport: unknown, options: { baseModel: RuntimeModel }) => void;
-		} | null)?.attachTransport?.(options.transport, { baseModel: ctx.appModel });
 	}
 
 	return {
@@ -207,12 +185,23 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		profileId: options.profileId,
 		profileVersion: options.profileVersion,
 	});
-	const a = await createPeer("A", { transport: transportA });
-	const b = await createPeer("B", {
-		transport: transportB,
-		snapshot: await readDurableOrLiveSnapshot(a.ctx),
-		preferredProjectId: String(a.project._node_id),
+	const ctxA = await bootPeerContext("A", transportA);
+	await ctxA.lockToRead(async () => {
+		await ctxA.sessionRoot.dispatch("createProject", {
+			title: "CRDT worker pair project",
+		});
 	});
+	await waitForRuntimeIdle(ctxA);
+	const projectA = (await ctxA.queryRel(ctxA.sessionRoot, "activeProject"))[0];
+	if (!projectA) throw new Error("Expected source project");
+	const ctxB = await bootPeerContext(
+		"B",
+		transportB,
+		await readDurableOrLiveSnapshot(ctxA),
+	);
+	await bindPeerProject(ctxB, await findSharedProject(ctxB, String(projectA._node_id)));
+	const a = await wrapPeer("A", ctxA);
+	const b = await wrapPeer("B", ctxB);
 
 	const waitForTransport = async () => {
 		await Promise.all([
