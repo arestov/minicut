@@ -158,6 +158,15 @@ const openConflictCount = (
 		}),
 	);
 
+const readOpenConflicts = (
+	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
+	filter: Record<string, unknown>,
+) =>
+	pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.({
+		...filter,
+		status: "open",
+	}) ?? [];
+
 const createTimingConflict = async (roomId: string) => {
 	const { pair, clipA, clipB } = await createPairWithClip(roomId);
 
@@ -209,6 +218,13 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				expect.objectContaining({
 					node_id: clipB._node_id,
 					field_name: "duration",
+					aggregate_anchor: {
+						model_name: "clip",
+						field_kind: "attr",
+						field_name: "start",
+					},
+					source_frame_id: expect.any(Number),
+					source_root_frame_id: expect.any(Number),
 					status: "open",
 				}),
 			]),
@@ -329,6 +345,18 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				"$meta$model$crdt$open_conflicts_count",
 			]),
 		).toBeGreaterThan(0);
+		expect(readOpenConflicts(pair, { aggregate: "timelineMembership" }))
+			.toEqual(expect.arrayContaining([
+				expect.objectContaining({
+					aggregate: "timelineMembership",
+					aggregate_anchor: {
+						model_name: "track",
+						field_kind: "rel",
+						field_name: "clips",
+					},
+					source_frame_id: expect.any(Number),
+				}),
+			]));
 		pair.close();
 	});
 

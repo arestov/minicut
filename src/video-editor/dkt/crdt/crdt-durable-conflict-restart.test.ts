@@ -97,6 +97,11 @@ const createDurableTimingConflict = async (
 			expect.objectContaining({
 				node_id: clipA._node_id,
 				field_name: "duration",
+				aggregate_anchor: {
+					model_name: "clip",
+					field_kind: "attr",
+					field_name: "start",
+				},
 				status: "open",
 			}),
 		]);
@@ -116,6 +121,11 @@ describe("MiniCut durable CRDT conflict restart", () => {
 			expect.objectContaining({
 				node_id: restoredClipA._node_id,
 				field_name: "duration",
+				aggregate_anchor: {
+					model_name: "clip",
+					field_kind: "attr",
+					field_name: "start",
+				},
 				status: "open",
 			}),
 		]);

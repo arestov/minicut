@@ -6,6 +6,7 @@ import { Resource } from "../../models/Resource";
 import { EditorSessionRoot } from "../../models/SessionRoot";
 import { Text } from "../../models/Text";
 import { Track } from "../../models/Track";
+import { MiniCutAppRoot } from "../../models/AppRoot";
 
 const getAggregate = (
 	model: Record<string, unknown>,
@@ -357,6 +358,44 @@ describe("semantic graph declarations", () => {
 			amount: ["mvr", { conflictMeta: true }],
 			params: ["mvr", { conflictMeta: true }],
 			color: ["mvr", { conflictMeta: true }],
+		});
+	});
+
+	it("exposes aggregate conflict anchors through the compiled CRDT registry", () => {
+		const registry = (MiniCutAppRoot as unknown as {
+			prototype?: { __crdt_registry?: { conflict_anchors_by_aggregate?: Record<string, unknown> } };
+		}).prototype?.__crdt_registry;
+		expect(registry?.conflict_anchors_by_aggregate).toMatchObject({
+			clipTiming: {
+				model_name: "clip",
+				kind: "attr",
+				name: "start",
+			},
+			timelineMembership: {
+				model_name: "track",
+				kind: "rel",
+				name: "clips",
+			},
+			projectTracks: {
+				model_name: "project",
+				kind: "rel",
+				name: "tracks",
+			},
+			resourceLifecycle: {
+				model_name: "project",
+				kind: "rel",
+				name: "resources",
+			},
+			effectParams: {
+				model_name: "effect",
+				kind: "attr",
+				name: "params",
+			},
+			textBoxStyle: {
+				model_name: "text",
+				kind: "attr",
+				name: "content",
+			},
 		});
 	});
 
