@@ -14,6 +14,18 @@ import { createDefaultRtcConfig } from "../p2p/PageP2PManager";
 const LAST_ROOM_STORAGE_KEY = "minicut:last-room-id";
 const DEFAULT_SESSION_KEY = "minicut-local";
 
+const resolveCrdtHarnessPeerId = (): string | null => {
+	if (typeof window === "undefined") {
+		return null;
+	}
+	const raw = new URLSearchParams(window.location.search).get("crdtPeerId");
+	if (!raw) {
+		return null;
+	}
+	const normalized = raw.trim().replace(/[^a-zA-Z0-9:_-]/g, "-").slice(0, 80);
+	return normalized || null;
+};
+
 const normalizeList = (raw: string | null | undefined): string[] =>
 	String(raw ?? "")
 		.split(",")
@@ -210,7 +222,11 @@ export const createMiniCutEditorSession = (): MiniCutEditorSession => {
 	const harness = createBrowserHarness(room, signalUrl);
 	const runtime = harness.pageRuntime;
 	const sessionKey = room?.roomId ?? DEFAULT_SESSION_KEY;
+	const crdtPeerId = resolveCrdtHarnessPeerId();
 	const sessionId =
+		crdtPeerId && room
+			? `${room.roomId}:peer:${crdtPeerId}`
+			:
 		signalUrl && room
 			? `${room.roomId}:peer:${
 					typeof crypto !== "undefined" && "randomUUID" in crypto
