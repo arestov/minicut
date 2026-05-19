@@ -430,6 +430,16 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		relay,
 		transportA,
 		transportB,
+		partition() {
+			transportA.setDeliveryPaused(true);
+			transportB.setDeliveryPaused(true);
+		},
+		heal() {
+			transportA.setDeliveryPaused(false);
+			transportB.setDeliveryPaused(false);
+			transportA.flushBufferedMessages();
+			transportB.flushBufferedMessages();
+		},
 		async waitForConvergence() {
 			await waitForTransport();
 			await waitForRuntimeIdle(a.ctx);

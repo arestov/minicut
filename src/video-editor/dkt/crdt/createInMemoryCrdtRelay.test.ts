@@ -245,4 +245,34 @@ describe("createInMemoryCrdtRelay", () => {
 		).toThrow("profile mismatch");
 		a.close();
 	});
+
+	it("can pause and heal delivery without inspecting DKT payloads", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-partition",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const b = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-partition",
+			peerId: "B",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const received: unknown[] = [];
+		b.subscribe((message) => received.push(message));
+
+		b.setDeliveryPaused(true);
+		a.send(makeWireMessage("A"));
+		expect(received).toEqual([]);
+
+		b.setDeliveryPaused(false);
+		b.flushBufferedMessages();
+		expect(received).toEqual([makeWireMessage("A")]);
+		a.close();
+		b.close();
+	});
 });

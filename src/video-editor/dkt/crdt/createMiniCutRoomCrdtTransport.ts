@@ -54,9 +54,22 @@ export const createMiniCutRoomCrdtTransport = (
 ): DktCrdtTransport & {
 	received: MiniCutCrdtRelayMessage[];
 	requestSync: (requestId: string, vectorClock?: unknown) => void;
+	setDeliveryPaused: (paused: boolean) => void;
+	flushBufferedMessages: () => void;
 } => {
 	const listeners = new Set<(message: DktCrdtWireMessage) => void>();
 	const received: MiniCutCrdtRelayMessage[] = [];
+	const buffered: DktCrdtWireMessage[] = [];
+	let deliveryPaused = false;
+	const deliver = (message: DktCrdtWireMessage) => {
+		if (deliveryPaused) {
+			buffered.push(message);
+			return;
+		}
+		for (const listener of [...listeners]) {
+			listener(message);
+		}
+	};
 	const stop = options.relay.join({
 		roomId: options.roomId,
 		peerId: options.peerId,
@@ -69,10 +82,7 @@ export const createMiniCutRoomCrdtTransport = (
 			if (!payload) {
 				return;
 			}
-			const cloned = cloneWireMessage(payload);
-			for (const listener of [...listeners]) {
-				listener(cloned);
-			}
+			deliver(cloneWireMessage(payload));
 		},
 	});
 
@@ -107,8 +117,18 @@ export const createMiniCutRoomCrdtTransport = (
 				vectorClock,
 			});
 		},
+		setDeliveryPaused(paused) {
+			deliveryPaused = paused;
+		},
+		flushBufferedMessages() {
+			const pending = buffered.splice(0, buffered.length);
+			for (const message of pending) {
+				deliver(message);
+			}
+		},
 		close() {
 			listeners.clear();
+			buffered.splice(0, buffered.length);
 			stop();
 		},
 	};
