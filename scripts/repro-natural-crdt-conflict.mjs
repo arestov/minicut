@@ -14,8 +14,8 @@ const summarizeTransport = (pair) => ({
 	relayLog: pair.relay.getRoomSnapshot(roomId).log.map((packet) => ({
 		peerId: packet.peerId,
 		profileId: packet.profileId,
-		batchIds: (packet.payload?.batches ?? packet.batches ?? []).map((batch) => batch?.batch_id ?? null),
-		opCount: (packet.payload?.batches ?? packet.batches ?? []).reduce(
+		batchIds: packet.payload.batches.map((batch) => batch?.batch_id ?? null),
+		opCount: packet.payload.batches.reduce(
 			(sum, batch) => sum + (batch?.ops?.length ?? 0),
 			0,
 		),

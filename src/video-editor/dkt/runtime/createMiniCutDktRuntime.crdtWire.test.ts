@@ -58,7 +58,7 @@ const readRelayBatches = (
 ): unknown[] =>
 	pair.relay
 		.getRoomSnapshot(roomId)
-		.log.flatMap((packet) => packet.payload?.batches ?? packet.batches ?? []);
+		.log.flatMap((packet) => packet.payload.batches);
 
 describe("MiniCut CRDT browser-like wire batches", () => {
 	it("keeps graph batches JSON-serializable before browser-style receive", async () => {
