@@ -3,6 +3,9 @@ import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { describe, expect, it } from "vitest";
 import { bootDktModels, type DktTestContext } from "../testingInit";
 import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
+import { createInMemoryCrdtRelay } from "./createInMemoryCrdtRelay";
+import { createMiniCutRoomCrdtTransport } from "./createMiniCutRoomCrdtTransport";
+import type { DktCrdtTransport } from "./testRelayContracts";
 
 type Model = DktTestContext["sessionRoot"];
 
@@ -42,6 +45,7 @@ const createProjectWithClip = async (ctx: DktTestContext) => {
 const reinitContext = async (
 	ctx: DktTestContext,
 	peerId: string,
+	transport: DktCrdtTransport | null = null,
 ): Promise<DktTestContext> => {
 	const dktStorage = ctx.storagePackage?.dktStorage as {
 		getSnapshot?: () => Promise<unknown>;
@@ -54,9 +58,25 @@ const reinitContext = async (
 			enabled: true,
 			peerId,
 			storage: ctx.storagePackage ?? "memory",
-			transport: null,
+			transport,
 		},
 	});
+};
+
+const waitForAttr = async (
+	ctx: DktTestContext,
+	model: Model,
+	attrName: string,
+	expected: unknown,
+) => {
+	const deadline = Date.now() + 2_000;
+	let current = ctx.getAttr(model, attrName);
+	while (current !== expected && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		await ctx.computed();
+		current = ctx.getAttr(model, attrName);
+	}
+	expect(current).toBe(expected);
 };
 
 const findModel = (ctx: DktTestContext, id: string): Model => {
@@ -119,23 +139,30 @@ describe("MiniCut CRDT durable reinit", () => {
 	});
 
 	it("applies a remote op after reinit using restored model state", async () => {
-		const source = await bootDktModels({
-			crdt: {
-				enabled: true,
-				peerId: "durable-reinit-source",
-				storage: "memory",
-				transport: null,
-			},
+		const relay = createInMemoryCrdtRelay();
+		const targetTransport = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "durable-reinit-transport",
+			peerId: "durable-reinit-target",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
 		});
 		const target = await bootDktModels({
 			crdt: {
 				enabled: true,
 				peerId: "durable-reinit-target",
 				storage: createIndexedDbStorage(),
-				transport: null,
+				transport: targetTransport,
 			},
 		});
 		const { project: targetProject } = await createProjectWithClip(target);
+		const sourceTransport = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "durable-reinit-transport",
+			peerId: "durable-reinit-source",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
 		const targetSnapshot = await (
 			target.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
 		)?.getSnapshot?.();
@@ -146,39 +173,39 @@ describe("MiniCut CRDT durable reinit", () => {
 				enabled: true,
 				peerId: "durable-reinit-source",
 				storage: "memory",
-				transport: null,
+				transport: sourceTransport,
 			},
 		});
 		const sourceProject = findModel(sourceFromTarget, String(targetProject._node_id));
-
-		await sourceFromTarget.lockToRead(async () => {
-			await sourceProject.dispatch("renameProject", "Remote after restart");
+		const restartedTargetTransport = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "durable-reinit-transport",
+			peerId: "durable-reinit-target-restarted",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
 		});
-		const batches = drainCrdtOutboxBatches(sourceFromTarget.runtime);
-		drainCrdtOutbox(sourceFromTarget.runtime);
 		const restartedTarget = await reinitContext(
 			target,
-			"durable-reinit-target",
+			"durable-reinit-target-restarted",
+			restartedTargetTransport,
 		);
 		const restoredTargetProject = findModel(
 			restartedTarget,
 			String(targetProject._node_id),
 		);
 
-		for (const batch of batches) {
-			await restartedTarget.runtime.crdt_runtime?.receiveCanonicalBatch?.(
-				restoredTargetProject,
-				batch,
-			);
-		}
-		await restartedTarget.computed();
-
-		expect(restartedTarget.getAttr(restoredTargetProject, "title")).toBe(
+		await sourceFromTarget.lockToRead(async () => {
+			await sourceProject.dispatch("renameProject", "Remote after restart");
+		});
+		await waitForAttr(
+			restartedTarget,
+			restoredTargetProject,
+			"title",
 			"Remote after restart",
 		);
 
+		await target.close();
 		await restartedTarget.close();
 		await sourceFromTarget.close();
-		await source.close();
 	});
 });
