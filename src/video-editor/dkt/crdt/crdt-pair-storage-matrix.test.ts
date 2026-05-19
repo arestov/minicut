@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { queryAddr } from "dkt/async/queryAddr.js";
 import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { bootDktModels, type DktTestContext } from "../testingInit";
-import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions";
 import { createMiniCutCrdtStorageProfiles } from "../test/crdtStorageMatrix";
 import type { MiniCutDktCrdtStorageOptions } from "../testingInit";
 import type { MiniCutCrdtStorageProfile } from "../test/crdtStorageMatrix";
+import { createInMemoryCrdtRelay } from "./createInMemoryCrdtRelay";
+import { createMiniCutRoomCrdtTransport } from "./createMiniCutRoomCrdtTransport";
+import type { DktCrdtTransport } from "./testRelayContracts";
 
 type Model = DktTestContext["sessionRoot"];
 
@@ -75,6 +77,7 @@ const createPeer = async (
 	options: {
 		snapshot?: unknown;
 		storage?: MiniCutDktCrdtStorageOptions;
+		transport: DktCrdtTransport;
 	} = {},
 ) => {
 	const ctx = await bootDktModels({
@@ -83,7 +86,7 @@ const createPeer = async (
 			enabled: true,
 			peerId,
 			storage: options.storage ?? storageForPeer(profile, peerId),
-			transport: null,
+			transport: options.transport,
 		},
 		unloadModels: false,
 	});
@@ -114,40 +117,7 @@ const createPeer = async (
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected project");
 	const videoTrack = await findVideoTrack(ctx, project);
-	drainCrdtOutbox(ctx.runtime);
 	return { ctx, project, videoTrack };
-};
-
-const seedBaselineOps = async (ctx: DktTestContext, ops: unknown[]) => {
-	if (ops.length === 0) return;
-	const crdtStorage = ctx.storagePackage?.crdtStorage as {
-		appendOps?: (ops: unknown[]) => void;
-		markApplied?: (opIds: string[]) => void;
-		commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
-	} | undefined;
-	crdtStorage?.appendOps?.(ops);
-	crdtStorage?.markApplied?.(
-		ops
-			.map((op) => (op as { op_id?: unknown } | null)?.op_id)
-			.filter((id): id is string => typeof id === "string"),
-	);
-	await crdtStorage?.commitChanges?.({ reason: "minicut-storage-matrix-baseline" });
-};
-
-const seedBaselineBatches = async (ctx: DktTestContext, batches: unknown[]) => {
-	if (batches.length === 0) return;
-	const crdtStorage = ctx.storagePackage?.crdtStorage as {
-		appendBatches?: (batches: unknown[]) => void;
-		markBatchesApplied?: (batchIds: string[]) => void;
-		commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
-	} | undefined;
-	crdtStorage?.appendBatches?.(batches);
-	crdtStorage?.markBatchesApplied?.(
-		batches
-			.map((batch) => (batch as { batch_id?: unknown } | null)?.batch_id)
-			.filter((id): id is string => typeof id === "string"),
-	);
-	await crdtStorage?.commitChanges?.({ reason: "minicut-storage-matrix-baseline" });
 };
 
 const seedDktSnapshot = async (ctx: DktTestContext, snapshot: unknown) => {
@@ -238,23 +208,59 @@ const addClip = async (ctx: DktTestContext, videoTrack: Model) => {
 	return clip;
 };
 
+const flushTransportOutbox = (ctx: DktTestContext) => {
+	(ctx.runtime.crdt_runtime as { flushTransportOutbox?: () => unknown } | null)
+		?.flushTransportOutbox?.();
+};
+
+const waitForAttr = async (
+	ctx: DktTestContext,
+	model: Model,
+	attrName: string,
+	expected: unknown,
+) => {
+	const deadline = Date.now() + 2_000;
+	let current = await ctx.queryAttr(model, attrName);
+	while (current !== expected && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		await ctx.computed();
+		current = await ctx.queryAttr(model, attrName);
+	}
+	expect(current).toBe(expected);
+};
+
 describe("MiniCut CRDT pair storage matrix", () => {
 	for (const profile of createMiniCutCrdtStorageProfiles()) {
 		it(`applies mapped timing edits with ${profile.name}`, async () => {
-			const a = await createPeer("A", profile);
+			const relay = createInMemoryCrdtRelay();
+			const roomId = `storage-matrix-${profile.name}`;
+			const transportA = createMiniCutRoomCrdtTransport({
+				relay,
+				roomId,
+				peerId: "A",
+				profileId: "minicut-crdt-v1",
+				profileVersion: 1,
+			});
+			const a = await createPeer("A", profile, { transport: transportA });
 			const clipA = await addClip(a.ctx, a.videoTrack);
-			const baselineBatches = drainCrdtOutboxBatches(a.ctx.runtime);
-			const baselineOps = drainCrdtOutbox(a.ctx.runtime);
+			flushTransportOutbox(a.ctx);
 			const bStorage = storageForPeer(profile, "B");
 			const snapshot = await toReinitableData(a.ctx.runtime);
+			const transportB = createMiniCutRoomCrdtTransport({
+				relay,
+				roomId,
+				peerId: "B",
+				profileId: "minicut-crdt-v1",
+				profileVersion: 1,
+			});
 			const b = await createPeer("B", profile, {
 				snapshot,
 				storage: bStorage,
+				transport: transportB,
 			});
 			await seedDktSnapshot(b.ctx, snapshot);
-			await seedBaselineBatches(b.ctx, baselineBatches);
-			await seedBaselineOps(b.ctx, baselineOps);
 			await b.ctx.runtime.crdt_runtime?.restoreFromStorage?.();
+			await b.ctx.computed();
 			let clipB = (await b.ctx.queryRel(b.videoTrack, "clips"))[0];
 			if (!clipB) throw new Error("Expected synced clip");
 			if (profile.unloadModels) {
@@ -270,19 +276,17 @@ describe("MiniCut CRDT pair storage matrix", () => {
 				if (!clipB) throw new Error("Expected lazy synced clip");
 			}
 
+			transportB.setDeliveryPaused(true);
 			await a.ctx.lockToRead(async () => {
 				await clipA.dispatch("trim", { edge: "start", delta: 1 });
 			});
-			const batches = drainCrdtOutboxBatches(a.ctx.runtime);
-			drainCrdtOutbox(a.ctx.runtime);
-			for (const batch of batches) {
-				await b.ctx.runtime.crdt_runtime?.receiveCanonicalBatch?.(clipB, batch);
-			}
-			await b.ctx.computed();
+			flushTransportOutbox(a.ctx);
+			transportB.setDeliveryPaused(false);
+			transportB.flushBufferedMessages();
 
-			await expect(b.ctx.queryAttr(clipB, "start")).resolves.toBe(1);
-			await expect(b.ctx.queryAttr(clipB, "in")).resolves.toBe(1);
-			await expect(b.ctx.queryAttr(clipB, "duration")).resolves.toBe(3);
+			await waitForAttr(b.ctx, clipB, "start", 1);
+			await waitForAttr(b.ctx, clipB, "in", 1);
+			await waitForAttr(b.ctx, clipB, "duration", 3);
 			await a.ctx.close();
 			await b.ctx.close();
 		});
