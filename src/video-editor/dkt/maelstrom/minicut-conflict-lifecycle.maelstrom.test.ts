@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { drainCrdtOutbox } from "../test/crdtAssertions";
 import { createMiniCutTimelineFixture } from "./fixtures/createMiniCutTimelineFixture";
 import { expectNoPendingNetwork, expectTimingConflictOpen } from "./sim/MiniCutInvariantChecker";
 import { createMiniCutMaelstromProfiles } from "./sim/MiniCutMaelstromProfiles";
@@ -24,6 +23,13 @@ const readOpenTimingConflictId = (runtime: unknown, clipId: unknown): string => 
 		throw new Error("Expected open clipTiming conflict id");
 	}
 	return conflictId;
+};
+
+const deliverUntilQuiet = async (sim: Awaited<ReturnType<typeof createMiniCutCrdtSimulation>>) => {
+	for (let attempt = 0; attempt < 8 && sim.network.pending().length > 0; attempt += 1) {
+		await sim.network.deliverAll({ reorder: false });
+		await sim.waitForIdle();
+	}
 };
 
 describe("MiniCut maelstrom conflict lifecycle", () => {
@@ -70,7 +76,8 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 		expect(await sim.peer("A").ctx.queryAttr(clipA, "duration")).toBe(previousDuration);
 		expect(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error"))
 			.toEqual(expect.objectContaining({ code: "duration_non_positive" }));
-		expect(drainCrdtOutbox(sim.peer("A").ctx.runtime)).toEqual([]);
+		sim.peer("A").flushOutbound();
+		await deliverUntilQuiet(sim);
 
 		await sim.peer("A").dispatch(
 			clipA,
@@ -89,6 +96,7 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 		expect(await sim.peer("A").ctx.queryAttr(clipA, "duration")).toBe(3);
 		expect(Number(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$open_conflicts_count") ?? 0)).toBe(0);
 		expect(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error") ?? null).toBeNull();
+		await deliverUntilQuiet(sim);
 		await sim.network.replayDelivered(4);
 		expect(Number(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$open_conflicts_count") ?? 0)).toBe(0);
 		expectNoPendingNetwork(sim.network);

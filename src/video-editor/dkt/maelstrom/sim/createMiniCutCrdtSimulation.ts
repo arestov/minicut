@@ -1,8 +1,6 @@
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { queryAddr } from "dkt/async/queryAddr.js";
 import { toReinitableData } from "dkt/runtime/app/reinit.js";
-import { sanitizeStorageValue } from "../../crdt/sanitizeStoragePackage";
-import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../../test/crdtAssertions";
 import { waitForRuntimeIdle } from "../../test/waitForRuntimeIdle";
 import {
 	bootDktModels,
@@ -11,6 +9,7 @@ import {
 } from "../../testingInit";
 import { createMiniCutHarnessWorkspaceId } from "../../storage/minicutWorkspaceManifest";
 import { DeterministicMiniCutNetwork, type MiniCutNetworkMessage, type MiniCutPeerId } from "./DeterministicMiniCutNetwork";
+import type { DktCrdtTransport, DktCrdtWireMessage } from "../../crdt/testRelayContracts";
 
 type RuntimeModel = DktTestContext["sessionRoot"];
 
@@ -42,94 +41,42 @@ export type MiniCutConflictSummary = {
 const PROFILE_ID = "minicut-crdt-v1";
 const PROFILE_VERSION = 1;
 
-const findModel = (ctx: DktTestContext, nodeId: string): RuntimeModel => {
-	if (String(ctx.appModel._node_id) === nodeId) return ctx.appModel;
-	const runtimeModel = (ctx.runtime as { models?: Record<string, RuntimeModel> }).models?.[nodeId];
-	if (runtimeModel) return runtimeModel;
-	const sessionModel = getModelById(ctx.sessionRoot, nodeId) as RuntimeModel | null;
-	if (!sessionModel) {
-		throw new Error(`MiniCut maelstrom model was not found: ${nodeId}`);
-	}
-	return sessionModel;
-};
+const cloneWireMessage = (message: DktCrdtWireMessage): DktCrdtWireMessage =>
+	JSON.parse(JSON.stringify(message)) as DktCrdtWireMessage;
 
-const receiveNetworkMessage = async (
-	ctx: DktTestContext,
-	message: MiniCutNetworkMessage,
-) => {
-	await waitForRuntimeIdle(ctx);
-	const batches = message.packet.batches ?? [];
-	if (batches.length > 0) {
-		for (const batch of batches) {
-			const receiver =
-				ctx.runtime.crdt_runtime?.testing?.receiveFromNetwork ??
-				ctx.runtime.crdt_runtime?.receiveCanonicalBatch;
-			await receiver?.(ctx.appModel, cloneBatch(batch));
-			await ctx.storagePackage?.commitChanges?.({
-				reason: `minicut-maelstrom-receive:${
-					(batch as { batch_id?: unknown } | null)?.batch_id ?? "batch"
-				}`,
-			});
+const createNetworkTransport = (
+	id: MiniCutPeerId,
+	network: DeterministicMiniCutNetwork,
+	getContext: () => DktTestContext | null,
+): DktCrdtTransport => {
+	const listeners = new Set<(message: DktCrdtWireMessage) => void>();
+	network.registerPeer(id, async (message: MiniCutNetworkMessage) => {
+		for (const listener of [...listeners]) {
+			await Promise.resolve(listener(cloneWireMessage(message.packet.payload)));
+		}
+		const ctx = getContext();
+		if (ctx) {
 			await waitForRuntimeIdle(ctx);
 		}
-		return;
-	}
-	const pending = [...(message.packet.ops ?? [])];
-	if (pending.length > 0) {
-		throw new Error("MiniCut maelstrom delivery requires graph batches");
-	}
-	while (pending.length > 0) {
-		const nextPending = [];
-		let applied = 0;
-		const opsByNode = new Map<string, unknown[]>();
-		for (const op of pending) {
-			const nodeId = (op as { node_id?: unknown } | null)?.node_id;
-			if (typeof nodeId !== "string" || !nodeId) {
-				throw new Error("MiniCut maelstrom received op without node_id");
-			}
-			try {
-				findModel(ctx, nodeId);
-			} catch {
-				nextPending.push(op);
-				continue;
-			}
-			const ops = opsByNode.get(nodeId) ?? [];
-			ops.push(op);
-			opsByNode.set(nodeId, ops);
-		}
-		for (const [nodeId, ops] of opsByNode) {
-			await ctx.runtime.crdt_runtime?.receiveCanonicalOps?.(findModel(ctx, nodeId), ops);
-			applied += ops.length;
-		}
-		if (nextPending.length === 0) {
-			break;
-		}
-		if (applied === 0) {
-			const ids = nextPending
-				.map((op) => (op as { node_id?: unknown } | null)?.node_id)
-				.filter(Boolean)
-				.join(", ");
-			throw new Error(`MiniCut maelstrom could not materialize incoming CRDT nodes: ${ids}`);
-		}
-		pending.splice(0, pending.length, ...nextPending);
-	}
-	await ctx.storagePackage?.commitChanges?.({
-		reason: "minicut-maelstrom-receive",
 	});
-	await waitForRuntimeIdle(ctx);
-};
-
-const cloneBatch = (batch: unknown): unknown => {
-	if (!batch || typeof batch !== "object") return batch;
 	return {
-		...(batch as Record<string, unknown>),
-		created_models: [
-			...((batch as { created_models?: unknown[] }).created_models ?? []),
-		],
-		tombstones: [...((batch as { tombstones?: unknown[] }).tombstones ?? [])],
-		ops: ((batch as { ops?: unknown[] }).ops ?? []).map((op) =>
-			op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
-		),
+		send(message) {
+			network.enqueue(id, {
+				profileId: PROFILE_ID,
+				profileVersion: PROFILE_VERSION,
+				peerId: id,
+				payload: cloneWireMessage(message),
+			});
+		},
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
+		close() {
+			listeners.clear();
+		},
 	};
 };
 
@@ -353,108 +300,6 @@ const enableUnloadNow = async (ctx: DktTestContext, enabled: boolean) => {
 	await waitForRuntimeIdle(ctx);
 };
 
-const seedBaselineOps = async (
-	storagePackage: DktTestContext["storagePackage"],
-	ops: unknown[],
-) => {
-	if (!storagePackage || ops.length === 0) return;
-	const crdtStorage = storagePackage.crdtStorage as {
-		appendBatches?: (batches: unknown[]) => void;
-		markBatchesApplied?: (batchIds: string[]) => void;
-		commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
-	};
-	const batch = {
-		schema_version: 1,
-		batch_id: `baseline:${ops
-			.map((op) => (op as { op_id?: unknown } | null)?.op_id)
-			.filter(Boolean)
-			.join(":")}`,
-		origin_peer_id: "baseline",
-		runtime_transaction_id: null,
-		intent: null,
-		clock: (ops.at(-1) as { clock?: unknown } | null)?.clock ?? null,
-		created_models: [],
-		tombstones: [],
-		ops: ops.map((op) =>
-			op && typeof op === "object" ? { ...(op as Record<string, unknown>) } : op,
-		),
-	};
-	crdtStorage.appendBatches?.([batch]);
-	crdtStorage.markBatchesApplied?.([batch.batch_id]);
-	await crdtStorage.commitChanges?.({ reason: "minicut-maelstrom-baseline" });
-};
-
-const isRuntimeModel = (value: unknown): value is RuntimeModel =>
-	Boolean(value && typeof value === "object" && "_node_id" in value);
-
-const baselineClock = (counter: number) => ({
-	wall_time: 1,
-	counter,
-	peer_id: "baseline",
-});
-
-const synthesizeMissingAttrBaselineOps = async (
-	peer: MiniCutPeer,
-): Promise<unknown[]> => {
-	const engine = peer.ctx.runtime.crdt_runtime as
-		| {
-				sidecar_state?: {
-					read?: (nodeId: string, fieldId: string) => unknown;
-				};
-		  }
-		| undefined;
-	const models = Object.values(
-		(peer.ctx.runtime as { models?: Record<string, RuntimeModel> }).models ?? {},
-	).filter(isRuntimeModel);
-	const ops: unknown[] = [];
-	let counter = 0;
-	for (const model of models) {
-		const nodeId = String(model._node_id ?? "");
-		if (!nodeId) continue;
-		const meta = model.constructor?.prototype?.__crdt_meta as
-			| {
-					enabled_fields?: Array<{
-						field_id?: string;
-						kind?: string;
-						model_name?: string;
-						name?: string;
-					}>;
-			  }
-			| undefined;
-		for (const field of meta?.enabled_fields ?? []) {
-			if (field.kind !== "attr") continue;
-			const fieldId = field.field_id;
-			const name = field.name;
-			if (!fieldId || !name) continue;
-			if (engine?.sidecar_state?.read?.(nodeId, fieldId)) continue;
-			const value = sanitizeStorageValue(await peer.ctx.queryAttr(model, name));
-			if (value == null) continue;
-			counter += 1;
-			ops.push({
-				op_id: `baseline:${peer.id}:${nodeId}:${fieldId}`,
-				origin: "baseline",
-				peer_id: peer.id,
-				clock: baselineClock(counter),
-				node_id: nodeId,
-				model_name: field.model_name ?? model.model_name,
-				field_id: fieldId,
-				kind: "attr",
-				name,
-				operation: "set",
-				value,
-			});
-		}
-	}
-	if (ops.length > 0) {
-		await seedBaselineOps(peer.ctx.storagePackage, ops);
-		await peer.ctx.runtime.crdt_runtime?.restoreFromStorage?.();
-		drainCrdtOutboxBatches(peer.ctx.runtime);
-		drainCrdtOutbox(peer.ctx.runtime);
-		await waitForRuntimeIdle(peer.ctx);
-	}
-	return ops;
-};
-
 const readDurableOrLiveSnapshot = async (
 	ctx: DktTestContext,
 	options: SimulationOptions,
@@ -471,7 +316,6 @@ const readDurableOrLiveSnapshot = async (
 const wrapPeer = async (
 	id: MiniCutPeerId,
 	ctx: DktTestContext,
-	network: DeterministicMiniCutNetwork,
 ): Promise<MiniCutPeer> => {
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected active project");
@@ -500,8 +344,6 @@ const wrapPeer = async (
 		})}`);
 	}
 
-	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
-
 	return {
 		id,
 		ctx,
@@ -514,18 +356,8 @@ const wrapPeer = async (
 			});
 		},
 		flushOutbound() {
-			const batches = drainCrdtOutboxBatches(ctx.runtime);
-			const ops = drainCrdtOutbox(ctx.runtime);
-			if (batches.length > 0) {
-				network.enqueue(id, {
-					profileId: PROFILE_ID,
-					profileVersion: PROFILE_VERSION,
-					peerId: id,
-					batches,
-				});
-			} else if (ops.length > 0) {
-				throw new Error("MiniCut maelstrom outbound requires graph batches");
-			}
+			(ctx.runtime.crdt_runtime as { flushTransportOutbox?: () => unknown } | null)
+				?.flushTransportOutbox?.();
 		},
 		async readProjectTitle() {
 			return ctx.queryAttr(project, "title");
@@ -555,6 +387,7 @@ const createPeer = async (
 	storagePackage?: MiniCutDktCrdtStorageOptions,
 	preferredProjectId?: string,
 ): Promise<DktTestContext> => {
+	let activeContext: DktTestContext | null = null;
 	const ctx = await bootDktModels({
 		aggregateValidation: "error",
 		unloadModels: false,
@@ -566,9 +399,10 @@ const createPeer = async (
 			profileVersion: PROFILE_VERSION,
 			storage: storagePackage ?? resolveStorage(options, id),
 			workspaceId: resolveWorkspaceId(options, id),
-			transport: null,
+			transport: createNetworkTransport(id, network, () => activeContext),
 		},
 	});
+	activeContext = ctx;
 	if (snapshot) {
 		await seedGraphStorageFromSnapshot(
 			ctx,
@@ -606,9 +440,6 @@ const createPeer = async (
 			? "minicut-maelstrom-bootstrap-snapshot"
 			: "minicut-maelstrom-bootstrap",
 	});
-	drainCrdtOutboxBatches(ctx.runtime);
-	drainCrdtOutbox(ctx.runtime);
-	network.registerPeer(id, (message) => receiveNetworkMessage(ctx, message));
 	return ctx;
 };
 
@@ -628,8 +459,8 @@ const createProjectOnPrimary = async (
 		});
 	});
 	await waitForRuntimeIdle(primary);
-	drainCrdtOutboxBatches(primary.runtime);
-	drainCrdtOutbox(primary.runtime);
+	(primary.runtime.crdt_runtime as { flushTransportOutbox?: () => unknown } | null)
+		?.flushTransportOutbox?.();
 	const project = (await primary.queryRel(primary.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected primary project after bootstrap");
 };
@@ -661,7 +492,7 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 		));
 	}
 	for (const [id, ctx] of contexts) {
-		peers.set(id, await wrapPeer(id, ctx, network));
+		peers.set(id, await wrapPeer(id, ctx));
 		await enableUnloadNow(ctx, options.unloadModels === true);
 	}
 
@@ -683,9 +514,6 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 			await source.ctx.storagePackage?.commitChanges?.({
 				reason: "minicut-maelstrom-sync-source",
 			});
-			const baselineBatches = drainCrdtOutboxBatches(source.ctx.runtime);
-			const baselineOps = drainCrdtOutbox(source.ctx.runtime);
-			const syntheticBaselineOps = await synthesizeMissingAttrBaselineOps(source);
 			const snapshot = await readDurableOrLiveSnapshot(source.ctx, options);
 			if (!snapshot) throw new Error(`MiniCut maelstrom peer ${sourceId} has no snapshot`);
 			const ids = targetIds ?? [...peers.keys()].filter((id) => id !== sourceId);
@@ -702,19 +530,15 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 					storagePackage,
 					String(source.project._node_id),
 				);
-				await seedBaselineOps(ctx.storagePackage, [
-					...baselineOps,
-					...syntheticBaselineOps,
-				]);
-				for (const batch of baselineBatches) {
-					await ctx.runtime.crdt_runtime?.receiveCanonicalBatch?.(ctx.appModel, batch);
-				}
 				await ctx.runtime.crdt_runtime?.restoreFromStorage?.();
-				const synced = await wrapPeer(id, ctx, network);
+				const synced = await wrapPeer(id, ctx);
 				peers.set(id, synced);
 				snapshots.set(id, targetSnapshot);
 				await enableUnloadNow(ctx, options.unloadModels === true);
 			}
+			source.flushOutbound();
+			await network.deliverAll({ reorder: false });
+			await Promise.all([...peers.values()].map((peer) => waitForRuntimeIdle(peer.ctx)));
 		},
 		async reinitPeer(id: MiniCutPeerId) {
 			const current = peers.get(id);
@@ -724,34 +548,15 @@ export const createMiniCutCrdtSimulation = async (options: SimulationOptions) =>
 			// Keep the durable storage package open: this simulates an app/runtime
 			// restart over the same store handle. Closing the package would close
 			// IndexedDB/LevelDB itself, making the reused test storage invalid.
-			const ctx = await bootDktModels({
-				aggregateValidation: "error",
-				unloadModels: false,
-				reinitFromSnapshot: snapshot,
-				crdt: {
-					enabled: true,
-					peerId: id,
-					profileId: PROFILE_ID,
-					profileVersion: PROFILE_VERSION,
-					storage: current.ctx.storagePackage ?? resolveStorage(options, id),
-					workspaceId: resolveWorkspaceId(options, id),
-					transport: null,
-				},
-			});
-			await seedGraphStorageFromSnapshot(
-				ctx,
+			const ctx = await createPeer(
+				id,
+				network,
+				options,
 				snapshot,
-				"minicut-maelstrom-reinit-seed-snapshot",
+				current.ctx.storagePackage ?? resolveStorage(options, id),
+				String(current.project._node_id),
 			);
-			await ctx.lockToRead(async () => {
-				const project =
-					await findPeerProjectById(ctx, String(current.project._node_id)) ??
-					getModelById(ctx.appModel, String(current.project._node_id));
-				if (project) {
-					await ctx.sessionRoot.dispatch("syncActiveProjectRel", { project });
-				}
-			});
-			const restarted = await wrapPeer(id, ctx, network);
+			const restarted = await wrapPeer(id, ctx);
 			peers.set(id, restarted);
 			snapshots.set(id, snapshot);
 			await enableUnloadNow(ctx, options.unloadModels === true);

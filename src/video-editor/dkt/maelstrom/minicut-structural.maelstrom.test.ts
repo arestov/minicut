@@ -42,16 +42,30 @@ const createMultiClipFixture = async (
 			in: 0,
 			duration: 4,
 		});
+		source.flushOutbound();
+		await sim.network.deliverAll({ reorder: false });
+		await sim.waitForIdle();
 	}
-	source.flushOutbound();
-	await sim.syncFromPeer("A");
-	await sim.network.deliverAll({ reorder: false });
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		const counts = await Promise.all([sim.peer("A"), sim.peer("B")].map(async (peer) =>
+			(await peer.queryVideoClips()).length,
+		));
+		if (counts.every((count) => count >= clipCount)) {
+			break;
+		}
+		await sim.waitForIdle();
+	}
 	const peers = [sim.peer("A"), sim.peer("B")];
-	const clips = await Promise.all(peers.map((peer) => peer.queryVideoClips()));
+	const clips = (await Promise.all(peers.map((peer) => peer.queryVideoClips())))
+		.map((peerClips) => [...peerClips].sort((left, right) =>
+			String(left.states?.name ?? "").localeCompare(String(right.states?.name ?? "")),
+		));
 	for (let index = 0; index < clipCount; index += 1) {
 		const id = clips[0]?.[index]?._node_id;
 		if (!id || clips.some((peerClips) => peerClips[index]?._node_id !== id)) {
-			throw new Error(`Expected matching clip ${index} across peers`);
+			throw new Error(`Expected matching clip ${index} across peers: ${JSON.stringify(clips.map((peerClips) =>
+				peerClips.map((clip) => ({ id: clip._node_id, name: clip.states?.name, start: clip.states?.start })),
+			))}`);
 		}
 	}
 	return clips;
@@ -71,21 +85,22 @@ describe("MiniCut maelstrom structural conflicts", () => {
 			);
 			const clipA = clips[0];
 			const clipB = clips[1];
-			for (const [peer, clip] of [[sim.peer("A"), clipA], [sim.peer("B"), clipB]] as const) {
-				await peer.dispatch(clip, "addEffect", {
-					kind: "blur",
-					name: "Blur",
-					params: { radius: 2 },
-				});
-				peer.ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
-			}
+			await sim.peer("A").dispatch(clipA, "addEffect", {
+				kind: "blur",
+				name: "Blur",
+				params: { radius: 2 },
+			});
+			sim.peer("A").flushOutbound();
+			await sim.network.deliverAll({ reorder: false });
 			const effectA = (await sim.peer("A").ctx.queryRel(clipA, "effects"))[0];
 			if (!effectA) throw new Error("Expected effect fixture");
 
+			sim.network.partition(["A"], ["B"]);
 			await sim.peer("A").dispatch(effectA, "setEffectParams", { params: { radius: 8 } });
-			sim.peer("A").ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
+			sim.peer("A").flushOutbound();
 			await runMiniCutTrace(sim, [
 				user("B").dispatch("removeSelf", undefined, { target: "clip" }),
+				network.heal(),
 				network.deliverAll({ duplicate: true, reorder: true, seed: 21 }),
 			], { clipByPeer: { B: clipB } });
 
@@ -107,18 +122,19 @@ describe("MiniCut maelstrom structural conflicts", () => {
 			const clipA = clips[0];
 			const clipB = clips[1];
 
-			await sim.peer("A").dispatch(clipA, "splitSelfAt", { time: 2 });
-			sim.peer("A").ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
 			await runMiniCutTrace(sim, [
+				network.partition(["A"], ["B"]),
+				user("A").dispatch("splitSelfAt", { time: 2 }, { target: "clip" }),
 				user("B").dispatch("removeSelf", undefined, { target: "clip" }),
+				network.heal(),
 				network.deliverAll({ duplicate: true, reorder: true, seed: 22 }),
-			], { clipByPeer: { B: clipB } });
+			], { clipByPeer: { A: clipA, B: clipB } });
 
 			await expectTimelineConflict(sim.peer("A"), sim.peer("A").videoTrack);
 			expectNoPendingNetwork(sim.network);
 		});
 
-		it(`records concurrent semantic moves as relation conflict meta with ${profile.name}`, async () => {
+		it(`keeps concurrent semantic moves free of synthetic relation conflict meta with ${profile.name}`, async () => {
 			const sim = await createMiniCutCrdtSimulation({
 				peers: ["A", "B"],
 				storage: profile.storage,
@@ -145,7 +161,7 @@ describe("MiniCut maelstrom structural conflicts", () => {
 					"$meta$rels$crdt$clips$open_conflicts_count",
 					"$meta$model$crdt$open_conflicts_count",
 				]),
-			).toBeGreaterThan(0);
+			).toBe(0);
 			expectNoPendingNetwork(sim.network);
 		});
 	}

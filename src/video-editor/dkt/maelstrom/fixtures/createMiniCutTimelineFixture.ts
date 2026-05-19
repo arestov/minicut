@@ -31,9 +31,6 @@ export const createMiniCutTimelineFixture = async (
 				duration: 4,
 			});
 		}
-		for (const peer of peers) {
-			peer.ctx.runtime.crdt_runtime?.testing?.drainOutbox?.();
-		}
 	}
 	const livePeers = peers.map((peer) => options?.getPeer?.(peer.id) ?? peer);
 	const clips = await Promise.all(livePeers.map((peer) => peer.queryVideoClips()));
