@@ -660,6 +660,7 @@ export const reduceMoveClipToTrackPayload = (payload: unknown) => payload;
 export const reduceAddResourceToTimeline = (
 	_payload: unknown,
 	noop: unknown,
+	project: unknown,
 	resource: unknown,
 	videoTrack: unknown,
 	audioTrack: unknown,
@@ -687,7 +688,7 @@ export const reduceAddResourceToTimeline = (
 	const result = {
 		clip: {
 			attrs: createTimelineClipAttrs(resolvedResource, {}, start),
-			rels: { track: targetTrack, resource: resolvedResource },
+			rels: { track: targetTrack, resource: resolvedResource, project },
 			hold_ref_id: "timelineClip",
 		},
 	};
@@ -708,7 +709,7 @@ export const reduceAddResourceToTimeline = (
 				{ name: "Embedded audio", mediaKind: "audio" },
 				start,
 			),
-			rels: { track: audioTrack, resource: resolvedResource },
+			rels: { track: audioTrack, resource: resolvedResource, project },
 			hold_ref_id: "timelineEmbeddedAudioClip",
 		},
 		videoClips: { use_ref_id: "timelineClip" },
@@ -746,4 +747,7 @@ export const reduceAddEmbeddedAudio = (
 	);
 };
 
-export const reduceAddTextClipToVideoTrack = (payload: unknown) => payload;
+export const reduceAddTextClipToVideoTrack = (payload: unknown, project: unknown) => ({
+	...((payload && typeof payload === "object") ? payload as Record<string, unknown> : {}),
+	project,
+});

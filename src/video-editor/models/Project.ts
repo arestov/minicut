@@ -528,6 +528,7 @@ export const Project = model({
 				fn: [
 					[
 						"$noop",
+						"<<<<",
 						"<<<< $input_id",
 						"<< @one:primaryVideoTrack",
 						"<< @one:primaryAudioTrack",
@@ -564,7 +565,7 @@ export const Project = model({
 		addTextClipToVideoTrack: [
 			{
 				to: ["<< primaryVideoTrack", { action: "addTextClip", sub_flow: true }],
-				fn: reduceAddTextClipToVideoTrack,
+				fn: [["<<<<"] as const, reduceAddTextClipToVideoTrack],
 			},
 		],
 	},

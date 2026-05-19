@@ -839,6 +839,7 @@ export const CLIP_CREATION_SHAPE = {
 	rels: {
 		track: {},
 		resource: {},
+		project: {},
 		text: {},
 		effects: {},
 	},

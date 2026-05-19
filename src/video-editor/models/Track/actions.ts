@@ -165,10 +165,14 @@ export const reduceAddTextClip = (payload: unknown, self: unknown) => {
 	const value = payload as { text?: unknown } | null;
 	const clipAttrs = normalizeClipCreationAttrs(payload);
 	const textAttrs = normalizeTextCreationAttrs(value?.text);
+	const project =
+		value && typeof value === "object" && "project" in value
+			? (value as { project?: unknown }).project
+			: null;
 	return {
 		clip: {
 			attrs: { ...clipAttrs, mediaKind: "text" },
-			rels: { track: self, resource: null },
+			rels: { track: self, resource: null, project },
 			hold_ref_id: "newTextClip",
 		},
 		text: {
