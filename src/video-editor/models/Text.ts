@@ -21,7 +21,7 @@ export const Text = model({
 			box: "lww",
 		},
 		rels: {
-			clip: null,
+			clip: "lww",
 		},
 	},
 	attrs: {

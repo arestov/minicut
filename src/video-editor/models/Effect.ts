@@ -33,7 +33,7 @@ export const Effect = model({
 			color: ["mvr", { conflictMeta: true }],
 		},
 		rels: {
-			clip: null,
+			clip: "lww",
 			project: null,
 		},
 	},

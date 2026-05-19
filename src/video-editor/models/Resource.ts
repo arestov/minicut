@@ -52,7 +52,7 @@ export const Resource = model({
 			timelineAddRequest: null,
 		},
 		rels: {
-			project: null,
+			project: "lww",
 			clips: null,
 		},
 	},

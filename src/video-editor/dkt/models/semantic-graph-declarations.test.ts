@@ -369,7 +369,7 @@ describe("semantic graph declarations", () => {
 		expect(
 			getCrdtSection(Resource as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
-			project: null,
+			project: "lww",
 			clips: null,
 		});
 		expect(getCrdtBlock(EditorSessionRoot as unknown as Record<string, unknown>))

@@ -48,7 +48,7 @@ export const Track = model({
 		},
 		rels: {
 			clips: ["sequence", { conflictMeta: true }],
-			project: null,
+			project: "lww",
 		},
 	},
 	attrs: {
