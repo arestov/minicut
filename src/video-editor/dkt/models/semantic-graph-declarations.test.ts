@@ -96,13 +96,14 @@ const getCrdtSection = (
 	return value as Record<string, unknown>;
 };
 
-const expectV1CrdtShape = (model: Record<string, unknown>) => {
+const expectStrictCrdtShape = (model: Record<string, unknown>) => {
 	const block = getCrdtBlock(model);
 	expect(block).toBeTruthy();
+	expect(block).toHaveProperty("mode", "collaborative");
 	expect(block).toHaveProperty("attrs");
 	expect(block).toHaveProperty("rels");
 	for (const key of Object.keys(block ?? {})) {
-		expect(["attrs", "rels"]).toContain(key);
+		expect(["mode", "attrs", "rels"]).toContain(key);
 	}
 };
 
@@ -124,7 +125,7 @@ describe("semantic graph declarations", () => {
 
 		expect(
 			getAttrAggregate(Clip as unknown as Record<string, unknown>, "start"),
-		).toMatchObject({ name: "clipTiming", as: "start" });
+		).toMatchObject({ name: "clipTiming", as: "start", conflictAnchor: true });
 		expect(
 			getAttrAggregate(Clip as unknown as Record<string, unknown>, "in"),
 		).toMatchObject({ name: "clipTiming", as: "inPoint" });
@@ -183,7 +184,7 @@ describe("semantic graph declarations", () => {
 			role: "owner",
 			ownership: "multi",
 			inverseRel: "project",
-			aggregate: { name: "projectTracks", role: "primary", as: "tracks" },
+			aggregate: { name: "projectTracks", role: "primary", as: "tracks", conflictAnchor: true },
 		});
 		expect(
 			getRelOptions(Track as unknown as Record<string, unknown>, "project"),
@@ -203,6 +204,7 @@ describe("semantic graph declarations", () => {
 				name: "resourceLifecycle",
 				role: "primary",
 				as: "resources",
+				conflictAnchor: true,
 			},
 		});
 		expect(
@@ -287,7 +289,7 @@ describe("semantic graph declarations", () => {
 		).toMatchObject({ name: "importPipeline", as: "timelineAddRequest" });
 		expect(
 			getAttrAggregate(Effect as unknown as Record<string, unknown>, "params"),
-		).toMatchObject({ name: "effectParams", as: "params" });
+		).toMatchObject({ name: "effectParams", as: "params", conflictAnchor: true });
 		expect(
 			getRelOptions(Effect as unknown as Record<string, unknown>, "clip"),
 		).toMatchObject({
@@ -296,12 +298,12 @@ describe("semantic graph declarations", () => {
 		});
 	});
 
-	it("exports CRDT declarations in V1 attrs/rels shape", () => {
+	it("exports CRDT declarations in strict collaborative attrs/rels shape", () => {
 		for (const model of [Project, Track, Clip, Resource, Text, Effect]) {
-			expectV1CrdtShape(model as unknown as Record<string, unknown>);
+			expectStrictCrdtShape(model as unknown as Record<string, unknown>);
 		}
 		expect(getCrdtBlock(EditorSessionRoot as unknown as Record<string, unknown>))
-			.toBeUndefined();
+			.toMatchObject({ mode: "local" });
 
 		expect(
 			getCrdtSection(Project as unknown as Record<string, unknown>, "attrs"),
@@ -313,19 +315,19 @@ describe("semantic graph declarations", () => {
 			duration: "lww",
 			createdAt: "lww",
 			updatedAt: "lww",
-			autoCreateDefaultTracks: null,
-			importProgress: null,
-			lastImportError: null,
-			activeImportTaskId: null,
-			previewFrame: null,
+			autoCreateDefaultTracks: { sync: false, reason: "bootstrap-only" },
+			importProgress: { sync: false, reason: "pipeline" },
+			lastImportError: { sync: false, reason: "pipeline" },
+			activeImportTaskId: { sync: false, reason: "effect-runtime" },
+			previewFrame: { sync: false, reason: "projection" },
 		});
 		expect(
 			getCrdtSection(Project as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
 			tracks: "sequence",
 			resources: "or-set",
-			primaryVideoTrack: null,
-			primaryAudioTrack: null,
+			primaryVideoTrack: "lww",
+			primaryAudioTrack: "lww",
 		});
 	});
 
@@ -336,8 +338,8 @@ describe("semantic graph declarations", () => {
 			start: ["mvr", { conflictMeta: true }],
 			in: ["mvr", { conflictMeta: true }],
 			duration: ["mvr", { conflictMeta: true }],
-			trimStart: null,
-			effectStackSummary: null,
+			trimStart: "lww",
+			effectStackSummary: { sync: false, reason: "projection" },
 		});
 		expect(
 			getCrdtSection(Track as unknown as Record<string, unknown>, "rels"),
@@ -358,21 +360,21 @@ describe("semantic graph declarations", () => {
 		});
 	});
 
-	it("keeps pipeline and projection fields local to ordinary DKT state", () => {
+	it("keeps pipeline and projection fields explicitly excluded from CRDT sync", () => {
 		expect(
 			getCrdtSection(Resource as unknown as Record<string, unknown>, "attrs"),
 		).toMatchObject({
 			"$meta$removed": "lww",
-			status: null,
-			timelineAddRequest: null,
+			status: { sync: false, reason: "effect-runtime" },
+			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		});
 		expect(
 			getCrdtSection(Resource as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
 			project: "lww",
-			clips: null,
+			clips: "or-set",
 		});
 		expect(getCrdtBlock(EditorSessionRoot as unknown as Record<string, unknown>))
-			.toBeUndefined();
+			.toMatchObject({ mode: "local" });
 	});
 });

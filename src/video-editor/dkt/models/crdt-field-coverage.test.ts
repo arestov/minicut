@@ -11,9 +11,9 @@ type FieldSection = "attrs" | "rels";
 type FieldClassification =
 	| "crdt"
 	| "bootstrap-only"
-	| "local"
-	| "local-pipeline"
-	| "mirror"
+	| "effect-runtime"
+	| "framework-owned"
+	| "pipeline"
 	| "projection";
 
 type ModelCase = {
@@ -25,11 +25,22 @@ type ModelCase = {
 const CRDT_CLASSIFICATIONS = [
 	"crdt",
 	"bootstrap-only",
-	"local",
-	"local-pipeline",
-	"mirror",
+	"effect-runtime",
+	"framework-owned",
+	"pipeline",
 	"projection",
 ] as const;
+
+const EXPECTED_EXCLUSION_REASONS: Record<
+	Exclude<FieldClassification, "crdt">,
+	string
+> = {
+	"bootstrap-only": "bootstrap-only",
+	"effect-runtime": "effect-runtime",
+	"framework-owned": "framework-owned",
+	pipeline: "pipeline",
+	projection: "projection",
+};
 
 const MODEL_CASES: ModelCase[] = [
 	{
@@ -42,9 +53,9 @@ const MODEL_CASES: ModelCase[] = [
 				width: "crdt",
 				height: "crdt",
 				duration: "crdt",
-				importProgress: "local-pipeline",
-				lastImportError: "local-pipeline",
-				activeImportTaskId: "local-pipeline",
+				importProgress: "pipeline",
+				lastImportError: "pipeline",
+				activeImportTaskId: "effect-runtime",
 				previewFrame: "projection",
 				createdAt: "crdt",
 				updatedAt: "crdt",
@@ -53,8 +64,8 @@ const MODEL_CASES: ModelCase[] = [
 			rels: {
 				tracks: "crdt",
 				resources: "crdt",
-				primaryVideoTrack: "projection",
-				primaryAudioTrack: "projection",
+				primaryVideoTrack: "crdt",
+				primaryAudioTrack: "crdt",
 			},
 		},
 	},
@@ -74,7 +85,7 @@ const MODEL_CASES: ModelCase[] = [
 			},
 			rels: {
 				clips: "crdt",
-				project: "mirror",
+				project: "crdt",
 			},
 		},
 	},
@@ -88,25 +99,25 @@ const MODEL_CASES: ModelCase[] = [
 				mediaKind: "crdt",
 				start: "crdt",
 				in: "crdt",
-				trimStart: "local",
+				trimStart: "crdt",
 				duration: "crdt",
 				fadeIn: "crdt",
 				fadeOut: "crdt",
 				audio: "crdt",
 				opacity: "crdt",
 				transform: "crdt",
-				splitOriginalDuration: "local",
+				splitOriginalDuration: "crdt",
 				crop: "crdt",
 				colorAdjustments: "crdt",
 				effectStackSummary: "projection",
 			},
 			rels: {
 				effects: "crdt",
-				text: "local",
+				text: "crdt",
 				resource: "crdt",
 				track: "crdt",
-				project: "mirror",
-				crdtConflicts: "projection",
+				project: "crdt",
+				crdtConflicts: "framework-owned",
 			},
 		},
 	},
@@ -125,13 +136,13 @@ const MODEL_CASES: ModelCase[] = [
 				height: "crdt",
 				size: "crdt",
 				source: "crdt",
-				status: "local-pipeline",
+				status: "effect-runtime",
 				data: "crdt",
-				timelineAddRequest: "local-pipeline",
+				timelineAddRequest: "effect-runtime",
 			},
 			rels: {
-				project: "mirror",
-				clips: "mirror",
+				project: "crdt",
+				clips: "crdt",
 			},
 		},
 	},
@@ -145,7 +156,7 @@ const MODEL_CASES: ModelCase[] = [
 				box: "crdt",
 			},
 			rels: {
-				clip: "mirror",
+				clip: "crdt",
 			},
 		},
 	},
@@ -162,8 +173,8 @@ const MODEL_CASES: ModelCase[] = [
 				color: "crdt",
 			},
 			rels: {
-				clip: "mirror",
-				project: "mirror",
+				clip: "crdt",
+				project: "crdt",
 			},
 		},
 	},
@@ -217,15 +228,19 @@ const getModelSection = (
 	return value;
 };
 
+const getCrdtBlock = (
+	model: Record<string, unknown>,
+): Record<string, unknown> | undefined =>
+	(model.crdt as Record<string, unknown> | undefined) ??
+	((model.prototype as Record<string, unknown> | undefined)?.crdt as
+		| Record<string, unknown>
+		| undefined);
+
 const getCrdtSection = (
 	model: Record<string, unknown>,
 	section: FieldSection,
 ): Record<string, unknown> | undefined => {
-	const block =
-		(model.crdt as Record<string, unknown> | undefined) ??
-		((model.prototype as Record<string, unknown> | undefined)?.crdt as
-			| Record<string, unknown>
-			| undefined);
+	const block = getCrdtBlock(model);
 	const value = block?.[section];
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return undefined;
@@ -245,6 +260,17 @@ const getInputFieldNames = (
 		.sort();
 
 describe("CRDT field coverage", () => {
+	it("declares collaborative and local model modes explicitly", () => {
+		for (const entry of MODEL_CASES) {
+			const mode = getCrdtBlock(entry.model)?.mode;
+			if (entry.name === "EditorSessionRoot") {
+				expect(mode, entry.name).toBe("local");
+				continue;
+			}
+			expect(mode, entry.name).toBe("collaborative");
+		}
+	});
+
 	it("classifies every MiniCut input attr and rel", () => {
 		for (const entry of MODEL_CASES) {
 			for (const section of ["attrs", "rels"] as const) {
@@ -273,8 +299,11 @@ describe("CRDT field coverage", () => {
 		}
 	});
 
-	it("keeps classification and crdt declarations in sync", () => {
+	it("keeps classification and strict crdt declarations in sync", () => {
 		for (const entry of MODEL_CASES) {
+			if (getCrdtBlock(entry.model)?.mode === "local") {
+				continue;
+			}
 			for (const section of ["attrs", "rels"] as const) {
 				const crdtSection = getCrdtSection(entry.model, section);
 
@@ -292,15 +321,27 @@ describe("CRDT field coverage", () => {
 							crdtValue,
 							`${fieldRef} is classified as crdt and cannot be explicit null`,
 						).not.toBeNull();
+						expect(
+							(crdtValue as { sync?: unknown })?.sync,
+							`${fieldRef} is classified as crdt and cannot be an exclusion`,
+						).not.toBe(false);
 						continue;
 					}
 
-					if (crdtSection && field in crdtSection) {
-						expect(
-							crdtValue,
-							`${fieldRef} is classified as ${classification} and should stay explicit null`,
-						).toBeNull();
-					}
+					expect(
+						crdtValue,
+						`${fieldRef} is classified as ${classification} and needs an explicit exclusion`,
+					).toMatchObject({
+						sync: false,
+						reason: EXPECTED_EXCLUSION_REASONS[classification],
+					});
+				}
+
+				for (const [field, crdtValue] of Object.entries(crdtSection ?? {})) {
+					expect(
+						crdtValue,
+						`${entry.name}.crdt.${section}.${field} cannot use bare null`,
+					).not.toBeNull();
 				}
 			}
 		}
