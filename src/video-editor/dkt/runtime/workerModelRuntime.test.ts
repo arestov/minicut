@@ -41,7 +41,9 @@ const createMemoryTransport = () => {
 
 describe("createMiniCutDktWorkerModelRuntime", () => {
 	it("tracks model sessions per worker connection", async () => {
-		const workerRuntime = createMiniCutDktWorkerModelRuntime();
+		const workerRuntime = createMiniCutDktWorkerModelRuntime({
+			enableProductionCrdt: false,
+		});
 		const memory = createMemoryTransport();
 		const connection = workerRuntime.connect(memory.transport);
 
@@ -63,7 +65,9 @@ describe("createMiniCutDktWorkerModelRuntime", () => {
 	});
 
 	it("acknowledges runtime idle waits after bootstrap", async () => {
-		const workerRuntime = createMiniCutDktWorkerModelRuntime();
+		const workerRuntime = createMiniCutDktWorkerModelRuntime({
+			enableProductionCrdt: false,
+		});
 		const memory = createMemoryTransport();
 		const connection = workerRuntime.connect(memory.transport);
 
