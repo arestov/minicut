@@ -74,12 +74,19 @@ const serializeModel = (model: RuntimeModelLike): WorkerModelDump => {
 		publicAttrs.map((name) => [name, serializeRef(model.states?.[name])]),
 	);
 	const relNames = Array.from(_listRels(model)).sort();
-	const rels = Object.fromEntries(
-		relNames.map((relName) => [
-			relName,
-			serializeRef(_getCurrentRel(model, relName)),
-		]),
-	) as WorkerModelDump["rels"];
+	const rels: WorkerModelDump["rels"] = {};
+	for (const relName of relNames) {
+		try {
+			rels[relName] = serializeRef(_getCurrentRel(model, relName)) as
+				| readonly (string | null)[]
+				| string
+				| null;
+		} catch (error) {
+			rels[relName] = `[read-error] ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+		}
+	}
 	return {
 		nodeId: model._node_id ?? null,
 		modelName: model.model_name ?? null,

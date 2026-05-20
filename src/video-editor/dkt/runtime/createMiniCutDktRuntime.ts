@@ -1004,6 +1004,10 @@ export const createMiniCutDktRuntime = (
 			sessions: [...sessionRootPromises.keys()],
 			modelsCount: Object.keys(app.runtime.models ?? {}).length,
 			rootNodeId: app.appModel._node_id ?? null,
+			workerState: await dumpWorkerAppState(
+				app.appModel,
+				app.runtime.models ?? {},
+			),
 			workspaceOpenState: lastWorkspaceOpenState,
 			runtimeError: lastRuntimeErrorMessage,
 			crdt: app.runtime.crdt_runtime
@@ -1014,6 +1018,8 @@ export const createMiniCutDktRuntime = (
 						profileVersion: crdt.profileVersion,
 						outboxCount: app.runtime.crdt_runtime.outbox?.length ?? 0,
 						durableLogCount: durableLog?.length ?? 0,
+						transportTrace:
+							app.runtime.crdt_runtime?.testing?.peekTransportTrace?.() ?? [],
 						hasRegistry: Boolean(app.runtime.crdt_runtime.crdt_registry),
 						storageOpen: crdt.storageOpen,
 					}

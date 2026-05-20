@@ -95,6 +95,31 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 		});
 	});
 
+	it("exposes worker model state and CRDT transport trace in debug dumps", async () => {
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				testOnly: true,
+				peerId: "worker-crdt-debug-dump",
+				storage: "memory",
+				transport: null,
+			},
+		});
+
+		const dump = (await runtime.debugDumpState()) as {
+			workerState?: {
+				lined?: readonly unknown[];
+				runtimeModels?: readonly { modelName?: string | null }[];
+			};
+			crdt?: { transportTrace?: readonly unknown[] };
+		};
+
+		expect(Array.isArray(dump.workerState?.lined)).toBe(true);
+		expect((dump.workerState?.runtimeModels?.length ?? 0) > 0).toBe(true);
+		expect(Array.isArray(dump.crdt?.transportTrace)).toBe(true);
+	});
+
 	it("accepts a public DKT CRDT storage package", async () => {
 		const storagePackage = makeDktCrdtMemoryStorage();
 		const runtime = createMiniCutDktRuntime({
