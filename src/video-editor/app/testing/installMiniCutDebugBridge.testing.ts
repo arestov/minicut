@@ -16,16 +16,27 @@ type MiniCutDebugBridge = {
 	getActiveProjectDetails: () => unknown;
 	getRuntimeMessages: () => unknown;
 	dumpWorkerState: () => Promise<unknown>;
+	receiveCrdtTransportMessageTesting: (message: unknown) => void;
 	getRole: () => string | null;
 	isRuntimeReady: () => boolean;
 	waitForRuntimeSettled: () => Promise<void>;
 	getPeerId: () => string | null;
 	createProject: (title?: string) => void;
+	setActiveProject: (projectId: string) => Promise<void>;
 	dispatchRootAction: (actionName: string, payload?: unknown) => Promise<void>;
 	dispatchProjectAction: (
 		actionName: string,
 		payload?: unknown,
 	) => Promise<void>;
+	dispatchFirstVideoClipAction: (
+		actionName: string,
+		payload?: unknown,
+	) => Promise<void>;
+	dispatchClipActionById: (
+		clipId: string,
+		actionName: string,
+		payload?: unknown,
+	) => Promise<unknown>;
 	injectFirstClipConflictTesting: (options?: {
 		kind?: string;
 		scope?: string;
@@ -632,6 +643,9 @@ export const installMiniCutDebugBridgeTesting = (
 		getRuntimeMessages: () => harness.pageRuntime?.debugMessages?.() ?? [],
 		dumpWorkerState: () =>
 			harness.pageRuntime?.requestDebugDump?.() ?? Promise.resolve(null),
+		receiveCrdtTransportMessageTesting: (message: unknown) => {
+			harness.pageRuntime?.receiveDebugCrdtTransportMessageTesting?.(message);
+		},
 		getRole: () => {
 			const worker = harness.worker as { role?: string };
 			return typeof worker.role === "string" ? worker.role : null;
@@ -646,6 +660,10 @@ export const installMiniCutDebugBridgeTesting = (
 		createProject: (title?: string) => {
 			harness.actions.createProject(title);
 		},
+		setActiveProject: async (projectId: string) => {
+			harness.actions.setActiveProject(projectId);
+			await waitForRuntimeSettled();
+		},
 		dispatchRootAction: (actionName: string, payload?: unknown) => {
 			harness.pageRuntime?.dispatch(actionName, payload, null);
 			return waitForRuntimeSettled();
@@ -657,6 +675,69 @@ export const installMiniCutDebugBridgeTesting = (
 			}
 			harness.pageRuntime?.dispatch(actionName, payload, projectScope);
 			return waitForRuntimeSettled();
+		},
+		dispatchFirstVideoClipAction: (actionName: string, payload?: unknown) => {
+			const runtime = harness.pageRuntime;
+			const projectScope = getActiveProjectScope();
+			if (!runtime || !projectScope) {
+				throw new Error("No active project");
+			}
+			const clipScope =
+				runtime
+					.readMany(projectScope, "tracks")
+					.flatMap((trackScope) => runtime.readMany(trackScope, "clips"))
+					.find((candidate) => {
+						const attrs = runtime.readAttrs(candidate, ["mediaKind", "name"]) as {
+							mediaKind?: unknown;
+							name?: unknown;
+						};
+						return attrs.mediaKind === "video" || attrs.name === "fixture-video.webm";
+					}) ?? null;
+			if (!clipScope) {
+				throw new Error("No video clip");
+			}
+			runtime.dispatch(actionName, payload, clipScope);
+			return waitForRuntimeSettled();
+		},
+		dispatchClipActionById: (
+			clipId: string,
+			actionName: string,
+			payload?: unknown,
+		) => {
+			const runtime = harness.pageRuntime;
+			const projectScope = getActiveProjectScope();
+			if (!runtime || !projectScope) {
+				throw new Error("No active project");
+			}
+			const clipScope =
+				runtime
+					.readMany(projectScope, "tracks")
+					.flatMap((trackScope) => runtime.readMany(trackScope, "clips"))
+					.find((candidate) => candidate._nodeId === clipId) ?? null;
+			if (!clipScope) {
+				throw new Error(`No clip ${clipId}`);
+			}
+			const before = runtime.readAttrs(clipScope, [
+				"name",
+				"mediaKind",
+				"start",
+				"in",
+				"duration",
+			]);
+			runtime.dispatch(actionName, payload, clipScope);
+			return waitForRuntimeSettled().then(() => ({
+				clipId,
+				actionName,
+				payload,
+				before,
+				after: runtime.readAttrs(clipScope, [
+					"name",
+					"mediaKind",
+					"start",
+					"in",
+					"duration",
+				]),
+			}));
 		},
 		injectFirstClipConflictTesting: async (options = {}) => {
 			const runtime = harness.pageRuntime;
