@@ -1,9 +1,22 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import {
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
 import { useActions } from "../../dkt-react-sync/hooks/useActions";
 import { useAttrs } from "../../dkt-react-sync/hooks/useAttrs";
 import { useMany } from "../../dkt-react-sync/hooks/useMany";
+import { useOne } from "../../dkt-react-sync/hooks/useOne";
+import { useReactScopeRuntime } from "../../dkt-react-sync/hooks/useReactScopeRuntime";
 import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
+import { getAttrsShape } from "../../dkt-react-sync/shape/autoShapes";
+import { useShape } from "../../dkt-react-sync/hooks/useShape";
+import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 import type { AnimatedScalar } from "../render/registryTypes";
 import { ClipConflictBadge } from "./ClipConflictBadge";
 import {
@@ -66,6 +79,65 @@ interface ClipRenderAttrs {
 	"$meta$model$crdt$open_conflicts_count"?: unknown;
 	"$meta$model$crdt$last_resolution_error"?: unknown;
 }
+
+interface ResourceRenderAttrs {
+	duration?: unknown;
+}
+
+const EMPTY_ATTRS = Object.freeze({}) as Record<string, unknown>;
+
+const normalizeFields = (fields: readonly string[]) =>
+	Array.from(new Set(fields)).sort();
+
+const useScopeAttrs = (
+	scope: ReactSyncScopeHandle | null,
+	fields: readonly string[],
+) => {
+	const runtime = useReactScopeRuntime();
+	const normalizedFields = useMemo(() => normalizeFields(fields), [fields]);
+	useShape(getAttrsShape(normalizedFields));
+	const subscribe = useCallback(
+		(listener: () => void) =>
+			scope ? runtime.subscribeAttrs(scope, normalizedFields, listener) : () => {},
+		[runtime, scope, normalizedFields],
+	);
+	const getSnapshot = useCallback(
+		() =>
+			scope ? runtime.readAttrs(scope, normalizedFields) : EMPTY_ATTRS,
+		[runtime, scope, normalizedFields],
+	);
+	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+};
+
+export const getClipResizeDeltaSecondsForUi = (
+	edge: "start" | "end",
+	deltaSeconds: number,
+	base: Pick<ClipTimelineAttrs, "start" | "in" | "duration">,
+	sourceDuration: number | null,
+): number => {
+	const clipEnd = base.start + base.duration;
+	const maxDuration =
+		typeof sourceDuration === "number" && Number.isFinite(sourceDuration)
+			? Math.max(MIN_CLIP_DURATION, sourceDuration - base.in)
+			: Number.POSITIVE_INFINITY;
+
+	if (edge === "end") {
+		const nextEnd = clamp(
+			clipEnd + deltaSeconds,
+			base.start + MIN_CLIP_DURATION,
+			base.start + maxDuration,
+		);
+		return Math.round((nextEnd - clipEnd) * 100) / 100;
+	}
+
+	const minStart = Math.max(0, base.start - base.in);
+	const nextStart = clamp(
+		base.start + deltaSeconds,
+		minStart,
+		clipEnd - MIN_CLIP_DURATION,
+	);
+	return Math.round((nextStart - base.start) * 100) / 100;
+};
 
 interface ConflictViewAttrs {
 	id?: unknown;
@@ -165,6 +237,8 @@ export const ClipItem = ({
 	]) as ClipRenderAttrs;
 	const effectScopes = useMany("effects");
 	const conflictScopes = useMany("crdtConflicts");
+	const resourceScope = useOne("resource");
+	const resourceAttrs = useScopeAttrs(resourceScope, ["duration"]) as ResourceRenderAttrs;
 	const clipId = typeof scope?._nodeId === "string" ? scope._nodeId : null;
 
 	// Skeleton guard: start/duration arrive slightly after the clip node appears
@@ -179,6 +253,11 @@ export const ClipItem = ({
 	const start = Number(clipAttrs.start);
 	const duration = Number(clipAttrs.duration);
 	const inPoint = Number(clipAttrs.in);
+	const sourceDuration =
+		typeof resourceAttrs?.duration === "number" &&
+		Number.isFinite(resourceAttrs.duration)
+			? resourceAttrs.duration
+			: null;
 	const opacity = Number(clipAttrs.opacity?.value ?? 1);
 	const color = String(clipAttrs.color ?? "#2563eb");
 	const clipConflictState = clipAttrs as unknown as Record<string, unknown>;
@@ -212,24 +291,12 @@ export const ClipItem = ({
 		deltaSeconds: number,
 		base: ClipTimelineAttrs = timelineAttrsPayload(),
 	): number => {
-		const clipEnd = base.start + base.duration;
-
-		if (edge === "end") {
-			const nextEnd = clamp(
-				clipEnd + deltaSeconds,
-				base.start + MIN_CLIP_DURATION,
-				Number.POSITIVE_INFINITY,
-			);
-			return nextEnd - clipEnd;
-		}
-
-		const minStart = Math.max(0, base.start - base.in);
-		const nextStart = clamp(
-			base.start + deltaSeconds,
-			minStart,
-			clipEnd - MIN_CLIP_DURATION,
+		return getClipResizeDeltaSecondsForUi(
+			edge,
+			deltaSeconds,
+			base,
+			sourceDuration,
 		);
-		return nextStart - base.start;
 	};
 	const makeTimingIntentMeta = (batchId: string) => ({
 		intent: { batch_id: batchId },
@@ -335,7 +402,7 @@ export const ClipItem = ({
 
 		if (state.kind === "resize-start" || state.kind === "resize-end") {
 			const finalAttrs =
-				applyResizeDelta(state, clientX) ?? timelineAttrsPayload();
+				applyResizeDelta(state, clientX) ?? state.current;
 			commitTimelineGesture(state.batchId, state.original, finalAttrs);
 			return;
 		}
