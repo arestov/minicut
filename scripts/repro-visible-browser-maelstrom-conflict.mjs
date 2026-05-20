@@ -164,6 +164,16 @@ const setActiveProject = async (page, projectId) => {
 	await withTimeout('wait active project settle', debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
 }
 
+const selectProjectAndWaitForTimeline = async (page, projectId) =>
+	waitFor('shared project timeline visible', async () => {
+		await setActiveProject(page, projectId)
+		const clip = page
+			.getByRole('region', { name: 'Timeline', exact: true })
+			.getByRole('button', { name: /fixture-video\.webm/i })
+			.first()
+		return await clip.isVisible().catch(() => false)
+	}, { timeoutMs: 20_000, intervalMs: 500 })
+
 const waitReady = async (page, label) => {
 	await waitFor(`${label}: runtime ready`, async () =>
 		debugEval(page, () => window.__MINICUT_P2P_DEBUG__?.isRuntimeReady?.() === true),
@@ -243,6 +253,7 @@ const projectSummary = async (page) =>
 			return {
 				peerId: workerState?.crdt?.peerId ?? null,
 				session: window.__MINICUT_P2P_DEBUG__?.getSnapshot?.(),
+				activeProjectId: state?.projectNodeId ?? null,
 				worker: {
 					workspaceOpenState: workerState?.workspaceOpenState ?? null,
 					runtimeError: workerState?.runtimeError ?? null,
@@ -283,6 +294,7 @@ const projectSummary = async (page) =>
 
 const compactPeerSummary = (summary) => ({
 	peerId: summary?.peerId ?? null,
+	activeProjectId: summary?.activeProjectId ?? null,
 	clips: summary?.clips ?? [],
 	badgeCount: summary?.badgeCount ?? 0,
 	conflictClipCount: summary?.conflictClipCount ?? 0,
@@ -290,15 +302,6 @@ const compactPeerSummary = (summary) => ({
 	sessionRoots: summary?.worker?.sessionRoots ?? [],
 	runtimeError: summary?.worker?.runtimeError ?? null,
 })
-
-const projectHasImportedResource = (summary, projectId) => {
-	const project = summary?.worker?.projects?.find((item) => item?.nodeId === projectId)
-	return Boolean(
-		project &&
-		Array.isArray(project.resources) &&
-		project.resources.length >= 1,
-	)
-}
 
 const main = async () => {
 	const launched = []
@@ -330,20 +333,13 @@ const main = async () => {
 	await importAndAddFixture(a.page)
 	log('A imported baseline')
 	const baselineSummaryA = await projectSummary(a.page)
-	const sharedProjectId = baselineSummaryA.worker.projects[0]?.nodeId
+	const sharedProjectId = baselineSummaryA.activeProjectId
 	if (!sharedProjectId) {
 		throw new Error('A did not expose a project id after baseline import')
 	}
-	stage = 'wait B receives shared project'
-	await waitFor('B worker receives A project', async () => {
-		const summaryB = await projectSummary(b.page)
-		return projectHasImportedResource(summaryB, sharedProjectId)
-	}, { timeoutMs: 20_000 })
-	await setActiveProject(b.page, sharedProjectId)
+	stage = 'select shared project on B'
+	await selectProjectAndWaitForTimeline(b.page, sharedProjectId)
 	log('B selected A project', { sharedProjectId })
-	stage = 'wait transport baseline visible'
-	await b.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()
-		.waitFor({ state: 'visible', timeout: 20_000 })
 	log('B received baseline through transport')
 	const baselineSummaryB = await projectSummary(b.page)
 	const sharedClipId = baselineSummaryB.clips.find((clip) => clip.trackKind === 'video' && clip.name === 'fixture-video.webm')?.nodeId
