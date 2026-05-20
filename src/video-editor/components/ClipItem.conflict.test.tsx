@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
+import { ReactScopeRuntimeContext } from "../../dkt-react-sync/context/ReactScopeRuntimeContext";
 import { ClipItem } from "./ClipItem";
 
 const mockState = vi.hoisted(() => ({
@@ -54,6 +55,51 @@ vi.mock("../../dkt-react-sync/hooks/useMany", async () => {
 	};
 });
 
+vi.mock("../../dkt-react-sync/hooks/useOne", async () => {
+	const React = await import("react");
+	const { ScopeContext } = await import(
+		"../../dkt-react-sync/context/ScopeContext"
+	);
+	return {
+		useOne: (rel: string) => {
+			const scope = React.useContext(ScopeContext);
+			if (!scope?._nodeId) {
+				return null;
+			}
+			return mockState.relsByNode.get(scope._nodeId)?.[rel]?.[0] ?? null;
+		},
+	};
+});
+
+vi.mock("../../dkt-react-sync/hooks/useShape", () => ({
+	useShape: () => undefined,
+}));
+
+const testRuntime = {
+	subscribeAttrs: vi.fn(() => () => undefined),
+	readAttrs: (scope: { _nodeId?: string }, fields: readonly string[]) => {
+		const source = scope?._nodeId
+			? mockState.attrsByNode.get(scope._nodeId)
+			: undefined;
+		return Object.fromEntries(
+			fields.map((field) => [field, source?.[field]]),
+		);
+	},
+};
+
+const renderClipItem = (clipScope: { kind: "scope"; _nodeId: string }) =>
+	render(
+		<ReactScopeRuntimeContext.Provider value={testRuntime as never}>
+			<ScopeContext.Provider value={clipScope}>
+				<ClipItem
+					timelineZoom={40}
+					activeTool="select"
+					selectedEntityId={null}
+				/>
+			</ScopeContext.Provider>
+		</ReactScopeRuntimeContext.Provider>,
+	);
+
 describe("ClipItem conflict UX", () => {
 	it("dispatches clip timing drag preview and final actions with one intent batch", () => {
 		const clipScope = { kind: "scope" as const, _nodeId: "clip:drag" };
@@ -74,15 +120,7 @@ describe("ClipItem conflict UX", () => {
 			crdtConflicts: [],
 		});
 
-		render(
-			<ScopeContext.Provider value={clipScope}>
-				<ClipItem
-					timelineZoom={40}
-					activeTool="select"
-					selectedEntityId={null}
-				/>
-			</ScopeContext.Provider>,
-		);
+		renderClipItem(clipScope);
 
 		const clip = screen.getByRole("button", { name: /drag\.webm/i });
 		fireEvent.pointerDown(clip, {
@@ -144,15 +182,7 @@ describe("ClipItem conflict UX", () => {
 			crdtConflicts: [conflictScope],
 		});
 
-		render(
-			<ScopeContext.Provider value={clipScope}>
-				<ClipItem
-					timelineZoom={40}
-					activeTool="select"
-					selectedEntityId={null}
-				/>
-			</ScopeContext.Provider>,
-		);
+		renderClipItem(clipScope);
 
 		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
 
@@ -197,15 +227,7 @@ describe("ClipItem conflict UX", () => {
 			crdtConflicts: [],
 		});
 
-		render(
-			<ScopeContext.Provider value={clipScope}>
-				<ClipItem
-					timelineZoom={40}
-					activeTool="select"
-					selectedEntityId={null}
-				/>
-			</ScopeContext.Provider>,
-		);
+		renderClipItem(clipScope);
 
 		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
 
@@ -242,15 +264,7 @@ describe("ClipItem conflict UX", () => {
 			crdtConflicts: [conflictScope],
 		});
 
-		render(
-			<ScopeContext.Provider value={clipScope}>
-				<ClipItem
-					timelineZoom={40}
-					activeTool="select"
-					selectedEntityId={null}
-				/>
-			</ScopeContext.Provider>,
-		);
+		renderClipItem(clipScope);
 
 		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
 		await waitFor(() =>
