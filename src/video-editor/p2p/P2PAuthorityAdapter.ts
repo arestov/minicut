@@ -74,6 +74,7 @@ export const createP2PAuthorityAdapter = (
 	let activeClient: EditorAuthorityClient | null = null;
 	let activeCrdtTransport: P2PCrdtTransportLike | null = null;
 	const clientChangeCallbacks = new Set<() => void>();
+	const crdtTransportChangeCallbacks = new Set<() => void>();
 
 	const dktSyncListeners = new Set<DktSyncListener>();
 
@@ -88,6 +89,9 @@ export const createP2PAuthorityAdapter = (
 	): void => {
 		activeCrdtTransport?.destroy();
 		activeCrdtTransport = transport;
+		for (const cb of crdtTransportChangeCallbacks) {
+			cb();
+		}
 	};
 
 	const activateClient = (
@@ -234,6 +238,9 @@ export const createP2PAuthorityAdapter = (
 				if (crdtUnlisten || !activeCrdtTransport) {
 					return;
 				}
+				if (attachedRoomGeneration == null) {
+					return;
+				}
 				crdtUnlisten = activeCrdtTransport.listen((packet, remotePeerId) => {
 					if (attachedRoomGeneration == null) {
 						return;
@@ -363,6 +370,7 @@ export const createP2PAuthorityAdapter = (
 
 			// Also set up a listener for when activeClient becomes available or changes
 			clientChangeCallbacks.add(activateRealTransport);
+			crdtTransportChangeCallbacks.add(attachCrdtListener);
 			const checkInterval = setInterval(() => {
 				activateRealTransport();
 			}, 100);
@@ -394,6 +402,7 @@ export const createP2PAuthorityAdapter = (
 					crdtUnlisten = null;
 					clearInterval(checkInterval);
 					clientChangeCallbacks.delete(activateRealTransport);
+					crdtTransportChangeCallbacks.delete(attachCrdtListener);
 					teardownRealTransport();
 					transportListeners.clear();
 					pendingMessages.length = 0;
@@ -408,6 +417,8 @@ export const createP2PAuthorityAdapter = (
 
 			destroyed = true;
 			dktSyncListeners.clear();
+			activeCrdtTransport?.destroy();
+			activeCrdtTransport = null;
 			cleanupActiveClient();
 			manager.destroy();
 		},
