@@ -24,11 +24,12 @@ const failedState: WorkspaceOpenState = {
 const createHarness = () => {
 	let now = 1_000;
 	const sent = new Map<string, ProductRoomProtocolMessage[]>();
+	const receivedCrdt: unknown[] = [];
 	const coordinator = createProductRoomTransportOwner({
 		roomId: "room-a",
 		heartbeatTimeoutMs: 100,
-		createTransportOwnerToken: (tabId) => `token:${tabId}`,
 		now: () => now,
+		onCrdtPacket: (packet) => receivedCrdt.push(packet),
 	});
 	const register = (tabId: string, canHostWebRtc: boolean, roomId = "room-a") => {
 		sent.set(tabId, []);
@@ -45,6 +46,7 @@ const createHarness = () => {
 	return {
 		coordinator,
 		sent,
+		receivedCrdt,
 		register,
 		advance(ms: number) {
 			now += ms;
@@ -63,12 +65,12 @@ describe("product room transport owner", () => {
 			{
 				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
 				roomId: "room-a",
-				transportOwnerToken: "token:tab-a",
+				transportGeneration: 1,
 			},
 		]);
 		expect(harness.coordinator.getOwner()).toMatchObject({
 			tabId: "tab-a",
-			transportOwnerToken: "token:tab-a",
+			transportGeneration: 1,
 		});
 	});
 
@@ -82,7 +84,7 @@ describe("product room transport owner", () => {
 		expect(harness.sent.get("tab-a")).toEqual([]);
 		expect(harness.sent.get("tab-b")?.[0]).toMatchObject({
 			type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
-			transportOwnerToken: "token:tab-b",
+			transportGeneration: 1,
 		});
 	});
 
@@ -97,7 +99,7 @@ describe("product room transport owner", () => {
 		expect(harness.coordinator.getOwner()).toMatchObject({ tabId: "tab-b" });
 		expect(harness.sent.get("tab-b")?.[0]).toMatchObject({
 			type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
-			transportOwnerToken: "token:tab-b",
+			transportGeneration: 2,
 		});
 	});
 
@@ -108,21 +110,21 @@ describe("product room transport owner", () => {
 		harness.register("tab-b", true);
 
 		harness.coordinator.handleOwnerStatus({
-			type: PRODUCT_ROOM_MSG.WEBRTC_OWNER_STATUS,
+			type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
 			tabId: "tab-a",
 			roomId: "room-a",
-			transportOwnerToken: "token:tab-a",
+			transportGeneration: 1,
 			status: WEBRTC_OWNER_STATUS.REJECTED_ROOM_MISMATCH,
 		});
 
 		expect(harness.coordinator.getOwner()).toMatchObject({ tabId: "tab-b" });
 		expect(harness.sent.get("tab-a")?.at(-1)).toMatchObject({
 			type: PRODUCT_ROOM_MSG.DETACH_WEBRTC,
-			transportOwnerToken: "token:tab-a",
+			transportGeneration: 1,
 		});
 		expect(harness.sent.get("tab-b")?.at(-1)).toMatchObject({
 			type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
-			transportOwnerToken: "token:tab-b",
+			transportGeneration: 2,
 		});
 	});
 
@@ -138,8 +140,98 @@ describe("product room transport owner", () => {
 		expect(harness.coordinator.getOwner()).toMatchObject({ tabId: "tab-b" });
 		expect(harness.sent.get("tab-b")?.at(-1)).toMatchObject({
 			type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
-			transportOwnerToken: "token:tab-b",
+			transportGeneration: 2,
 		});
+	});
+
+	it("ignores stale owner status", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+		harness.register("tab-b", true);
+		harness.coordinator.unregisterTab("tab-a");
+
+		const result = harness.coordinator.handleOwnerStatus({
+			type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+			tabId: "tab-a",
+			roomId: "room-a",
+			transportGeneration: 1,
+			status: WEBRTC_OWNER_STATUS.FAILED,
+		});
+
+		expect(result).toEqual({ ok: false, errorCode: "tab_not_owner" });
+		expect(harness.coordinator.getOwner()).toMatchObject({ tabId: "tab-b" });
+	});
+
+	it("rejects wrong-room CRDT receive messages", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+
+		const result = harness.coordinator.handleCrdtReceive({
+			type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+			tabId: "tab-a",
+			roomId: "room-b",
+			transportGeneration: 1,
+			packet: { hello: 1 },
+		});
+
+		expect(result).toEqual({ ok: false, errorCode: "room_mismatch" });
+		expect(harness.receivedCrdt).toEqual([]);
+	});
+
+	it("routes outgoing CRDT packet to the active owner", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+
+		const result = harness.coordinator.sendCrdtPacket({ hello: 1 });
+
+		expect(result).toEqual({ ok: true, generation: 1 });
+		expect(harness.sent.get("tab-a")?.at(-1)).toEqual({
+			type: PRODUCT_ROOM_MSG.CRDT_SEND,
+			roomId: "room-a",
+			transportGeneration: 1,
+			packet: { hello: 1 },
+			targetPeerId: undefined,
+		});
+	});
+
+	it("does not route outgoing CRDT packet without owner", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", false);
+
+		expect(harness.coordinator.sendCrdtPacket({ hello: 1 })).toEqual({
+			ok: false,
+			errorCode: "no_transport_owner",
+		});
+		expect(harness.sent.get("tab-a")).toEqual([]);
+	});
+
+	it("delivers incoming CRDT packet from the active owner", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+
+		expect(
+			harness.coordinator.handleCrdtReceive({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				tabId: "tab-a",
+				roomId: "room-a",
+				transportGeneration: 1,
+				packet: { hello: 1 },
+				sourcePeerId: "peer-b",
+			}),
+		).toEqual({ ok: true });
+		expect(harness.receivedCrdt).toEqual([
+			{
+				payload: { hello: 1 },
+				sourcePeerId: "peer-b",
+				transportGeneration: 1,
+				roomId: "room-a",
+			},
+		]);
 	});
 
 	it("does not attach transport owner when workspace open failed", () => {

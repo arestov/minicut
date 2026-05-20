@@ -1,6 +1,20 @@
-# MiniCut CRDT Test Harness
+# MiniCut CRDT Transport and Test Harness
 
-MiniCut keeps CRDT transport behind explicit test/runtime harness options. The production worker path is not a CRDT authority: it remains a 1:1 live bridge from the app/model graph to the view graph through the existing `sync_sender` pipeline.
+MiniCut production collaboration is room-scoped and worker-owned. The SharedWorker owns the DKT runtime, CRDT runtime, durable storage, and canonical app graph for a room. Tabs are views/controllers through the existing `sync_sender` bridge; one capable tab may be elected as the WebRTC transport owner because browser WebRTC objects cannot live in the SharedWorker.
+
+Production transport shape:
+
+```text
+room URL
+	-> room-scoped SharedWorker
+	-> worker-owned DKT runtime + CRDT runtime + storage + graph
+	-> sync_sender page bridge for UI projections
+	-> elected tab-owned WebRTC adapter for opaque CRDT/media packets
+```
+
+The elected tab may own `RTCPeerConnection`, `RTCDataChannel`, signaling socket state, and media transfer streams. It must not own canonical graph state, mutate DKT models directly, choose the worker workspace, or inspect MiniCut domain data inside CRDT packets.
+
+Worker/tab transport messages are defined in `src/video-editor/worker/productRoomProtocol.ts`. Every transport message includes `roomId`; WebRTC lifecycle and packet messages include a monotonic `transportGeneration`; CRDT packets are opaque JSON carried by `CRDT_SEND`/`CRDT_RECEIVE`; media packets are separate `MEDIA_SEND`/`MEDIA_RECEIVE` envelopes.
 
 The browser CRDT profile is a test harness for conflict UX and storage smoke coverage. It is enabled with `VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS=1`; do not treat it as the product multi-tab/offline CRDT mode.
 
@@ -68,7 +82,7 @@ When a room-backed workspace opens empty, MiniCut stages the expected manifest b
 
 ## Relay Harness
 
-`createInMemoryCrdtRelay` is schema-agnostic. Packets carry room, peer, profile, vector clock, and canonical ops only. The relay rejects profile mismatches and peer spoofing, avoids echoing to the sender, dedupes packets, keeps a bounded per-room log, and supports sync requests.
+`createInMemoryCrdtRelay` is schema-agnostic and test-only. It is a deterministic cable for runtime and browser repros, not the production architecture. Packets carry room, peer, profile, vector clock, and canonical ops only. The relay rejects profile mismatches and peer spoofing, avoids echoing to the sender, dedupes packets, keeps a bounded per-room log, and supports sync requests.
 
 `createTestWorkerCrdtTransport` adapts the relay to a worker-like test transport. `createCrdtWorkerPair` wires two MiniCut DKT runtimes through that transport and applies remote canonical ops in per-node batches with `receiveCanonicalOps`.
 

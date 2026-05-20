@@ -4,12 +4,21 @@ import {
 } from "../dkt/runtime/workspaceOpenState";
 import {
 	PRODUCT_ROOM_MSG,
+	PRODUCT_ROOM_TRANSPORT_ERROR,
 	WEBRTC_OWNER_STATUS,
+	type ProductRoomCrdtReceive,
+	type ProductRoomCrdtSend,
+	type ProductRoomCrdtSendResult,
+	type ProductRoomCrdtPacketHandler,
 	type ProductRoomAttachWebRtc,
 	type ProductRoomDetachWebRtc,
+	type ProductRoomMediaPacketHandler,
+	type ProductRoomMediaReceive,
+	type ProductRoomMediaSend,
 	type ProductRoomProtocolMessage,
 	type ProductRoomTabHello,
-	type ProductRoomWebRtcOwnerStatus,
+	type ProductRoomTransportMessageResult,
+	type ProductRoomWebRtcStatus,
 } from "./productRoomProtocol";
 
 type ProductRoomTransportOwnerTab = {
@@ -20,13 +29,14 @@ type ProductRoomTransportOwnerTab = {
 type ProductRoomTransportOwnerOptions = {
 	roomId: string;
 	heartbeatTimeoutMs?: number;
-	createTransportOwnerToken?: (tabId: string) => string;
 	now?: () => number;
+	onCrdtPacket?: ProductRoomCrdtPacketHandler;
+	onMediaPacket?: ProductRoomMediaPacketHandler;
 };
 
 type OwnerLease = {
 	tabId: string;
-	transportOwnerToken: string;
+	transportGeneration: number;
 	lastHeartbeatAt: number;
 };
 
@@ -39,18 +49,15 @@ const canAttachForWorkspace = (state: WorkspaceOpenState | null): boolean =>
 export const createProductRoomTransportOwner = ({
 	roomId,
 	heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS,
-	createTransportOwnerToken,
 	now = () => Date.now(),
+	onCrdtPacket,
+	onMediaPacket,
 }: ProductRoomTransportOwnerOptions) => {
 	const tabs = new Map<string, ProductRoomTransportOwnerTab>();
 	const disabledOwnerTabs = new Set<string>();
-	let tokenSequence = 0;
+	let transportGeneration = 0;
 	let workspaceOpenState: WorkspaceOpenState | null = null;
 	let ownerLease: OwnerLease | null = null;
-
-	const nextToken = (tabId: string): string =>
-		createTransportOwnerToken?.(tabId) ??
-		`room-owner:${roomId}:${tabId}:${++tokenSequence}`;
 
 	const sendDetach = (lease: OwnerLease): void => {
 		const ownerTab = tabs.get(lease.tabId);
@@ -60,7 +67,7 @@ export const createProductRoomTransportOwner = ({
 		ownerTab.send({
 			type: PRODUCT_ROOM_MSG.DETACH_WEBRTC,
 			roomId,
-			transportOwnerToken: lease.transportOwnerToken,
+			transportGeneration: lease.transportGeneration,
 		} satisfies ProductRoomDetachWebRtc);
 	};
 
@@ -88,14 +95,14 @@ export const createProductRoomTransportOwner = ({
 
 			const lease = {
 				tabId,
-				transportOwnerToken: nextToken(tabId),
+				transportGeneration: ++transportGeneration,
 				lastHeartbeatAt: now(),
 			};
 			ownerLease = lease;
 			tab.send({
 				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
 				roomId,
-				transportOwnerToken: lease.transportOwnerToken,
+				transportGeneration: lease.transportGeneration,
 			} satisfies ProductRoomAttachWebRtc);
 			return;
 		}
@@ -133,43 +140,138 @@ export const createProductRoomTransportOwner = ({
 		}
 	};
 
-	const handleOwnerHeartbeat = ({
+	const acceptsOwnerMessage = ({
 		tabId,
-		roomId: heartbeatRoomId,
-		transportOwnerToken,
+		roomId: messageRoomId,
+		transportGeneration: messageGeneration,
 	}: {
 		tabId: string;
 		roomId: string;
-		transportOwnerToken: string;
-	}): void => {
-		if (
-			!ownerLease ||
-			ownerLease.tabId !== tabId ||
-			ownerLease.transportOwnerToken !== transportOwnerToken ||
-			heartbeatRoomId !== roomId
-		) {
-			return;
+		transportGeneration: number;
+	}): ProductRoomTransportMessageResult => {
+		if (messageRoomId !== roomId) {
+			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.ROOM_MISMATCH };
 		}
-		ownerLease.lastHeartbeatAt = now();
+		if (!ownerLease || ownerLease.tabId !== tabId) {
+			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.TAB_NOT_OWNER };
+		}
+		if (ownerLease.transportGeneration !== messageGeneration) {
+			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.STALE_GENERATION };
+		}
+		return { ok: true };
 	};
 
-	const handleOwnerStatus = (message: ProductRoomWebRtcOwnerStatus): void => {
+	const handleOwnerHeartbeat = (message: {
+		tabId: string;
+		roomId: string;
+		transportGeneration: number;
+	}): ProductRoomTransportMessageResult => {
+		const accepted = acceptsOwnerMessage(message);
+		if (!accepted.ok) {
+			return accepted;
+		}
+		ownerLease.lastHeartbeatAt = now();
+		return { ok: true };
+	};
+
+	const handleOwnerStatus = (message: ProductRoomWebRtcStatus): ProductRoomTransportMessageResult => {
+		const accepted = acceptsOwnerMessage(message);
 		if (
-			!ownerLease ||
-			ownerLease.tabId !== message.tabId ||
-			ownerLease.transportOwnerToken !== message.transportOwnerToken
+			!accepted.ok &&
+			accepted.errorCode === PRODUCT_ROOM_TRANSPORT_ERROR.ROOM_MISMATCH
 		) {
-			return;
+			return accepted;
+		}
+		if (!accepted.ok) {
+			return accepted;
 		}
 		if (message.status === WEBRTC_OWNER_STATUS.ATTACHED) {
 			ownerLease.lastHeartbeatAt = now();
-			return;
+			return { ok: true };
 		}
 		if (message.status === WEBRTC_OWNER_STATUS.REJECTED_ROOM_MISMATCH) {
 			disabledOwnerTabs.add(message.tabId);
 		}
 		detachOwner(message.status !== WEBRTC_OWNER_STATUS.CLOSED);
 		electOwner();
+		return { ok: true };
+	};
+
+	const sendCrdtPacket = (
+		packet: unknown,
+		targetPeerId?: string,
+	): ProductRoomCrdtSendResult => {
+		if (!ownerLease) {
+			return {
+				ok: false,
+				errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER,
+			};
+		}
+		const ownerTab = tabs.get(ownerLease.tabId);
+		if (!ownerTab) {
+			return {
+				ok: false,
+				errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER,
+			};
+		}
+		ownerTab.send({
+			type: PRODUCT_ROOM_MSG.CRDT_SEND,
+			roomId,
+			transportGeneration: ownerLease.transportGeneration,
+			packet,
+			targetPeerId,
+		} satisfies ProductRoomCrdtSend);
+		return { ok: true, generation: ownerLease.transportGeneration };
+	};
+
+	const handleCrdtReceive = (
+		message: ProductRoomCrdtReceive & { tabId: string },
+	): ProductRoomTransportMessageResult => {
+		const accepted = acceptsOwnerMessage(message);
+		if (!accepted.ok) {
+			return accepted;
+		}
+		onCrdtPacket?.({
+			payload: message.packet,
+			sourcePeerId: message.sourcePeerId,
+			transportGeneration: message.transportGeneration,
+			roomId: message.roomId,
+		});
+		return { ok: true };
+	};
+
+	const sendMediaPacket = (envelope: unknown, targetPeerId?: string): ProductRoomCrdtSendResult => {
+		if (!ownerLease) {
+			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER };
+		}
+		const ownerTab = tabs.get(ownerLease.tabId);
+		if (!ownerTab) {
+			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER };
+		}
+		ownerTab.send({
+			type: PRODUCT_ROOM_MSG.MEDIA_SEND,
+			roomId,
+			transportGeneration: ownerLease.transportGeneration,
+			envelope,
+			targetPeerId,
+		} satisfies ProductRoomMediaSend);
+		return { ok: true, generation: ownerLease.transportGeneration };
+	};
+
+	const handleMediaReceive = (
+		message: ProductRoomMediaReceive & { tabId: string },
+	): ProductRoomTransportMessageResult => {
+		const accepted = acceptsOwnerMessage(message);
+		if (!accepted.ok) {
+			return accepted;
+		}
+		onMediaPacket?.({
+			envelope: message.envelope,
+			sourcePeerId: message.sourcePeerId,
+			transportGeneration: message.transportGeneration,
+			roomId: message.roomId,
+		});
+		return { ok: true };
 	};
 
 	const expireOwnerLease = (): void => {
@@ -193,6 +295,10 @@ export const createProductRoomTransportOwner = ({
 		unregisterTab,
 		handleOwnerHeartbeat,
 		handleOwnerStatus,
+		handleCrdtReceive,
+		handleMediaReceive,
+		sendCrdtPacket,
+		sendMediaPacket,
 		expireOwnerLease,
 		getOwner,
 	};
