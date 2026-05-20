@@ -1,4 +1,13 @@
 import type {
+	ResourceByteRange,
+	ResourceChunkMeta,
+	ResourceDataState,
+	ResourceDataStatus,
+	ResourceChunkStatus,
+	ResourceSourceKind,
+	ResourceKind,
+} from "../../domain/types";
+import type {
 	MiniCutDktResourceSeed,
 	MiniCutDktTrackSeed,
 } from "../../dkt/runtime/seedTypes";
@@ -32,6 +41,90 @@ const asBoolean = (value: unknown): boolean | null =>
 const asObject = <Value extends object>(value: unknown): Value | null =>
 	value && typeof value === "object" ? (value as Value) : null;
 
+const asResourceKind = (value: unknown): ResourceKind =>
+	value === "audio" || value === "image" || value === "text" || value === "video"
+		? value
+		: "video";
+
+const asResourceSourceKind = (value: unknown): ResourceSourceKind =>
+	value === "p2p" ? "p2p" : "local";
+
+const asResourceDataStatus = (value: unknown): ResourceDataStatus =>
+	value === "partial" || value === "ready" ? value : "missing";
+
+const asResourceChunkStatus = (value: unknown): ResourceChunkStatus =>
+	value === "loading" || value === "ready" ? value : "missing";
+
+const asNonNegativeNumber = (value: unknown, fallback = 0): number =>
+	typeof value === "number" && Number.isFinite(value) && value >= 0
+		? value
+		: fallback;
+
+const normalizeRange = (value: unknown): ResourceByteRange | null => {
+	if (!Array.isArray(value) || value.length !== 2) {
+		return null;
+	}
+	const start = asNonNegativeNumber(value[0], Number.NaN);
+	const end = asNonNegativeNumber(value[1], Number.NaN);
+	return Number.isFinite(start) && Number.isFinite(end) && end >= start
+		? [start, end]
+		: null;
+};
+
+const normalizeRanges = (value: unknown): ResourceByteRange[] =>
+	Array.isArray(value)
+		? value.flatMap((range) => {
+				const normalized = normalizeRange(range);
+				return normalized ? [normalized] : [];
+			})
+		: [];
+
+const normalizeResourceData = (value: unknown): ResourceDataState | undefined => {
+	const data = asObject<{
+		status?: unknown;
+		chunkSize?: unknown;
+		chunks?: unknown;
+		ranges?: { loaded?: unknown; requested?: unknown };
+		loadedBytes?: unknown;
+	}>(value);
+	if (!data) {
+		return undefined;
+	}
+	const chunks: Record<number, ResourceChunkMeta> = {};
+	if (data.chunks && typeof data.chunks === "object") {
+		for (const [rawIndex, rawChunk] of Object.entries(data.chunks)) {
+			const chunk = asObject<{
+				index?: unknown;
+				start?: unknown;
+				end?: unknown;
+				size?: unknown;
+				status?: unknown;
+			}>(rawChunk);
+			const index = Number(rawIndex);
+			if (!chunk || !Number.isInteger(index) || index < 0) {
+				continue;
+			}
+			chunks[index] = {
+				index,
+				start: asNonNegativeNumber(chunk.start),
+				end: asNonNegativeNumber(chunk.end),
+				size: asNonNegativeNumber(chunk.size),
+				status: asResourceChunkStatus(chunk.status),
+			};
+		}
+	}
+	return {
+		status: asResourceDataStatus(data.status),
+		chunkSize: Math.max(1, asNonNegativeNumber(data.chunkSize, 1024 * 1024)),
+		chunks,
+		ranges: {
+			loaded: normalizeRanges(data.ranges?.loaded),
+			requested: normalizeRanges(data.ranges?.requested),
+		},
+		loadedBytes: asNonNegativeNumber(data.loadedBytes),
+	};
+};
+
 type ResourceLike = {
 	_node_id?: unknown;
 	states?: Record<string, unknown>;
@@ -57,16 +150,27 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 	const value = payload as ProjectImportResourcePayload | null;
 	return {
 		name: asString(value?.name) ?? "Resource",
-		kind: asString(value?.kind) ?? "video",
+		kind: asResourceKind(value?.kind),
 		url: asString(value?.url) ?? "",
 		mime: asString(value?.mime) ?? "application/octet-stream",
 		duration: asNumber(value?.duration) ?? 0,
 		width: asNumber(value?.width),
 		height: asNumber(value?.height),
 		size: asNumber(value?.size),
-		source: asObject(value?.source) ?? { kind: "local" },
+		source: {
+			kind: asResourceSourceKind(
+				asObject<{ kind?: unknown }>(value?.source)?.kind,
+			),
+			...(typeof asObject<{ ownerPeerId?: unknown }>(value?.source)?.ownerPeerId ===
+			"string"
+				? {
+						ownerPeerId: asObject<{ ownerPeerId?: string }>(value?.source)
+							?.ownerPeerId,
+					}
+				: null),
+		},
 		status: asString(value?.status) ?? "missing",
-		data: asObject(value?.data),
+		data: normalizeResourceData(value?.data),
 	};
 };
 

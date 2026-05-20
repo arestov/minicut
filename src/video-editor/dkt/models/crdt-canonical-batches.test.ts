@@ -72,6 +72,21 @@ const expectAttrOp = (
 	);
 };
 
+const collectObjectKeys = (value: unknown, keys = new Set<string>()): Set<string> => {
+	if (!value || typeof value !== "object") {
+		return keys;
+	}
+	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer || value instanceof Blob) {
+		keys.add("<binary>");
+		return keys;
+	}
+	for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+		keys.add(key);
+		collectObjectKeys(child, keys);
+	}
+	return keys;
+};
+
 const receiveBatches = async (
 	ctx: Awaited<ReturnType<typeof bootDktModels>>,
 	batches: readonly CanonicalBatch[],
@@ -215,6 +230,52 @@ describe("MiniCut canonical CRDT batches", () => {
 
 		await sender.close();
 		await receiver.close();
+	});
+
+	it("keeps imported resource byte payloads out of canonical CRDT graph batches", async () => {
+		const sender = await bootCrdtModels("canonical-resource-bytes-a");
+		const projectSetup = await createProject(sender, "Canonical resource bytes project");
+		const bytes = new Uint8Array([1, 2, 3, 4]).buffer;
+		const importBatches = await dispatchAndDrain(sender, projectSetup.project, "importResource", {
+			name: "Bytes stay outside graph",
+			kind: "video",
+			url: "",
+			mime: "video/webm",
+			duration: 5,
+			size: 4,
+			source: { kind: "p2p", ownerPeerId: "peer-a", blob: new Blob([bytes]) },
+			status: "missing",
+			data: {
+				status: "partial",
+				chunkSize: 4,
+				chunks: {
+					0: { index: 0, start: 0, end: 4, size: 4, status: "ready", bytes },
+				},
+				ranges: { loaded: [[0, 4]], requested: [] },
+				loadedBytes: 4,
+				blob: new Blob([bytes]),
+				arrayBuffer: bytes,
+				base64: "AQIDBA==",
+			},
+		});
+
+		const keys = collectObjectKeys(importBatches);
+		expect(keys.has("<binary>")).toBe(false);
+		expect(keys.has("bytes")).toBe(false);
+		expect(keys.has("blob")).toBe(false);
+		expect(keys.has("arrayBuffer")).toBe(false);
+		expect(keys.has("base64")).toBe(false);
+		expectAttrOp(importBatches, {
+			model_name: "resource",
+			name: "data",
+			value: expect.objectContaining({
+				status: "partial",
+				chunkSize: 4,
+				loadedBytes: 4,
+			}),
+		});
+
+		await sender.close();
 	});
 
 	it("creates text clip and text node as canonical graph state", async () => {
