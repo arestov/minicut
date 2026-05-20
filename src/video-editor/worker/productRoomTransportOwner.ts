@@ -10,6 +10,9 @@ import {
 	type ProductRoomCrdtSend,
 	type ProductRoomCrdtSendResult,
 	type ProductRoomCrdtPacketHandler,
+	type ProductRoomCrdtPeerAttached,
+	type ProductRoomCrdtPeerDetached,
+	type ProductRoomCrdtPeerHandler,
 	type ProductRoomAttachWebRtc,
 	type ProductRoomDetachWebRtc,
 	type ProductRoomMediaPacketHandler,
@@ -31,6 +34,8 @@ type ProductRoomTransportOwnerOptions = {
 	heartbeatTimeoutMs?: number;
 	now?: () => number;
 	onCrdtPacket?: ProductRoomCrdtPacketHandler;
+	onCrdtPeerAttached?: ProductRoomCrdtPeerHandler;
+	onCrdtPeerDetached?: ProductRoomCrdtPeerHandler;
 	onMediaPacket?: ProductRoomMediaPacketHandler;
 };
 
@@ -62,6 +67,8 @@ export const createProductRoomTransportOwner = ({
 	heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS,
 	now = () => Date.now(),
 	onCrdtPacket,
+	onCrdtPeerAttached,
+	onCrdtPeerDetached,
 	onMediaPacket,
 }: ProductRoomTransportOwnerOptions) => {
 	const tabs = new Map<string, ProductRoomTransportOwnerTab>();
@@ -269,6 +276,36 @@ export const createProductRoomTransportOwner = ({
 		return { ok: true };
 	};
 
+	const handleCrdtPeerAttached = (
+		message: ProductRoomCrdtPeerAttached & { tabId: string },
+	): ProductRoomTransportMessageResult => {
+		const accepted = acceptsOwnerMessage(message);
+		if (!accepted.ok) {
+			return accepted;
+		}
+		onCrdtPeerAttached?.({
+			peerId: message.peerId,
+			transportGeneration: message.transportGeneration,
+			roomId: message.roomId,
+		});
+		return { ok: true };
+	};
+
+	const handleCrdtPeerDetached = (
+		message: ProductRoomCrdtPeerDetached & { tabId: string },
+	): ProductRoomTransportMessageResult => {
+		const accepted = acceptsOwnerMessage(message);
+		if (!accepted.ok) {
+			return accepted;
+		}
+		onCrdtPeerDetached?.({
+			peerId: message.peerId,
+			transportGeneration: message.transportGeneration,
+			roomId: message.roomId,
+		});
+		return { ok: true };
+	};
+
 	const sendCrdtPacket = (
 		packet: unknown,
 		targetPeerId?: string,
@@ -362,6 +399,8 @@ export const createProductRoomTransportOwner = ({
 		handleOwnerHeartbeat,
 		handleOwnerStatus,
 		handleCrdtReceive,
+		handleCrdtPeerAttached,
+		handleCrdtPeerDetached,
 		handleMediaReceive,
 		sendCrdtPacket,
 		sendMediaPacket,

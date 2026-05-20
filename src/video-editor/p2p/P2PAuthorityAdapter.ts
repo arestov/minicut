@@ -222,6 +222,7 @@ export const createP2PAuthorityAdapter = (
 			let attachedRoomGeneration: number | null = null;
 			let isDestroyed = false;
 			const crdtUnlistens = new Map<string, () => void>();
+			const announcedCrdtPeers = new Set<string>();
 			const pendingCrdtSends: ProductRoomCrdtSend[] = [];
 
 			const sendProductRoomToWorker = (message: ProductRoomProtocolMessage): void => {
@@ -240,10 +241,19 @@ export const createP2PAuthorityAdapter = (
 				remotePeerId: string,
 				transport: P2PCrdtTransportLike,
 			): void => {
-				if (crdtUnlistens.has(remotePeerId)) {
+				if (attachedRoomGeneration == null) {
 					return;
 				}
-				if (attachedRoomGeneration == null) {
+				if (!announcedCrdtPeers.has(remotePeerId)) {
+					announcedCrdtPeers.add(remotePeerId);
+					sendProductRoomToWorker({
+						type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+						roomId: config.roomId,
+						transportGeneration: attachedRoomGeneration,
+						peerId: remotePeerId,
+					});
+				}
+				if (crdtUnlistens.has(remotePeerId)) {
 					return;
 				}
 				const unlisten = transport.listen((packet, sourcePeerId) => {
@@ -269,6 +279,17 @@ export const createP2PAuthorityAdapter = (
 			};
 
 			const detachCrdtListeners = (): void => {
+				if (attachedRoomGeneration != null) {
+					for (const remotePeerId of announcedCrdtPeers) {
+						sendProductRoomToWorker({
+							type: PRODUCT_ROOM_MSG.CRDT_PEER_DETACHED,
+							roomId: config.roomId,
+							transportGeneration: attachedRoomGeneration,
+							peerId: remotePeerId,
+						});
+					}
+				}
+				announcedCrdtPeers.clear();
 				for (const unlisten of crdtUnlistens.values()) {
 					unlisten();
 				}

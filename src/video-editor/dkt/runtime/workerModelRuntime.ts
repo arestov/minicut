@@ -16,6 +16,7 @@ import {
 	createMiniCutDktRuntime,
 	type MiniCutCrdtTransport,
 } from "./createMiniCutDktRuntime";
+import { WORKSPACE_OPEN_STATUS } from "./workspaceOpenState";
 
 const cloneWireMessage = (message: DktCrdtWireMessage): DktCrdtWireMessage =>
 	JSON.parse(JSON.stringify(message)) as DktCrdtWireMessage;
@@ -67,6 +68,16 @@ const isCrdtTestHarnessEnabled = (): boolean =>
 type ProductRoomRuntime = {
 	owner: ReturnType<typeof createProductRoomTransportOwner>;
 	listeners: Set<(message: DktCrdtWireMessage) => void>;
+	pendingIncomingMessages: DktCrdtWireMessage[];
+	canDeliverIncomingMessages: boolean;
+	replayDurableLogCallbacks: Set<(targetPeerId: string) => void>;
+	attachedCrdtPeers: Set<string>;
+};
+
+type CrdtRuntimeWithReadableStorage = {
+	storage?: {
+		getBatchesAfter?: (clock?: Record<string, number>) => Promise<unknown[]>;
+	};
 };
 
 const cloneUnknownWireMessage = (message: unknown): DktCrdtWireMessage =>
@@ -89,16 +100,60 @@ export const createMiniCutDktWorkerModelRuntime = (
 			return room;
 		}
 		const listeners = new Set<(message: DktCrdtWireMessage) => void>();
+		const pendingIncomingMessages: DktCrdtWireMessage[] = [];
+		let canDeliverIncomingMessages = false;
+		const deliverPendingIncomingMessages = (): void => {
+			if (!canDeliverIncomingMessages || listeners.size === 0) {
+				return;
+			}
+			while (pendingIncomingMessages.length > 0) {
+				const message = pendingIncomingMessages.shift();
+				if (!message) {
+					continue;
+				}
+				for (const listener of [...listeners]) {
+					listener(cloneWireMessage(message));
+				}
+			}
+		};
+		const replayDurableLogCallbacks = new Set<(targetPeerId: string) => void>();
+		const attachedCrdtPeers = new Set<string>();
 		const owner = createProductRoomTransportOwner({
 			roomId,
 			onCrdtPacket(packet) {
 				const wireMessage = cloneUnknownWireMessage(packet.payload);
+				if (!canDeliverIncomingMessages || listeners.size === 0) {
+					pendingIncomingMessages.push(wireMessage);
+					return;
+				}
 				for (const listener of [...listeners]) {
 					listener(cloneWireMessage(wireMessage));
 				}
 			},
+			onCrdtPeerAttached(peer) {
+				attachedCrdtPeers.add(peer.peerId);
+				for (const replay of [...replayDurableLogCallbacks]) {
+					replay(peer.peerId);
+				}
+			},
+			onCrdtPeerDetached(peer) {
+				attachedCrdtPeers.delete(peer.peerId);
+			},
 		});
-		room = { owner, listeners };
+		room = {
+			owner,
+			listeners,
+			pendingIncomingMessages,
+			get canDeliverIncomingMessages() {
+				return canDeliverIncomingMessages;
+			},
+			set canDeliverIncomingMessages(value: boolean) {
+				canDeliverIncomingMessages = value;
+				deliverPendingIncomingMessages();
+			},
+			replayDurableLogCallbacks,
+			attachedCrdtPeers,
+		};
 		productRooms.set(roomId, room);
 		return room;
 	};
@@ -106,12 +161,35 @@ export const createMiniCutDktWorkerModelRuntime = (
 	const createProductRoomCrdtTransport = (roomId: string): MiniCutCrdtTransport => ({
 		attach(crdtRuntime, context): () => void {
 			const room = getProductRoom(roomId);
+			const replayDurableLog = (targetPeerId: string): void => {
+				void Promise.resolve(
+					(crdtRuntime as CrdtRuntimeWithReadableStorage).storage
+						?.getBatchesAfter?.({}) ?? [],
+				).then((batches) => {
+					if (!Array.isArray(batches) || batches.length === 0) {
+						return;
+					}
+					room.owner.sendCrdtPacket(
+						cloneWireMessage({
+							type: "dkt-crdt-batches",
+							protocol: "dkt-crdt-graph-v1",
+							from: context.peerId,
+							profile_id: context.profileId,
+							profile_version: context.profileVersion,
+							batches,
+						} as DktCrdtWireMessage),
+						targetPeerId,
+					);
+				});
+			};
+			room.replayDurableLogCallbacks.add(replayDurableLog);
 			const transport: DktCrdtTransport = {
 				send(message) {
 					room.owner.sendCrdtPacket(cloneWireMessage(message));
 				},
 				subscribe(listener) {
 					room.listeners.add(listener);
+					room.canDeliverIncomingMessages = room.canDeliverIncomingMessages;
 					return () => room.listeners.delete(listener);
 				},
 				close() {
@@ -122,6 +200,7 @@ export const createMiniCutDktWorkerModelRuntime = (
 				crdtRuntime.attachTransport(transport, { baseModel: context.baseModel });
 			}
 			return () => {
+				room.replayDurableLogCallbacks.delete(replayDurableLog);
 				transport.close?.();
 			};
 		},
@@ -201,6 +280,26 @@ export const createMiniCutDktWorkerModelRuntime = (
 					});
 					return;
 				}
+				case PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED: {
+					if (!tabId) {
+						return;
+					}
+					getProductRoom(message.roomId).owner.handleCrdtPeerAttached({
+						...message,
+						tabId,
+					});
+					return;
+				}
+				case PRODUCT_ROOM_MSG.CRDT_PEER_DETACHED: {
+					if (!tabId) {
+						return;
+					}
+					getProductRoom(message.roomId).owner.handleCrdtPeerDetached({
+						...message,
+						tabId,
+					});
+					return;
+				}
 			}
 		};
 		const unlisten = transport.listen((message) => {
@@ -223,7 +322,21 @@ export const createMiniCutDktWorkerModelRuntime = (
 		const runtimeTransport: DomSyncTransportLike<MiniCutDktTransportMessage> = {
 			send(message) {
 				if (message.type === DKT_MSG.WORKSPACE_OPEN_STATE && sessionKey) {
-					getProductRoom(sessionKey).owner.setWorkspaceOpenState(message.state);
+					const room = getProductRoom(sessionKey);
+					room.owner.setWorkspaceOpenState(message.state);
+					if (
+						message.state.status === WORKSPACE_OPEN_STATUS.READY ||
+						message.state.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED
+					) {
+						for (const peerId of [...room.attachedCrdtPeers]) {
+							for (const replay of [...room.replayDurableLogCallbacks]) {
+								replay(peerId);
+							}
+						}
+					}
+				}
+				if (message.type === DKT_MSG.RUNTIME_READY && sessionKey) {
+					getProductRoom(sessionKey).canDeliverIncomingMessages = true;
 				}
 				transport.send(message);
 			},

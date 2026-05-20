@@ -398,6 +398,7 @@ export const createPageP2PManager = (
 		onClosed?: () => void,
 	): P2PCrdtTransportLike => {
 		const listeners = new Set<(packet: unknown, remotePeerId: string) => void>();
+		const pendingPackets: unknown[] = [];
 		let transportDestroyed = false;
 
 		dc.onmessage = (event) => {
@@ -406,6 +407,10 @@ export const createPageP2PManager = (
 			}
 			try {
 				const packet = JSON.parse(String(event.data));
+				if (listeners.size === 0) {
+					pendingPackets.push(packet);
+					return;
+				}
 				for (const listener of listeners) {
 					listener(packet, remotePeerId);
 				}
@@ -434,6 +439,10 @@ export const createPageP2PManager = (
 			},
 			listen(listener) {
 				listeners.add(listener);
+				while (pendingPackets.length > 0 && listeners.has(listener)) {
+					const packet = pendingPackets.shift();
+					listener(packet, remotePeerId);
+				}
 				return () => listeners.delete(listener);
 			},
 			destroy() {
@@ -442,6 +451,7 @@ export const createPageP2PManager = (
 				}
 				transportDestroyed = true;
 				listeners.clear();
+				pendingPackets.length = 0;
 				dc.close();
 			},
 		};
@@ -922,6 +932,9 @@ export const createPageP2PManager = (
 			ordered: true,
 		});
 		const crdtDc = pc.createDataChannel(crdtDataChannelLabel, { ordered: true });
+		const crdtTransport = createCrdtDcTransport(targetPeerId, crdtDc, () => {
+			crdtTransports.delete(targetPeerId);
+		});
 		dataChannels.set(targetPeerId, dc);
 		scheduleConnectionWatchdog(targetPeerId, pc);
 
@@ -963,11 +976,8 @@ export const createPageP2PManager = (
 			if (destroyed) {
 				return;
 			}
-			const transport = createCrdtDcTransport(targetPeerId, crdtDc, () => {
-				crdtTransports.delete(targetPeerId);
-			});
-			crdtTransports.set(targetPeerId, transport);
-			events.onClientCrdtTransport?.(transport);
+			crdtTransports.set(targetPeerId, crdtTransport);
+			events.onClientCrdtTransport?.(crdtTransport);
 		};
 
 		pc.onicecandidate = (event) => {
@@ -1043,13 +1053,13 @@ export const createPageP2PManager = (
 
 				pc.ondatachannel = (event) => {
 					if (event.channel.label === crdtDataChannelLabel) {
+						const transport = createCrdtDcTransport(remotePeerId, event.channel, () => {
+							crdtTransports.delete(remotePeerId);
+						});
 						const announceCrdtTransport = (): void => {
 							if (destroyed) {
 								return;
 							}
-							const transport = createCrdtDcTransport(remotePeerId, event.channel, () => {
-								crdtTransports.delete(remotePeerId);
-							});
 							crdtTransports.set(remotePeerId, transport);
 							events.onServerCrdtTransport?.(remotePeerId, transport);
 						};

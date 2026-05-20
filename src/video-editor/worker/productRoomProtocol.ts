@@ -11,6 +11,8 @@ export const PRODUCT_ROOM_MSG = {
 	MEDIA_SEND: 7,
 	MEDIA_RECEIVE: 8,
 	TRANSPORT_ERROR: 9,
+	CRDT_PEER_ATTACHED: 10,
+	CRDT_PEER_DETACHED: 11,
 } as const;
 
 export const WEBRTC_OWNER_STATUS = {
@@ -86,6 +88,20 @@ export type ProductRoomCrdtReceive = {
 	sourcePeerId?: string;
 };
 
+export type ProductRoomCrdtPeerAttached = {
+	type: typeof PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED;
+	roomId: string;
+	transportGeneration: number;
+	peerId: string;
+};
+
+export type ProductRoomCrdtPeerDetached = {
+	type: typeof PRODUCT_ROOM_MSG.CRDT_PEER_DETACHED;
+	roomId: string;
+	transportGeneration: number;
+	peerId: string;
+};
+
 export type ProductRoomMediaSend = {
 	type: typeof PRODUCT_ROOM_MSG.MEDIA_SEND;
 	roomId: string;
@@ -125,6 +141,12 @@ export type ProductRoomCrdtPacketHandler = (packet: {
 	roomId: string;
 }) => void;
 
+export type ProductRoomCrdtPeerHandler = (peer: {
+	peerId: string;
+	transportGeneration: number;
+	roomId: string;
+}) => void;
+
 export type ProductRoomMediaPacketHandler = (packet: {
 	envelope: unknown;
 	sourcePeerId?: string;
@@ -146,6 +168,8 @@ export type ProductRoomProtocolMessage =
 	| ProductRoomWebRtcStatus
 	| ProductRoomCrdtSend
 	| ProductRoomCrdtReceive
+	| ProductRoomCrdtPeerAttached
+	| ProductRoomCrdtPeerDetached
 	| ProductRoomMediaSend
 	| ProductRoomMediaReceive
 	| ProductRoomTransportError;

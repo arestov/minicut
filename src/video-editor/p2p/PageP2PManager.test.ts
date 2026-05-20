@@ -443,6 +443,46 @@ describe("PageP2PManager", () => {
 		manager.destroy();
 	});
 
+	test("buffers client CRDT packets that arrive before worker listener attaches", async () => {
+		const signaling = createSignalingHarness();
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onClientCrdtTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		};
+		const manager = createPageP2PManager(
+			{
+				roomId: "room-1",
+				signalUrl: "ws://127.0.0.1:8790",
+				workerUrl: "http://localhost/sharedWorker.js",
+				createSignaling: signaling.factory,
+			},
+			events,
+		);
+
+		signaling.emitLeader("remote-server");
+		await Promise.resolve();
+		const crdtDc = MockRTCPeerConnection.instances[0].createdChannels[2];
+
+		crdtDc.simulateMessage({ batch: ["early"] });
+		crdtDc.simulateOpen();
+		expect(events.onClientCrdtTransport).toHaveBeenCalledTimes(1);
+
+		const transport = events.onClientCrdtTransport.mock.calls[0][0];
+		const received: unknown[] = [];
+		transport.listen((packet: unknown, remotePeerId: string) => {
+			received.push({ packet, remotePeerId });
+		});
+
+		expect(received).toEqual([
+			{ packet: { batch: ["early"] }, remotePeerId: "remote-server" },
+		]);
+
+		manager.destroy();
+	});
+
 	test("passes through unframed native binary resource messages", async () => {
 		const signaling = createSignalingHarness();
 		const events = {
@@ -707,6 +747,55 @@ describe("PageP2PManager", () => {
 		expect(events.onServerCrdtTransport.mock.calls[0][0]).toBe(
 			"remote-client-1",
 		);
+
+		manager.destroy();
+	});
+
+	test("buffers server CRDT packets that arrive before data channel opens", async () => {
+		const signaling = createSignalingHarness();
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onServerCrdtTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		};
+		const manager = createPageP2PManager(
+			{
+				roomId: "room-1",
+				signalUrl: "ws://127.0.0.1:8790",
+				workerUrl: "http://localhost/sharedWorker.js",
+				createSignaling: signaling.factory,
+			},
+			events,
+		);
+
+		signaling.emitLeader(manager.peerId);
+		signaling.emitSignal({
+			kind: "offer",
+			roomId: "room-1",
+			fromPeerId: "remote-client-1",
+			toPeerId: manager.peerId,
+			sdp: { type: "offer", sdp: "incoming-offer" },
+			ts: Date.now(),
+		});
+		await flushMicrotasks(8);
+
+		const crdtDc = MockRTCPeerConnection.instances[0].simulateDataChannel(
+			"minicut-crdt",
+		);
+		crdtDc.simulateMessage({ batch: ["early-server"] });
+		crdtDc.simulateOpen();
+
+		const transport = events.onServerCrdtTransport.mock.calls[0][1];
+		const received: unknown[] = [];
+		transport.listen((packet: unknown, remotePeerId: string) => {
+			received.push({ packet, remotePeerId });
+		});
+
+		expect(received).toEqual([
+			{ packet: { batch: ["early-server"] }, remotePeerId: "remote-client-1" },
+		]);
 
 		manager.destroy();
 	});

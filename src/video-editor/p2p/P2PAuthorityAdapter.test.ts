@@ -177,6 +177,14 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 				transportGeneration: 7,
 			}),
 		);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 7,
+				peerId: "server",
+			}),
+		);
 		localAuthority.opened[0].emit(
 			productRoomMessage({
 				type: PRODUCT_ROOM_MSG.CRDT_SEND,
@@ -222,6 +230,14 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 			}),
 		);
 		manager.openClientCrdt(crdtTransport);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 3,
+				peerId: "server",
+			}),
+		);
 		crdtTransport.emit({ batch: [2] }, "peer-b");
 
 		expect(localAuthority.opened[0].sent).toContainEqual(
@@ -269,6 +285,14 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 
 		expect(crdtTransport.sent).toEqual([]);
 		manager.openClientCrdt(crdtTransport);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 9,
+				peerId: "server",
+			}),
+		);
 		expect(crdtTransport.sent).toEqual([{ queued: true }]);
 
 		dktTransport.destroy();
@@ -339,6 +363,22 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
 				roomId: "room-1",
 				transportGeneration: 8,
+			}),
+		);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 8,
+				peerId: "peer-b",
+			}),
+		);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 8,
+				peerId: "peer-c",
 			}),
 		);
 		localAuthority.opened[0].emit(

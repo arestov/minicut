@@ -25,11 +25,13 @@ const createHarness = () => {
 	let now = 1_000;
 	const sent = new Map<string, ProductRoomProtocolMessage[]>();
 	const receivedCrdt: unknown[] = [];
+	const attachedPeers: unknown[] = [];
 	const coordinator = createProductRoomTransportOwner({
 		roomId: "room-a",
 		heartbeatTimeoutMs: 100,
 		now: () => now,
 		onCrdtPacket: (packet) => receivedCrdt.push(packet),
+		onCrdtPeerAttached: (peer) => attachedPeers.push(peer),
 	});
 	const register = (tabId: string, canHostWebRtc: boolean, roomId = "room-a") => {
 		sent.set(tabId, []);
@@ -47,6 +49,7 @@ const createHarness = () => {
 		coordinator,
 		sent,
 		receivedCrdt,
+		attachedPeers,
 		register,
 		advance(ms: number) {
 			now += ms;
@@ -260,6 +263,40 @@ describe("product room transport owner", () => {
 				roomId: "room-a",
 			},
 		]);
+	});
+
+	it("reports remote CRDT peer attachment only from the active owner", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+
+		expect(
+			harness.coordinator.handleCrdtPeerAttached({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				tabId: "tab-a",
+				roomId: "room-a",
+				transportGeneration: 1,
+				peerId: "peer-b",
+			}),
+		).toEqual({ ok: true });
+		expect(harness.attachedPeers).toEqual([
+			{
+				peerId: "peer-b",
+				transportGeneration: 1,
+				roomId: "room-a",
+			},
+		]);
+
+		expect(
+			harness.coordinator.handleCrdtPeerAttached({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				tabId: "tab-b",
+				roomId: "room-a",
+				transportGeneration: 1,
+				peerId: "peer-c",
+			}),
+		).toEqual({ ok: false, errorCode: "tab_not_owner" });
+		expect(harness.attachedPeers).toHaveLength(1);
 	});
 
 	it("does not attach transport owner when workspace open failed", () => {
