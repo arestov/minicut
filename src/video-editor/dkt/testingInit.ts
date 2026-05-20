@@ -10,25 +10,26 @@
  *   - lockToRead: dispatch + wait for settle (guarantees ordering)
  */
 
-import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
-import { reinit } from "dkt/runtime/app/reinit.js";
+import { queryAttr as queryDktAttr } from "dkt/async/queryAttr.js";
+import { queryRel as queryDktRel } from "dkt/async/queryRel.js";
 import { makeDktCrdtIndexedDBStorage } from "dkt/crdt/storage/indexeddb.js";
 import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
-import { _getCurrentRel } from "dkt-all/libs/provoda/_internal/_listRels.js";
+import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
+import { reinit } from "dkt/runtime/app/reinit.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { MiniCutAppRoot } from "../models/AppRoot";
-import type { DktCrdtTransport } from "./crdt/testRelayContracts";
 import { sanitizeDktCrdtStoragePackage } from "./crdt/sanitizeStoragePackage";
-import {
-	openMiniCutWorkspaceStorage,
-	stageMiniCutWorkspaceManifest,
-	type MiniCutWorkspaceOpenResult,
-} from "./storage/minicutWorkspaceManifest";
+import type { DktCrdtTransport } from "./crdt/testRelayContracts";
 import {
 	WORKSPACE_EMPTY_INITIALIZED_STATE,
 	WORKSPACE_OPEN_STATUS,
 } from "./runtime/workspaceOpenState";
+import {
+	type MiniCutWorkspaceOpenResult,
+	openMiniCutWorkspaceStorage,
+	stageMiniCutWorkspaceManifest,
+} from "./storage/minicutWorkspaceManifest";
 
 type AnyModel = {
 	_node_id?: string | null;
@@ -37,6 +38,7 @@ type AnyModel = {
 	getAttr: (name: string) => unknown;
 	getNesting: (name: string) => unknown;
 	input?: (callback: () => void | Promise<void>) => unknown;
+	app?: AnyModel;
 	whenReady?: (fn?: () => void) => Promise<void> | void;
 	queryRel?: (relName: string) => Promise<unknown> | unknown;
 	queryAttr?: (attrName: string) => Promise<unknown> | unknown;
@@ -84,7 +86,10 @@ export type MiniCutDktCrdtRuntime = {
 	projectCRDTMeta?: (model: AnyModel) => Promise<void> | void;
 	transport_receive_tail?: Promise<unknown>;
 	flushTransportOutbox?: () => unknown;
-	attachTransport?: (transport: DktCrdtTransport, options: { baseModel: AnyModel }) => void;
+	attachTransport?: (
+		transport: DktCrdtTransport,
+		options: { baseModel: AnyModel },
+	) => void;
 };
 
 export type MiniCutDktCrdtStoragePackage = {
@@ -177,9 +182,24 @@ export const queryRel = async (
 	relName: string,
 ): Promise<AnyModel[]> => {
 	if (!model) return [];
-	const result = model.queryRel
-		? await model.queryRel(relName)
-		: _getCurrentRel(model as Parameters<typeof _getCurrentRel>[0], relName);
+	const read = async () => await queryDktRel(model, relName);
+	const isInsideTransaction =
+		typeof model._highway?.getCurrentStateTransaction === "function" &&
+		model._highway.getCurrentStateTransaction(false) != null;
+	const inputRoot = model.app ?? model;
+	const result =
+		!isInsideTransaction && typeof inputRoot.input === "function"
+			? await new Promise<unknown>((resolve, reject) => {
+					inputRoot.input?.(async () => {
+						try {
+							const value = await read();
+							resolve(value);
+						} catch (error) {
+							reject(error);
+						}
+					});
+				})
+			: await read();
 	if (Array.isArray(result)) return result.filter(Boolean) as AnyModel[];
 	if (result && typeof result === "object" && "_node_id" in result)
 		return [result as AnyModel];
@@ -195,11 +215,23 @@ export const queryAttr = async (
 	attrName: string,
 ): Promise<unknown> => {
 	if (!model) return null;
-	if (model.queryAttr) {
-		const value = await model.queryAttr(attrName);
-		return value ?? null;
-	}
-	return model.states?.[attrName] ?? null;
+	const read = async () => (await queryDktAttr(model, attrName)) ?? null;
+	const isInsideTransaction =
+		typeof model._highway?.getCurrentStateTransaction === "function" &&
+		model._highway.getCurrentStateTransaction(false) != null;
+	const inputRoot = model.app ?? model;
+	return !isInsideTransaction && typeof inputRoot.input === "function"
+		? await new Promise<unknown>((resolve, reject) => {
+				inputRoot.input?.(async () => {
+					try {
+						const value = await read();
+						resolve(value);
+					} catch (error) {
+						reject(error);
+					}
+				});
+			})
+		: await read();
 };
 
 /**
@@ -272,7 +304,7 @@ export type BootDktModelsOptions = {
 				workspaceId?: string;
 				workspaceIdForSessionKey?: (sessionKey: string) => string;
 				transport?: DktCrdtTransport | null;
-			};
+		  };
 };
 
 const isStoragePackage = (
@@ -315,7 +347,12 @@ const createCrdtRuntimeForTests = async (
 	transport: DktCrdtTransport | null;
 }> => {
 	if (!options || options.enabled !== true) {
-		return { crdtRuntime: null, storagePackage: null, storageOpen: null, transport: null };
+		return {
+			crdtRuntime: null,
+			storagePackage: null,
+			storageOpen: null,
+			transport: null,
+		};
 	}
 	const storagePackage = await createStoragePackage(options.storage);
 	const workspaceId =
@@ -367,9 +404,8 @@ export const bootDktModels = async (
 	options: BootDktModelsOptions = {},
 ): Promise<DktTestContext> => {
 	const errorsCatcher = catchFlowErrors();
-	const { crdtRuntime, storagePackage, storageOpen, transport } = await createCrdtRuntimeForTests(
-		options.crdt,
-	);
+	const { crdtRuntime, storagePackage, storageOpen, transport } =
+		await createCrdtRuntimeForTests(options.crdt);
 	const runtime = prepareAppRuntime({
 		sync_sender: false,
 		proxies: false,
@@ -397,13 +433,15 @@ export const bootDktModels = async (
 	};
 
 	const startPromise: Promise<RuntimeStartResult> = options.reinitFromSnapshot
-		? (Promise.resolve(reinit(
-				MiniCutAppRoot,
-				runtime,
-				options.reinitFromSnapshot,
-				options.interfaces ?? {},
-				{ reinit_all_attrs: true },
-			)) as Promise<RuntimeStartResult>)
+		? (Promise.resolve(
+				reinit(
+					MiniCutAppRoot,
+					runtime,
+					options.reinitFromSnapshot,
+					options.interfaces ?? {},
+					{ reinit_all_attrs: true },
+				),
+			) as Promise<RuntimeStartResult>)
 		: runtime.start({
 				App: MiniCutAppRoot,
 				interfaces: options.interfaces ?? {},
@@ -431,19 +469,20 @@ export const bootDktModels = async (
 	 * Follows Linkcraft's pattern from dkt/test/waitFlow.js
 	 */
 	const computed = async (): Promise<void> => {
-		const waitForReady = runtime.whenAllReady
-			? new Promise<void>((resolve) => runtime.whenAllReady?.(() => resolve()))
-			: flow?.whenReady
-				? new Promise<void>((resolve) => flow.whenReady?.(() => resolve()))
-				: new Promise<void>((resolve) => {
-						if (typeof appModel.input === "function") {
-							appModel.input?.(() => resolve());
-						} else {
-							resolve();
-						}
-					});
+		const waitForReady = async () => {
+			if (runtime.whenAllReady) {
+				await new Promise<void>((resolve) =>
+					runtime.whenAllReady?.(() => resolve()),
+				);
+			} else if (flow?.whenReady) {
+				await new Promise<void>((resolve) => flow.whenReady?.(() => resolve()));
+			}
+			if (typeof appModel.input === "function") {
+				await new Promise<void>((resolve) => appModel.input?.(() => resolve()));
+			}
+		};
 		await raceWithProcessErrors([
-			waitForReady,
+			waitForReady(),
 			runtime.last_error ?? neverPromise(),
 			errorsCatcher.last_error_prom,
 		]);
@@ -493,13 +532,24 @@ export const bootDktModels = async (
 			runtime.last_error ?? neverPromise(),
 			errorsCatcher.last_error_prom,
 			new Promise<void>((resolve, reject) => {
-				if (runtime.input) {
-					runtime.input(() => {
-							void Promise.resolve(fn()).then(resolve, reject);
-					});
+				const run = async () => {
+					try {
+						await fn();
+						resolve();
+					} catch (error) {
+						reject(error);
+					}
+				};
+
+				if (typeof appModel.input === "function") {
+					appModel.input(run);
 					return;
 				}
-				void Promise.resolve(fn()).then(resolve, reject);
+				if (runtime.input) {
+					runtime.input(run);
+					return;
+				}
+				void run();
 			}),
 		]);
 		await computed();
