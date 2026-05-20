@@ -65,12 +65,10 @@ export const runMiniCutTrace = async (simulation: Simulation, steps: MiniCutTrac
 				case "clipTimingResizeGesture": {
 					const peer = simulation.peer(step.peerId);
 					const clip = await clipTargetForPeer(peer, ctx);
-					await peer.ctx.lockToRead(async () => {
-						await dispatchClipTimingResizeGesture(peer.ctx, clip, {
-							edge: step.edge,
-							delta: step.delta,
-							batchId: step.batchId,
-						});
+					await dispatchClipTimingResizeGesture(peer.ctx, clip, {
+						edge: step.edge,
+						delta: step.delta,
+						batchId: step.batchId,
 					});
 					peer.flushOutbound();
 					break;
