@@ -3,6 +3,12 @@ import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../dkt/shared/messageTypes";
+import {
+	PRODUCT_ROOM_MSG,
+	WEBRTC_OWNER_STATUS,
+	type ProductRoomCrdtSend,
+	type ProductRoomProtocolMessage,
+} from "../worker/productRoomProtocol";
 import type {
 	DktSyncListener,
 	EditorAuthorityClient,
@@ -12,7 +18,7 @@ import { createFallbackAuthorityClient } from "../worker/fallbackAuthorityClient
 import type { BridgeSignalingFactory } from "./BridgeSignaling";
 import {
 	createPageP2PManager,
-	type P2PTransportLike,
+	type P2PCrdtTransportLike,
 	type PageP2PManager,
 	type PageP2PManagerConfig,
 	type PageP2PManagerEvents,
@@ -22,87 +28,6 @@ const P2P_SHARED_WORKER_NAME_PREFIX = "minicut-video-editor-authority:p2p:";
 
 const toWorkerScopeKey = (roomId: string): string =>
 	roomId.replace(/[^a-zA-Z0-9:_-]/g, "-").slice(0, 80);
-
-/**
- * Phase 1: DKT-only transport authority wrapping P2P transport.
- * No registry protocol. Only openDktTransport() which forwards DKT messages over the P2P link.
- */
-const createTransportAuthorityClient = (
-	transport: P2PTransportLike,
-): EditorAuthorityClient => {
-	const syncListeners = new Set<DktSyncListener>();
-	let destroyed = false;
-
-	const unlistenTransport = transport.listen((message) => {
-		if (
-			destroyed ||
-			!message ||
-			typeof message !== "object" ||
-			!("type" in message)
-		) {
-			return;
-		}
-
-		if (message.type === DKT_MSG.SYNC_HANDLE) {
-			const syncMsg = message as Extract<
-				MiniCutDktTransportMessage,
-				{ type: typeof DKT_MSG.SYNC_HANDLE }
-			>;
-			for (const listener of syncListeners) {
-				listener(syncMsg);
-			}
-		}
-	});
-
-	return {
-		openDktTransport(): DomSyncTransportLike<MiniCutDktTransportMessage> {
-			const transportListeners = new Set<
-				(message: MiniCutDktTransportMessage) => void
-			>();
-			const unlistenAll = transport.listen((message) => {
-				if (message && typeof message === "object" && "type" in message) {
-					for (const listener of transportListeners) {
-						listener(message as MiniCutDktTransportMessage);
-					}
-				}
-			});
-
-			return {
-				send(message) {
-					transport.send(message);
-				},
-				listen(listener) {
-					transportListeners.add(listener);
-					return () => {
-						transportListeners.delete(listener);
-					};
-				},
-				destroy() {
-					transportListeners.clear();
-					unlistenAll();
-				},
-			};
-		},
-
-		subscribeDktSync(listener) {
-			syncListeners.add(listener);
-			return () => {
-				syncListeners.delete(listener);
-			};
-		},
-
-		destroy() {
-			if (destroyed) {
-				return;
-			}
-
-			destroyed = true;
-			unlistenTransport();
-			syncListeners.clear();
-			transport.destroy();
-		},
-	};
-};
 
 export interface CreateP2PAuthorityAdapterConfig {
 	roomId: string;
@@ -147,6 +72,7 @@ export const createP2PAuthorityAdapter = (
 	let destroyed = false;
 	let role: "server" | "client" | "undecided" = "undecided";
 	let activeClient: EditorAuthorityClient | null = null;
+	let activeCrdtTransport: P2PCrdtTransportLike | null = null;
 	const clientChangeCallbacks = new Set<() => void>();
 
 	const dktSyncListeners = new Set<DktSyncListener>();
@@ -154,6 +80,14 @@ export const createP2PAuthorityAdapter = (
 	const cleanupActiveClient = (): void => {
 		activeClient?.destroy?.();
 		activeClient = null;
+	};
+
+	const setActiveCrdtTransport = (
+		_remotePeerId: string,
+		transport: P2PCrdtTransportLike,
+	): void => {
+		activeCrdtTransport?.destroy();
+		activeCrdtTransport = transport;
 	};
 
 	const activateClient = (
@@ -202,7 +136,16 @@ export const createP2PAuthorityAdapter = (
 					roomId: config.roomId,
 					peerId: manager.peerId,
 				});
-				activateClient("client", createTransportAuthorityClient(transport));
+				transport.destroy();
+				activateClient("client", createLocalAuthority());
+			},
+
+			onClientCrdtTransport(transport) {
+				setActiveCrdtTransport("server", transport);
+			},
+
+			onServerCrdtTransport(remotePeerId, transport) {
+				setActiveCrdtTransport(remotePeerId, transport);
 			},
 
 			onClientResourceTransport(transport) {
@@ -271,7 +214,70 @@ export const createP2PAuthorityAdapter = (
 				MiniCutDktTransportMessage,
 				{ type: typeof DKT_MSG.BOOTSTRAP }
 			> | null = null;
+			let attachedRoomGeneration: number | null = null;
 			let isDestroyed = false;
+			let crdtUnlisten: (() => void) | null = null;
+
+			const sendProductRoomToWorker = (message: ProductRoomProtocolMessage): void => {
+				const wrapped: MiniCutDktTransportMessage = {
+					type: DKT_MSG.PRODUCT_ROOM_MESSAGE,
+					message,
+				};
+				if (realTransport) {
+					realTransport.send(wrapped);
+				} else {
+					pendingMessages.push(wrapped);
+				}
+			};
+
+			const attachCrdtListener = (): void => {
+				if (crdtUnlisten || !activeCrdtTransport) {
+					return;
+				}
+				crdtUnlisten = activeCrdtTransport.listen((packet, remotePeerId) => {
+					if (attachedRoomGeneration == null) {
+						return;
+					}
+					sendProductRoomToWorker({
+						type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+						roomId: config.roomId,
+						transportGeneration: attachedRoomGeneration,
+						packet,
+						sourcePeerId: remotePeerId,
+					});
+				});
+			};
+
+			const handleProductRoomFromWorker = (message: ProductRoomProtocolMessage): boolean => {
+				switch (message.type) {
+					case PRODUCT_ROOM_MSG.ATTACH_WEBRTC:
+						attachedRoomGeneration = message.transportGeneration;
+						attachCrdtListener();
+						sendProductRoomToWorker({
+							type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+							tabId: manager.peerId,
+							roomId: config.roomId,
+							transportGeneration: message.transportGeneration,
+							status: WEBRTC_OWNER_STATUS.ATTACHED,
+						});
+						return true;
+					case PRODUCT_ROOM_MSG.DETACH_WEBRTC:
+						if (attachedRoomGeneration === message.transportGeneration) {
+							attachedRoomGeneration = null;
+							crdtUnlisten?.();
+							crdtUnlisten = null;
+						}
+						return true;
+					case PRODUCT_ROOM_MSG.CRDT_SEND: {
+						if (attachedRoomGeneration !== message.transportGeneration) {
+							return true;
+						}
+						activeCrdtTransport?.send((message as ProductRoomCrdtSend).packet);
+						return true;
+					}
+				}
+				return false;
+			};
 
 			const teardownRealTransport = (): void => {
 				if (realTransport) {
@@ -320,9 +326,21 @@ export const createP2PAuthorityAdapter = (
 				realTransportClient = activeClient;
 				realTransport = activeClient.openDktTransport();
 				realUnlisten = realTransport.listen((message) => {
+					if (
+						message.type === DKT_MSG.PRODUCT_ROOM_MESSAGE &&
+						handleProductRoomFromWorker(message.message)
+					) {
+						return;
+					}
 					for (const listener of transportListeners) {
 						listener(message);
 					}
+				});
+				sendProductRoomToWorker({
+					type: PRODUCT_ROOM_MSG.TAB_HELLO,
+					tabId: manager.peerId,
+					roomId: config.roomId,
+					canHostWebRtc: true,
 				});
 
 				// On reconnect, send the cached BOOTSTRAP first so the new authority worker
@@ -372,6 +390,8 @@ export const createP2PAuthorityAdapter = (
 				},
 				destroy() {
 					isDestroyed = true;
+					crdtUnlisten?.();
+					crdtUnlisten = null;
 					clearInterval(checkInterval);
 					clientChangeCallbacks.delete(activateRealTransport);
 					teardownRealTransport();
