@@ -44,6 +44,7 @@ describe("CRDT resolution attempt meta", () => {
 
 		const conflictId = readOpenTimingConflictId(sim.peer("A").ctx.runtime, clipA._node_id);
 		const previousDuration = sim.peer("A").ctx.getAttr(clipA, "duration");
+		drainCrdtOutbox(sim.peer("A").ctx.runtime);
 
 		await sim.peer("A").dispatch(
 			clipA,
