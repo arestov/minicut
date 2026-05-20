@@ -105,6 +105,17 @@ describe("MiniCut maelstrom structural conflicts", () => {
 			], { clipByPeer: { B: clipB } });
 
 			await expectTimelineConflict(sim.peer("A"), sim.peer("A").videoTrack);
+			expect(
+				sim.peer("A").ctx.runtime.crdt_runtime.conflict_store.readConflicts({
+					aggregate: "timelineMembership",
+					status: "open",
+				}),
+			).toEqual(expect.arrayContaining([
+				expect.objectContaining({
+					aggregate: "timelineMembership",
+					source_frame_id: expect.any(Number),
+				}),
+			]));
 			expect((await sim.peer("A").ctx.queryRel(clipA, "effects"))[0]?._node_id).toBe(effectA._node_id);
 			expectNoPendingNetwork(sim.network);
 		});
@@ -171,6 +182,7 @@ describe("MiniCut maelstrom structural conflicts", () => {
 					kind: "sequence_move_vs_move",
 					field_kind: "rel",
 					field_name: "clips",
+					source_frame_id: expect.any(Number),
 					aggregate_anchor: {
 						model_name: "track",
 						field_kind: "rel",
