@@ -134,7 +134,7 @@ describe("MiniCut maelstrom structural conflicts", () => {
 			expectNoPendingNetwork(sim.network);
 		});
 
-		it(`keeps concurrent semantic moves free of synthetic relation conflict meta with ${profile.name}`, async () => {
+		it(`records concurrent semantic moves as timeline relation conflict with ${profile.name}`, async () => {
 			const sim = await createMiniCutCrdtSimulation({
 				peers: ["A", "B"],
 				storage: profile.storage,
@@ -161,7 +161,23 @@ describe("MiniCut maelstrom structural conflicts", () => {
 					"$meta$rels$crdt$clips$open_conflicts_count",
 					"$meta$model$crdt$open_conflicts_count",
 				]),
-			).toBe(0);
+			).toBeGreaterThan(0);
+			expect(
+				sim.peer("A").ctx.runtime.crdt_runtime.conflict_store.readConflicts({
+					aggregate: "timelineMembership",
+				}),
+			).toEqual(expect.arrayContaining([
+				expect.objectContaining({
+					kind: "sequence_move_vs_move",
+					field_kind: "rel",
+					field_name: "clips",
+					aggregate_anchor: {
+						model_name: "track",
+						field_kind: "rel",
+						field_name: "clips",
+					},
+				}),
+			]));
 			expectNoPendingNetwork(sim.network);
 		});
 	}
