@@ -52,7 +52,7 @@ describe("addResourceToTimeline append start", () => {
 		expect(appendStart).toBe(1.5);
 
 		const [clip] = await ctx.queryRel(videoTrack, "clips");
-		expectClipTiming(ctx, clip, {
+		await expectClipTiming(ctx, clip, {
 			clipId: String(clip._node_id),
 			start: 0,
 			duration: 1.5,
@@ -115,7 +115,7 @@ describe("addResourceToTimeline append start", () => {
 			}
 		}
 		expect(imageClip).toBeTruthy();
-		expectClipTiming(ctx, imageClip, {
+		await expectClipTiming(ctx, imageClip, {
 			resourceId: String(imageResource._node_id),
 			start: 1.5,
 			duration: 1,
@@ -194,12 +194,12 @@ describe("addResourceToTimeline append start", () => {
 			}
 		}
 
-		expectClipTiming(ctx, createdVideoClip, {
+		await expectClipTiming(ctx, createdVideoClip, {
 			resourceId: String(videoResource._node_id),
 			start: 2,
 			duration: 3,
 		});
-		expectClipTiming(ctx, createdAudioClip, {
+		await expectClipTiming(ctx, createdAudioClip, {
 			resourceId: String(videoResource._node_id),
 			start: 2,
 			duration: 3,
@@ -262,7 +262,7 @@ describe("addResourceToTimeline append start", () => {
 		)[0];
 		expect(toneClip).toBeTruthy();
 		expect(audioClips.length).toBeGreaterThanOrEqual(1);
-		expectClipTiming(ctx, toneClip, {});
+		await expectClipTiming(ctx, toneClip, {});
 		await expectProjectGraphInvariants(ctx);
 	});
 });

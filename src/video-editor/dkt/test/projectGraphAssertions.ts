@@ -8,7 +8,7 @@ export type ProjectGraphNode = {
 	rels: Record<string, unknown>;
 };
 
-export const expectClipTiming = (
+export const expectClipTiming = async (
 	ctx: DktTestContext,
 	clip: DktTestContext["sessionRoot"] | null | undefined,
 	expected: Partial<{
@@ -19,10 +19,10 @@ export const expectClipTiming = (
 		resourceId: string;
 		mediaKind: string;
 	}>,
-) => {
-	const clipStart = ctx.getAttr(clip, "start");
-	const clipIn = ctx.getAttr(clip, "in");
-	const clipDuration = ctx.getAttr(clip, "duration");
+): Promise<void> => {
+	const clipStart = await ctx.queryAttr(clip, "start");
+	const clipIn = await ctx.queryAttr(clip, "in");
+	const clipDuration = await ctx.queryAttr(clip, "duration");
 
 	if (expected.start !== undefined) {
 		expect(Number(clipStart)).toBeCloseTo(expected.start, 6);
@@ -37,13 +37,13 @@ export const expectClipTiming = (
 		expect(clip?._node_id).toBe(expected.clipId);
 	}
 	if (expected.resourceId !== undefined) {
-		const resourceRel = ctx.getAttr(clip, "clipRenderData") as {
+		const resourceRel = (await ctx.queryAttr(clip, "clipRenderData")) as {
 			resourceId?: unknown;
 		} | null;
 		expect(resourceRel?.resourceId).toBe(expected.resourceId);
 	}
 	if (expected.mediaKind !== undefined) {
-		expect(ctx.getAttr(clip, "mediaKind")).toBe(expected.mediaKind);
+		expect(await ctx.queryAttr(clip, "mediaKind")).toBe(expected.mediaKind);
 	}
 
 	expect(Number(clipStart)).toBeGreaterThanOrEqual(0);
@@ -72,19 +72,24 @@ export const expectProjectGraphInvariants = async (
 	const seenResourceIds = new Set<string>();
 
 	for (const track of tracks) {
-		expect(ctx.getAttr(track, "kind")).toMatch(/^(video|audio)$/);
-		expect(Number(ctx.getAttr(track, "appendStart"))).toBeGreaterThanOrEqual(0);
+		expect(await ctx.queryAttr(track, "kind")).toMatch(/^(video|audio)$/);
+		expect(Number(await ctx.queryAttr(track, "appendStart"))).toBeGreaterThanOrEqual(0);
 		expect(await ctx.queryRel(track, "project")).toEqual([activeProject]);
 	}
 
 	for (const track of tracks) {
 		const trackClips = await ctx.queryRel(track, "clips");
-		const appendStart = Number(ctx.getAttr(track, "appendStart"));
-		const maxEnd = trackClips.reduce((acc, clip) => {
-			const clipStart = Number(ctx.getAttr(clip, "start"));
-			const clipDuration = Number(ctx.getAttr(clip, "duration"));
-			return Math.max(acc, clipStart + clipDuration);
-		}, 0);
+		const appendStart = Number(await ctx.queryAttr(track, "appendStart"));
+		const clipTiming = await Promise.all(
+			trackClips.map(async (clip) => ({
+				start: Number(await ctx.queryAttr(clip, "start")),
+				duration: Number(await ctx.queryAttr(clip, "duration")),
+			})),
+		);
+		const maxEnd = clipTiming.reduce(
+			(acc, clip) => Math.max(acc, clip.start + clip.duration),
+			0,
+		);
 
 		expect(appendStart).toBeCloseTo(maxEnd, 6);
 
@@ -96,20 +101,20 @@ export const expectProjectGraphInvariants = async (
 	}
 
 	for (const clip of flatClips) {
-		expectClipTiming(ctx, clip, {});
+		await expectClipTiming(ctx, clip, {});
 		const clipId = clip._node_id;
 		if (typeof clipId === "string") {
 			expect(seenClipIds.has(clipId)).toBe(false);
 			seenClipIds.add(clipId);
 		}
 
-		const clipRenderData = ctx.getAttr(clip, "clipRenderData") as {
+		const clipRenderData = (await ctx.queryAttr(clip, "clipRenderData")) as {
 			id?: unknown;
 			resourceId?: unknown;
 		} | null;
 		expect(clipRenderData?.id).toBe(clip._node_id);
 
-		const mediaKind = ctx.getAttr(clip, "mediaKind");
+		const mediaKind = await ctx.queryAttr(clip, "mediaKind");
 		const resourceRel = await ctx.queryRel(clip, "resource");
 		const textRel = await ctx.queryRel(clip, "text");
 
@@ -161,7 +166,7 @@ export const expectProjectGraphInvariants = async (
 			seenResourceIds.add(resourceId);
 		}
 		expect(typeof resource._node_id).toBe("string");
-		expect(Number(ctx.getAttr(resource, "duration"))).toBeGreaterThanOrEqual(0);
+		expect(Number(await ctx.queryAttr(resource, "duration"))).toBeGreaterThanOrEqual(0);
 		expect(await ctx.queryRel(resource, "project")).toEqual([activeProject]);
 	}
 };
@@ -192,7 +197,13 @@ export const findTrackByKind = async (
 	kind: "video" | "audio",
 ) => {
 	const { tracks } = await readProjectGraph(ctx);
-	const track = tracks.find((item) => ctx.getAttr(item, "kind") === kind);
+	const trackKinds = await Promise.all(
+		tracks.map(async (track) => ({
+			track,
+			kind: await ctx.queryAttr(track, "kind"),
+		})),
+	);
+	const track = trackKinds.find((item) => item.kind === kind)?.track;
 	if (!track) {
 		throw new Error(`expected ${kind} track`);
 	}
