@@ -67,6 +67,11 @@ export type MiniCutCrdtTransport = {
 			peerId: string;
 			profileId: string;
 			profileVersion: number;
+			baseModel: RuntimeModelLike;
+			sendToPage: (message: MiniCutDktTransportMessage) => void;
+			subscribePageCrdtMessages: (
+				listener: (message: unknown) => void,
+			) => () => void;
 		},
 	) => undefined | (() => void);
 };
@@ -88,11 +93,16 @@ type MiniCutCrdtRuntimeLike = {
 		drainOutbox?: () => unknown[];
 		drainOutboxBatches?: () => unknown[];
 		peekDurableLog?: () => unknown[];
+		peekTransportTrace?: () => unknown[];
 		receiveFromNetwork?: (
 			model: RuntimeModelLike,
 			message: unknown,
 		) => unknown;
 	};
+	attachTransport?: (
+		transport: DktCrdtTransport,
+		options?: { baseModel?: RuntimeModelLike },
+	) => unknown;
 };
 
 type MiniCutCrdtStoragePackage = {
@@ -442,6 +452,7 @@ export const createMiniCutDktRuntime = (
 	const activeTransports = new Set<
 		DomSyncTransportLike<MiniCutDktTransportMessage>
 	>();
+	const pageCrdtMessageListeners = new Set<(message: unknown) => void>();
 	const enabled = options.enabled === true;
 	let lastWorkspaceOpenState: WorkspaceOpenState | null = WORKSPACE_OPENING_STATE;
 	let lastRuntimeErrorMessage: string | null = null;
@@ -616,6 +627,16 @@ export const createMiniCutDktRuntime = (
 						peerId: crdt.peerId,
 						profileId: crdt.profileId,
 						profileVersion: crdt.profileVersion,
+						baseModel: inited.app_model,
+						sendToPage: (message) => {
+							for (const transport of activeTransports) {
+								transport.send(message);
+							}
+						},
+						subscribePageCrdtMessages: (listener) => {
+							pageCrdtMessageListeners.add(listener);
+							return () => pageCrdtMessageListeners.delete(listener);
+						},
 					});
 					if (typeof cleanup === "function") {
 						crdtTransportCleanup = cleanup;
@@ -901,6 +922,12 @@ export const createMiniCutDktRuntime = (
 						type: DKT_MSG.DEBUG_DUMP_RESPONSE,
 						dump: sanitizeStorageValue({ ...dump, ...summary }),
 					});
+					return;
+				}
+				case DKT_MSG.CRDT_TRANSPORT_RECEIVE: {
+					for (const listener of [...pageCrdtMessageListeners]) {
+						listener(message.message);
+					}
 					return;
 				}
 			}

@@ -17,6 +17,8 @@ export const DKT_MSG = {
 	// Debug-only: request/receive a full worker model state dump
 	DEBUG_DUMP_REQUEST: "dkt:debug-dump-request",
 	DEBUG_DUMP_RESPONSE: "dkt:debug-dump-response",
+	CRDT_TRANSPORT_SEND: "dkt:crdt-transport-send",
+	CRDT_TRANSPORT_RECEIVE: "dkt:crdt-transport-receive",
 } as const;
 
 export type DktDispatchActionMessage = {
@@ -121,4 +123,15 @@ export type MiniCutDktTransportMessage =
 	| DktRuntimeIdleRequestMessage
 	| DktRuntimeIdleResponseMessage
 	| { type: typeof DKT_MSG.DEBUG_DUMP_REQUEST }
-	| { type: typeof DKT_MSG.DEBUG_DUMP_RESPONSE; dump: unknown };
+	| { type: typeof DKT_MSG.DEBUG_DUMP_RESPONSE; dump: unknown }
+	| {
+			type: typeof DKT_MSG.CRDT_TRANSPORT_SEND;
+			message: unknown;
+			peerId?: string;
+			profileId?: string;
+			profileVersion?: number;
+	  }
+	| {
+			type: typeof DKT_MSG.CRDT_TRANSPORT_RECEIVE;
+			message: unknown;
+	  };

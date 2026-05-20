@@ -31,6 +31,19 @@ type RootAttrsCacheEntry = {
 	values: Record<string, unknown>;
 };
 
+declare global {
+	interface Window {
+		__MINICUT_CRDT_PAGE_BRIDGE_SEND__?: (
+			message: unknown,
+			meta: {
+				peerId?: string;
+				profileId?: string;
+				profileVersion?: number;
+			},
+		) => Promise<void> | void;
+	}
+}
+
 export const createMiniCutPageSyncRuntime = ({
 	transport,
 }: {
@@ -272,7 +285,7 @@ export const createMiniCutPageSyncRuntime = ({
 		}
 	};
 
-	const handleMessage = (message: MiniCutDktTransportMessage) => {
+	const handleMessage = async (message: MiniCutDktTransportMessage) => {
 		switch (message.type) {
 			case DKT_MSG.RUNTIME_READY: {
 				const current = store.getSnapshot();
@@ -350,6 +363,17 @@ export const createMiniCutPageSyncRuntime = ({
 				pendingDumpResolve = null;
 				return;
 			}
+			case DKT_MSG.CRDT_TRANSPORT_SEND: {
+				const sendToNode = window.__MINICUT_CRDT_PAGE_BRIDGE_SEND__;
+				if (typeof sendToNode === "function") {
+					await sendToNode(message.message, {
+						peerId: message.peerId,
+						profileId: message.profileId,
+						profileVersion: message.profileVersion,
+					});
+				}
+				return;
+			}
 			case DKT_MSG.IDLE: {
 				if (typeof message.requestId === "string") {
 					const pending = pendingIdleResolves.get(message.requestId);
@@ -379,6 +403,9 @@ export const createMiniCutPageSyncRuntime = ({
 				pendingDumpResolve = resolve;
 				emit({ type: DKT_MSG.DEBUG_DUMP_REQUEST });
 			}),
+		receiveDebugCrdtTransportMessageTesting: (message) => {
+			emit({ type: DKT_MSG.CRDT_TRANSPORT_RECEIVE, message });
+		},
 		waitForRuntimeSettled: () =>
 			new Promise<void>((resolve, reject) => {
 				const requestId = `idle:${++idleRequestSequence}:${Date.now()}`;

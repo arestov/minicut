@@ -3,12 +3,58 @@ import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
+import type { DktCrdtTransport, DktCrdtWireMessage } from "../crdt/testRelayContracts";
 import {
 	createMiniCutHarnessWorkspaceId,
 	createMiniCutWorkspaceDbName,
 } from "../storage/minicutWorkspaceManifest";
-import { createBroadcastChannelCrdtTransport } from "../crdt/createBroadcastChannelCrdtTransport";
-import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
+import {
+	createMiniCutDktRuntime,
+	type MiniCutCrdtTransport,
+} from "./createMiniCutDktRuntime";
+
+const cloneWireMessage = (message: DktCrdtWireMessage): DktCrdtWireMessage =>
+	JSON.parse(JSON.stringify(message)) as DktCrdtWireMessage;
+
+const createPageBridgeCrdtTransport = (): MiniCutCrdtTransport => ({
+	attach(
+		crdtRuntime,
+		context,
+	): () => void {
+		const listeners = new Set<(message: DktCrdtWireMessage) => void>();
+		const transport: DktCrdtTransport = {
+			send(message: DktCrdtWireMessage): void {
+				context.sendToPage({
+					type: DKT_MSG.CRDT_TRANSPORT_SEND,
+					peerId: context.peerId,
+					profileId: context.profileId,
+					profileVersion: context.profileVersion,
+					message: cloneWireMessage(message),
+				});
+			},
+			subscribe(listener: (message: DktCrdtWireMessage) => void): () => void {
+				listeners.add(listener);
+				return () => listeners.delete(listener);
+			},
+			close(): void {
+				listeners.clear();
+			},
+		};
+		const unsubscribePage = context.subscribePageCrdtMessages((message) => {
+			const wireMessage = message as DktCrdtWireMessage;
+			for (const listener of [...listeners]) {
+				listener(cloneWireMessage(wireMessage));
+			}
+		});
+		if (typeof crdtRuntime.attachTransport === "function") {
+			crdtRuntime.attachTransport(transport, { baseModel: context.baseModel });
+		}
+		return () => {
+			unsubscribePage();
+			transport.close?.();
+		};
+	},
+});
 
 const isCrdtTestHarnessEnabled = (): boolean =>
 	import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "1" ||
@@ -23,13 +69,7 @@ export const createMiniCutDktWorkerModelRuntime = () => {
 					enabled: true,
 					peerIdForSession: (sessionKey, sessionId) =>
 						`minicut-browser:${sessionKey}:${sessionId}`,
-					transportForSession: (sessionKey, context) =>
-						createBroadcastChannelCrdtTransport({
-							channelName: `minicut-crdt:${sessionKey}`,
-							peerId: context.peerId,
-							profileId: context.profileId,
-							profileVersion: context.profileVersion,
-						}),
+					transportForSession: () => createPageBridgeCrdtTransport(),
 					defaultStorageDbNameForSessionKey: (sessionKey) =>
 						createMiniCutWorkspaceDbName(
 							createMiniCutHarnessWorkspaceId(sessionKey),
