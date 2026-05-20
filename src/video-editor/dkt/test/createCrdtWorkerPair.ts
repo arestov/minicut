@@ -1,4 +1,3 @@
-import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { createInMemoryCrdtRelay } from "../crdt/createInMemoryCrdtRelay";
 import { createTestWorkerCrdtTransport } from "../crdt/createTestWorkerCrdtTransport";
@@ -61,26 +60,6 @@ const queryVideoTrackClips = async (
 ): Promise<RuntimeModel[]> => {
 	const clips = await ctx.queryRel(videoTrack, "clips");
 	if (clips.length > 0) return clips;
-	const snapshot = await (
-		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
-	)?.getSnapshot?.();
-	const snapshotClipRefs =
-		(snapshot as { models?: Record<string, { rels?: Record<string, unknown> }> } | null)
-			?.models?.[String(videoTrack._node_id)]?.rels?.clips;
-	if (Array.isArray(snapshotClipRefs) && snapshotClipRefs.length > 0) {
-		return snapshotClipRefs
-			.map((item) => {
-				const id =
-					typeof item === "string"
-						? item
-						: String((item as { _node_id?: unknown } | null)?._node_id ?? "");
-				return id
-					? ((ctx.runtime as { models?: Record<string, RuntimeModel> }).models?.[id] ??
-						(getModelById(ctx.appModel, id) as RuntimeModel | null))
-					: null;
-			})
-			.filter((item): item is RuntimeModel => Boolean(item));
-	}
 	const allClips = await ctx.queryRel(ctx.appModel, "clip");
 	const pairs = await Promise.all(
 		allClips.map(async (clip) => ({
