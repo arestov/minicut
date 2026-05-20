@@ -568,6 +568,8 @@ export const bootDktModels = async (
 		storagePackage,
 		crdtStorageOpen: storageOpen,
 		close: async () => {
+			await computed();
+			await storagePackage?.whenReady?.();
 			await storagePackage?.close?.();
 		},
 	};

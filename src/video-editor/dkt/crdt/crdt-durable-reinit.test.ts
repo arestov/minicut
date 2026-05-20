@@ -23,9 +23,13 @@ const createProjectWithClip = async (ctx: DktTestContext) => {
 	});
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) throw new Error("Expected active project");
-	const videoTrack = (await ctx.queryRel(project, "tracks")).find(
-		(track) => ctx.getAttr(track, "kind") === "video",
+	const tracks = await Promise.all(
+		(await ctx.queryRel(project, "tracks")).map(async (track) => ({
+			track,
+			kind: await ctx.queryAttr(track, "kind"),
+		})),
 	);
+	const videoTrack = tracks.find((item) => item.kind === "video")?.track;
 	if (!videoTrack) throw new Error("Expected video track");
 	await ctx.lockToRead(async () => {
 		await videoTrack.dispatch("addClip", {
@@ -70,11 +74,11 @@ const waitForAttr = async (
 	expected: unknown,
 ) => {
 	const deadline = Date.now() + 2_000;
-	let current = ctx.getAttr(model, attrName);
+	let current = await ctx.queryAttr(model, attrName);
 	while (current !== expected && Date.now() < deadline) {
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		await ctx.computed();
-		current = ctx.getAttr(model, attrName);
+		current = await ctx.queryAttr(model, attrName);
 	}
 	expect(current).toBe(expected);
 };
@@ -109,8 +113,10 @@ describe("MiniCut CRDT durable reinit", () => {
 		const restarted = await reinitContext(ctx, "durable-reinit-a");
 		const restoredProject = findModel(restarted, projectId);
 		const restoredClip = findModel(restarted, clipId);
-		expect(restarted.getAttr(restoredProject, "title")).toBe("Before restart");
-		expect(restarted.getAttr(restoredClip, "duration")).toBe(4);
+		await expect(restarted.queryAttr(restoredProject, "title")).resolves.toBe(
+			"Before restart",
+		);
+		await expect(restarted.queryAttr(restoredClip, "duration")).resolves.toBe(4);
 		expect(
 			restarted.runtime.crdt_runtime?.testing?.peekDurableLog?.().length ?? 0,
 		).toBeGreaterThanOrEqual(beforeRestartOps.length);
@@ -118,7 +124,7 @@ describe("MiniCut CRDT durable reinit", () => {
 		await restarted.lockToRead(async () => {
 			await restoredClip.dispatch("trim", { edge: "end", delta: -1 });
 		});
-		expect(restarted.getAttr(restoredClip, "duration")).toBe(3);
+		await expect(restarted.queryAttr(restoredClip, "duration")).resolves.toBe(3);
 		const batches = drainCrdtOutboxBatches(restarted.runtime);
 		expect(drainCrdtOutbox(restarted.runtime)).toEqual(
 			expect.arrayContaining([
@@ -135,6 +141,7 @@ describe("MiniCut CRDT durable reinit", () => {
 			]),
 		);
 
+		await ctx.close();
 		await restarted.close();
 	});
 
