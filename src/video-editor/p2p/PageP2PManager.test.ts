@@ -389,6 +389,60 @@ describe("PageP2PManager", () => {
 		manager.destroy();
 	});
 
+	test("opens a separate client CRDT data channel and forwards opaque packets", async () => {
+		const signaling = createSignalingHarness();
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onClientCrdtTransport: vi.fn(),
+			onClientResourceTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		};
+		const manager = createPageP2PManager(
+			{
+				roomId: "room-1",
+				signalUrl: "ws://127.0.0.1:8790",
+				workerUrl: "http://localhost/sharedWorker.js",
+				createSignaling: signaling.factory,
+			},
+			events,
+		);
+
+		signaling.emitLeader("remote-server");
+		await Promise.resolve();
+		const pc = MockRTCPeerConnection.instances[0];
+		expect(pc.createdChannels.map((channel) => channel.label)).toEqual([
+			"minicut-authority",
+			"minicut-resource",
+			"minicut-crdt",
+		]);
+
+		const resourceDc = pc.createdChannels[1];
+		const crdtDc = pc.createdChannels[2];
+		resourceDc.simulateOpen();
+		crdtDc.simulateOpen();
+
+		expect(events.onClientResourceTransport).toHaveBeenCalledTimes(1);
+		expect(events.onClientCrdtTransport).toHaveBeenCalledTimes(1);
+		const transport = events.onClientCrdtTransport.mock.calls[0][0];
+		const received: unknown[] = [];
+		transport.listen((packet: unknown, remotePeerId: string) => {
+			received.push({ packet, remotePeerId });
+		});
+
+		transport.send({ batch: [1] });
+		expect(JSON.parse(crdtDc.sent[0] as string)).toEqual({ batch: [1] });
+		expect(resourceDc.sent).toEqual([]);
+
+		crdtDc.simulateMessage({ batch: [2] });
+		expect(received).toEqual([
+			{ packet: { batch: [2] }, remotePeerId: "remote-server" },
+		]);
+
+		manager.destroy();
+	});
+
 	test("passes through unframed native binary resource messages", async () => {
 		const signaling = createSignalingHarness();
 		const events = {
@@ -600,6 +654,57 @@ describe("PageP2PManager", () => {
 		resourceDc.simulateOpen();
 		expect(events.onServerResourceTransport).toHaveBeenCalledTimes(1);
 		expect(events.onServerResourceTransport.mock.calls[0][0]).toBe(
+			"remote-client-1",
+		);
+
+		manager.destroy();
+	});
+
+	test("announces server CRDT transport only for the CRDT data channel", async () => {
+		const signaling = createSignalingHarness();
+		const events = {
+			onBecomeServer: vi.fn(),
+			onBecomeClient: vi.fn(),
+			onServerCrdtTransport: vi.fn(),
+			onServerResourceTransport: vi.fn(),
+			onSessionLost: vi.fn(),
+			onError: vi.fn(),
+		};
+		const manager = createPageP2PManager(
+			{
+				roomId: "room-1",
+				signalUrl: "ws://127.0.0.1:8790",
+				workerUrl: "http://localhost/sharedWorker.js",
+				createSignaling: signaling.factory,
+			},
+			events,
+		);
+
+		signaling.emitLeader(manager.peerId);
+		signaling.emitSignal({
+			kind: "offer",
+			roomId: "room-1",
+			fromPeerId: "remote-client-1",
+			toPeerId: manager.peerId,
+			sdp: { type: "offer", sdp: "incoming-offer" },
+			ts: Date.now(),
+		});
+		await flushMicrotasks(8);
+
+		const resourceDc =
+			MockRTCPeerConnection.instances[0].simulateDataChannel(
+				"minicut-resource",
+			);
+		const crdtDc = MockRTCPeerConnection.instances[0].simulateDataChannel(
+			"minicut-crdt",
+		);
+		resourceDc.simulateOpen();
+		expect(events.onServerResourceTransport).toHaveBeenCalledTimes(1);
+		expect(events.onServerCrdtTransport).not.toHaveBeenCalled();
+
+		crdtDc.simulateOpen();
+		expect(events.onServerCrdtTransport).toHaveBeenCalledTimes(1);
+		expect(events.onServerCrdtTransport.mock.calls[0][0]).toBe(
 			"remote-client-1",
 		);
 

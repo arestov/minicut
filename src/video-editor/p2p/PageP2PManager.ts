@@ -21,6 +21,12 @@ export interface P2PRawTransportLike {
 	destroy(): void;
 }
 
+export interface P2PCrdtTransportLike {
+	send(packet: unknown): void;
+	listen(listener: (packet: unknown, remotePeerId: string) => void): () => void;
+	destroy(): void;
+}
+
 export interface PageP2PManagerConfig {
 	roomId: string;
 	signalUrl: string;
@@ -28,6 +34,7 @@ export interface PageP2PManagerConfig {
 	rtcConfig?: RTCConfiguration;
 	createSignaling?: BridgeSignalingFactory;
 	dataChannelLabel?: string;
+	crdtDataChannelLabel?: string;
 	resourceDataChannelLabel?: string;
 	sharedWorkerName?: string;
 	connectionTimeoutMs?: number;
@@ -37,10 +44,12 @@ export interface PageP2PManagerEvents {
 	onBecomeServer(): void;
 	onBecomeClient(transport: P2PTransportLike): void;
 	onClientResourceTransport?(transport: P2PRawTransportLike): void;
+	onClientCrdtTransport?(transport: P2PCrdtTransportLike): void;
 	onServerResourceTransport?(
 		remotePeerId: string,
 		transport: P2PRawTransportLike,
 	): void;
+	onServerCrdtTransport?(remotePeerId: string, transport: P2PCrdtTransportLike): void;
 	onResourcePeerDisconnected?(remotePeerId: string): void;
 	onSessionLost(reason: string): void;
 	onError(error: unknown): void;
@@ -91,6 +100,7 @@ export const createPageP2PManager = (
 	const peerId = crypto.randomUUID();
 	const rtcConfig = config.rtcConfig ?? DEFAULT_RTC_CONFIG;
 	const dataChannelLabel = config.dataChannelLabel ?? "minicut-authority";
+	const crdtDataChannelLabel = config.crdtDataChannelLabel ?? "minicut-crdt";
 	const resourceDataChannelLabel =
 		config.resourceDataChannelLabel ?? "minicut-resource";
 	const sharedWorkerName =
@@ -110,6 +120,7 @@ export const createPageP2PManager = (
 	const peerConnections = new Map<string, RTCPeerConnection>();
 	const dataChannels = new Map<string, RTCDataChannel>();
 	const resourceTransports = new Map<string, P2PRawTransportLike>();
+	const crdtTransports = new Map<string, P2PCrdtTransportLike>();
 	const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 	const remoteDescriptionReadyPeers = new Set<string>();
 
@@ -125,6 +136,11 @@ export const createPageP2PManager = (
 			resourceTransport.destroy();
 			resourceTransports.delete(remotePeerId);
 			events.onResourcePeerDisconnected?.(remotePeerId);
+		}
+		const crdtTransport = crdtTransports.get(remotePeerId);
+		if (crdtTransport) {
+			crdtTransport.destroy();
+			crdtTransports.delete(remotePeerId);
 		}
 		pendingIceCandidates.delete(remotePeerId);
 		remoteDescriptionReadyPeers.delete(remotePeerId);
@@ -369,6 +385,61 @@ export const createPageP2PManager = (
 			},
 
 			destroy() {
+				transportDestroyed = true;
+				listeners.clear();
+				dc.close();
+			},
+		};
+	};
+
+	const createCrdtDcTransport = (
+		remotePeerId: string,
+		dc: RTCDataChannel,
+		onClosed?: () => void,
+	): P2PCrdtTransportLike => {
+		const listeners = new Set<(packet: unknown, remotePeerId: string) => void>();
+		let transportDestroyed = false;
+
+		dc.onmessage = (event) => {
+			if (transportDestroyed) {
+				return;
+			}
+			try {
+				const packet = JSON.parse(String(event.data));
+				for (const listener of listeners) {
+					listener(packet, remotePeerId);
+				}
+			} catch {
+				// Invalid CRDT channel frames are ignored at the transport boundary.
+			}
+		};
+
+		dc.onclose = () => {
+			if (transportDestroyed) {
+				return;
+			}
+			onClosed?.();
+		};
+
+		dc.onerror = () => {
+			// onclose owns lifecycle notification.
+		};
+
+		return {
+			send(packet) {
+				if (transportDestroyed || dc.readyState !== "open") {
+					throw new Error("crdt_transport_not_ready");
+				}
+				dc.send(JSON.stringify(packet));
+			},
+			listen(listener) {
+				listeners.add(listener);
+				return () => listeners.delete(listener);
+			},
+			destroy() {
+				if (transportDestroyed) {
+					return;
+				}
 				transportDestroyed = true;
 				listeners.clear();
 				dc.close();
@@ -850,6 +921,7 @@ export const createPageP2PManager = (
 		const resourceDc = pc.createDataChannel(resourceDataChannelLabel, {
 			ordered: true,
 		});
+		const crdtDc = pc.createDataChannel(crdtDataChannelLabel, { ordered: true });
 		dataChannels.set(targetPeerId, dc);
 		scheduleConnectionWatchdog(targetPeerId, pc);
 
@@ -885,6 +957,17 @@ export const createPageP2PManager = (
 			});
 			resourceTransports.set(targetPeerId, transport);
 			events.onClientResourceTransport?.(transport);
+		};
+
+		crdtDc.onopen = () => {
+			if (destroyed) {
+				return;
+			}
+			const transport = createCrdtDcTransport(targetPeerId, crdtDc, () => {
+				crdtTransports.delete(targetPeerId);
+			});
+			crdtTransports.set(targetPeerId, transport);
+			events.onClientCrdtTransport?.(transport);
 		};
 
 		pc.onicecandidate = (event) => {
@@ -959,6 +1042,26 @@ export const createPageP2PManager = (
 				peerConnections.set(remotePeerId, pc);
 
 				pc.ondatachannel = (event) => {
+					if (event.channel.label === crdtDataChannelLabel) {
+						const announceCrdtTransport = (): void => {
+							if (destroyed) {
+								return;
+							}
+							const transport = createCrdtDcTransport(remotePeerId, event.channel, () => {
+								crdtTransports.delete(remotePeerId);
+							});
+							crdtTransports.set(remotePeerId, transport);
+							events.onServerCrdtTransport?.(remotePeerId, transport);
+						};
+
+						if (event.channel.readyState === "open") {
+							announceCrdtTransport();
+						} else {
+							event.channel.onopen = announceCrdtTransport;
+						}
+						return;
+					}
+
 					if (event.channel.label === resourceDataChannelLabel) {
 						event.channel.binaryType = "arraybuffer";
 						let announced = false;
@@ -1098,6 +1201,10 @@ export const createPageP2PManager = (
 				transport.destroy();
 			}
 			resourceTransports.clear();
+			for (const transport of crdtTransports.values()) {
+				transport.destroy();
+			}
+			crdtTransports.clear();
 			pendingIceCandidates.clear();
 			remoteDescriptionReadyPeers.clear();
 
