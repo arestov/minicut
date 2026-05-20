@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+// @ts-expect-error DKT exposes this test helper as a JS-only module.
+import { applyExternalGraphPatchAndWait } from "dkt-all/libs/provoda/provoda/runtime/app/AppRuntime.testHarness.js";
 import { bootDktModels } from "../testingInit";
 
 const emptyDrafts = () => Object.create(null) as Record<string, unknown>;
@@ -129,7 +131,8 @@ describe("semantic graph baseline", () => {
 		}
 		await expect(
 			Promise.resolve(
-				runtime.applyExternalGraphPatch(
+				applyExternalGraphPatchAndWait(
+					runtime,
 					createRelPatch(String(videoTrack._node_id), { clips: [] }),
 					{ origin: "sync_receiver", intent_type: "external_patch" },
 				),
@@ -160,7 +163,8 @@ describe("semantic graph baseline", () => {
 		expect(ctx.getAttr(clip, "duration")).toBe(4);
 		await expect(
 			Promise.resolve(
-				runtime.applyExternalGraphPatch(
+				applyExternalGraphPatchAndWait(
+					runtime,
 					createAttrPatch(String(clip._node_id), { duration: 0 }),
 					{ origin: "sync_receiver", intent_type: "external_patch" },
 				),
@@ -192,7 +196,8 @@ describe("semantic graph baseline", () => {
 		}
 		await expect(
 			Promise.resolve(
-				runtime.applyExternalGraphPatch(
+				applyExternalGraphPatchAndWait(
+					runtime,
 					createAttrPatch(String(clip._node_id), { start: -1 }),
 					{ origin: "sync_receiver", intent_type: "external_patch" },
 				),
@@ -204,13 +209,15 @@ describe("semantic graph baseline", () => {
 
 	it("rejects clip timing patch that exceeds the linked resource duration", async () => {
 		const { ctx, clip } = await setupProjectWithSeededClip();
+		await ctx.computed();
 		const runtime = ctx.runtime;
 		if (typeof runtime.applyExternalGraphPatch !== "function") {
 			throw new Error("Runtime applyExternalGraphPatch is unavailable");
 		}
 		await expect(
 			Promise.resolve(
-				runtime.applyExternalGraphPatch(
+				applyExternalGraphPatchAndWait(
+					runtime,
 					createAttrPatch(String(clip._node_id), {
 						duration: 4.5,
 					}),
@@ -226,13 +233,15 @@ describe("semantic graph baseline", () => {
 		const { ctx, videoTrack, audioTrack, clip } = await setupProjectWithSeededClip({
 			graphSemantics: { inverseValidation: "error" },
 		});
+		await ctx.computed();
 		const runtime = ctx.runtime;
 		if (typeof runtime.applyExternalGraphPatch !== "function") {
 			throw new Error("Runtime applyExternalGraphPatch is unavailable");
 		}
 		await expect(
 			Promise.resolve(
-				runtime.applyExternalGraphPatch(
+				applyExternalGraphPatchAndWait(
+					runtime,
 					createRelPatch(String(audioTrack._node_id), {
 						clips: [clip],
 					}),
@@ -252,7 +261,8 @@ describe("semantic graph baseline", () => {
 		}
 		await expect(
 			Promise.resolve(
-				runtime.applyExternalGraphPatch(
+				applyExternalGraphPatchAndWait(
+					runtime,
 					{
 						attrs_by_node: {
 							[String(ctx.sessionRoot._node_id)]: {
