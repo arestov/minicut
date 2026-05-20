@@ -157,13 +157,26 @@ export const waitForRolePair = async (firstPage: Page, secondPage: Page): Promis
 }
 
 export const waitForProjectCountSync = async (firstPage: Page, secondPage: Page): Promise<number> => {
-	await expect.poll(async () => {
-		const firstCount = await getProjectCount(firstPage)
-		const secondCount = await getProjectCount(secondPage)
-		return firstCount > 0 && firstCount === secondCount
-	}, {
-		timeout: 20_000,
-	}).toBe(true)
+	let lastStates: unknown = null
+	try {
+		await expect.poll(async () => {
+			const [first, second] = await Promise.all([
+				readP2PDebugState(firstPage),
+				readP2PDebugState(secondPage),
+			])
+			lastStates = { first, second }
+			const firstCount = first?.projectCount ?? 0
+			const secondCount = second?.projectCount ?? 0
+			return firstCount > 0 && firstCount === secondCount
+		}, {
+			timeout: 20_000,
+		}).toBe(true)
+	} catch (error) {
+		throw new Error(
+			`Timed out waiting for P2P project count sync. Last states: ${JSON.stringify(lastStates)}`,
+			{ cause: error },
+		)
+	}
 
 	return getProjectCount(firstPage)
 }
