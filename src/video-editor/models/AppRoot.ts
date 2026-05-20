@@ -45,6 +45,24 @@ const appProps = mergeDcl({
 				Array.isArray(projectMetaList) && projectMetaList.length > 0,
 		],
 	},
+	crdt: {
+		mode: "collaborative",
+		attrs: {
+			activeProjectHint: { sync: false, reason: "projection" },
+			projectMetaList: { sync: false, reason: "projection" },
+		},
+		rels: {
+			common_session_root: { sync: false, reason: "projection" },
+			sessions: { sync: false, reason: "projection" },
+			free_sessions: { sync: false, reason: "projection" },
+			project: "sequence",
+			track: { sync: false, reason: "projection" },
+			resource: { sync: false, reason: "projection" },
+			clip: { sync: false, reason: "projection" },
+			text: { sync: false, reason: "projection" },
+			effect: { sync: false, reason: "projection" },
+		},
+	},
 	actions: {
 		createProjectModel: {
 			to: [

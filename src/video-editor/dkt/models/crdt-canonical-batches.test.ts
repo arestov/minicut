@@ -149,6 +149,7 @@ describe("MiniCut canonical CRDT batches", () => {
 
 		expect(createdIds(batches, "project")).toContain(String(project._node_id));
 		expect(createdIds(batches, "track")).toHaveLength(2);
+		expectRelOp(batches, { model_name: "app_root", name: "project", node_id: "ROOT" });
 		expectRelOp(batches, { model_name: "project", name: "tracks", node_id: String(project._node_id) });
 		expectRelOp(batches, { model_name: "project", name: "primaryVideoTrack", node_id: String(project._node_id) });
 		expectRelOp(batches, { model_name: "project", name: "primaryAudioTrack", node_id: String(project._node_id) });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Clip } from "../../models/Clip";
 import { Effect } from "../../models/Effect";
+import { MiniCutAppRoot } from "../../models/AppRoot";
 import { Project } from "../../models/Project";
 import { Resource } from "../../models/Resource";
 import { EditorSessionRoot } from "../../models/SessionRoot";
@@ -43,6 +44,27 @@ const EXPECTED_EXCLUSION_REASONS: Record<
 };
 
 const MODEL_CASES: ModelCase[] = [
+	{
+		name: "MiniCutAppRoot",
+		model: MiniCutAppRoot as unknown as Record<string, unknown>,
+		fields: {
+			attrs: {
+				activeProjectHint: "projection",
+				projectMetaList: "projection",
+			},
+			rels: {
+				common_session_root: "projection",
+				sessions: "projection",
+				free_sessions: "projection",
+				project: "crdt",
+				track: "projection",
+				resource: "projection",
+				clip: "projection",
+				text: "projection",
+				effect: "projection",
+			},
+		},
+	},
 	{
 		name: "Project",
 		model: Project as unknown as Record<string, unknown>,
@@ -254,9 +276,13 @@ const getInputFieldNames = (
 ): string[] =>
 	Object.entries(getModelSection(model, section))
 		.filter(([, descriptor]) => {
-			return Array.isArray(descriptor) && descriptor[0] === "input";
+			return (
+				Array.isArray(descriptor) &&
+				(descriptor[0] === "input" || descriptor[0] === "model")
+			);
 		})
 		.map(([name]) => name)
+		.filter((name) => !name.startsWith("$"))
 		.sort();
 
 describe("CRDT field coverage", () => {
