@@ -72,7 +72,8 @@ export const createP2PAuthorityAdapter = (
 	let destroyed = false;
 	let role: "server" | "client" | "undecided" = "undecided";
 	let activeClient: EditorAuthorityClient | null = null;
-	let activeCrdtTransport: P2PCrdtTransportLike | null = null;
+	const crdtTransports = new Map<string, P2PCrdtTransportLike>();
+	const quarantinedAuthorityTransports = new Set<{ destroy(): void }>();
 	const clientChangeCallbacks = new Set<() => void>();
 	const crdtTransportChangeCallbacks = new Set<() => void>();
 
@@ -84,11 +85,11 @@ export const createP2PAuthorityAdapter = (
 	};
 
 	const setActiveCrdtTransport = (
-		_remotePeerId: string,
+		remotePeerId: string,
 		transport: P2PCrdtTransportLike,
 	): void => {
-		activeCrdtTransport?.destroy();
-		activeCrdtTransport = transport;
+		crdtTransports.get(remotePeerId)?.destroy();
+		crdtTransports.set(remotePeerId, transport);
 		for (const cb of crdtTransportChangeCallbacks) {
 			cb();
 		}
@@ -140,7 +141,7 @@ export const createP2PAuthorityAdapter = (
 					roomId: config.roomId,
 					peerId: manager.peerId,
 				});
-				transport.destroy();
+				quarantinedAuthorityTransports.add(transport);
 				activateClient("client", createLocalAuthority());
 			},
 
@@ -220,7 +221,8 @@ export const createP2PAuthorityAdapter = (
 			> | null = null;
 			let attachedRoomGeneration: number | null = null;
 			let isDestroyed = false;
-			let crdtUnlisten: (() => void) | null = null;
+			const crdtUnlistens = new Map<string, () => void>();
+			const pendingCrdtSends: ProductRoomCrdtSend[] = [];
 
 			const sendProductRoomToWorker = (message: ProductRoomProtocolMessage): void => {
 				const wrapped: MiniCutDktTransportMessage = {
@@ -234,14 +236,17 @@ export const createP2PAuthorityAdapter = (
 				}
 			};
 
-			const attachCrdtListener = (): void => {
-				if (crdtUnlisten || !activeCrdtTransport) {
+			const attachCrdtListener = (
+				remotePeerId: string,
+				transport: P2PCrdtTransportLike,
+			): void => {
+				if (crdtUnlistens.has(remotePeerId)) {
 					return;
 				}
 				if (attachedRoomGeneration == null) {
 					return;
 				}
-				crdtUnlisten = activeCrdtTransport.listen((packet, remotePeerId) => {
+				const unlisten = transport.listen((packet, sourcePeerId) => {
 					if (attachedRoomGeneration == null) {
 						return;
 					}
@@ -250,16 +255,68 @@ export const createP2PAuthorityAdapter = (
 						roomId: config.roomId,
 						transportGeneration: attachedRoomGeneration,
 						packet,
-						sourcePeerId: remotePeerId,
+						sourcePeerId: sourcePeerId || remotePeerId,
 					});
 				});
+				crdtUnlistens.set(remotePeerId, unlisten);
+			};
+
+			const attachCrdtListeners = (): void => {
+				for (const [remotePeerId, transport] of crdtTransports) {
+					attachCrdtListener(remotePeerId, transport);
+				}
+				flushPendingCrdtSends();
+			};
+
+			const detachCrdtListeners = (): void => {
+				for (const unlisten of crdtUnlistens.values()) {
+					unlisten();
+				}
+				crdtUnlistens.clear();
+			};
+
+			const sendCrdtPacket = (message: ProductRoomCrdtSend): boolean => {
+				if (message.targetPeerId) {
+					const transport = crdtTransports.get(message.targetPeerId);
+					if (!transport) {
+						return false;
+					}
+					transport.send(message.packet);
+					return true;
+				}
+				if (crdtTransports.size === 0) {
+					return false;
+				}
+				for (const transport of crdtTransports.values()) {
+					transport.send(message.packet);
+				}
+				return true;
+			};
+
+			const flushPendingCrdtSends = (): void => {
+				if (attachedRoomGeneration == null || pendingCrdtSends.length === 0) {
+					return;
+				}
+				for (let index = 0; index < pendingCrdtSends.length; ) {
+					const pending = pendingCrdtSends[index];
+					if (pending.transportGeneration !== attachedRoomGeneration) {
+						pendingCrdtSends.splice(index, 1);
+						continue;
+					}
+					if (!sendCrdtPacket(pending)) {
+						index += 1;
+						continue;
+					}
+					pendingCrdtSends.splice(index, 1);
+				}
 			};
 
 			const handleProductRoomFromWorker = (message: ProductRoomProtocolMessage): boolean => {
 				switch (message.type) {
 					case PRODUCT_ROOM_MSG.ATTACH_WEBRTC:
 						attachedRoomGeneration = message.transportGeneration;
-						attachCrdtListener();
+						attachCrdtListeners();
+						flushPendingCrdtSends();
 						sendProductRoomToWorker({
 							type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
 							tabId: manager.peerId,
@@ -271,15 +328,18 @@ export const createP2PAuthorityAdapter = (
 					case PRODUCT_ROOM_MSG.DETACH_WEBRTC:
 						if (attachedRoomGeneration === message.transportGeneration) {
 							attachedRoomGeneration = null;
-							crdtUnlisten?.();
-							crdtUnlisten = null;
+							detachCrdtListeners();
+							pendingCrdtSends.length = 0;
 						}
 						return true;
 					case PRODUCT_ROOM_MSG.CRDT_SEND: {
 						if (attachedRoomGeneration !== message.transportGeneration) {
 							return true;
 						}
-						activeCrdtTransport?.send((message as ProductRoomCrdtSend).packet);
+						const crdtMessage = message as ProductRoomCrdtSend;
+						if (!sendCrdtPacket(crdtMessage)) {
+							pendingCrdtSends.push(crdtMessage);
+						}
 						return true;
 					}
 				}
@@ -370,7 +430,7 @@ export const createP2PAuthorityAdapter = (
 
 			// Also set up a listener for when activeClient becomes available or changes
 			clientChangeCallbacks.add(activateRealTransport);
-			crdtTransportChangeCallbacks.add(attachCrdtListener);
+			crdtTransportChangeCallbacks.add(attachCrdtListeners);
 			const checkInterval = setInterval(() => {
 				activateRealTransport();
 			}, 100);
@@ -398,11 +458,11 @@ export const createP2PAuthorityAdapter = (
 				},
 				destroy() {
 					isDestroyed = true;
-					crdtUnlisten?.();
-					crdtUnlisten = null;
+					detachCrdtListeners();
+					pendingCrdtSends.length = 0;
 					clearInterval(checkInterval);
 					clientChangeCallbacks.delete(activateRealTransport);
-					crdtTransportChangeCallbacks.delete(attachCrdtListener);
+					crdtTransportChangeCallbacks.delete(attachCrdtListeners);
 					teardownRealTransport();
 					transportListeners.clear();
 					pendingMessages.length = 0;
@@ -417,8 +477,14 @@ export const createP2PAuthorityAdapter = (
 
 			destroyed = true;
 			dktSyncListeners.clear();
-			activeCrdtTransport?.destroy();
-			activeCrdtTransport = null;
+			for (const transport of quarantinedAuthorityTransports) {
+				transport.destroy();
+			}
+			quarantinedAuthorityTransports.clear();
+			for (const transport of crdtTransports.values()) {
+				transport.destroy();
+			}
+			crdtTransports.clear();
 			cleanupActiveClient();
 			manager.destroy();
 		},

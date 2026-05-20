@@ -184,6 +184,13 @@ describe("product room transport owner", () => {
 		const harness = createHarness();
 		harness.coordinator.setWorkspaceOpenState(readyState);
 		harness.register("tab-a", true);
+		harness.coordinator.handleOwnerStatus({
+			type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+			tabId: "tab-a",
+			roomId: "room-a",
+			transportGeneration: 1,
+			status: WEBRTC_OWNER_STATUS.ATTACHED,
+		});
 
 		const result = harness.coordinator.sendCrdtPacket({ hello: 1 });
 
@@ -197,16 +204,37 @@ describe("product room transport owner", () => {
 		});
 	});
 
-	it("does not route outgoing CRDT packet without owner", () => {
+	it("queues outgoing CRDT packet until an owner is attached", () => {
 		const harness = createHarness();
 		harness.coordinator.setWorkspaceOpenState(readyState);
-		harness.register("tab-a", false);
 
 		expect(harness.coordinator.sendCrdtPacket({ hello: 1 })).toEqual({
-			ok: false,
-			errorCode: "no_transport_owner",
+			ok: true,
+			generation: 0,
 		});
-		expect(harness.sent.get("tab-a")).toEqual([]);
+		harness.register("tab-a", true);
+		expect(harness.sent.get("tab-a")).toEqual([
+			{
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-a",
+				transportGeneration: 1,
+			},
+		]);
+		harness.coordinator.handleOwnerStatus({
+			type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+			tabId: "tab-a",
+			roomId: "room-a",
+			transportGeneration: 1,
+			status: WEBRTC_OWNER_STATUS.ATTACHED,
+		});
+
+		expect(harness.sent.get("tab-a")?.at(-1)).toEqual({
+			type: PRODUCT_ROOM_MSG.CRDT_SEND,
+			roomId: "room-a",
+			transportGeneration: 1,
+			packet: { hello: 1 },
+			targetPeerId: undefined,
+		});
 	});
 
 	it("delivers incoming CRDT packet from the active owner", () => {

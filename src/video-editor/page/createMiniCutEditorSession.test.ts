@@ -90,7 +90,7 @@ describe("createMiniCutEditorSession", () => {
 		expect(mockState.harness.destroy).toHaveBeenCalledTimes(1);
 	});
 
-	test("uses the room id as shared DKT session key and a per-peer session id when P2P is enabled", async () => {
+	test("uses the room id as the shared DKT session key and session id when P2P is enabled", async () => {
 		resetBrowserUrl("/?signalUrl=ws%3A%2F%2Fexample.test%2Fsignal#/room-alpha");
 		const { createMiniCutEditorSession } = await import(
 			"./createMiniCutEditorSession"
@@ -100,7 +100,7 @@ describe("createMiniCutEditorSession", () => {
 		session.bootstrap();
 
 		expect(mockState.runtime.bootstrap).toHaveBeenCalledWith({
-			sessionId: expect.stringMatching(/^room-alpha:peer:/),
+			sessionId: "room-alpha",
 			sessionKey: "room-alpha",
 		});
 		expect(mockState.createBrowserHarnessPlatform).toHaveBeenCalledWith(

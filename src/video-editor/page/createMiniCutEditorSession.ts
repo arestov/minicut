@@ -226,13 +226,6 @@ export const createMiniCutEditorSession = (): MiniCutEditorSession => {
 	const sessionId =
 		crdtPeerId && room
 			? `${room.roomId}:peer:${crdtPeerId}`
-			:
-		signalUrl && room
-			? `${room.roomId}:peer:${
-					typeof crypto !== "undefined" && "randomUUID" in crypto
-						? crypto.randomUUID()
-						: Math.random().toString(36).slice(2)
-				}`
 			: sessionKey;
 
 	return {

@@ -10,6 +10,7 @@ import {
 	createMiniCutHarnessWorkspaceId,
 	createMiniCutRoomPeerId,
 	createMiniCutWorkspaceDbName,
+	getOrCreateMiniCutLocalPeerIdentity,
 } from "../storage/minicutWorkspaceManifest";
 import {
 	createMiniCutDktRuntime,
@@ -126,6 +127,12 @@ export const createMiniCutDktWorkerModelRuntime = (
 		},
 	});
 
+	const createProductionPeerId = async (sessionKey: string): Promise<string> => {
+		const workspaceId = createMiniCutHarnessWorkspaceId(sessionKey);
+		const localIdentity = await getOrCreateMiniCutLocalPeerIdentity();
+		return createMiniCutRoomPeerId(workspaceId, localIdentity);
+	};
+
 	const runtime = createMiniCutDktRuntime({
 		enabled: true,
 		crdt: enableCrdtTestHarness
@@ -144,8 +151,7 @@ export const createMiniCutDktWorkerModelRuntime = (
 			: enableProductionCrdt
 				? {
 					enabled: true,
-					peerIdForSessionKey: (sessionKey) =>
-						createMiniCutRoomPeerId(createMiniCutHarnessWorkspaceId(sessionKey)),
+					peerIdForSessionKey: createProductionPeerId,
 					transportForSession: (sessionKey) =>
 						createProductRoomCrdtTransport(sessionKey),
 					defaultStorageDbNameForSessionKey: (sessionKey) =>

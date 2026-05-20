@@ -126,6 +126,8 @@ type MiniCutCrdtStorageOptions =
 			indexedDB?: unknown;
 	  };
 
+type MaybePromise<T> = T | Promise<T>;
+
 type MiniCutCrdtOptions =
 	| false
 	| true
@@ -136,8 +138,8 @@ type MiniCutCrdtOptions =
 			profileId?: string;
 			profileVersion?: number;
 			storage?: MiniCutCrdtStorageOptions;
-			peerIdForSession?: (sessionKey: string, sessionId: string) => string;
-			peerIdForSessionKey?: (sessionKey: string) => string;
+			peerIdForSession?: (sessionKey: string, sessionId: string) => MaybePromise<string>;
+			peerIdForSessionKey?: (sessionKey: string) => MaybePromise<string>;
 			defaultStorageDbNameForSessionKey?: (sessionKey: string) => string;
 			workspaceIdForSessionKey?: (sessionKey: string) => string;
 			transport?: MiniCutCrdtTransport | null;
@@ -327,15 +329,17 @@ const createCrdtRuntimeForSession = async (
 		return createCrdtRuntime(options, sessionKey);
 	}
 
+	const peerId =
+		typeof normalized.peerIdForSession === "function"
+			? await normalized.peerIdForSession(sessionKey, sessionId)
+			: typeof normalized.peerIdForSessionKey === "function"
+			? await normalized.peerIdForSessionKey(sessionKey)
+			: normalized.peerId;
+
 	return createCrdtRuntime(
 		{
 			...normalized,
-			peerId:
-				typeof normalized.peerIdForSession === "function"
-					? normalized.peerIdForSession(sessionKey, sessionId)
-					: typeof normalized.peerIdForSessionKey === "function"
-					? normalized.peerIdForSessionKey(sessionKey)
-					: normalized.peerId,
+			peerId,
 			storage: {
 				type: "indexeddb",
 				dbName: normalized.defaultStorageDbNameForSessionKey(sessionKey),
@@ -831,13 +835,13 @@ export const createMiniCutDktRuntime = (
 					}
 
 					await new Promise<void>((resolve) => {
-						if (typeof app.runtime.whenAllReady === "function") {
-							app.runtime.whenAllReady(() => resolve());
+						if (typeof app.appModel.input === "function") {
+							app.appModel.input?.(() => resolve());
 							return;
 						}
 
-						if (typeof app.appModel.input === "function") {
-							app.appModel.input?.(() => resolve());
+						if (typeof app.runtime.whenAllReady === "function") {
+							app.runtime.whenAllReady(() => resolve());
 							return;
 						}
 
@@ -959,8 +963,11 @@ export const createMiniCutDktRuntime = (
 			activeTransports.delete(transport);
 			unlisten();
 			unlistenDisconnect();
-			crdtTransportCleanup?.();
-			crdtTransportCleanup = null;
+			const shouldCloseSharedCrdt = activeTransports.size === 0;
+			if (shouldCloseSharedCrdt) {
+				crdtTransportCleanup?.();
+				crdtTransportCleanup = null;
+			}
 			void Promise.resolve()
 				.then(() => bootstrapApp(activeSessionKey))
 				.catch(() => null)
@@ -970,8 +977,10 @@ export const createMiniCutDktRuntime = (
 					}
 				})
 				.then(async () => {
-					const crdt = crdtPromise ? await crdtPromise : null;
-					await crdt?.storagePackage?.close?.();
+					if (shouldCloseSharedCrdt && activeTransports.size === 0) {
+						const crdt = crdtPromise ? await crdtPromise : null;
+						await crdt?.storagePackage?.close?.();
+					}
 				})
 				.finally(() => {
 					stream = null;

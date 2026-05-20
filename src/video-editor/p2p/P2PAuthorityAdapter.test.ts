@@ -113,6 +113,9 @@ const createManagerHarness = () => {
 		openClientCrdt(transport: P2PCrdtTransportLike) {
 			eventsRef?.onClientCrdtTransport?.(transport);
 		},
+		openServerCrdt(remotePeerId: string, transport: P2PCrdtTransportLike) {
+			eventsRef?.onServerCrdtTransport?.(remotePeerId, transport);
+		},
 	};
 };
 
@@ -137,7 +140,7 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 
 		manager.becomeClient();
 
-		expect(manager.authorityTransport.destroy).toHaveBeenCalledTimes(1);
+		expect(manager.authorityTransport.destroy).not.toHaveBeenCalled();
 		expect(localAuthority.opened).toHaveLength(1);
 		expect(localAuthority.opened[0].sent).toContainEqual(
 			productRoomMessage({
@@ -150,6 +153,7 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 
 		dktTransport.destroy();
 		adapter.destroy();
+		expect(manager.authorityTransport.destroy).toHaveBeenCalledTimes(1);
 	});
 
 	it("sends worker CRDT packets over the active WebRTC CRDT transport", () => {
@@ -234,6 +238,43 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 		adapter.destroy();
 	});
 
+	it("queues worker CRDT sends until a late CRDT channel opens", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const crdtTransport = createCrdtTransportHarness();
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 9,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 9,
+				packet: { queued: true },
+			}),
+		);
+
+		expect(crdtTransport.sent).toEqual([]);
+		manager.openClientCrdt(crdtTransport);
+		expect(crdtTransport.sent).toEqual([{ queued: true }]);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
 	it("ignores stale generation CRDT sends after detach", () => {
 		const manager = createManagerHarness();
 		const localAuthority = createLocalAuthorityHarness();
@@ -272,6 +313,54 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 		);
 
 		expect(crdtTransport.sent).toEqual([]);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
+	it("broadcasts and targets CRDT packets across multiple remote peers", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const peerB = createCrdtTransportHarness();
+		const peerC = createCrdtTransportHarness();
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+		manager.openServerCrdt("peer-b", peerB);
+		manager.openServerCrdt("peer-c", peerC);
+
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 8,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 8,
+				packet: { broadcast: true },
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 8,
+				packet: { targeted: true },
+				targetPeerId: "peer-c",
+			}),
+		);
+
+		expect(peerB.sent).toEqual([{ broadcast: true }]);
+		expect(peerC.sent).toEqual([{ broadcast: true }, { targeted: true }]);
 
 		dktTransport.destroy();
 		adapter.destroy();

@@ -67,16 +67,19 @@ describe("MiniCut workspace manifest", () => {
 		);
 	});
 
-	it("derives stable room-scoped peer ids from workspace ids", () => {
+	it("derives CRDT peer ids from workspace ids and local identities", () => {
 		const workspaceId = createMiniCutHarnessWorkspaceId("room alpha/1");
-		expect(createMiniCutRoomPeerId(workspaceId)).toBe(
-			createMiniCutRoomPeerId(workspaceId),
+		expect(createMiniCutRoomPeerId(workspaceId, "local-a")).toBe(
+			createMiniCutRoomPeerId(workspaceId, "local-a"),
 		);
-		expect(createMiniCutRoomPeerId(workspaceId)).toMatch(
-			/^minicut-room-peer:[0-9a-f]{8}:harness%3Aroom%3Aroom%2520alpha%252F1$/,
+		expect(createMiniCutRoomPeerId(workspaceId, "local-a")).toMatch(
+			/^minicut-peer:local-a:[0-9a-f]{8}$/,
 		);
-		expect(createMiniCutRoomPeerId(workspaceId)).not.toBe(
-			createMiniCutRoomPeerId(createMiniCutHarnessWorkspaceId("room beta/1")),
+		expect(createMiniCutRoomPeerId(workspaceId, "local-a")).not.toBe(
+			createMiniCutRoomPeerId(workspaceId, "local-b"),
+		);
+		expect(createMiniCutRoomPeerId(workspaceId, "local-a")).not.toBe(
+			createMiniCutRoomPeerId(createMiniCutHarnessWorkspaceId("room beta/1"), "local-a"),
 		);
 	});
 

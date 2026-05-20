@@ -38,6 +38,17 @@ type OwnerLease = {
 	tabId: string;
 	transportGeneration: number;
 	lastHeartbeatAt: number;
+	attached: boolean;
+};
+
+type PendingCrdtPacket = {
+	packet: unknown;
+	targetPeerId?: string;
+};
+
+type PendingMediaPacket = {
+	envelope: unknown;
+	targetPeerId?: string;
 };
 
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 15_000;
@@ -58,6 +69,64 @@ export const createProductRoomTransportOwner = ({
 	let transportGeneration = 0;
 	let workspaceOpenState: WorkspaceOpenState | null = null;
 	let ownerLease: OwnerLease | null = null;
+	const pendingCrdtPackets: PendingCrdtPacket[] = [];
+	const pendingMediaPackets: PendingMediaPacket[] = [];
+
+	const sendCrdtPacketToOwner = (
+		lease: OwnerLease,
+		packet: unknown,
+		targetPeerId?: string,
+	): boolean => {
+		const ownerTab = tabs.get(lease.tabId);
+		if (!ownerTab) {
+			return false;
+		}
+		ownerTab.send({
+			type: PRODUCT_ROOM_MSG.CRDT_SEND,
+			roomId,
+			transportGeneration: lease.transportGeneration,
+			packet,
+			targetPeerId,
+		} satisfies ProductRoomCrdtSend);
+		return true;
+	};
+
+	const sendMediaPacketToOwner = (
+		lease: OwnerLease,
+		envelope: unknown,
+		targetPeerId?: string,
+	): boolean => {
+		const ownerTab = tabs.get(lease.tabId);
+		if (!ownerTab) {
+			return false;
+		}
+		ownerTab.send({
+			type: PRODUCT_ROOM_MSG.MEDIA_SEND,
+			roomId,
+			transportGeneration: lease.transportGeneration,
+			envelope,
+			targetPeerId,
+		} satisfies ProductRoomMediaSend);
+		return true;
+	};
+
+	const flushPendingPackets = (): void => {
+		if (!ownerLease?.attached) {
+			return;
+		}
+		while (pendingCrdtPackets.length > 0) {
+			const pending = pendingCrdtPackets.shift();
+			if (!pending || !sendCrdtPacketToOwner(ownerLease, pending.packet, pending.targetPeerId)) {
+				return;
+			}
+		}
+		while (pendingMediaPackets.length > 0) {
+			const pending = pendingMediaPackets.shift();
+			if (!pending || !sendMediaPacketToOwner(ownerLease, pending.envelope, pending.targetPeerId)) {
+				return;
+			}
+		}
+	};
 
 	const sendDetach = (lease: OwnerLease): void => {
 		const ownerTab = tabs.get(lease.tabId);
@@ -97,6 +166,7 @@ export const createProductRoomTransportOwner = ({
 				tabId,
 				transportGeneration: ++transportGeneration,
 				lastHeartbeatAt: now(),
+				attached: false,
 			};
 			ownerLease = lease;
 			tab.send({
@@ -187,6 +257,8 @@ export const createProductRoomTransportOwner = ({
 		}
 		if (message.status === WEBRTC_OWNER_STATUS.ATTACHED) {
 			ownerLease.lastHeartbeatAt = now();
+			ownerLease.attached = true;
+			flushPendingPackets();
 			return { ok: true };
 		}
 		if (message.status === WEBRTC_OWNER_STATUS.REJECTED_ROOM_MISMATCH) {
@@ -202,25 +274,22 @@ export const createProductRoomTransportOwner = ({
 		targetPeerId?: string,
 	): ProductRoomCrdtSendResult => {
 		if (!ownerLease) {
+			pendingCrdtPackets.push({ packet, targetPeerId });
+			return {
+				ok: true,
+				generation: transportGeneration,
+			};
+		}
+		if (!ownerLease.attached) {
+			pendingCrdtPackets.push({ packet, targetPeerId });
+			return { ok: true, generation: ownerLease.transportGeneration };
+		}
+		if (!sendCrdtPacketToOwner(ownerLease, packet, targetPeerId)) {
 			return {
 				ok: false,
 				errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER,
 			};
 		}
-		const ownerTab = tabs.get(ownerLease.tabId);
-		if (!ownerTab) {
-			return {
-				ok: false,
-				errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER,
-			};
-		}
-		ownerTab.send({
-			type: PRODUCT_ROOM_MSG.CRDT_SEND,
-			roomId,
-			transportGeneration: ownerLease.transportGeneration,
-			packet,
-			targetPeerId,
-		} satisfies ProductRoomCrdtSend);
 		return { ok: true, generation: ownerLease.transportGeneration };
 	};
 
@@ -242,19 +311,16 @@ export const createProductRoomTransportOwner = ({
 
 	const sendMediaPacket = (envelope: unknown, targetPeerId?: string): ProductRoomCrdtSendResult => {
 		if (!ownerLease) {
+			pendingMediaPackets.push({ envelope, targetPeerId });
+			return { ok: true, generation: transportGeneration };
+		}
+		if (!ownerLease.attached) {
+			pendingMediaPackets.push({ envelope, targetPeerId });
+			return { ok: true, generation: ownerLease.transportGeneration };
+		}
+		if (!sendMediaPacketToOwner(ownerLease, envelope, targetPeerId)) {
 			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER };
 		}
-		const ownerTab = tabs.get(ownerLease.tabId);
-		if (!ownerTab) {
-			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.NO_TRANSPORT_OWNER };
-		}
-		ownerTab.send({
-			type: PRODUCT_ROOM_MSG.MEDIA_SEND,
-			roomId,
-			transportGeneration: ownerLease.transportGeneration,
-			envelope,
-			targetPeerId,
-		} satisfies ProductRoomMediaSend);
 		return { ok: true, generation: ownerLease.transportGeneration };
 	};
 

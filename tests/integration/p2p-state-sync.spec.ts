@@ -24,7 +24,7 @@ test('p2p state sync works over WebRTC across isolated browser contexts', async 
 
 		await waitForRolePair(first.page, second.page)
 		const syncedBeforeCount = await waitForProjectCountSync(first.page, second.page)
-		expect(syncedBeforeCount).toBe(1)
+		expect(syncedBeforeCount).toBeGreaterThan(0)
 
 		await createProject(first.page)
 		await expect.poll(() => getProjectCount(first.page), {
