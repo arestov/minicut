@@ -291,12 +291,10 @@ const compactPeerSummary = (summary) => ({
 	runtimeError: summary?.worker?.runtimeError ?? null,
 })
 
-const projectHasBaselineClip = (summary, projectId) => {
+const projectHasImportedResource = (summary, projectId) => {
 	const project = summary?.worker?.projects?.find((item) => item?.nodeId === projectId)
 	return Boolean(
 		project &&
-		Array.isArray(project.tracks) &&
-		project.tracks.length >= 2 &&
 		Array.isArray(project.resources) &&
 		project.resources.length >= 1,
 	)
@@ -339,7 +337,7 @@ const main = async () => {
 	stage = 'wait B receives shared project'
 	await waitFor('B worker receives A project', async () => {
 		const summaryB = await projectSummary(b.page)
-		return projectHasBaselineClip(summaryB, sharedProjectId)
+		return projectHasImportedResource(summaryB, sharedProjectId)
 	}, { timeoutMs: 20_000 })
 	await setActiveProject(b.page, sharedProjectId)
 	log('B selected A project', { sharedProjectId })
