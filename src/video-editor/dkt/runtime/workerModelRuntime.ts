@@ -8,6 +8,7 @@ import { createProductRoomTransportOwner } from "../../worker/productRoomTranspo
 import type { DktCrdtTransport, DktCrdtWireMessage } from "../crdt/testRelayContracts";
 import {
 	createMiniCutHarnessWorkspaceId,
+	createMiniCutRoomPeerId,
 	createMiniCutWorkspaceDbName,
 } from "../storage/minicutWorkspaceManifest";
 import {
@@ -143,8 +144,8 @@ export const createMiniCutDktWorkerModelRuntime = (
 			: enableProductionCrdt
 				? {
 					enabled: true,
-					peerIdForSession: (sessionKey, sessionId) =>
-						`minicut-worker:${sessionKey}:${sessionId}`,
+					peerIdForSessionKey: (sessionKey) =>
+						createMiniCutRoomPeerId(createMiniCutHarnessWorkspaceId(sessionKey)),
 					transportForSession: (sessionKey) =>
 						createProductRoomCrdtTransport(sessionKey),
 					defaultStorageDbNameForSessionKey: (sessionKey) =>

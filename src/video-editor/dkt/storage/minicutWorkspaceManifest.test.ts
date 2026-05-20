@@ -7,6 +7,7 @@ import {
 	createMiniCutExpectedManifest,
 	createMiniCutHarnessDbName,
 	createMiniCutHarnessWorkspaceId,
+	createMiniCutRoomPeerId,
 	createMiniCutStoredDktManifest,
 	createMiniCutWorkspaceDbName,
 	openMiniCutWorkspaceStorage,
@@ -63,6 +64,19 @@ describe("MiniCut workspace manifest", () => {
 		expect(createMiniCutHarnessWorkspaceId(null)).toBe("harness:standalone");
 		expect(createMiniCutHarnessDbName(null)).toBe(
 			createMiniCutWorkspaceDbName("harness:standalone"),
+		);
+	});
+
+	it("derives stable room-scoped peer ids from workspace ids", () => {
+		const workspaceId = createMiniCutHarnessWorkspaceId("room alpha/1");
+		expect(createMiniCutRoomPeerId(workspaceId)).toBe(
+			createMiniCutRoomPeerId(workspaceId),
+		);
+		expect(createMiniCutRoomPeerId(workspaceId)).toMatch(
+			/^minicut-room-peer:[0-9a-f]{8}:harness%3Aroom%3Aroom%2520alpha%252F1$/,
+		);
+		expect(createMiniCutRoomPeerId(workspaceId)).not.toBe(
+			createMiniCutRoomPeerId(createMiniCutHarnessWorkspaceId("room beta/1")),
 		);
 	});
 

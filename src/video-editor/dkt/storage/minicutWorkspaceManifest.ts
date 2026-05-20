@@ -76,6 +76,7 @@ type DktStorageOpenInspection =
 const HARNESS_ROOM_WORKSPACE_PREFIX = "harness:room:";
 const HARNESS_STANDALONE_WORKSPACE_ID = "harness:standalone";
 const DB_NAME_PREFIX = "minicut-crdt-workspace-";
+const PEER_ID_PREFIX = "minicut-room-peer:";
 
 const encodeWorkspacePart = (value: string): string =>
 	encodeURIComponent(value).replace(/[!'()*]/g, (char) =>
@@ -138,6 +139,15 @@ export const readRoomIdFromMiniCutHarnessWorkspaceId = (
 
 export const createMiniCutWorkspaceDbName = (workspaceId: string): string =>
 	`${DB_NAME_PREFIX}${encodeWorkspacePart(workspaceId)}`;
+
+export const createMiniCutRoomPeerId = (workspaceId: string): string => {
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < workspaceId.length; index += 1) {
+		hash ^= workspaceId.charCodeAt(index);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return `${PEER_ID_PREFIX}${hash.toString(16).padStart(8, "0")}:${encodeWorkspacePart(workspaceId)}`;
+};
 
 export const createMiniCutHarnessDbName = (
 	roomId: string | null | undefined,
