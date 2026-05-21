@@ -94,4 +94,45 @@ describe("createMiniCutDktWorkerModelRuntime", () => {
 
 		connection.destroy();
 	});
+
+	it("accepts production dispatch without settling the runtime", async () => {
+		const workerRuntime = createMiniCutDktWorkerModelRuntime({
+			enableProductionCrdt: false,
+		});
+		const memory = createMemoryTransport();
+		const connection = workerRuntime.connect(memory.transport);
+
+		memory.emit({ type: DKT_MSG.BOOTSTRAP, sessionKey: "session:dispatch" });
+		await waitFor(() =>
+			memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_READY),
+		);
+
+		memory.emit({
+			type: DKT_MSG.DISPATCH_ACTION,
+			requestId: "dispatch:1",
+			actionName: "setActiveInspectorTab",
+			payload: "edit",
+		});
+
+		await waitFor(() =>
+			memory.sent.some(
+				(message) =>
+					message.type === DKT_MSG.ACTION_ACCEPTED &&
+					message.requestId === "dispatch:1",
+			),
+		);
+
+		expect(memory.sent).toContainEqual({
+			type: DKT_MSG.ACTION_ACCEPTED,
+			requestId: "dispatch:1",
+			actionName: "setActiveInspectorTab",
+			sessionId: "session:dispatch",
+			sessionKey: "session:dispatch",
+		});
+		expect(
+			memory.sent.some((message) => message.type === DKT_TEST_MSG.IDLE),
+		).toBe(false);
+
+		connection.destroy();
+	});
 });
