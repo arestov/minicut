@@ -405,4 +405,83 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 		dktTransport.destroy();
 		adapter.destroy();
 	});
+
+	it("handles opaque CRDT packet faults without inspecting payloads", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const peerB = createCrdtTransportHarness();
+		const peerC = createCrdtTransportHarness();
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 11,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 10,
+				packet: { staleGeneration: true },
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 11,
+				packet: { targetedLate: true },
+				targetPeerId: "peer-c",
+			}),
+		);
+		expect(peerC.sent).toEqual([]);
+
+		manager.openServerCrdt("peer-b", peerB);
+		peerB.emit({ seq: 2, payload: { nested: ["opaque"] } }, "peer-b");
+		peerB.emit({ seq: 1, payload: { nested: ["opaque"] } }, "peer-b");
+		peerB.emit({ seq: 1, payload: { nested: ["opaque"] } }, "peer-b");
+		manager.openServerCrdt("peer-c", peerC);
+
+		expect(peerB.sent).toEqual([]);
+		expect(peerC.sent).toEqual([{ targetedLate: true }]);
+		expect(localAuthority.opened[0].sent).toEqual(
+			expect.arrayContaining([
+				productRoomMessage({
+					type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+					roomId: "room-1",
+					transportGeneration: 11,
+					packet: { seq: 2, payload: { nested: ["opaque"] } },
+					sourcePeerId: "peer-b",
+				}),
+				productRoomMessage({
+					type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+					roomId: "room-1",
+					transportGeneration: 11,
+					packet: { seq: 1, payload: { nested: ["opaque"] } },
+					sourcePeerId: "peer-b",
+				}),
+			]),
+		);
+		expect(
+			localAuthority.opened[0].sent.filter(
+				(message) =>
+					message.type === DKT_MSG.PRODUCT_ROOM_MESSAGE &&
+					message.message.type === PRODUCT_ROOM_MSG.CRDT_RECEIVE &&
+					(message.message.packet as { seq?: number }).seq === 1,
+			),
+		).toHaveLength(2);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
 });
