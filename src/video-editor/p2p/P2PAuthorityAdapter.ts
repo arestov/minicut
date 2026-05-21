@@ -23,6 +23,7 @@ import {
 	type PageP2PManagerConfig,
 	type PageP2PManagerEvents,
 } from "./PageP2PManager";
+import { describeP2PPacket, traceP2P } from "./p2pDebugTrace";
 
 const P2P_SHARED_WORKER_NAME_PREFIX = "minicut-video-editor-authority:p2p:";
 
@@ -129,6 +130,11 @@ export const createP2PAuthorityAdapter = (
 		},
 		{
 			onBecomeServer() {
+				traceP2P("authority:role", {
+					role: "server",
+					roomId: config.roomId,
+					pagePeerId: manager.peerId,
+				});
 				console.info("[minicut:p2p] authority role=server", {
 					roomId: config.roomId,
 					peerId: manager.peerId,
@@ -137,6 +143,11 @@ export const createP2PAuthorityAdapter = (
 			},
 
 			onBecomeClient(transport) {
+				traceP2P("authority:role", {
+					role: "client",
+					roomId: config.roomId,
+					pagePeerId: manager.peerId,
+				});
 				console.info("[minicut:p2p] authority role=client", {
 					roomId: config.roomId,
 					peerId: manager.peerId,
@@ -146,10 +157,22 @@ export const createP2PAuthorityAdapter = (
 			},
 
 			onClientCrdtTransport(transport) {
+				traceP2P("authority:crdt-transport", {
+					direction: "client",
+					remotePeerId: "server",
+					roomId: config.roomId,
+					pagePeerId: manager.peerId,
+				});
 				setActiveCrdtTransport("server", transport);
 			},
 
 			onServerCrdtTransport(remotePeerId, transport) {
+				traceP2P("authority:crdt-transport", {
+					direction: "server",
+					remotePeerId,
+					roomId: config.roomId,
+					pagePeerId: manager.peerId,
+				});
 				setActiveCrdtTransport(remotePeerId, transport);
 			},
 
@@ -226,6 +249,19 @@ export const createP2PAuthorityAdapter = (
 			const pendingCrdtSends: ProductRoomCrdtSend[] = [];
 
 			const sendProductRoomToWorker = (message: ProductRoomProtocolMessage): void => {
+				traceP2P("authority:to-worker", {
+					roomId: config.roomId,
+					pagePeerId: manager.peerId,
+					messageType: message.type,
+					...("packet" in message ? describeP2PPacket(message.packet) : {}),
+					...("peerId" in message ? { transportPeerId: message.peerId } : {}),
+					...("sourcePeerId" in message
+						? { sourcePeerId: message.sourcePeerId }
+						: {}),
+					...("targetPeerId" in message
+						? { targetPeerId: message.targetPeerId }
+						: {}),
+				});
 				const wrapped: MiniCutDktTransportMessage = {
 					type: DKT_MSG.PRODUCT_ROOM_MESSAGE,
 					message,
@@ -246,6 +282,12 @@ export const createP2PAuthorityAdapter = (
 				}
 				if (!announcedCrdtPeers.has(remotePeerId)) {
 					announcedCrdtPeers.add(remotePeerId);
+					traceP2P("authority:announce-crdt-peer", {
+						roomId: config.roomId,
+						pagePeerId: manager.peerId,
+						remotePeerId,
+						transportGeneration: attachedRoomGeneration,
+					});
 					sendProductRoomToWorker({
 						type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
 						roomId: config.roomId,
@@ -260,6 +302,14 @@ export const createP2PAuthorityAdapter = (
 					if (attachedRoomGeneration == null) {
 						return;
 					}
+					traceP2P("authority:crdt-dc-receive", {
+						roomId: config.roomId,
+						pagePeerId: manager.peerId,
+						remotePeerId,
+						sourcePeerId: sourcePeerId || remotePeerId,
+						transportGeneration: attachedRoomGeneration,
+						...describeP2PPacket(packet),
+					});
 					sendProductRoomToWorker({
 						type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
 						roomId: config.roomId,
@@ -297,19 +347,51 @@ export const createP2PAuthorityAdapter = (
 			};
 
 			const sendCrdtPacket = (message: ProductRoomCrdtSend): boolean => {
+				traceP2P("authority:crdt-send-request", {
+					roomId: config.roomId,
+					pagePeerId: manager.peerId,
+					targetPeerId: message.targetPeerId,
+					transportGeneration: message.transportGeneration,
+					transportCount: crdtTransports.size,
+					...describeP2PPacket(message.packet),
+				});
 				if (message.targetPeerId) {
 					const transport = crdtTransports.get(message.targetPeerId);
 					if (!transport) {
+						traceP2P("authority:crdt-send-missing-target", {
+							roomId: config.roomId,
+							pagePeerId: manager.peerId,
+							targetPeerId: message.targetPeerId,
+							knownPeerIds: [...crdtTransports.keys()],
+							...describeP2PPacket(message.packet),
+						});
 						return false;
 					}
 					transport.send(message.packet);
+					traceP2P("authority:crdt-send-targeted", {
+						roomId: config.roomId,
+						pagePeerId: manager.peerId,
+						targetPeerId: message.targetPeerId,
+						...describeP2PPacket(message.packet),
+					});
 					return true;
 				}
 				if (crdtTransports.size === 0) {
+					traceP2P("authority:crdt-send-no-transports", {
+						roomId: config.roomId,
+						pagePeerId: manager.peerId,
+						...describeP2PPacket(message.packet),
+					});
 					return false;
 				}
-				for (const transport of crdtTransports.values()) {
+				for (const [remotePeerId, transport] of crdtTransports) {
 					transport.send(message.packet);
+					traceP2P("authority:crdt-send-broadcast-peer", {
+						roomId: config.roomId,
+						pagePeerId: manager.peerId,
+						remotePeerId,
+						...describeP2PPacket(message.packet),
+					});
 				}
 				return true;
 			};
@@ -336,6 +418,12 @@ export const createP2PAuthorityAdapter = (
 				switch (message.type) {
 					case PRODUCT_ROOM_MSG.ATTACH_WEBRTC:
 						attachedRoomGeneration = message.transportGeneration;
+						traceP2P("authority:attach-webrtc", {
+							roomId: config.roomId,
+							pagePeerId: manager.peerId,
+							transportGeneration: message.transportGeneration,
+							knownCrdtPeers: [...crdtTransports.keys()],
+						});
 						attachCrdtListeners();
 						flushPendingCrdtSends();
 						sendProductRoomToWorker({
@@ -355,11 +443,24 @@ export const createP2PAuthorityAdapter = (
 						return true;
 					case PRODUCT_ROOM_MSG.CRDT_SEND: {
 						if (attachedRoomGeneration !== message.transportGeneration) {
+							traceP2P("authority:crdt-send-stale-generation", {
+								roomId: config.roomId,
+								pagePeerId: manager.peerId,
+								attachedRoomGeneration,
+								messageGeneration: message.transportGeneration,
+							});
 							return true;
 						}
 						const crdtMessage = message as ProductRoomCrdtSend;
 						if (!sendCrdtPacket(crdtMessage)) {
 							pendingCrdtSends.push(crdtMessage);
+							traceP2P("authority:crdt-send-queued", {
+								roomId: config.roomId,
+								pagePeerId: manager.peerId,
+								pendingCount: pendingCrdtSends.length,
+								targetPeerId: crdtMessage.targetPeerId,
+								...describeP2PPacket(crdtMessage.packet),
+							});
 						}
 						return true;
 					}

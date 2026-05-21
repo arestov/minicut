@@ -25,12 +25,14 @@ const createHarness = () => {
 	let now = 1_000;
 	const sent = new Map<string, ProductRoomProtocolMessage[]>();
 	const receivedCrdt: unknown[] = [];
+	const receivedMedia: unknown[] = [];
 	const attachedPeers: unknown[] = [];
 	const coordinator = createProductRoomTransportOwner({
 		roomId: "room-a",
 		heartbeatTimeoutMs: 100,
 		now: () => now,
 		onCrdtPacket: (packet) => receivedCrdt.push(packet),
+		onMediaPacket: (packet) => receivedMedia.push(packet),
 		onCrdtPeerAttached: (peer) => attachedPeers.push(peer),
 	});
 	const register = (tabId: string, canHostWebRtc: boolean, roomId = "room-a") => {
@@ -49,6 +51,7 @@ const createHarness = () => {
 		coordinator,
 		sent,
 		receivedCrdt,
+		receivedMedia,
 		attachedPeers,
 		register,
 		advance(ms: number) {
@@ -317,5 +320,90 @@ describe("product room transport owner", () => {
 
 		expect(harness.coordinator.getOwner()).toMatchObject({ tabId: "tab-a" });
 		expect(harness.sent.get("tab-b")).toEqual([]);
+	});
+
+	it("keeps a single WebRTC owner for one room while other tabs are replicas", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+		harness.coordinator.handleOwnerStatus({
+			type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+			tabId: "tab-a",
+			roomId: "room-a",
+			transportGeneration: 1,
+			status: WEBRTC_OWNER_STATUS.ATTACHED,
+		});
+
+		harness.register("tab-b", true);
+		harness.register("tab-c", true);
+
+		expect(harness.coordinator.getOwner()).toMatchObject({
+			tabId: "tab-a",
+			transportGeneration: 1,
+			attached: true,
+		});
+		expect(harness.sent.get("tab-b")).toEqual([]);
+		expect(harness.sent.get("tab-c")).toEqual([]);
+		expect(
+			[...harness.sent.values()]
+				.flat()
+				.filter((message) => message.type === PRODUCT_ROOM_MSG.ATTACH_WEBRTC),
+		).toHaveLength(1);
+	});
+
+	it("routes media envelopes separately from opaque CRDT packets", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+		harness.coordinator.handleOwnerStatus({
+			type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+			tabId: "tab-a",
+			roomId: "room-a",
+			transportGeneration: 1,
+			status: WEBRTC_OWNER_STATUS.ATTACHED,
+		});
+
+		expect(
+			harness.coordinator.sendCrdtPacket({ type: "dkt-crdt-batches", batches: [] }),
+		).toEqual({ ok: true, generation: 1 });
+		expect(
+			harness.coordinator.sendMediaPacket({ type: "resource-request", resourceId: "res-1" }),
+		).toEqual({ ok: true, generation: 1 });
+
+		expect(harness.sent.get("tab-a")?.slice(-2)).toEqual([
+			{
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-a",
+				transportGeneration: 1,
+				packet: { type: "dkt-crdt-batches", batches: [] },
+				targetPeerId: undefined,
+			},
+			{
+				type: PRODUCT_ROOM_MSG.MEDIA_SEND,
+				roomId: "room-a",
+				transportGeneration: 1,
+				envelope: { type: "resource-request", resourceId: "res-1" },
+				targetPeerId: undefined,
+			},
+		]);
+		expect(
+			harness.coordinator.handleMediaReceive({
+				type: PRODUCT_ROOM_MSG.MEDIA_RECEIVE,
+				tabId: "tab-a",
+				roomId: "room-a",
+				transportGeneration: 1,
+				envelope: { type: "resource-chunk-meta", resourceId: "res-1" },
+				sourcePeerId: "peer-b",
+			}),
+		).toEqual({ ok: true });
+		expect(harness.receivedCrdt).toEqual([]);
+		expect(harness.receivedMedia).toEqual([
+			{
+				envelope: { type: "resource-chunk-meta", resourceId: "res-1" },
+				sourcePeerId: "peer-b",
+				transportGeneration: 1,
+				roomId: "room-a",
+			},
+		]);
 	});
 });

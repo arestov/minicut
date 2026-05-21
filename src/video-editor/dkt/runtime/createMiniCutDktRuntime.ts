@@ -732,7 +732,9 @@ export const createMiniCutDktRuntime = (
 		}
 
 		const resolutionMeta = crdtResolutionAttemptMeta(actionName, payload, target);
-		await target.dispatch(actionName, payload, null, resolutionMeta ?? meta);
+		// DKT dispatch is event-log scheduling: it enqueues an action flow step
+		// and intentionally does not expose a completion promise here.
+		target.dispatch(actionName, payload, null, resolutionMeta ?? meta);
 	};
 
 	const connect = (
@@ -1046,6 +1048,7 @@ export const createMiniCutDktRuntime = (
 			),
 			workspaceOpenState: lastWorkspaceOpenState,
 			runtimeError: lastRuntimeErrorMessage,
+			flowWriteTrace: app.runtime.debug_flow_write_trace ?? [],
 			crdt: app.runtime.crdt_runtime
 				? {
 						enabled: true,

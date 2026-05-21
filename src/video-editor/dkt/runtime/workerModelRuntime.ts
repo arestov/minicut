@@ -17,6 +17,7 @@ import {
 	type MiniCutCrdtTransport,
 } from "./createMiniCutDktRuntime";
 import { WORKSPACE_OPEN_STATUS } from "./workspaceOpenState";
+import { describeP2PPacket, traceP2P } from "../../p2p/p2pDebugTrace";
 
 const cloneWireMessage = (message: DktCrdtWireMessage): DktCrdtWireMessage =>
 	JSON.parse(JSON.stringify(message)) as DktCrdtWireMessage;
@@ -124,14 +125,36 @@ export const createMiniCutDktWorkerModelRuntime = (
 				const wireMessage = cloneUnknownWireMessage(packet.payload);
 				if (!canDeliverIncomingMessages || listeners.size === 0) {
 					pendingIncomingMessages.push(wireMessage);
+					traceP2P("worker-runtime:crdt-receive-buffered", {
+						roomId,
+						sourcePeerId: packet.sourcePeerId,
+						transportGeneration: packet.transportGeneration,
+						canDeliverIncomingMessages,
+						listenerCount: listeners.size,
+						pendingCount: pendingIncomingMessages.length,
+						...describeP2PPacket(wireMessage),
+					});
 					return;
 				}
+				traceP2P("worker-runtime:crdt-receive-deliver", {
+					roomId,
+					sourcePeerId: packet.sourcePeerId,
+					transportGeneration: packet.transportGeneration,
+					listenerCount: listeners.size,
+					...describeP2PPacket(wireMessage),
+				});
 				for (const listener of [...listeners]) {
 					listener(cloneWireMessage(wireMessage));
 				}
 			},
 			onCrdtPeerAttached(peer) {
 				attachedCrdtPeers.add(peer.peerId);
+				traceP2P("worker-runtime:crdt-peer-attached", {
+					roomId,
+					transportPeerId: peer.peerId,
+					transportGeneration: peer.transportGeneration,
+					replayCallbackCount: replayDurableLogCallbacks.size,
+				});
 				for (const replay of [...replayDurableLogCallbacks]) {
 					replay(peer.peerId);
 				}
@@ -167,8 +190,26 @@ export const createMiniCutDktWorkerModelRuntime = (
 						?.getBatchesAfter?.({}) ?? [],
 				).then((batches) => {
 					if (!Array.isArray(batches) || batches.length === 0) {
+						traceP2P("worker-runtime:durable-replay-empty", {
+							roomId,
+							targetPeerId,
+							peerId: context.peerId,
+						});
 						return;
 					}
+					traceP2P("worker-runtime:durable-replay-send", {
+						roomId,
+						targetPeerId,
+						peerId: context.peerId,
+						batchCount: batches.length,
+						batchIds: batches
+							.map((batch) =>
+								batch && typeof batch === "object"
+									? (batch as { batch_id?: unknown }).batch_id
+									: null,
+							)
+							.filter((id): id is string => typeof id === "string"),
+					});
 					room.owner.sendCrdtPacket(
 						cloneWireMessage({
 							type: "dkt-crdt-batches",
@@ -185,10 +226,22 @@ export const createMiniCutDktWorkerModelRuntime = (
 			room.replayDurableLogCallbacks.add(replayDurableLog);
 			const transport: DktCrdtTransport = {
 				send(message) {
+					traceP2P("worker-runtime:transport-send", {
+						roomId,
+						peerId: context.peerId,
+						...describeP2PPacket(message),
+					});
 					room.owner.sendCrdtPacket(cloneWireMessage(message));
 				},
 				subscribe(listener) {
 					room.listeners.add(listener);
+					traceP2P("worker-runtime:transport-subscribe", {
+						roomId,
+						peerId: context.peerId,
+						listenerCount: room.listeners.size,
+						pendingCount: room.pendingIncomingMessages.length,
+						canDeliverIncomingMessages: room.canDeliverIncomingMessages,
+					});
 					room.canDeliverIncomingMessages = room.canDeliverIncomingMessages;
 					return () => room.listeners.delete(listener);
 				},

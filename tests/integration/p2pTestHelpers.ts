@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { expect, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
 
@@ -40,6 +40,73 @@ export type DebugState = {
 export type PeerHandle = {
 	context: BrowserContext
 	page: Page
+}
+
+export const readP2PTrace = async (page: Page): Promise<unknown[]> =>
+	page.evaluate(() => {
+		const trace = (globalThis as typeof globalThis & {
+			__MINICUT_P2P_TRACE__?: unknown[]
+		}).__MINICUT_P2P_TRACE__
+		return Array.isArray(trace) ? trace : []
+	})
+
+export const readP2PDeepDebugState = async (page: Page): Promise<unknown> =>
+	page.evaluate(async () => {
+		const debug = (window as typeof window & {
+			__MINICUT_P2P_DEBUG__?: {
+				getRole?: () => 'server' | 'client' | 'undecided' | null
+				getProjectCount?: () => number
+				getProjectTitles?: () => string[]
+				getPeerId?: () => string | null
+				isRuntimeReady?: () => boolean
+				dumpGraphSummary?: () => unknown
+				dumpProjectState?: () => unknown
+				dumpWorkerState?: () => Promise<unknown>
+			}
+		}).__MINICUT_P2P_DEBUG__
+
+		if (!debug) {
+			return null
+		}
+
+		return {
+			role: debug.getRole?.() ?? null,
+			projectCount: debug.getProjectCount?.(),
+			projectTitles: debug.getProjectTitles?.(),
+			peerId: debug.getPeerId?.(),
+			runtimeReady: debug.isRuntimeReady?.(),
+			graphSummary: debug.dumpGraphSummary?.(),
+			projectState: debug.dumpProjectState?.(),
+			workerState: await debug.dumpWorkerState?.().catch((error: unknown) => ({
+				error: error instanceof Error ? error.stack || error.message : String(error),
+			})),
+			p2pTrace: (globalThis as typeof globalThis & {
+				__MINICUT_P2P_TRACE__?: unknown[]
+			}).__MINICUT_P2P_TRACE__ ?? [],
+		}
+	})
+
+export const writeP2PDebugArtifacts = async (
+	label: string,
+	firstPage: Page,
+	secondPage: Page,
+): Promise<string> => {
+	const dir = path.join('test-results', 'p2p-debug')
+	await mkdir(dir, { recursive: true })
+	const filePath = path.join(
+		dir,
+		`${label.replace(/[^a-zA-Z0-9_-]/g, '-')}-${Date.now()}.json`,
+	)
+	const [first, second] = await Promise.all([
+		readP2PDeepDebugState(firstPage).catch((error: unknown) => ({
+			error: error instanceof Error ? error.stack || error.message : String(error),
+		})),
+		readP2PDeepDebugState(secondPage).catch((error: unknown) => ({
+			error: error instanceof Error ? error.stack || error.message : String(error),
+		})),
+	])
+	await writeFile(filePath, `${JSON.stringify({ first, second }, null, 2)}\n`, 'utf8')
+	return filePath
 }
 
 const slugify = (value: string): string => value
@@ -128,6 +195,11 @@ export const getProjectTitles = async (page: Page): Promise<string[]> => {
 	return state?.projectTitles ?? []
 }
 
+export const getPeerId = async (page: Page): Promise<string | null> => {
+	const state = await readP2PDebugState(page)
+	return state?.peerId ?? null
+}
+
 export const isRuntimeReady = async (page: Page): Promise<boolean> => {
 	const state = await readP2PDebugState(page)
 	return state?.runtimeReady ?? false
@@ -172,8 +244,19 @@ export const waitForProjectCountSync = async (firstPage: Page, secondPage: Page)
 			timeout: 20_000,
 		}).toBe(true)
 	} catch (error) {
+		const artifactPath = await writeP2PDebugArtifacts(
+			'project-count-sync-timeout',
+			firstPage,
+			secondPage,
+		).catch((artifactError: unknown) =>
+			`<failed to write debug artifact: ${
+				artifactError instanceof Error
+					? artifactError.message
+					: String(artifactError)
+			}>`,
+		)
 		throw new Error(
-			`Timed out waiting for P2P project count sync. Last states: ${JSON.stringify(lastStates)}`,
+			`Timed out waiting for P2P project count sync. Last states: ${JSON.stringify(lastStates)} Debug artifact: ${artifactPath}`,
 			{ cause: error },
 		)
 	}

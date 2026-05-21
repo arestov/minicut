@@ -6,6 +6,7 @@ import type { WireMessage } from "../domain/types";
 import type { BridgeSignalingFactory } from "./BridgeSignaling";
 import { createDoSignalingFactory } from "./BridgeSignaling";
 import type { SignalMessage } from "./types";
+import { describeP2PPacket, traceP2P } from "./p2pDebugTrace";
 
 export interface P2PTransportLike {
 	send(message: WireMessage | MiniCutDktTransportMessage): void;
@@ -409,8 +410,22 @@ export const createPageP2PManager = (
 				const packet = JSON.parse(String(event.data));
 				if (listeners.size === 0) {
 					pendingPackets.push(packet);
+					traceP2P("page-crdt-dc:receive-buffered", {
+						roomId: config.roomId,
+						pagePeerId: peerId,
+						remotePeerId,
+						pendingCount: pendingPackets.length,
+						...describeP2PPacket(packet),
+					});
 					return;
 				}
+				traceP2P("page-crdt-dc:receive", {
+					roomId: config.roomId,
+					pagePeerId: peerId,
+					remotePeerId,
+					listenerCount: listeners.size,
+					...describeP2PPacket(packet),
+				});
 				for (const listener of listeners) {
 					listener(packet, remotePeerId);
 				}
@@ -433,14 +448,43 @@ export const createPageP2PManager = (
 		return {
 			send(packet) {
 				if (transportDestroyed || dc.readyState !== "open") {
+					traceP2P("page-crdt-dc:send-not-ready", {
+						roomId: config.roomId,
+						pagePeerId: peerId,
+						remotePeerId,
+						readyState: dc.readyState,
+						transportDestroyed,
+						...describeP2PPacket(packet),
+					});
 					throw new Error("crdt_transport_not_ready");
 				}
+				traceP2P("page-crdt-dc:send", {
+					roomId: config.roomId,
+					pagePeerId: peerId,
+					remotePeerId,
+					bufferedAmount: dc.bufferedAmount,
+					...describeP2PPacket(packet),
+				});
 				dc.send(JSON.stringify(packet));
 			},
 			listen(listener) {
 				listeners.add(listener);
+				traceP2P("page-crdt-dc:listen", {
+					roomId: config.roomId,
+					pagePeerId: peerId,
+					remotePeerId,
+					pendingCount: pendingPackets.length,
+					listenerCount: listeners.size,
+				});
 				while (pendingPackets.length > 0 && listeners.has(listener)) {
 					const packet = pendingPackets.shift();
+					traceP2P("page-crdt-dc:flush-buffered", {
+						roomId: config.roomId,
+						pagePeerId: peerId,
+						remotePeerId,
+						pendingCount: pendingPackets.length,
+						...describeP2PPacket(packet),
+					});
 					listener(packet, remotePeerId);
 				}
 				return () => listeners.delete(listener);
@@ -894,6 +938,11 @@ export const createPageP2PManager = (
 		sessionLostNotified = false;
 		serverPeerId = null;
 		role = "server";
+		traceP2P("page-manager:role", {
+			role: "server",
+			roomId: config.roomId,
+			pagePeerId: peerId,
+		});
 		console.info("[minicut:p2p] page manager role=server", {
 			roomId: config.roomId,
 			peerId,
@@ -918,6 +967,12 @@ export const createPageP2PManager = (
 		serverPeerId = targetPeerId;
 		clientTransportReady = false;
 		sessionLostNotified = false;
+		traceP2P("page-manager:role", {
+			role: "client",
+			roomId: config.roomId,
+			pagePeerId: peerId,
+			serverPeerId: targetPeerId,
+		});
 		console.info("[minicut:p2p] page manager role=client", {
 			roomId: config.roomId,
 			peerId,
@@ -976,6 +1031,11 @@ export const createPageP2PManager = (
 			if (destroyed) {
 				return;
 			}
+			traceP2P("page-manager:client-crdt-open", {
+				roomId: config.roomId,
+				pagePeerId: peerId,
+				remotePeerId: targetPeerId,
+			});
 			crdtTransports.set(targetPeerId, crdtTransport);
 			events.onClientCrdtTransport?.(crdtTransport);
 		};
@@ -1060,6 +1120,11 @@ export const createPageP2PManager = (
 							if (destroyed) {
 								return;
 							}
+							traceP2P("page-manager:server-crdt-open", {
+								roomId: config.roomId,
+								pagePeerId: peerId,
+								remotePeerId,
+							});
 							crdtTransports.set(remotePeerId, transport);
 							events.onServerCrdtTransport?.(remotePeerId, transport);
 						};

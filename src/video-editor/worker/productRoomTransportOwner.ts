@@ -23,6 +23,7 @@ import {
 	type ProductRoomTransportMessageResult,
 	type ProductRoomWebRtcStatus,
 } from "./productRoomProtocol";
+import { describeP2PPacket, traceP2P } from "../p2p/p2pDebugTrace";
 
 type ProductRoomTransportOwnerTab = {
 	hello: ProductRoomTabHello;
@@ -86,8 +87,21 @@ export const createProductRoomTransportOwner = ({
 	): boolean => {
 		const ownerTab = tabs.get(lease.tabId);
 		if (!ownerTab) {
+			traceP2P("room-owner:crdt-send-missing-owner-tab", {
+				roomId,
+				ownerTabId: lease.tabId,
+				targetPeerId,
+				...describeP2PPacket(packet),
+			});
 			return false;
 		}
+		traceP2P("room-owner:crdt-send-to-owner-tab", {
+			roomId,
+			ownerTabId: lease.tabId,
+			transportGeneration: lease.transportGeneration,
+			targetPeerId,
+			...describeP2PPacket(packet),
+		});
 		ownerTab.send({
 			type: PRODUCT_ROOM_MSG.CRDT_SEND,
 			roomId,
@@ -176,6 +190,11 @@ export const createProductRoomTransportOwner = ({
 				attached: false,
 			};
 			ownerLease = lease;
+			traceP2P("room-owner:elect-owner", {
+				roomId,
+				tabId,
+				transportGeneration: lease.transportGeneration,
+			});
 			tab.send({
 				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
 				roomId,
@@ -202,6 +221,12 @@ export const createProductRoomTransportOwner = ({
 			return;
 		}
 		tabs.set(hello.tabId, { hello, send });
+		traceP2P("room-owner:register-tab", {
+			roomId,
+			tabId: hello.tabId,
+			canHostWebRtc: hello.canHostWebRtc,
+			tabCount: tabs.size,
+		});
 		if (hello.canHostWebRtc) {
 			disabledOwnerTabs.delete(hello.tabId);
 		}
@@ -247,7 +272,11 @@ export const createProductRoomTransportOwner = ({
 		if (!accepted.ok) {
 			return accepted;
 		}
-		ownerLease.lastHeartbeatAt = now();
+		const lease = ownerLease;
+		if (!lease) {
+			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.TAB_NOT_OWNER };
+		}
+		lease.lastHeartbeatAt = now();
 		return { ok: true };
 	};
 
@@ -262,9 +291,19 @@ export const createProductRoomTransportOwner = ({
 		if (!accepted.ok) {
 			return accepted;
 		}
+		const lease = ownerLease;
+		if (!lease) {
+			return { ok: false, errorCode: PRODUCT_ROOM_TRANSPORT_ERROR.TAB_NOT_OWNER };
+		}
 		if (message.status === WEBRTC_OWNER_STATUS.ATTACHED) {
-			ownerLease.lastHeartbeatAt = now();
-			ownerLease.attached = true;
+			lease.lastHeartbeatAt = now();
+			lease.attached = true;
+			traceP2P("room-owner:owner-attached", {
+				roomId,
+				tabId: message.tabId,
+				transportGeneration: message.transportGeneration,
+				pendingCrdtCount: pendingCrdtPackets.length,
+			});
 			flushPendingPackets();
 			return { ok: true };
 		}
@@ -287,6 +326,12 @@ export const createProductRoomTransportOwner = ({
 			peerId: message.peerId,
 			transportGeneration: message.transportGeneration,
 			roomId: message.roomId,
+		});
+		traceP2P("room-owner:crdt-peer-attached", {
+			roomId,
+			tabId: message.tabId,
+			transportPeerId: message.peerId,
+			transportGeneration: message.transportGeneration,
 		});
 		return { ok: true };
 	};
@@ -312,6 +357,12 @@ export const createProductRoomTransportOwner = ({
 	): ProductRoomCrdtSendResult => {
 		if (!ownerLease) {
 			pendingCrdtPackets.push({ packet, targetPeerId });
+			traceP2P("room-owner:crdt-send-queued-no-owner", {
+				roomId,
+				pendingCount: pendingCrdtPackets.length,
+				targetPeerId,
+				...describeP2PPacket(packet),
+			});
 			return {
 				ok: true,
 				generation: transportGeneration,
@@ -319,6 +370,14 @@ export const createProductRoomTransportOwner = ({
 		}
 		if (!ownerLease.attached) {
 			pendingCrdtPackets.push({ packet, targetPeerId });
+			traceP2P("room-owner:crdt-send-queued-owner-not-attached", {
+				roomId,
+				pendingCount: pendingCrdtPackets.length,
+				ownerTabId: ownerLease.tabId,
+				transportGeneration: ownerLease.transportGeneration,
+				targetPeerId,
+				...describeP2PPacket(packet),
+			});
 			return { ok: true, generation: ownerLease.transportGeneration };
 		}
 		if (!sendCrdtPacketToOwner(ownerLease, packet, targetPeerId)) {
@@ -342,6 +401,13 @@ export const createProductRoomTransportOwner = ({
 			sourcePeerId: message.sourcePeerId,
 			transportGeneration: message.transportGeneration,
 			roomId: message.roomId,
+		});
+		traceP2P("room-owner:crdt-receive-from-owner-tab", {
+			roomId,
+			tabId: message.tabId,
+			sourcePeerId: message.sourcePeerId,
+			transportGeneration: message.transportGeneration,
+			...describeP2PPacket(message.packet),
 		});
 		return { ok: true };
 	};
