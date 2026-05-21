@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
 import {
 	DKT_MSG,
+	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
@@ -46,13 +47,13 @@ const createMemoryTransport = () => {
 const requestDebugDump = async (
 	memory: ReturnType<typeof createMemoryTransport>,
 ): Promise<WorkerStateDump> => {
-	memory.emit({ type: DKT_MSG.DEBUG_DUMP_REQUEST });
+	memory.emit({ type: DKT_TEST_MSG.DEBUG_DUMP_REQUEST });
 	await waitFor(() =>
-		memory.sent.some((message) => message.type === DKT_MSG.DEBUG_DUMP_RESPONSE),
+		memory.sent.some((message) => message.type === DKT_TEST_MSG.DEBUG_DUMP_RESPONSE),
 	);
 	const dumpMessage = [...memory.sent]
 		.reverse()
-		.find((message) => message.type === DKT_MSG.DEBUG_DUMP_RESPONSE);
+		.find((message) => message.type === DKT_TEST_MSG.DEBUG_DUMP_RESPONSE);
 	const dump = (dumpMessage as { dump?: WorkerStateDump } | undefined)?.dump;
 	if (!dump) {
 		throw new Error("Expected DEBUG_DUMP_RESPONSE dump payload");
@@ -64,11 +65,11 @@ const waitForIdle = async (
 	memory: ReturnType<typeof createMemoryTransport>,
 ): Promise<void> => {
 	const requestId = `idle:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-	memory.emit({ type: DKT_MSG.WAIT_IDLE, requestId });
+	memory.emit({ type: DKT_TEST_MSG.WAIT_IDLE, requestId });
 	await waitFor(() =>
 		memory.sent.some(
 			(message) =>
-				message.type === DKT_MSG.IDLE && message.requestId === requestId,
+				message.type === DKT_TEST_MSG.IDLE && message.requestId === requestId,
 		),
 	);
 };

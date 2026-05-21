@@ -11,6 +11,7 @@ import {
 } from "../../../dkt-react-sync/shape/ShapeRegistry";
 import {
 	DKT_MSG,
+	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import {
@@ -301,6 +302,9 @@ export const createMiniCutPageSyncRuntime = ({
 				);
 				return;
 			}
+			case DKT_MSG.ACTION_ACCEPTED: {
+				return;
+			}
 			case DKT_MSG.WORKSPACE_OPEN_STATE: {
 				const current = store.getSnapshot();
 				store.setSnapshot(
@@ -358,7 +362,7 @@ export const createMiniCutPageSyncRuntime = ({
 				emit(createBootstrapMessage({ sessionKey }));
 				return;
 			}
-			case DKT_MSG.DEBUG_DUMP_RESPONSE: {
+			case DKT_TEST_MSG.DEBUG_DUMP_RESPONSE: {
 				pendingDumpResolve?.(message.dump);
 				pendingDumpResolve = null;
 				return;
@@ -374,7 +378,7 @@ export const createMiniCutPageSyncRuntime = ({
 				}
 				return;
 			}
-			case DKT_MSG.IDLE: {
+			case DKT_TEST_MSG.IDLE: {
 				if (typeof message.requestId === "string") {
 					const pending = pendingIdleResolves.get(message.requestId);
 					if (pending) {
@@ -401,7 +405,7 @@ export const createMiniCutPageSyncRuntime = ({
 		requestDebugDump: () =>
 			new Promise<unknown>((resolve) => {
 				pendingDumpResolve = resolve;
-				emit({ type: DKT_MSG.DEBUG_DUMP_REQUEST });
+				emit({ type: DKT_TEST_MSG.DEBUG_DUMP_REQUEST });
 			}),
 		receiveDebugCrdtTransportMessageTesting: (message) => {
 			emit({ type: DKT_MSG.CRDT_TRANSPORT_RECEIVE, message });
@@ -422,7 +426,7 @@ export const createMiniCutPageSyncRuntime = ({
 					timeoutId,
 				});
 
-				emit({ type: DKT_MSG.WAIT_IDLE, requestId });
+				emit({ type: DKT_TEST_MSG.WAIT_IDLE, requestId });
 			}),
 		applyDebugSyncUpdateTesting: (list) => {
 			syncReceiver.handleSync(SYNCR_TYPES.UPDATE, list);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	DKT_MSG,
+	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import { createMiniCutDktWorkerModelRuntime } from "./workerModelRuntime";
@@ -76,18 +77,18 @@ describe("createMiniCutDktWorkerModelRuntime", () => {
 			memory.sent.some((message) => message.type === DKT_MSG.RUNTIME_READY),
 		);
 
-		memory.emit({ type: DKT_MSG.WAIT_IDLE, requestId: "idle:request-1" });
+		memory.emit({ type: DKT_TEST_MSG.WAIT_IDLE, requestId: "idle:request-1" });
 
 		await waitFor(() =>
 			memory.sent.some(
 				(message) =>
-					message.type === DKT_MSG.IDLE &&
+					message.type === DKT_TEST_MSG.IDLE &&
 					(message as { requestId?: string }).requestId === "idle:request-1",
 			),
 		);
 
 		expect(memory.sent).toContainEqual({
-			type: DKT_MSG.IDLE,
+			type: DKT_TEST_MSG.IDLE,
 			requestId: "idle:request-1",
 		});
 

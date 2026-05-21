@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { bootDktModels } from "../testingInit";
 import {
 	DKT_MSG,
+	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import { createMiniCutStoredDktManifest } from "../storage/minicutWorkspaceManifest";
@@ -56,10 +57,10 @@ const waitForIdle = async (
 	memory: ReturnType<typeof createMemoryTransport>,
 ): Promise<void> => {
 	const requestId = `idle:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-	memory.emit({ type: DKT_MSG.WAIT_IDLE, requestId });
+	memory.emit({ type: DKT_TEST_MSG.WAIT_IDLE, requestId });
 	await waitFor(() =>
 		memory.sent.some(
-			(message) => message.type === DKT_MSG.IDLE && message.requestId === requestId,
+			(message) => message.type === DKT_TEST_MSG.IDLE && message.requestId === requestId,
 		),
 	);
 };

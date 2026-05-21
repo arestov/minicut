@@ -12,7 +12,6 @@ import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { MiniCutAppRoot } from "../../models/AppRoot";
 import {
 	sanitizeDktCrdtStoragePackage,
-	sanitizeStorageValue,
 } from "../crdt/sanitizeStoragePackage";
 import type { DktCrdtTransport } from "../crdt/testRelayContracts";
 import {
@@ -25,6 +24,7 @@ import {
 	type MiniCutWorkspaceOpenResult,
 } from "../storage/minicutWorkspaceManifest";
 import { dumpWorkerAppState } from "./workerStateDump";
+import { createMiniCutDktTestRuntimeProtocol } from "./createMiniCutDktTestRuntimeProtocol";
 import {
 	WORKSPACE_OPEN_STATUS,
 	WORKSPACE_OPENING_STATE,
@@ -539,7 +539,7 @@ export const createMiniCutDktRuntime = (
 		});
 		for (const [sessionKey, _sessionRootPromise] of sessionRootPromises) {
 			try {
-				await dispatchScopedAction("clearExportProgress", {}, null, sessionKey);
+				await enqueueScopedAction("clearExportProgress", {}, null, sessionKey);
 				logRuntime("clearExportProgressInAllSessions:cleared", { sessionKey });
 			} catch (error) {
 				logRuntime("clearExportProgressInAllSessions:error", {
@@ -706,7 +706,7 @@ export const createMiniCutDktRuntime = (
 		return sessionRootPromise;
 	};
 
-	const dispatchScopedAction = async (
+	const enqueueScopedAction = async (
 		actionName: string,
 		payload?: unknown,
 		scopeNodeId?: string | null,
@@ -740,20 +740,13 @@ export const createMiniCutDktRuntime = (
 		// DKT dispatch is event-log scheduling: it enqueues an action flow step
 		// and intentionally does not expose a completion promise here.
 		target.dispatch(actionName, payload, null, resolutionMeta ?? meta);
-		await new Promise<void>((resolve) => {
-			if (typeof app.appModel.input === "function") {
-				app.appModel.input?.(() => resolve());
-				return;
-			}
-
-			if (typeof app.runtime.whenAllReady === "function") {
-				app.runtime.whenAllReady(() => resolve());
-				return;
-			}
-
-			resolve();
-		});
 	};
+
+	const testProtocol = createMiniCutDktTestRuntimeProtocol({
+		bootstrapApp,
+		enqueueScopedAction,
+		debugDumpState: (sessionKey) => debugDumpState(sessionKey),
+	});
 
 	const connect = (
 		transport: DomSyncTransportLike<MiniCutDktTransportMessage>,
@@ -840,37 +833,20 @@ export const createMiniCutDktRuntime = (
 				return;
 			}
 
+			if (testProtocol.canHandle(message)) {
+				const handled = await testProtocol.handle(message, transport, {
+					activeSessionKey,
+					activeSessionId,
+				});
+				if (handled) {
+					return;
+				}
+			}
+
 			switch (message.type) {
 				case DKT_MSG.BOOTSTRAP:
 					await bootstrap(undefined, message.sessionKey, message.sessionId);
 					return;
-				case DKT_MSG.WAIT_IDLE: {
-					const app = await bootstrapApp();
-					if (!app) {
-						transport.send({
-							type: DKT_MSG.IDLE,
-							requestId: message.requestId,
-						});
-						return;
-					}
-
-					await new Promise<void>((resolve) => {
-						if (typeof app.appModel.input === "function") {
-							app.appModel.input?.(() => resolve());
-							return;
-						}
-
-						if (typeof app.runtime.whenAllReady === "function") {
-							app.runtime.whenAllReady(() => resolve());
-							return;
-						}
-
-						resolve();
-					});
-
-					transport.send({ type: DKT_MSG.IDLE, requestId: message.requestId });
-					return;
-				}
 				case DKT_MSG.CLOSE_SESSION:
 					destroy();
 					return;
@@ -886,7 +862,7 @@ export const createMiniCutDktRuntime = (
 							scopeNodeId: message.scopeNodeId ?? null,
 						});
 					}
-					await dispatchScopedAction(
+					await enqueueScopedAction(
 						message.actionName,
 						message.payload,
 						message.scopeNodeId,
@@ -896,11 +872,11 @@ export const createMiniCutDktRuntime = (
 					);
 					if (message.requestId) {
 						transport.send({
-							type: DKT_MSG.RUNTIME_READY,
+							type: DKT_MSG.ACTION_ACCEPTED,
 							requestId: message.requestId,
+							actionName: message.actionName,
 							sessionId: activeSessionId,
 							sessionKey: activeSessionKey,
-							rootNodeId: null,
 						});
 					}
 					return;
@@ -926,26 +902,6 @@ export const createMiniCutDktRuntime = (
 						return;
 					}
 					app.runtime.sync_sender.requireShapeForModel(stream.id, message.data);
-					return;
-				}
-				case DKT_MSG.DEBUG_DUMP_REQUEST: {
-					const summary = await debugDumpState(activeSessionKey);
-					const app = await bootstrapApp(activeSessionKey);
-					if (!app) {
-						transport.send({
-							type: DKT_MSG.DEBUG_DUMP_RESPONSE,
-							dump: summary,
-						});
-						return;
-					}
-					const dump = await dumpWorkerAppState(
-						app.appModel,
-						app.runtime.models ?? {},
-					);
-					transport.send({
-						type: DKT_MSG.DEBUG_DUMP_RESPONSE,
-						dump: sanitizeStorageValue({ ...dump, ...summary }),
-					});
 					return;
 				}
 				case DKT_MSG.CRDT_TRANSPORT_RECEIVE: {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { defineShape } from "../../../dkt-react-sync/shape/defineShape";
 import {
 	DKT_MSG,
+	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import { createMiniCutPageSyncRuntime } from "./createMiniCutPageSyncRuntime";
@@ -208,7 +209,7 @@ describe("createMiniCutPageSyncRuntime", () => {
 
 		await expect
 			.poll(
-				() => memory.sent.some((message) => message.type === DKT_MSG.WAIT_IDLE),
+				() => memory.sent.some((message) => message.type === DKT_TEST_MSG.WAIT_IDLE),
 				{
 					timeout: 5_000,
 				},
@@ -216,12 +217,12 @@ describe("createMiniCutPageSyncRuntime", () => {
 			.toBe(true);
 
 		const waitMessage = memory.sent.find(
-			(message) => message.type === DKT_MSG.WAIT_IDLE,
+			(message) => message.type === DKT_TEST_MSG.WAIT_IDLE,
 		) as { requestId?: string } | undefined;
 		expect(waitMessage?.requestId).toMatch(/^idle:/);
 
 		memory.emit({
-			type: DKT_MSG.IDLE,
+			type: DKT_TEST_MSG.IDLE,
 			requestId: waitMessage?.requestId,
 		});
 
