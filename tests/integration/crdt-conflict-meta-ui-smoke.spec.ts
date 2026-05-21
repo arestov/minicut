@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
+// This spec injects conflict meta to smoke-test UI rendering only.
+// It does not prove real CRDT conflict generation or propagation.
+
 const indexedDbStores = [
 	'dkt_manifest',
 	'dkt_migration_history',

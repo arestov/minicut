@@ -63,18 +63,121 @@ const waitForRuntimeIdle = async (
 	});
 };
 
+const toCloneSafeDebugValue = (
+	value: unknown,
+	seen = new WeakMap<object, unknown>(),
+): unknown => {
+	if (value === null || typeof value !== "object") {
+		if (typeof value === "function" || typeof value === "symbol") {
+			return undefined;
+		}
+		return value;
+	}
+
+	if (seen.has(value)) {
+		return "[Circular]";
+	}
+
+	let maybeThen: unknown;
+	try {
+		maybeThen = (value as { then?: unknown }).then;
+	} catch {
+		maybeThen = null;
+	}
+	if (typeof maybeThen === "function") {
+		return "[Promise]";
+	}
+
+	if (value instanceof Date) {
+		return value.toISOString();
+	}
+
+	if (value instanceof Error) {
+		return {
+			name: value.name,
+			message: value.message,
+			stack: value.stack,
+		};
+	}
+
+	if (Array.isArray(value)) {
+		const result: unknown[] = [];
+		seen.set(value, result);
+		for (const item of value) {
+			result.push(toCloneSafeDebugValue(item, seen));
+		}
+		return result;
+	}
+
+	if (value instanceof Map) {
+		const result: unknown[] = [];
+		seen.set(value, result);
+		for (const [key, mapValue] of value) {
+			result.push([
+				toCloneSafeDebugValue(key, seen),
+				toCloneSafeDebugValue(mapValue, seen),
+			]);
+		}
+		return result;
+	}
+
+	if (value instanceof Set) {
+		const result: unknown[] = [];
+		seen.set(value, result);
+		for (const item of value) {
+			result.push(toCloneSafeDebugValue(item, seen));
+		}
+		return result;
+	}
+
+	let entries: [string, unknown][];
+	try {
+		entries = Object.entries(value);
+	} catch (error) {
+		return {
+			unavailable: true,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+
+	const result: Record<string, unknown> = {};
+	seen.set(value, result);
+	for (const [key, item] of entries) {
+		result[key] = toCloneSafeDebugValue(item, seen);
+	}
+	return result;
+};
+
 const normalizeDebugDumpForTests = (dump: unknown): unknown => {
 	if (!dump || typeof dump !== "object") {
 		return dump;
 	}
 	const record = dump as Record<string, unknown>;
 	const workerState = record.workerState;
+	const crdt = record.crdt;
+	const normalizedCrdt =
+		crdt && typeof crdt === "object"
+			? {
+					...(crdt as Record<string, unknown>),
+					storageOpen: toCloneSafeDebugValue(
+						(crdt as Record<string, unknown>).storageOpen,
+					),
+					transportTrace: toCloneSafeDebugValue(
+						(crdt as Record<string, unknown>).transportTrace,
+					),
+				}
+			: crdt;
+	const normalizedRecord = {
+		...record,
+		flowWriteTrace: toCloneSafeDebugValue(record.flowWriteTrace),
+		crdt: normalizedCrdt,
+	};
 	if (!workerState || typeof workerState !== "object") {
-		return dump;
+		return normalizedRecord;
 	}
 	return {
 		...(workerState as Record<string, unknown>),
-		...record,
+		...normalizedRecord,
 	};
 };
 

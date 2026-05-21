@@ -3,7 +3,7 @@
  *
  * Serialises every model visible to the DKT runtime at the moment of the call.
  * Two collections are returned:
- *   lined         - getLinedStructure() tree (DKT's own linked view)
+ *   lined         - best-effort synchronous getLinedStructure() tree, when available
  *   runtimeModels - raw models map from the runtime's internal registry
  *
  * NOT imported by any production bundle - only used through the debug message
@@ -104,7 +104,15 @@ export const dumpWorkerAppState = async (
 	appModel: RuntimeModelLike,
 	runtimeModels: Record<string, RuntimeModelLike>,
 ): Promise<WorkerStateDump> => {
-	const lined = (await appModel.getLinedStructure?.({}, {})) ?? [];
+	let lined: readonly RuntimeModelLike[] = [];
+	try {
+		const maybeLined = appModel.getLinedStructure?.({}, {});
+		if (Array.isArray(maybeLined)) {
+			lined = maybeLined;
+		}
+	} catch {
+		lined = [];
+	}
 	return {
 		timestamp: new Date().toISOString(),
 		lined: (lined as RuntimeModelLike[]).map(serializeModel),

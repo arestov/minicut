@@ -21,6 +21,8 @@ type MiniCutDebugBridge = {
 	isRuntimeReady: () => boolean;
 	waitForRuntimeSettled: () => Promise<void>;
 	getPeerId: () => string | null;
+	setCrdtNetworkPartitionTesting: (enabled: boolean) => { enabled: boolean };
+	getCrdtNetworkPartitionTesting: () => boolean;
 	createProject: (title?: string) => void;
 	setActiveProject: (projectId: string) => Promise<void>;
 	dispatchRootAction: (actionName: string, payload?: unknown) => Promise<void>;
@@ -656,6 +658,23 @@ export const installMiniCutDebugBridgeTesting = (
 		getPeerId: () => {
 			const worker = harness.worker as { peerId?: string };
 			return typeof worker.peerId === "string" ? worker.peerId : null;
+		},
+		setCrdtNetworkPartitionTesting: (enabled: boolean) => {
+			const worker = harness.worker as Partial<{
+				setCrdtNetworkPartitionTesting: (
+					enabled: boolean,
+				) => { enabled: boolean };
+			}>;
+			if (!worker.setCrdtNetworkPartitionTesting) {
+				throw new Error("CRDT network partition control is unavailable");
+			}
+			return worker.setCrdtNetworkPartitionTesting(enabled);
+		},
+		getCrdtNetworkPartitionTesting: () => {
+			const worker = harness.worker as Partial<{
+				getCrdtNetworkPartitionTesting: () => boolean;
+			}>;
+			return worker.getCrdtNetworkPartitionTesting?.() ?? false;
 		},
 		createProject: (title?: string) => {
 			harness.actions.createProject(title);

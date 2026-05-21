@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
 	testDir: './tests/integration',
-	testMatch: ['**/p2p-*.spec.ts'],
+	testMatch: ['**/p2p-*.spec.ts', '**/crdt-real-conflict-ux.spec.ts'],
 	fullyParallel: true,
 	workers: Number(process.env.P2P_WORKERS ?? (process.env.CI ? 2 : 3)),
 	timeout: 30_000,

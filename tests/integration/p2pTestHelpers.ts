@@ -62,12 +62,22 @@ export const readP2PDeepDebugState = async (page: Page): Promise<unknown> =>
 				dumpGraphSummary?: () => unknown
 				dumpProjectState?: () => unknown
 				dumpWorkerState?: () => Promise<unknown>
+				getRuntimeMessages?: () => unknown[]
 			}
 		}).__MINICUT_P2P_DEBUG__
 
 		if (!debug) {
 			return null
 		}
+
+		const workerState = debug.dumpWorkerState
+			? await Promise.race([
+				debug.dumpWorkerState(),
+				new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 10_000)),
+			]).catch((error: unknown) => ({
+				error: error instanceof Error ? error.stack || error.message : String(error),
+			}))
+			: null
 
 		return {
 			role: debug.getRole?.() ?? null,
@@ -77,9 +87,8 @@ export const readP2PDeepDebugState = async (page: Page): Promise<unknown> =>
 			runtimeReady: debug.isRuntimeReady?.(),
 			graphSummary: debug.dumpGraphSummary?.(),
 			projectState: debug.dumpProjectState?.(),
-			workerState: await debug.dumpWorkerState?.().catch((error: unknown) => ({
-				error: error instanceof Error ? error.stack || error.message : String(error),
-			})),
+			runtimeMessages: debug.getRuntimeMessages?.() ?? [],
+			workerState,
 			p2pTrace: (globalThis as typeof globalThis & {
 				__MINICUT_P2P_TRACE__?: unknown[]
 			}).__MINICUT_P2P_TRACE__ ?? [],
@@ -216,7 +225,9 @@ export const openP2PPeer = async (browser: Browser, roomUrl: string): Promise<Pe
 }
 
 export const closePeerHandles = async (...handles: Array<PeerHandle | null | undefined>): Promise<void> => {
-	await Promise.all(handles.filter(Boolean).map((handle) => handle!.context.close().catch(() => undefined)))
+	await Promise.all(handles.flatMap((handle) =>
+		handle ? [handle.context.close().catch(() => undefined)] : [],
+	))
 }
 
 export const waitForRolePair = async (firstPage: Page, secondPage: Page): Promise<void> => {

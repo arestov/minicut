@@ -54,6 +54,8 @@ export interface CreateP2PAuthorityAdapterConfig {
 export interface P2PAuthorityAdapter extends EditorAuthorityClient {
 	readonly role: "server" | "client" | "undecided";
 	readonly peerId: string;
+	setCrdtNetworkPartitionTesting?(enabled: boolean): { enabled: boolean };
+	getCrdtNetworkPartitionTesting?(): boolean;
 }
 
 export const createP2PAuthorityAdapter = (
@@ -77,6 +79,8 @@ export const createP2PAuthorityAdapter = (
 	const quarantinedAuthorityTransports = new Set<{ destroy(): void }>();
 	const clientChangeCallbacks = new Set<() => void>();
 	const crdtTransportChangeCallbacks = new Set<() => void>();
+	const crdtPartitionChangeCallbacks = new Set<() => void>();
+	let crdtNetworkPartitioned = false;
 
 	const dktSyncListeners = new Set<DktSyncListener>();
 
@@ -217,6 +221,23 @@ export const createP2PAuthorityAdapter = (
 			return manager.peerId;
 		},
 
+		setCrdtNetworkPartitionTesting(enabled) {
+			crdtNetworkPartitioned = enabled;
+			traceP2P("authority:crdt-partition", {
+				roomId: config.roomId,
+				pagePeerId: manager.peerId,
+				enabled,
+			});
+			for (const callback of crdtPartitionChangeCallbacks) {
+				callback();
+			}
+			return { enabled: crdtNetworkPartitioned };
+		},
+
+		getCrdtNetworkPartitionTesting() {
+			return crdtNetworkPartitioned;
+		},
+
 		subscribeDktSync(listener) {
 			dktSyncListeners.add(listener);
 			return () => {
@@ -302,6 +323,17 @@ export const createP2PAuthorityAdapter = (
 					if (attachedRoomGeneration == null) {
 						return;
 					}
+					if (crdtNetworkPartitioned) {
+						traceP2P("authority:crdt-receive-partitioned", {
+							roomId: config.roomId,
+							pagePeerId: manager.peerId,
+							remotePeerId,
+							sourcePeerId: sourcePeerId || remotePeerId,
+							transportGeneration: attachedRoomGeneration,
+							...describeP2PPacket(packet),
+						});
+						return;
+					}
 					traceP2P("authority:crdt-dc-receive", {
 						roomId: config.roomId,
 						pagePeerId: manager.peerId,
@@ -355,6 +387,16 @@ export const createP2PAuthorityAdapter = (
 					transportCount: crdtTransports.size,
 					...describeP2PPacket(message.packet),
 				});
+				if (crdtNetworkPartitioned) {
+					traceP2P("authority:crdt-send-partitioned", {
+						roomId: config.roomId,
+						pagePeerId: manager.peerId,
+						targetPeerId: message.targetPeerId,
+						transportGeneration: message.transportGeneration,
+						...describeP2PPacket(message.packet),
+					});
+					return false;
+				}
 				if (message.targetPeerId) {
 					const transport = crdtTransports.get(message.targetPeerId);
 					if (!transport) {
@@ -553,6 +595,12 @@ export const createP2PAuthorityAdapter = (
 			// Also set up a listener for when activeClient becomes available or changes
 			clientChangeCallbacks.add(activateRealTransport);
 			crdtTransportChangeCallbacks.add(attachCrdtListeners);
+			const onCrdtPartitionChange = () => {
+				if (!crdtNetworkPartitioned) {
+					flushPendingCrdtSends();
+				}
+			};
+			crdtPartitionChangeCallbacks.add(onCrdtPartitionChange);
 			const checkInterval = setInterval(() => {
 				activateRealTransport();
 			}, 100);
@@ -585,6 +633,7 @@ export const createP2PAuthorityAdapter = (
 					clearInterval(checkInterval);
 					clientChangeCallbacks.delete(activateRealTransport);
 					crdtTransportChangeCallbacks.delete(attachCrdtListeners);
+					crdtPartitionChangeCallbacks.delete(onCrdtPartitionChange);
 					teardownRealTransport();
 					transportListeners.clear();
 					pendingMessages.length = 0;

@@ -299,6 +299,53 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 		adapter.destroy();
 	});
 
+	it("queues CRDT sends while the test partition is enabled and flushes on heal", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+
+		manager.becomeClient();
+		const localTransport = localAuthority.opened[0];
+		expect(localTransport).toBeTruthy();
+
+		const crdtTransport = createCrdtTransportHarness();
+		manager.openClientCrdt(crdtTransport);
+		localTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 12,
+			}),
+		);
+
+		expect(adapter.setCrdtNetworkPartitionTesting?.(true)).toEqual({
+			enabled: true,
+		});
+		localTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 12,
+				packet: { partitioned: true },
+			}),
+		);
+		expect(crdtTransport.sent).toEqual([]);
+
+		expect(adapter.setCrdtNetworkPartitionTesting?.(false)).toEqual({
+			enabled: false,
+		});
+		expect(crdtTransport.sent).toEqual([{ partitioned: true }]);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
 	it("ignores stale generation CRDT sends after detach", () => {
 		const manager = createManagerHarness();
 		const localAuthority = createLocalAuthorityHarness();
