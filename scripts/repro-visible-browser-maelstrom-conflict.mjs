@@ -24,6 +24,7 @@ const pushTrace = (event, details = {}) => {
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const waitForever = () => new Promise(() => {})
 const log = (message, details) => {
 	process.stdout.write(`[browser-maelstrom] ${message}${details ? ` ${JSON.stringify(details)}` : ''}\n`)
 }
@@ -414,6 +415,10 @@ const main = async () => {
 	if (!result.ok) {
 		process.exitCode = 1
 	}
+	if (KEEP_OPEN && !process.exitCode) {
+		log('scenario complete; keeping browsers open')
+		await waitForever()
+	}
 	} catch (error) {
 		const snapshots = {}
 		for (const item of launched) {
@@ -457,4 +462,6 @@ await withTimeout('overall repro', main(), OVERALL_TIMEOUT_MS).catch(async (erro
 	console.error(error)
 	process.exitCode = 1
 })
-setTimeout(() => process.exit(process.exitCode ?? 0), 50)
+if (!KEEP_OPEN || process.exitCode) {
+	setTimeout(() => process.exit(process.exitCode ?? 0), 50)
+}
