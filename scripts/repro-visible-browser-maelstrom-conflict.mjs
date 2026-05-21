@@ -9,6 +9,7 @@ const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const APP_URL = (process.env.MINICUT_REPRO_URL ?? 'http://127.0.0.1:4176').replace(/\/$/, '')
 const ROOM_ID = process.env.MINICUT_REPRO_ROOM ?? `browser-maelstrom-${Date.now()}`
 const KEEP_OPEN = process.env.MINICUT_REPRO_KEEP_OPEN === '1'
+const OPEN_CONFLICT = process.env.MINICUT_REPRO_OPEN_CONFLICT !== '0'
 const HEADLESS = process.env.MINICUT_REPRO_HEADLESS !== '0'
 const OVERALL_TIMEOUT_MS = Number(process.env.MINICUT_REPRO_TIMEOUT_MS ?? 90_000)
 const REPORT_PATH = process.env.MINICUT_REPRO_REPORT_PATH ?? path.join(os.tmpdir(), `minicut-browser-maelstrom-report-${Date.now()}.json`)
@@ -312,6 +313,16 @@ const projectSummary = async (page) =>
 		})
 	})
 
+const openFirstConflictPopover = async (page) => {
+	const badge = page.locator('.clip-conflict-badge').first()
+	await badge.waitFor({ state: 'visible', timeout: 20_000 })
+	await badge.click()
+	await page.locator('.ve-clip-conflict-popover').first().waitFor({
+		state: 'visible',
+		timeout: 20_000,
+	})
+}
+
 const compactPeerSummary = (summary) => ({
 	peerId: summary?.peerId ?? null,
 	activeProjectId: summary?.activeProjectId ?? null,
@@ -389,6 +400,14 @@ const main = async () => {
 			? { summaryA, summaryB }
 			: null
 	}, { timeoutMs: 20_000 }).catch(() => null)
+
+	if (OPEN_CONFLICT) {
+		await Promise.all([
+			openFirstConflictPopover(a.page),
+			openFirstConflictPopover(b.page),
+		])
+		log('opened conflict popovers')
+	}
 
 	const [summaryA, summaryB] = await Promise.all([projectSummary(a.page), projectSummary(b.page)])
 	const result = {
