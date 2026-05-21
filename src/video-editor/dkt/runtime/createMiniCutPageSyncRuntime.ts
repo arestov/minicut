@@ -370,6 +370,15 @@ export const createMiniCutPageSyncRuntime = ({
 			case DKT_MSG.CRDT_TRANSPORT_SEND: {
 				const sendToNode = window.__MINICUT_CRDT_PAGE_BRIDGE_SEND__;
 				if (typeof sendToNode === "function") {
+					const record =
+						message.message && typeof message.message === "object"
+							? (message.message as { debug_message_id?: unknown })
+							: null;
+					if (record && typeof record.debug_message_id !== "string") {
+						record.debug_message_id = `crdt-page:${Date.now().toString(36)}:${Math.random()
+							.toString(36)
+							.slice(2, 10)}`;
+					}
 					await sendToNode(message.message, {
 						peerId: message.peerId,
 						profileId: message.profileId,

@@ -432,12 +432,21 @@ describe("PageP2PManager", () => {
 		});
 
 		transport.send({ batch: [1] });
-		expect(JSON.parse(crdtDc.sent[0] as string)).toEqual({ batch: [1] });
+		expect(JSON.parse(crdtDc.sent[0] as string)).toEqual({
+			batch: [1],
+			debug_message_id: expect.stringMatching(/^crdt-dc:/),
+		});
 		expect(resourceDc.sent).toEqual([]);
 
 		crdtDc.simulateMessage({ batch: [2] });
 		expect(received).toEqual([
-			{ packet: { batch: [2] }, remotePeerId: "remote-server" },
+			{
+				packet: {
+					batch: [2],
+					debug_message_id: expect.stringMatching(/^crdt-dc-received:/),
+				},
+				remotePeerId: "remote-server",
+			},
 		]);
 
 		manager.destroy();
@@ -477,7 +486,13 @@ describe("PageP2PManager", () => {
 		});
 
 		expect(received).toEqual([
-			{ packet: { batch: ["early"] }, remotePeerId: "remote-server" },
+			{
+				packet: {
+					batch: ["early"],
+					debug_message_id: expect.stringMatching(/^crdt-dc-received:/),
+				},
+				remotePeerId: "remote-server",
+			},
 		]);
 
 		manager.destroy();
@@ -794,7 +809,13 @@ describe("PageP2PManager", () => {
 		});
 
 		expect(received).toEqual([
-			{ packet: { batch: ["early-server"] }, remotePeerId: "remote-client-1" },
+			{
+				packet: {
+					batch: ["early-server"],
+					debug_message_id: expect.stringMatching(/^crdt-dc-received:/),
+				},
+				remotePeerId: "remote-client-1",
+			},
 		]);
 
 		manager.destroy();

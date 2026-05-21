@@ -6,7 +6,11 @@ import type { WireMessage } from "../domain/types";
 import type { BridgeSignalingFactory } from "./BridgeSignaling";
 import { createDoSignalingFactory } from "./BridgeSignaling";
 import type { SignalMessage } from "./types";
-import { describeP2PPacket, traceP2P } from "./p2pDebugTrace";
+import {
+	describeP2PPacket,
+	ensureP2PMessageId,
+	traceP2P,
+} from "./p2pDebugTrace";
 
 export interface P2PTransportLike {
 	send(message: WireMessage | MiniCutDktTransportMessage): void;
@@ -408,6 +412,7 @@ export const createPageP2PManager = (
 			}
 			try {
 				const packet = JSON.parse(String(event.data));
+				ensureP2PMessageId(packet, "crdt-dc-received");
 				if (listeners.size === 0) {
 					pendingPackets.push(packet);
 					traceP2P("page-crdt-dc:receive-buffered", {
@@ -458,6 +463,7 @@ export const createPageP2PManager = (
 					});
 					throw new Error("crdt_transport_not_ready");
 				}
+				ensureP2PMessageId(packet, "crdt-dc");
 				traceP2P("page-crdt-dc:send", {
 					roomId: config.roomId,
 					pagePeerId: peerId,
