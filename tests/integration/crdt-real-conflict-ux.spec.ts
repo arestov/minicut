@@ -19,7 +19,7 @@ type DebugProjectDetails = {
 	resources?: Array<{ resourceId?: unknown; nodeId?: unknown; name?: unknown; kind?: unknown }>
 	tracks?: Array<{
 		kind?: unknown
-		clips?: Array<{ clipId?: unknown; nodeId?: unknown; id?: unknown; name?: unknown; resourceName?: unknown; mediaKind?: unknown }>
+		clips?: Array<{ clipId?: unknown; nodeId?: unknown; id?: unknown; name?: unknown; resourceName?: unknown; mediaKind?: unknown; duration?: unknown }>
 	}>
 }
 
@@ -151,6 +151,15 @@ const waitForClipOnActiveProject = async (page: Page, clipId: string) => {
 	}, { timeout: 30_000 }).toBe(true)
 }
 
+const readClipDuration = async (page: Page, clipId: string): Promise<number | null> => {
+	const details = await readActiveProjectDetails(page)
+	const clip = details?.tracks
+		?.flatMap((track) => track.clips ?? [])
+		.find((candidate) => candidate.clipId === clipId || candidate.nodeId === clipId || candidate.id === clipId)
+	const duration = clip?.duration
+	return typeof duration === 'number' && Number.isFinite(duration) ? duration : null
+}
+
 const waitForWorkerDumpContainsProjectResourceAndClip = async (page: Page, projectId: string, clipId: string) => {
 	let latest: unknown = null
 	await expect.poll(async () => {
@@ -198,14 +207,32 @@ const setCrdtPartition = async (page: Page, enabled: boolean) => {
 	}, enabled)
 }
 
-const dispatchClipTrim = async (page: Page, clipId: string, delta: number) => {
-	await page.evaluate(async ({ targetClipId, trimDelta }) => {
-		const debug = window.__MINICUT_P2P_DEBUG__
-		if (!debug?.dispatchClipActionById) {
-			throw new Error('Clip action dispatcher is unavailable')
-		}
-		await debug.dispatchClipActionById(targetClipId, 'trim', { edge: 'end', delta: trimDelta })
-	}, { targetClipId: clipId, trimDelta: delta })
+const dragClipEdgeByUi = async (page: Page, clipId: string, edge: 'start' | 'end', deltaPx: number) => {
+	const before = await readClipDuration(page, clipId)
+	if (before === null) {
+		throw new Error(`Expected clip ${clipId} duration before UI trim`)
+	}
+	const clip = page
+		.getByRole('region', { name: 'Timeline', exact: true })
+		.locator('.ve-clip')
+		.filter({ hasText: 'fixture-video.webm' })
+		.first()
+	await expect(clip).toBeVisible({ timeout: 10_000 })
+	const handle = clip.locator(`.ve-clip__resize-handle--${edge}`)
+	const box = await handle.boundingBox()
+	if (!box) {
+		throw new Error(`Expected visible clip ${edge} resize handle`)
+	}
+	const x = box.x + box.width / 2
+	const y = box.y + box.height / 2
+	await page.mouse.move(x, y)
+	await page.mouse.down()
+	await page.mouse.move(x + deltaPx, y, { steps: 6 })
+	await page.mouse.up()
+	await waitForRuntimeSettled(page)
+	await expect.poll(() => readClipDuration(page, clipId), {
+		timeout: 10_000,
+	}).not.toBe(before)
 }
 
 const expectRealConflictTrace = async (firstPage: Page, secondPage: Page) => {
@@ -260,8 +287,8 @@ test('p2p real CRDT timing conflict renders conflict UX without fake injection',
 			setCrdtPartition(second.page, true),
 		])
 		await Promise.all([
-			dispatchClipTrim(first.page, firstClipId, -0.1),
-			dispatchClipTrim(second.page, firstClipId, -0.2),
+			dragClipEdgeByUi(first.page, firstClipId, 'end', -28),
+			dragClipEdgeByUi(second.page, firstClipId, 'start', 28),
 		])
 		await Promise.all([waitForRuntimeSettled(first.page), waitForRuntimeSettled(second.page)])
 		await Promise.all([
