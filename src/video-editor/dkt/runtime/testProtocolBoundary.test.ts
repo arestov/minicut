@@ -36,4 +36,15 @@ describe("DKT test protocol boundary", () => {
 		expect(runtimeSource).not.toMatch(/whenAllReady\(\(\) => resolve\(\)\)/);
 		expect(runtimeSource).toContain("createMiniCutDktTestRuntimeProtocol");
 	});
+
+	it("keeps media transfer independent from DKT settle protocol", () => {
+		const mediaSource = readRepoFile(
+			"src/video-editor/media/resourceTransferManager.ts",
+		);
+
+		expect(mediaSource).not.toContain("waitForRuntimeSettled");
+		expect(mediaSource).not.toContain("DKT_TEST_MSG");
+		expect(mediaSource).not.toContain("WAIT_IDLE");
+		expect(mediaSource).not.toContain("DEBUG_DUMP");
+	});
 });

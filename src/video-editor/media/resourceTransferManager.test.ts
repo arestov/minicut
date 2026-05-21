@@ -1029,6 +1029,52 @@ describe("resource transfer manager", () => {
 		client.destroy();
 	});
 
+	it("buffers chunk payloads until graph metadata arrives", async () => {
+		const [serverTransport, clientTransport] = createTransportPair();
+		const requests = parseRequestMessages(serverTransport);
+		const client = createResourceTransferManager({
+			getRole: () => "client",
+			getPeerId: () => "peer-b",
+			chunkSize: 8,
+			headBytes: 8,
+		});
+
+		client.attachClientTransport(clientTransport);
+		sendChunk(
+			serverTransport,
+			{
+				resourceId: "res-out-of-order",
+				index: 0,
+				start: 0,
+				end: 8,
+				totalSize: 24,
+				reason: "head",
+			},
+			"abcdefgh",
+		);
+
+		await new Promise<void>((resolve) => queueMicrotask(resolve));
+		expect(client.getTransfer("res-out-of-order")).toBeNull();
+		expect(requests).toHaveLength(0);
+
+		syncResource(client, "res-out-of-order", {
+			size: 24,
+			duration: 8,
+			name: "Out-of-order clip",
+		});
+
+		await vi.waitFor(() => {
+			expect(client.getTransfer("res-out-of-order")).toMatchObject({
+				status: "partial",
+				loadedBytes: 8,
+				loadedRanges: [[0, 8]],
+			});
+		});
+		expect(createObjectUrl).toHaveBeenCalledTimes(1);
+
+		client.destroy();
+	});
+
 	it("retries a temporary resource error and resumes downloading", async () => {
 		const [serverTransport, clientTransport] = createTransportPair();
 		const requests = parseRequestMessages(serverTransport);
