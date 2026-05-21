@@ -212,36 +212,42 @@ const importAndAddFixture = async (page) => {
 	await withTimeout('wait for import settle', debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
 }
 
-const resizeFirstClipEnd = async (page, deltaPx) => {
-	const clip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()
-	await clip.click()
-	const handle = clip.locator('.ve-clip__resize-handle--end')
+const readClipDuration = async (page, clipId) =>
+	debugEval(page, (targetClipId) => {
+		const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.()
+		const clip = (details?.tracks ?? [])
+			.flatMap((track) => track?.clips ?? [])
+			.find((candidate) =>
+				candidate?.clipId === targetClipId ||
+				candidate?.nodeId === targetClipId ||
+				candidate?.id === targetClipId,
+			)
+		return typeof clip?.duration === 'number' ? clip.duration : null
+	}, clipId)
+
+const dragClipEdgeByUi = async (page, clipId, edge, deltaPx) => {
+	const before = await readClipDuration(page, clipId)
+	if (before === null) throw new Error(`Missing clip duration before UI drag: ${clipId}`)
+	const clip = page
+		.getByRole('region', { name: 'Timeline', exact: true })
+		.locator('.ve-clip')
+		.filter({ hasText: 'fixture-video.webm' })
+		.first()
+	await clip.waitFor({ state: 'visible', timeout: 10_000 })
+	const handle = clip.locator(`.ve-clip__resize-handle--${edge}`)
 	const box = await handle.boundingBox()
-	if (!box) throw new Error('Missing end resize handle')
+	if (!box) throw new Error(`Missing ${edge} resize handle`)
 	const x = box.x + box.width / 2
 	const y = box.y + box.height / 2
 	await page.mouse.move(x, y)
 	await page.mouse.down()
-	await page.mouse.move(x + deltaPx, y, { steps: 8 })
+	await page.mouse.move(x + deltaPx, y, { steps: 6 })
 	await page.mouse.up()
-	await withTimeout('wait for resize settle', debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
-}
-
-const dispatchFirstClipResize = async (page, delta) => {
-	await debugEval(page, async (payload) =>
-		window.__MINICUT_P2P_DEBUG__?.dispatchFirstVideoClipAction?.('resize', payload),
-		{ edge: 'end', delta },
-	)
-	await withTimeout('wait for resize settle', debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
-}
-
-const dispatchClipResize = async (page, clipId, delta) => {
-	const result = await debugEval(page, async ({ clipId: targetClipId, payload }) =>
-		window.__MINICUT_P2P_DEBUG__?.dispatchClipActionById?.(targetClipId, 'resize', payload),
-		{ clipId, payload: { edge: 'end', delta } },
-	)
-	await withTimeout('wait for resize settle', debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
-	return result
+	await withTimeout('wait for UI drag settle', debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
+	await waitFor('clip duration changed after UI drag', async () => {
+		const next = await readClipDuration(page, clipId)
+		return next !== null && next !== before
+	}, { timeoutMs: 10_000 })
 }
 
 const projectSummary = async (page) =>
@@ -363,8 +369,8 @@ const main = async () => {
 	stage = 'concurrent resize'
 	broker.setPaused(true)
 	const resizeResults = await Promise.all([
-		dispatchClipResize(a.page, sharedClipId, -0.2),
-		dispatchClipResize(b.page, sharedClipId, -0.5),
+		dragClipEdgeByUi(a.page, sharedClipId, 'end', -28),
+		dragClipEdgeByUi(b.page, sharedClipId, 'start', 28),
 	])
 	log('both resized', { sharedClipId, resizeResults })
 	stage = 'wait transport conflict delivery'
