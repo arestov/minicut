@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
 import { ReactScopeRuntimeContext } from "../../dkt-react-sync/context/ReactScopeRuntimeContext";
@@ -207,7 +208,7 @@ describe("ClipItem conflict UX", () => {
 		});
 	});
 
-	it("shows the clip badge for structural CRDT meta", async () => {
+	it("shows meta-backed details while structural conflict relation is not materialized", async () => {
 		const clipScope = { kind: "scope" as const, _nodeId: "clip:structural" };
 		mockState.dispatch.mockClear();
 		mockState.sessionDispatch.mockClear();
@@ -221,6 +222,8 @@ describe("ClipItem conflict UX", () => {
 			opacity: { value: 1 },
 			color: "#2563eb",
 			"$meta$aggregates$crdt$timelineMembership$open_conflicts_count": 1,
+			"$meta$aggregates$crdt$timelineMembership$last_conflict_id":
+				"timeline:conflict",
 		});
 		mockState.relsByNode.set(clipScope._nodeId, {
 			effects: [],
@@ -234,7 +237,9 @@ describe("ClipItem conflict UX", () => {
 		expect(mockState.dispatch).toHaveBeenCalledWith("loadConflicts", {
 			scope: { model: "clip", include_structural: true },
 		});
-		expect(screen.getByText("No open conflicts")).toBeInTheDocument();
+		expect(
+			screen.getByText("Timeline placement has concurrent edits"),
+		).toBeInTheDocument();
 	});
 
 	it("renders structural conflict projection actions from materialized conflicts", async () => {

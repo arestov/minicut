@@ -409,12 +409,14 @@ const SESSION_IMPORTANT_REL_PATHS = Object.freeze([
 	Object.freeze(["pioneer", "project", "tracks", "clips", "resource"]),
 	Object.freeze(["pioneer", "project", "tracks", "clips", "text"]),
 	Object.freeze(["pioneer", "project", "tracks", "clips", "effects"]),
+	Object.freeze(["pioneer", "project", "tracks", "clips", "crdtConflicts"]),
 	Object.freeze(["activeProject", "tracks"]),
 	Object.freeze(["activeProject", "resources"]),
 	Object.freeze(["activeProject", "tracks", "clips"]),
 	Object.freeze(["activeProject", "tracks", "clips", "resource"]),
 	Object.freeze(["activeProject", "tracks", "clips", "text"]),
 	Object.freeze(["activeProject", "tracks", "clips", "effects"]),
+	Object.freeze(["activeProject", "tracks", "clips", "crdtConflicts"]),
 	Object.freeze(["pioneer", "effect"]),
 ]);
 

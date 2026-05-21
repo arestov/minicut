@@ -317,10 +317,19 @@ const openFirstConflictPopover = async (page) => {
 	const badge = page.locator('.clip-conflict-badge').first()
 	await badge.waitFor({ state: 'visible', timeout: 20_000 })
 	await badge.click()
-	await page.locator('.ve-clip-conflict-popover').first().waitFor({
+	const popover = page.locator('.ve-clip-conflict-popover').first()
+	await popover.waitFor({
 		state: 'visible',
 		timeout: 20_000,
 	})
+	await waitFor('conflict popover details', async () => {
+		const text = await popover.innerText().catch(() => '')
+		return text &&
+			!text.includes('No open conflicts') &&
+			!text.includes('details are loading')
+			? text
+			: null
+	}, { timeoutMs: 20_000, intervalMs: 250 })
 }
 
 const compactPeerSummary = (summary) => ({

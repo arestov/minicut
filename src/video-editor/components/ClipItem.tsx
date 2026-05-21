@@ -73,10 +73,14 @@ interface ClipRenderAttrs {
 	opacity?: AnimatedScalar;
 	color?: unknown;
 	"$meta$aggregates$crdt$clipTiming$open_conflicts_count"?: unknown;
+	"$meta$aggregates$crdt$clipTiming$last_conflict_id"?: unknown;
 	"$meta$aggregates$crdt$clipTiming$last_resolution_error"?: unknown;
 	"$meta$aggregates$crdt$timelineMembership$open_conflicts_count"?: unknown;
+	"$meta$aggregates$crdt$timelineMembership$last_conflict_id"?: unknown;
 	"$meta$rels$crdt$clips$open_conflicts_count"?: unknown;
+	"$meta$rels$crdt$clips$last_conflict_id"?: unknown;
 	"$meta$model$crdt$open_conflicts_count"?: unknown;
+	"$meta$model$crdt$last_conflict_id"?: unknown;
 	"$meta$model$crdt$last_resolution_error"?: unknown;
 }
 
@@ -183,6 +187,12 @@ const sameConflictItem = (
 	left?.summary === right.summary &&
 	left?.decision === right.decision;
 
+const readNumber = (value: unknown): number =>
+	typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+const readString = (value: unknown): string | null =>
+	typeof value === "string" && value.length > 0 ? value : null;
+
 const ClipConflictProjectionItem = ({
 	scope,
 	onRead,
@@ -229,10 +239,14 @@ export const ClipItem = ({
 		"opacity",
 		"color",
 		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+		"$meta$aggregates$crdt$clipTiming$last_conflict_id",
 		"$meta$aggregates$crdt$clipTiming$last_resolution_error",
 		"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+		"$meta$aggregates$crdt$timelineMembership$last_conflict_id",
 		"$meta$rels$crdt$clips$open_conflicts_count",
+		"$meta$rels$crdt$clips$last_conflict_id",
 		"$meta$model$crdt$open_conflicts_count",
+		"$meta$model$crdt$last_conflict_id",
 		"$meta$model$crdt$last_resolution_error",
 	]) as ClipRenderAttrs;
 	const effectScopes = useMany("effects");
@@ -264,6 +278,75 @@ export const ClipItem = ({
 	const [conflictItemsById, setConflictItemsById] = useState<
 		Record<string, ClipConflictItem>
 	>({});
+	const openTimingConflictCount = readNumber(
+		clipConflictState["$meta$aggregates$crdt$clipTiming$open_conflicts_count"],
+	);
+	const openStructuralConflictCount = Math.max(
+		readNumber(
+			clipConflictState[
+				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count"
+			],
+		),
+		readNumber(clipConflictState["$meta$rels$crdt$clips$open_conflicts_count"]),
+	);
+	const openModelConflictCount = readNumber(
+		clipConflictState["$meta$model$crdt$open_conflicts_count"],
+	);
+	const metaConflictItems: ClipConflictItem[] =
+		conflictScopes.length > 0
+			? []
+			: [
+					openTimingConflictCount > 0
+						? {
+								id:
+									readString(
+										clipConflictState[
+											"$meta$aggregates$crdt$clipTiming$last_conflict_id"
+										],
+									) ?? `${clipId ?? "clip"}:clipTiming`,
+								kind: "mvr_alternatives",
+								scope: "clipTiming",
+								summary: "Timing has concurrent edits",
+								decision: {
+									start,
+									in: inPoint,
+									duration: Math.max(MIN_CLIP_DURATION, duration),
+								},
+							}
+						: null,
+					openStructuralConflictCount > 0
+						? {
+								id:
+									readString(
+										clipConflictState[
+											"$meta$aggregates$crdt$timelineMembership$last_conflict_id"
+										],
+									) ??
+									readString(
+										clipConflictState[
+											"$meta$rels$crdt$clips$last_conflict_id"
+										],
+									) ??
+									`${clipId ?? "clip"}:timelineMembership`,
+								kind: "structural_conflict",
+								scope: "timelineMembership",
+								summary: "Timeline placement has concurrent edits",
+							}
+						: null,
+					openModelConflictCount > 0 &&
+					openTimingConflictCount === 0 &&
+					openStructuralConflictCount === 0
+						? {
+								id:
+									readString(
+										clipConflictState["$meta$model$crdt$last_conflict_id"],
+									) ?? `${clipId ?? "clip"}:model`,
+								kind: "model_conflict",
+								scope: "model",
+								summary: "Model has concurrent edits",
+							}
+						: null,
+				].filter((item): item is ClipConflictItem => item !== null);
 	const conflictItems: ClipConflictItem[] =
 		conflictScopes.length > 0
 			? conflictScopes.map(
@@ -273,7 +356,7 @@ export const ClipItem = ({
 							scope: "clipTiming",
 						},
 				)
-			: [];
+			: metaConflictItems;
 	const width = Math.max(36, duration * timelineZoom);
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx);
 	const selectClip = (): void => {

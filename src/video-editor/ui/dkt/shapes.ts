@@ -24,6 +24,10 @@ const resourceShape = defineShape({
 	],
 });
 
+const conflictShape = defineShape({
+	attrs: ["id", "kind", "scope", "summary", "decision"],
+});
+
 const clipShape = defineShape({
 	attrs: [
 		"name",
@@ -38,10 +42,14 @@ const clipShape = defineShape({
 		"transform",
 		"mediaKind",
 		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+		"$meta$aggregates$crdt$clipTiming$last_conflict_id",
 		"$meta$aggregates$crdt$clipTiming$last_resolution_error",
 		"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+		"$meta$aggregates$crdt$timelineMembership$last_conflict_id",
 		"$meta$rels$crdt$clips$open_conflicts_count",
+		"$meta$rels$crdt$clips$last_conflict_id",
 		"$meta$model$crdt$open_conflicts_count",
+		"$meta$model$crdt$last_conflict_id",
 		"$meta$model$crdt$last_resolution_error",
 	],
 	one: {
@@ -50,6 +58,7 @@ const clipShape = defineShape({
 	},
 	many: {
 		effects: effectShape,
+		crdtConflicts: conflictShape,
 	},
 });
 
