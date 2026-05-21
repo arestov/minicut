@@ -95,6 +95,35 @@ describe("createMiniCutPageSyncRuntime", () => {
 		).toEqual(["track-1"]);
 	});
 
+	it("rejects debug dump requests when worker reports a protocol error", async () => {
+		const memory = createMemoryTransport();
+		const runtime = createMiniCutPageSyncRuntime({
+			transport: memory.transport,
+		});
+
+		const dumpPromise = runtime.requestDebugDump();
+		const request = memory.sent.find(
+			(message) => message.type === DKT_TEST_MSG.DEBUG_DUMP_REQUEST,
+		);
+		if (!request || request.type !== DKT_TEST_MSG.DEBUG_DUMP_REQUEST) {
+			throw new Error("Expected debug dump request");
+		}
+
+		memory.emit({
+			type: DKT_TEST_MSG.ERROR,
+			requestId: request.requestId,
+			phase: "debug-dump",
+			error: {
+				name: "DataCloneError",
+				message: "#<Promise> could not be cloned",
+			},
+		});
+
+		await expect(dumpPromise).rejects.toThrow(
+			"debug-dump: #<Promise> could not be cloned",
+		);
+	});
+
 	it("notifies many subscribers when an initially empty rel is updated later", () => {
 		const memory = createMemoryTransport();
 		const runtime = createMiniCutPageSyncRuntime({
