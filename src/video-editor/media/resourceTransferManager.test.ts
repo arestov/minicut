@@ -1164,6 +1164,62 @@ describe("resource transfer manager", () => {
 		client.destroy();
 	});
 
+	it("drops retry state and ignores late chunks after graph metadata deletion", async () => {
+		const [serverTransport, clientTransport] = createTransportPair();
+		const requests = parseRequestMessages(serverTransport);
+		const client = createResourceTransferManager({
+			getRole: () => "client",
+			getPeerId: () => "peer-b",
+			chunkSize: 8,
+			headBytes: 8,
+		});
+
+		client.attachClientTransport(clientTransport);
+		syncResource(client, "res-delete", {
+			size: 24,
+			duration: 8,
+			name: "Deleted during transfer",
+		});
+
+		await vi.waitFor(() => {
+			expect(requests.length).toBeGreaterThanOrEqual(1);
+			expect(client.getTransfer("res-delete")).toMatchObject({
+				availability: "remote",
+				status: "requesting",
+			});
+		});
+
+		client.syncResources([]);
+		expect(client.getTransfer("res-delete")).toBeNull();
+
+		sendChunk(
+			serverTransport,
+			{
+				resourceId: "res-delete",
+				index: 0,
+				start: 0,
+				end: 8,
+				totalSize: 24,
+				reason: "head",
+			},
+			"abcdefgh",
+		);
+		serverTransport.send(
+			JSON.stringify({
+				type: "resource-error",
+				resourceId: "res-delete",
+				error: "late failure",
+			}),
+		);
+
+		await new Promise<void>((resolve) => queueMicrotask(resolve));
+		expect(client.getTransfer("res-delete")).toBeNull();
+		expect(requests.filter((message) => message.resourceId === "res-delete"))
+			.toHaveLength(1);
+
+		client.destroy();
+	});
+
 	it("evicts older remote entries when the configured cache cap is exceeded", async () => {
 		const [serverTransport, clientTransport] = createTransportPair();
 		const server = createResourceTransferManager({

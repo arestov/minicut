@@ -998,19 +998,10 @@ export const createResourceTransferManager = (
 			return;
 		}
 
-		const baseSnapshot = resourceSnapshots.get(resourceId) ?? {
-			resourceId,
-			kind: meta.kind,
-			mime: meta.mime,
-			duration: meta.duration,
-			size: meta.totalSize,
-			chunkSize: meta.chunkSize,
-			ownerPeerId: meta.ownerPeerId,
-			sourceKind: meta.sourceKind,
-			fallbackUrl: meta.fallbackUrl,
-			name: meta.name,
-		};
-		resourceSnapshots.set(resourceId, baseSnapshot);
+		const baseSnapshot = resourceSnapshots.get(resourceId);
+		if (!baseSnapshot) {
+			return;
+		}
 		const state = ensureRemoteState(baseSnapshot);
 		if (
 			typeof state.size === "number" &&
