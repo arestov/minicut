@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -54,11 +55,22 @@ const createNodeBroker = () => {
 	let paused = true
 
 	const batchIds = (message) => (message?.batches ?? []).map((batch) => batch?.batch_id ?? null)
+	const ensureMessageId = (message, fromLabel) => {
+		if (!message || typeof message !== 'object') return null
+		if (typeof message.debug_message_id === 'string' && message.debug_message_id) {
+			return message.debug_message_id
+		}
+		const id = `node-broker:${fromLabel}:${Date.now().toString(36)}:${randomUUID().slice(0, 8)}`
+		message.debug_message_id = id
+		return id
+	}
 
 	const deliver = async ({ fromLabel, message, meta }) => {
+		const messageId = ensureMessageId(message, fromLabel)
 		pushTrace('node-broker:send', {
 			from: fromLabel,
 			peerId: meta?.peerId ?? null,
+			messageId,
 			batchIds: batchIds(message),
 			paused,
 		})
@@ -74,6 +86,7 @@ const createNodeBroker = () => {
 			pushTrace('node-broker:deliver', {
 				from: fromLabel,
 				to: targetLabel,
+				messageId,
 				batchIds: batchIds(message),
 			})
 		}
