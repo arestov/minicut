@@ -102,10 +102,13 @@ export const writeP2PDebugArtifacts = async (
 ): Promise<string> => {
 	const dir = path.join('test-results', 'p2p-debug')
 	await mkdir(dir, { recursive: true })
+	const baseName =
+		`${label.replace(/[^a-zA-Z0-9_-]/g, '-')}-${Date.now()}`
 	const filePath = path.join(
 		dir,
-		`${label.replace(/[^a-zA-Z0-9_-]/g, '-')}-${Date.now()}.json`,
+		`${baseName}.json`,
 	)
+	const tracePath = path.join(dir, `${baseName}.trace.ndjson`)
 	const [first, second] = await Promise.all([
 		readP2PDeepDebugState(firstPage).catch((error: unknown) => ({
 			error: error instanceof Error ? error.stack || error.message : String(error),
@@ -114,7 +117,28 @@ export const writeP2PDebugArtifacts = async (
 			error: error instanceof Error ? error.stack || error.message : String(error),
 		})),
 	])
-	await writeFile(filePath, `${JSON.stringify({ first, second }, null, 2)}\n`, 'utf8')
+	const firstTrace = Array.isArray((first as { p2pTrace?: unknown })?.p2pTrace)
+		? ((first as { p2pTrace: unknown[] }).p2pTrace)
+		: []
+	const secondTrace = Array.isArray((second as { p2pTrace?: unknown })?.p2pTrace)
+		? ((second as { p2pTrace: unknown[] }).p2pTrace)
+		: []
+	const traceLines = [
+		...firstTrace.map((entry) => ({ peer: 'first', entry })),
+		...secondTrace.map((entry) => ({ peer: 'second', entry })),
+	]
+	await Promise.all([
+		writeFile(
+			filePath,
+			`${JSON.stringify({ first, second, tracePath }, null, 2)}\n`,
+			'utf8',
+		),
+		writeFile(
+			tracePath,
+			`${traceLines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+			'utf8',
+		),
+	])
 	return filePath
 }
 
