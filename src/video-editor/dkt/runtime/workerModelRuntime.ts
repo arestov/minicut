@@ -375,11 +375,12 @@ export const createMiniCutDktWorkerModelRuntime = (
 		const runtimeTransport: DomSyncTransportLike<MiniCutDktTransportMessage> = {
 			send(message) {
 				if (message.type === DKT_MSG.WORKSPACE_OPEN_STATE && sessionKey) {
+					const workspaceState = message.state as WorkspaceOpenState;
 					const room = getProductRoom(sessionKey);
-					room.owner.setWorkspaceOpenState(message.state);
+					room.owner.setWorkspaceOpenState(workspaceState);
 					if (
-						message.state.status === WORKSPACE_OPEN_STATUS.READY ||
-						message.state.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED
+						workspaceState.status === WORKSPACE_OPEN_STATUS.READY ||
+						workspaceState.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED
 					) {
 						for (const peerId of [...room.attachedCrdtPeers]) {
 							for (const replay of [...room.replayDurableLogCallbacks]) {

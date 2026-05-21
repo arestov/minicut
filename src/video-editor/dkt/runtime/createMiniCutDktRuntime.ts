@@ -174,6 +174,7 @@ type RuntimeLike = {
 	models?: Record<string, RuntimeModelLike>;
 	model_data_schema?: Record<string, unknown>;
 	crdt_runtime?: MiniCutCrdtRuntimeLike | null;
+	debug_flow_write_trace?: unknown[];
 };
 
 const getSyncShapeRequestNodeId = (data: unknown): string | null =>
@@ -713,9 +714,13 @@ export const createMiniCutDktRuntime = (
 		sessionId?: string | null,
 		meta?: unknown,
 	): Promise<void> => {
+		const app = await bootstrapApp(sessionKey, sessionId ?? sessionKey);
+		if (!app) {
+			throw new Error("MiniCut DKT runtime is disabled");
+		}
 		const sessionRoot = await bootstrapSessionRoot(sessionKey, sessionId);
 		if (!sessionRoot) {
-			throw new Error("MiniCut DKT runtime is disabled");
+			throw new Error("MiniCut DKT session root is not available");
 		}
 
 		let target = sessionRoot;
@@ -735,6 +740,19 @@ export const createMiniCutDktRuntime = (
 		// DKT dispatch is event-log scheduling: it enqueues an action flow step
 		// and intentionally does not expose a completion promise here.
 		target.dispatch(actionName, payload, null, resolutionMeta ?? meta);
+		await new Promise<void>((resolve) => {
+			if (typeof app.appModel.input === "function") {
+				app.appModel.input?.(() => resolve());
+				return;
+			}
+
+			if (typeof app.runtime.whenAllReady === "function") {
+				app.runtime.whenAllReady(() => resolve());
+				return;
+			}
+
+			resolve();
+		});
 	};
 
 	const connect = (

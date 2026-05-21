@@ -147,6 +147,11 @@ interface AttachedTransport {
 	generation: number;
 }
 
+type PendingChunkPayload = {
+	meta: ChunkMetaMessage;
+	buffer: ArrayBuffer;
+};
+
 export interface ResourceTransferStore {
 	get(): Record<string, ResourceTransferView>;
 	getItem(resourceId: string): ResourceTransferView | undefined;
@@ -346,6 +351,8 @@ export const createResourceTransferManager = (
 	const localResources = new Map<string, LocalResourceEntry>();
 	const remoteStates = new Map<string, RemoteResourceState>();
 	const resourceSnapshots = new Map<string, ResourceSnapshot>();
+	const pendingChunkPayloads = new Map<string, PendingChunkPayload[]>();
+	const deletedResourceIds = new Set<string>();
 	const transports = new Map<string, AttachedTransport>();
 	const peerServeQueues = new Map<string, Promise<void>>();
 	const pendingOwnerRequests = new Map<
@@ -981,6 +988,9 @@ export const createResourceTransferManager = (
 		meta: ChunkMetaMessage,
 		buffer: ArrayBuffer,
 	): void => {
+		if (deletedResourceIds.has(resourceId)) {
+			return;
+		}
 		if (!Number.isInteger(meta.index) || meta.index < 0) {
 			return;
 		}
@@ -1000,6 +1010,9 @@ export const createResourceTransferManager = (
 
 		const baseSnapshot = resourceSnapshots.get(resourceId);
 		if (!baseSnapshot) {
+			const pending = pendingChunkPayloads.get(resourceId) ?? [];
+			pending.push({ meta, buffer: buffer.slice(0) });
+			pendingChunkPayloads.set(resourceId, pending.slice(-16));
 			return;
 		}
 		const state = ensureRemoteState(baseSnapshot);
@@ -1041,6 +1054,17 @@ export const createResourceTransferManager = (
 		rebuildPreviewUrls(resourceId);
 		enforceCacheCap(resourceId);
 		planNextRequest(resourceId);
+	};
+
+	const flushPendingChunkPayloads = (resourceId: string): void => {
+		const pending = pendingChunkPayloads.get(resourceId);
+		if (!pending || pending.length === 0) {
+			return;
+		}
+		pendingChunkPayloads.delete(resourceId);
+		for (const { meta, buffer } of pending) {
+			applyChunkMeta(resourceId, meta, buffer);
+		}
 	};
 
 	const handleError = (message: ErrorMessage): void => {
@@ -1390,6 +1414,7 @@ export const createResourceTransferManager = (
 		const seen = new Set<string>();
 		for (const snapshot of snapshots) {
 			seen.add(snapshot.resourceId);
+			deletedResourceIds.delete(snapshot.resourceId);
 			resourceSnapshots.set(snapshot.resourceId, snapshot);
 			if (localResources.has(snapshot.resourceId)) {
 				const local = localResources.get(snapshot.resourceId);
@@ -1409,6 +1434,7 @@ export const createResourceTransferManager = (
 			}
 
 			ensureRemoteState(snapshot);
+			flushPendingChunkPayloads(snapshot.resourceId);
 			updateTransferView(snapshot.resourceId);
 			planNextRequest(snapshot.resourceId);
 		}
@@ -1419,6 +1445,8 @@ export const createResourceTransferManager = (
 			}
 
 			resourceSnapshots.delete(resourceId);
+			deletedResourceIds.add(resourceId);
+			pendingChunkPayloads.delete(resourceId);
 			const state = remoteStates.get(resourceId);
 			if (state) {
 				clearRetryTimeout(state);
