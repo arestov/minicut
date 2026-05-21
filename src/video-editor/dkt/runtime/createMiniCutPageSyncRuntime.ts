@@ -57,17 +57,29 @@ export const createMiniCutPageSyncRuntime = ({
 		Set<(payload: unknown) => void>
 	>();
 	const debugMessageLog: unknown[] = [];
-	let pendingDumpResolve: ((result: unknown) => void) | null = null;
+	const pendingDumpResolves = new Map<
+		string,
+		{
+			resolve: (result: unknown) => void;
+			reject: (error: Error) => void;
+			timeoutId: ReturnType<typeof setTimeout>;
+		}
+	>();
 	const pendingIdleResolves = new Map<
 		string,
 		{
 			resolve: () => void;
+			reject: (error: Error) => void;
 			timeoutId: ReturnType<typeof setTimeout>;
 		}
 	>();
 	let idleRequestSequence = 0;
+	let dumpRequestSequence = 0;
 
-	const pushDebugMessage = (direction: "in" | "out", message: unknown) => {
+	const pushDebugMessage = (
+		direction: "in" | "out" | "error",
+		message: unknown,
+	) => {
 		debugMessageLog.push({
 			at: new Date().toISOString(),
 			direction,
@@ -91,6 +103,25 @@ export const createMiniCutPageSyncRuntime = ({
 		}
 		clearTimeout(pending.timeoutId);
 		pendingIdleResolves.delete(requestId);
+	};
+
+	const clearPendingDumpWait = (requestId: string) => {
+		const pending = pendingDumpResolves.get(requestId);
+		if (!pending) {
+			return;
+		}
+		clearTimeout(pending.timeoutId);
+		pendingDumpResolves.delete(requestId);
+	};
+
+	const testProtocolErrorMessage = (
+		message: Extract<
+			MiniCutDktTransportMessage,
+			{ type: typeof DKT_TEST_MSG.ERROR }
+		>,
+	): string => {
+		const text = message.error?.message || "DKT test protocol error";
+		return message.phase ? `${message.phase}: ${text}` : text;
 	};
 
 	const emitRuntimeTaskRequest = (
@@ -363,8 +394,34 @@ export const createMiniCutPageSyncRuntime = ({
 				return;
 			}
 			case DKT_TEST_MSG.DEBUG_DUMP_RESPONSE: {
-				pendingDumpResolve?.(message.dump);
-				pendingDumpResolve = null;
+				if (typeof message.requestId !== "string") {
+					return;
+				}
+				const pending = pendingDumpResolves.get(message.requestId);
+				if (!pending) {
+					return;
+				}
+				clearPendingDumpWait(message.requestId);
+				pending.resolve(message.dump);
+				return;
+			}
+			case DKT_TEST_MSG.ERROR: {
+				console.error("[minicut:dkt-test-protocol:error]", message);
+				if (typeof message.requestId !== "string") {
+					return;
+				}
+				const error = new Error(testProtocolErrorMessage(message));
+				const pendingDump = pendingDumpResolves.get(message.requestId);
+				if (pendingDump) {
+					clearPendingDumpWait(message.requestId);
+					pendingDump.reject(error);
+					return;
+				}
+				const pendingIdle = pendingIdleResolves.get(message.requestId);
+				if (pendingIdle) {
+					clearPendingIdleWait(message.requestId);
+					pendingIdle.reject(error);
+				}
 				return;
 			}
 			case DKT_MSG.CRDT_TRANSPORT_SEND: {
@@ -402,7 +459,18 @@ export const createMiniCutPageSyncRuntime = ({
 
 	const unlisten = transport.listen((message) => {
 		pushDebugMessage("in", message);
-		Promise.resolve(handleMessage(message)).catch(() => undefined);
+		Promise.resolve(handleMessage(message)).catch((error) => {
+			const serialized =
+				error instanceof Error
+					? {
+							name: error.name,
+							message: error.message,
+							stack: error.stack,
+						}
+					: { message: String(error) };
+			pushDebugMessage("error", serialized);
+			console.error("[minicut:dkt-page-runtime:error]", error);
+		});
 	});
 
 	return {
@@ -412,9 +480,14 @@ export const createMiniCutPageSyncRuntime = ({
 		debugDumpGraph: () => syncReceiver.debugDumpGraph(),
 		debugMessages: () => debugMessageLog.slice(),
 		requestDebugDump: () =>
-			new Promise<unknown>((resolve) => {
-				pendingDumpResolve = resolve;
-				emit({ type: DKT_TEST_MSG.DEBUG_DUMP_REQUEST });
+			new Promise<unknown>((resolve, reject) => {
+				const requestId = `dump:${++dumpRequestSequence}:${Date.now()}`;
+				const timeoutId = setTimeout(() => {
+					pendingDumpResolves.delete(requestId);
+					reject(new Error("Timed out waiting for DKT debug dump"));
+				}, 15_000);
+				pendingDumpResolves.set(requestId, { resolve, reject, timeoutId });
+				emit({ type: DKT_TEST_MSG.DEBUG_DUMP_REQUEST, requestId });
 			}),
 		receiveDebugCrdtTransportMessageTesting: (message) => {
 			emit({ type: DKT_MSG.CRDT_TRANSPORT_RECEIVE, message });
@@ -432,6 +505,7 @@ export const createMiniCutPageSyncRuntime = ({
 						clearPendingIdleWait(requestId);
 						resolve();
 					},
+					reject,
 					timeoutId,
 				});
 

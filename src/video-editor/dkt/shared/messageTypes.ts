@@ -23,6 +23,7 @@ export const DKT_MSG = {
 export const DKT_TEST_MSG = {
 	WAIT_IDLE: "test:dkt:wait-idle",
 	IDLE: "test:dkt:idle",
+	ERROR: "test:dkt:error",
 	DEBUG_DUMP_REQUEST: "test:dkt:debug-dump-request",
 	DEBUG_DUMP_RESPONSE: "test:dkt:debug-dump-response",
 	DISPATCH_ACTION_AND_SETTLE: "test:dkt:dispatch-action-and-settle",
@@ -110,6 +111,12 @@ export type DktP2PSessionLostMessage = {
 export type MiniCutDktTestTransportMessage =
 	| { type: typeof DKT_TEST_MSG.WAIT_IDLE; requestId: string }
 	| { type: typeof DKT_TEST_MSG.IDLE; requestId: string }
+	| {
+			type: typeof DKT_TEST_MSG.ERROR;
+			requestId?: string;
+			phase?: string;
+			error: { name?: string; message: string; stack?: string };
+	  }
 	| { type: typeof DKT_TEST_MSG.DEBUG_DUMP_REQUEST; requestId?: string }
 	| {
 			type: typeof DKT_TEST_MSG.DEBUG_DUMP_RESPONSE;
