@@ -13,10 +13,10 @@ import {
 	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceHandleCRDTSyncGraph,
+	resolveReviewProjectIdHint,
 	reduceCreateTextModel,
 	reduceCreateTrackModel,
 	reduceSelectReviewItem,
-	reduceSetActiveProjectHint,
 } from "./AppRoot/actions";
 import {
 	ACTIVITY_SUMMARY_CREATION_SHAPE,
@@ -57,7 +57,6 @@ const appProps = mergeDcl({
 		activitySummary: ["model", ActivitySummary, { many: true }],
 	},
 	attrs: {
-		activeProjectHint: ["input", null],
 		activeReviewItemId: ["input", null],
 		projectMetaList: ["input", []],
 		hasProjects: [
@@ -70,7 +69,6 @@ const appProps = mergeDcl({
 	crdt: {
 		mode: "collaborative",
 		attrs: {
-			activeProjectHint: { sync: false, reason: "projection" },
 			activeReviewItemId: { sync: false, reason: "projection" },
 			projectMetaList: { sync: false, reason: "projection" },
 		},
@@ -167,18 +165,6 @@ const appProps = mergeDcl({
 			],
 			fn: reduceCreateReviewItemModel,
 		},
-		createReviewSessionModel: {
-			to: [
-				"<< reviewSession << #",
-				{
-					method: "at_end",
-					can_create: true,
-					can_hold_refs: true,
-					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
-				},
-			],
-			fn: [["activeProjectHint"] as const, reduceCreateReviewSessionModel],
-		},
 		createActivitySummaryModel: {
 			to: [
 				"<< activitySummary << #",
@@ -200,7 +186,28 @@ const appProps = mergeDcl({
 					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
 				},
 			],
-			fn: [["activeProjectHint"] as const, reduceCreateReviewSessionModel],
+			fn: [
+				[
+					"< @one:activeProjectId < common_session_root",
+					"< @one:_node_id < project",
+					"<< @all:project",
+				] as const,
+				(
+					payload: unknown,
+					activeProjectId: unknown,
+					rootProjectId: unknown,
+					projects: unknown,
+				) =>
+					reduceCreateReviewSessionModel(
+						payload,
+						resolveReviewProjectIdHint(
+							payload,
+							activeProjectId,
+							rootProjectId,
+							projects,
+						),
+					),
+			],
 		},
 		materializeCRDTConflictReviewItem: {
 			to: [
@@ -211,7 +218,28 @@ const appProps = mergeDcl({
 					creation_shape: REVIEW_ITEM_CREATION_SHAPE,
 				},
 			],
-			fn: [["activeProjectHint"] as const, reduceHandleCRDTConflict],
+			fn: [
+				[
+					"< @one:activeProjectId < common_session_root",
+					"< @one:_node_id < project",
+					"<< @all:project",
+				] as const,
+				(
+					payload: unknown,
+					activeProjectId: unknown,
+					rootProjectId: unknown,
+					projects: unknown,
+				) =>
+					reduceHandleCRDTConflict(
+						payload,
+						resolveReviewProjectIdHint(
+							payload,
+							activeProjectId,
+							rootProjectId,
+							projects,
+						),
+					),
+			],
 		},
 		materializeCRDTSyncSummary: {
 			to: [
@@ -222,7 +250,28 @@ const appProps = mergeDcl({
 					creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
 				},
 			],
-			fn: [["activeProjectHint"] as const, reduceHandleCRDTSync],
+			fn: [
+				[
+					"< @one:activeProjectId < common_session_root",
+					"< @one:_node_id < project",
+					"<< @all:project",
+				] as const,
+				(
+					payload: unknown,
+					activeProjectId: unknown,
+					rootProjectId: unknown,
+					projects: unknown,
+				) =>
+					reduceHandleCRDTSync(
+						payload,
+						resolveReviewProjectIdHint(
+							payload,
+							activeProjectId,
+							rootProjectId,
+							projects,
+						),
+					),
+			],
 		},
 		handleCRDTSync: {
 			to: {
@@ -250,16 +299,29 @@ const appProps = mergeDcl({
 				],
 			},
 			fn: [
-				["$noop", "activeProjectHint"] as const,
-				(payload: unknown, noop: unknown, activeProjectHint: unknown) =>
-					reduceHandleCRDTConflictGraph(payload, activeProjectHint) ?? noop,
+				[
+					"$noop",
+					"< @one:activeProjectId < common_session_root",
+					"< @one:_node_id < project",
+					"<< @all:project",
+				] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					activeProjectId: unknown,
+					rootProjectId: unknown,
+					projects: unknown,
+				) =>
+					reduceHandleCRDTConflictGraph(
+						payload,
+						resolveReviewProjectIdHint(
+							payload,
+							activeProjectId,
+							rootProjectId,
+							projects,
+						),
+					) ?? noop,
 			],
-		},
-		setActiveProjectHint: {
-			to: {
-				activeProjectHint: ["activeProjectHint"],
-			},
-			fn: reduceSetActiveProjectHint,
 		},
 		selectReviewItem: {
 			to: {

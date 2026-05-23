@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { inspectReviewGraph } from "../review/testHarness/inspectReviewGraph";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const createPairWithClip = async (roomId: string) => {
@@ -228,6 +229,32 @@ describe("MiniCut CRDT conflict scenarios", () => {
 					status: "open",
 				}),
 			]),
+		);
+		pair.close();
+	});
+
+	it("materializes app review graph through the CRDT conflict hook", async () => {
+		const { pair } = await createTimingConflict("room-conflict-review-hook");
+		await pair.waitForConvergence();
+
+		const graph = await inspectReviewGraph(pair.a.ctx);
+
+		expect(graph.rootReviewItems).toHaveLength(1);
+		expect(graph.reviewSessions).toHaveLength(1);
+		expect(graph.rootReviewItems[0]?.attrs).toEqual(
+			expect.objectContaining({
+				kind: "clip_timing",
+				status: "open",
+				source: expect.objectContaining({
+					conflictId: expect.any(String),
+				}),
+			}),
+		);
+		expect(graph.reviewSessions[0]?.attrs).toEqual(
+			expect.objectContaining({
+				status: "open",
+				selectedReviewItemId: graph.rootReviewItems[0]?.attrs.reviewItemId,
+			}),
 		);
 		pair.close();
 	});

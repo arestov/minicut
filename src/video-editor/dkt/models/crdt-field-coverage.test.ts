@@ -49,7 +49,6 @@ const MODEL_CASES: ModelCase[] = [
 		model: MiniCutAppRoot as unknown as Record<string, unknown>,
 		fields: {
 			attrs: {
-				activeProjectHint: "projection",
 				activeReviewItemId: "projection",
 				projectMetaList: "projection",
 			},

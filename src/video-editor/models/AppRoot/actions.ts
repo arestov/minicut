@@ -22,6 +22,81 @@ const getNodeId = (model: unknown): string | null =>
 		? (model as { _node_id: string })._node_id
 		: null;
 
+const relList = (model: unknown, relName: string): unknown[] => {
+	if (!model || typeof model !== "object") {
+		return [];
+	}
+	const rels = (model as { children_models?: Record<string, unknown> })
+		.children_models;
+	const value = rels?.[relName];
+	return Array.isArray(value) ? value : value ? [value] : [];
+};
+
+const collectConflictNodeIds = (payload: unknown): Set<string> => {
+	const ids = new Set<string>();
+	if (!payload || typeof payload !== "object") {
+		return ids;
+	}
+	const value = payload as {
+		opened?: unknown;
+		updated?: unknown;
+		acknowledged?: unknown;
+		resolved?: unknown;
+	};
+	for (const list of [
+		value.opened,
+		value.updated,
+		value.acknowledged,
+		value.resolved,
+	]) {
+		if (!Array.isArray(list)) {
+			continue;
+		}
+		for (const item of list) {
+			const nodeId =
+				item && typeof item === "object"
+					? (item as { node_id?: unknown }).node_id
+					: null;
+			if (typeof nodeId === "string" && nodeId) {
+				ids.add(nodeId);
+			}
+		}
+	}
+	return ids;
+};
+
+const findProjectIdForConflictPayload = (
+	payload: unknown,
+	projects: unknown,
+): string | null => {
+	const conflictNodeIds = collectConflictNodeIds(payload);
+	if (conflictNodeIds.size === 0 || !Array.isArray(projects)) {
+		return null;
+	}
+	for (const project of projects) {
+		for (const track of relList(project, "tracks")) {
+			for (const clip of relList(track, "clips")) {
+				const clipId = getNodeId(clip);
+				if (clipId && conflictNodeIds.has(clipId)) {
+					return getNodeId(project);
+				}
+			}
+		}
+	}
+	return null;
+};
+
+export const resolveReviewProjectIdHint = (
+	payload: unknown,
+	activeProjectId: unknown,
+	rootProjectId: unknown,
+	projects?: unknown,
+): unknown =>
+	findProjectIdForConflictPayload(payload, projects) ??
+	(typeof activeProjectId === "string" && activeProjectId
+		? activeProjectId
+		: rootProjectId);
+
 const resolveOutputRelModel = (payload: unknown, relName: string): unknown => {
 	const rels = asRecord((payload as { rels?: unknown } | null)?.rels);
 	return rels?.[relName] ?? null;
@@ -217,30 +292,30 @@ export const reduceCreateReviewItemModel = (payload: unknown) =>
 
 export const reduceCreateReviewSessionModel = (
 	payload: unknown,
-	activeProjectHint?: unknown,
-) => reduceCreateReviewSession(payload, activeProjectHint);
+	projectIdHint?: unknown,
+) => reduceCreateReviewSession(payload, projectIdHint);
 
 export const reduceCreateActivitySummaryModel = (payload: unknown) =>
 	reduceCreateActivitySummary(payload);
 
 export const reduceHandleCRDTConflict = (
 	payload: unknown,
-	activeProjectHint?: unknown,
+	projectIdHint?: unknown,
 ) =>
-	reduceCreateReviewSessionWithLifecycleItems(payload, activeProjectHint);
+	reduceCreateReviewSessionWithLifecycleItems(payload, projectIdHint);
 
 export const reduceHandleCRDTSync = (
 	payload: unknown,
-	activeProjectHint?: unknown,
-) => reduceCreateReviewSessionWithActivitySummary(payload, activeProjectHint);
+	projectIdHint?: unknown,
+) => reduceCreateReviewSessionWithActivitySummary(payload, projectIdHint);
 
 export const reduceHandleCRDTConflictGraph = (
 	payload: unknown,
-	activeProjectHint?: unknown,
+	projectIdHint?: unknown,
 ) => {
 	const session = reduceCreateReviewSessionWithLifecycleItems(
 		payload,
-		activeProjectHint,
+		projectIdHint,
 	);
 	const items = session?.rels?.items;
 	if (!session || !Array.isArray(items) || items.length === 0) {
@@ -272,11 +347,11 @@ export const reduceLinkReviewSessionItemsFromOutput = (payload: unknown) => {
 
 export const reduceHandleCRDTSyncGraph = (
 	payload: unknown,
-	activeProjectHint?: unknown,
+	projectIdHint?: unknown,
 ) => {
 	const session = reduceCreateReviewSessionWithActivitySummary(
 		payload,
-		activeProjectHint,
+		projectIdHint,
 	);
 	const activitySummaries = session?.rels?.activitySummaries;
 	if (
@@ -325,10 +400,6 @@ export const reduceLinkReviewSessionActivityFromOutput = (payload: unknown) => {
 		},
 	};
 };
-
-export const reduceSetActiveProjectHint = (payload: unknown) => ({
-	activeProjectHint: typeof payload === "string" && payload ? payload : null,
-});
 
 export const reduceSelectReviewItem = (payload: unknown) => {
 	const value =

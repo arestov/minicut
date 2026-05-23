@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ScopeContext } from "../../../dkt-react-sync/context/ScopeContext";
 import { useAttrs } from "../../../dkt-react-sync/hooks/useAttrs";
-import { useMany } from "../../../dkt-react-sync/hooks/useMany";
 import { useReactScopeRuntime } from "../../../dkt-react-sync/hooks/useReactScopeRuntime";
 import { useRootOne } from "../../../dkt-react-sync/hooks/useRootOne";
 import { useScope } from "../../../dkt-react-sync/hooks/useScope";
@@ -21,12 +20,6 @@ type ReviewSessionSnapshot = {
 	selectedReviewItemId: string | null;
 	items: MiniCutReviewItem[];
 	activitySummaries: MiniCutActivitySummary[];
-};
-
-type ObservedClipConflict = {
-	conflictId: string;
-	clipId: string;
-	projectId: string;
 };
 
 const asString = (value: unknown): string | null =>
@@ -64,202 +57,6 @@ const useRuntimeMany = (
 			scope ? runtime.subscribeMany(scope, relName, listener) : () => {},
 		() => (scope ? (runtime.readMany(scope, relName) as ReactSyncScopeHandle[]) : []),
 		() => (scope ? (runtime.readMany(scope, relName) as ReactSyncScopeHandle[]) : []),
-	);
-};
-
-const ClipCrdtReviewReader = ({
-	scopeId,
-	onConflict,
-}: {
-	scopeId: string;
-	onConflict: (conflict: ObservedClipConflict) => void;
-}) => {
-	const attrs = useAttrs([
-		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
-		"$meta$aggregates$crdt$clipTiming$last_conflict_id",
-	]) as Record<string, unknown>;
-	const openCount =
-		typeof attrs["$meta$aggregates$crdt$clipTiming$open_conflicts_count"] ===
-			"number"
-			? attrs["$meta$aggregates$crdt$clipTiming$open_conflicts_count"]
-			: 0;
-	const conflictId = asString(
-		attrs["$meta$aggregates$crdt$clipTiming$last_conflict_id"],
-	);
-
-	useEffect(() => {
-		if (openCount <= 0 || !conflictId) {
-			return;
-		}
-		onConflict({ conflictId, clipId: scopeId });
-	}, [conflictId, onConflict, openCount, scopeId]);
-
-	return null;
-};
-
-const ProjectCrdtReviewProjectionInner = ({
-	onConflict,
-}: {
-	onConflict: (conflict: ObservedClipConflict) => void;
-}) => {
-	const clipScopes = useMany("clip") as ReactSyncScopeHandle[];
-	return (
-		<>
-			{clipScopes.map((scope) => (
-				<ScopeContext.Provider key={scope._nodeId} value={scope}>
-					<ClipCrdtReviewReader
-						scopeId={scope._nodeId}
-						onConflict={onConflict}
-					/>
-				</ScopeContext.Provider>
-			))}
-		</>
-	);
-};
-
-const ActiveProjectCrdtReviewProjectionInner = ({
-	onConflict,
-}: {
-	onConflict: (conflict: ObservedClipConflict) => void;
-}) => {
-	const trackScopes = useMany("tracks") as ReactSyncScopeHandle[];
-	return (
-		<>
-			{trackScopes.map((trackScope) => (
-				<ScopeContext.Provider key={trackScope._nodeId} value={trackScope}>
-					<ActiveTrackCrdtReviewProjectionInner onConflict={onConflict} />
-				</ScopeContext.Provider>
-			))}
-		</>
-	);
-};
-
-const ActiveTrackCrdtReviewProjectionInner = ({
-	onConflict,
-}: {
-	onConflict: (conflict: ObservedClipConflict) => void;
-}) => {
-	const clipScopes = useMany("clips") as ReactSyncScopeHandle[];
-	return (
-		<>
-			{clipScopes.map((scope) => (
-				<ScopeContext.Provider key={scope._nodeId} value={scope}>
-					<ClipCrdtReviewReader
-						scopeId={scope._nodeId}
-						onConflict={onConflict}
-					/>
-				</ScopeContext.Provider>
-			))}
-		</>
-	);
-};
-
-const ProjectCrdtReviewProjectionBridge = ({
-	appRootScope,
-}: {
-	appRootScope: ReactSyncScopeHandle;
-}) => {
-	const runtime = useReactScopeRuntime();
-	const sessionScope = useScope();
-	const projectedConflictIds = useRef(new Set<string>());
-	const activeProjectScope = useSyncExternalStore(
-		(listener) =>
-			sessionScope
-				? runtime.subscribeOne(sessionScope, "activeProject", listener)
-				: () => {},
-		() =>
-			sessionScope ? runtime.readOne(sessionScope, "activeProject") : null,
-		() =>
-			sessionScope ? runtime.readOne(sessionScope, "activeProject") : null,
-	);
-	const activeProjectId =
-		activeProjectScope && typeof activeProjectScope._nodeId === "string"
-			? activeProjectScope._nodeId
-			: null;
-
-	useEffect(() => {
-		runtime.dispatchAction("setActiveProjectHint", activeProjectId, appRootScope);
-	}, [runtime, appRootScope, activeProjectId]);
-
-	if (!activeProjectScope || !activeProjectId) {
-		return null;
-	}
-
-	return (
-		<>
-			<ScopeContext.Provider value={appRootScope}>
-				<ProjectCrdtReviewProjectionInner
-					onConflict={({ conflictId, clipId }) => {
-						if (projectedConflictIds.current.has(conflictId)) {
-							return;
-						}
-						projectedConflictIds.current.add(conflictId);
-						runtime.dispatchAction(
-							"handleCRDTConflict",
-							{
-								event_type: "crdt_conflict",
-								projectId: activeProjectId,
-								happened_at: Date.now(),
-								opened: [
-									{
-										conflict_id: conflictId,
-										status: "open",
-										kind: "mvr_alternatives",
-										node_id: clipId,
-										model_name: "clip",
-										field_kind: "attr",
-										field_name: "start",
-										aggregate: "clipTiming",
-										happened_at: Date.now(),
-									},
-								],
-								updated: [],
-								acknowledged: [],
-								resolved: [],
-								previous: {},
-							},
-							appRootScope,
-						);
-					}}
-				/>
-			</ScopeContext.Provider>
-			<ScopeContext.Provider value={activeProjectScope}>
-				<ActiveProjectCrdtReviewProjectionInner
-					onConflict={({ conflictId, clipId }) => {
-					if (projectedConflictIds.current.has(conflictId)) {
-						return;
-					}
-					projectedConflictIds.current.add(conflictId);
-					runtime.dispatchAction(
-						"handleCRDTConflict",
-						{
-							event_type: "crdt_conflict",
-							projectId: activeProjectId,
-							happened_at: Date.now(),
-							opened: [
-								{
-									conflict_id: conflictId,
-									status: "open",
-									kind: "mvr_alternatives",
-									node_id: clipId,
-									model_name: "clip",
-									field_kind: "attr",
-									field_name: "start",
-									aggregate: "clipTiming",
-									happened_at: Date.now(),
-								},
-							],
-							updated: [],
-							acknowledged: [],
-							resolved: [],
-							previous: {},
-						},
-						appRootScope,
-					);
-				}}
-				/>
-			</ScopeContext.Provider>
-		</>
 	);
 };
 
@@ -524,14 +321,11 @@ const AppRootReviewMode = () => {
 				.filter((session): session is ReviewSessionSnapshot => Boolean(session))
 				.map((session) => ({
 					...session,
-					items:
-						session.items.length > 0
-							? session.items
-							: rootItems.filter((item) =>
-									session.selectedReviewItemId
-										? item.id === session.selectedReviewItemId
-										: item.projectId === session.projectId,
-								),
+					items: rootItems.filter((item) =>
+						session.selectedReviewItemId
+							? item.id === session.selectedReviewItemId
+							: item.projectId === session.projectId,
+					),
 				})),
 		[sessionScopes, sessionsById, rootItems],
 	);
@@ -630,11 +424,8 @@ export const ProjectReviewMode = () => {
 		return null;
 	}
 	return (
-		<>
-			<ProjectCrdtReviewProjectionBridge appRootScope={appRootScope} />
-			<ScopeContext.Provider value={appRootScope}>
-				<AppRootReviewMode />
-			</ScopeContext.Provider>
-		</>
+		<ScopeContext.Provider value={appRootScope}>
+			<AppRootReviewMode />
+		</ScopeContext.Provider>
 	);
 };

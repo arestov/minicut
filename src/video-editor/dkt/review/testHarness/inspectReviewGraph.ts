@@ -55,7 +55,7 @@ const ACTIVITY_SUMMARY_ATTRS = [
 	"rootFrames",
 ] as const;
 
-const ROOT_ATTRS = ["activeProjectHint", "activeReviewItemId"] as const;
+const ROOT_ATTRS = ["activeReviewItemId"] as const;
 
 const nodeId = (model: DktModel | null | undefined): string | null =>
 	typeof model?._node_id === "string" ? model._node_id : null;
