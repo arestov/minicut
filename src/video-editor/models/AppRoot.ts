@@ -10,7 +10,11 @@ import {
 	reduceCreateReviewSessionModel,
 	reduceAcknowledgeReviewItem,
 	reduceHandleCRDTConflict,
+	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
+	reduceHandleCRDTSyncGraph,
+	reduceLinkReviewSessionActivityFromOutput,
+	reduceLinkReviewSessionItemsFromOutput,
 	reduceCreateTextModel,
 	reduceCreateTrackModel,
 	reduceSelectReviewItem,
@@ -171,6 +175,7 @@ const appProps = mergeDcl({
 				{
 					method: "at_end",
 					can_create: true,
+					can_hold_refs: true,
 					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
 				},
 			],
@@ -193,6 +198,7 @@ const appProps = mergeDcl({
 				{
 					method: "at_end",
 					can_create: true,
+					can_hold_refs: true,
 					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
 				},
 			],
@@ -220,28 +226,74 @@ const appProps = mergeDcl({
 			],
 			fn: [["activeProjectHint"] as const, reduceHandleCRDTSync],
 		},
-		handleCRDTSync: {
-			to: [
-				"<< reviewSession << #",
-				{
-					method: "at_end",
-					can_create: true,
-					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+		handleCRDTSync: [
+			{
+				to: {
+					activitySummaries: [
+						"<< activitySummary << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
+						},
+					],
+					reviewSession: [
+						"<< reviewSession << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+						},
+					],
+					$output: ["$output"],
 				},
-			],
-			fn: [["activeProjectHint"] as const, reduceHandleCRDTSync],
-		},
-		handleCRDTConflict: {
-			to: [
-				"<< reviewSession << #",
-				{
-					method: "at_end",
-					can_create: true,
-					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+				fn: [["activeProjectHint"] as const, reduceHandleCRDTSyncGraph],
+			},
+			{
+				to: ["*"],
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) =>
+						reduceLinkReviewSessionActivityFromOutput(payload) ?? noop,
+				],
+			},
+		],
+		handleCRDTConflict: [
+			{
+				to: {
+					reviewItems: [
+						"<< reviewItem << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+						},
+					],
+					reviewSession: [
+						"<< reviewSession << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+						},
+					],
+					$output: ["$output"],
 				},
-			],
-			fn: [["activeProjectHint"] as const, reduceHandleCRDTConflict],
-		},
+				fn: [["activeProjectHint"] as const, reduceHandleCRDTConflictGraph],
+			},
+			{
+				to: ["*"],
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) =>
+						reduceLinkReviewSessionItemsFromOutput(payload) ?? noop,
+				],
+			},
+		],
 		setActiveProjectHint: {
 			to: {
 				activeProjectHint: ["activeProjectHint"],

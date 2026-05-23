@@ -10,6 +10,23 @@ import {
 import { defaultTextBox, defaultTextStyle } from "../Text/defaults";
 import { numberOr, numberOrNull, objectOr, stringOr } from "../valueGuards";
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+	value && typeof value === "object"
+		? (value as Record<string, unknown>)
+		: null;
+
+const getNodeId = (model: unknown): string | null =>
+	model &&
+	typeof model === "object" &&
+	typeof (model as { _node_id?: unknown })._node_id === "string"
+		? (model as { _node_id: string })._node_id
+		: null;
+
+const resolveOutputRelModel = (payload: unknown, relName: string): unknown => {
+	const rels = asRecord((payload as { rels?: unknown } | null)?.rels);
+	return rels?.[relName] ?? null;
+};
+
 export const reduceCreateProjectModel = (payload: unknown) => {
 	const value = payload as {
 		title?: unknown;
@@ -216,6 +233,114 @@ export const reduceHandleCRDTSync = (
 	payload: unknown,
 	activeProjectHint?: unknown,
 ) => reduceCreateReviewSessionWithActivitySummary(payload, activeProjectHint);
+
+export const reduceHandleCRDTConflictGraph = (
+	payload: unknown,
+	activeProjectHint?: unknown,
+) => {
+	const session = reduceCreateReviewSessionWithLifecycleItems(
+		payload,
+		activeProjectHint,
+	);
+	const items = session?.rels?.items;
+	if (!session || !Array.isArray(items) || items.length === 0) {
+		return null;
+	}
+	const refs = items.map((item, index) => {
+		const reviewItemId = item.attrs.reviewItemId;
+		return typeof reviewItemId === "string"
+			? `reviewItem:${reviewItemId}`
+			: `reviewItem:${index}`;
+	});
+	return {
+		reviewItems: items.map((item, index) => ({
+			...item,
+			hold_ref_id: refs[index],
+		})),
+		reviewSession: {
+			attrs: session.attrs,
+			hold_ref_id: "reviewSession",
+		},
+		$output: {
+			rels: {
+				reviewSession: { use_ref_id: "reviewSession" },
+				reviewItem: { use_ref_id: refs[0] },
+			},
+		},
+	};
+};
+
+export const reduceLinkReviewSessionItemsFromOutput = (payload: unknown) => {
+	const reviewSession = resolveOutputRelModel(payload, "reviewSession");
+	const reviewItem = resolveOutputRelModel(payload, "reviewItem");
+	const reviewSessionId = getNodeId(reviewSession);
+	if (!reviewSessionId || !reviewItem) {
+		return null;
+	}
+	return {
+		[reviewSessionId]: {
+			rels: {
+				items: [reviewItem],
+			},
+		},
+	};
+};
+
+export const reduceHandleCRDTSyncGraph = (
+	payload: unknown,
+	activeProjectHint?: unknown,
+) => {
+	const session = reduceCreateReviewSessionWithActivitySummary(
+		payload,
+		activeProjectHint,
+	);
+	const activitySummaries = session?.rels?.activitySummaries;
+	if (
+		!session ||
+		!Array.isArray(activitySummaries) ||
+		activitySummaries.length === 0
+	) {
+		return null;
+	}
+	const refs = activitySummaries.map((summary, index) => {
+		const activitySummaryId = summary.attrs.activitySummaryId;
+		return typeof activitySummaryId === "string"
+			? `activitySummary:${activitySummaryId}`
+			: `activitySummary:${index}`;
+	});
+	return {
+		activitySummaries: activitySummaries.map((summary, index) => ({
+			...summary,
+			hold_ref_id: refs[index],
+		})),
+		reviewSession: {
+			attrs: session.attrs,
+			hold_ref_id: "reviewSession",
+		},
+		$output: {
+			rels: {
+				reviewSession: { use_ref_id: "reviewSession" },
+				activitySummary: { use_ref_id: refs[0] },
+			},
+		},
+	};
+};
+
+export const reduceLinkReviewSessionActivityFromOutput = (payload: unknown) => {
+	const reviewSession = resolveOutputRelModel(payload, "reviewSession");
+	const activitySummary = resolveOutputRelModel(payload, "activitySummary");
+	const reviewSessionId = getNodeId(reviewSession);
+	if (!reviewSessionId || !activitySummary) {
+		return null;
+	}
+	return {
+		[reviewSessionId]: {
+			rels: {
+				activitySummaries: [activitySummary],
+			},
+		},
+	};
+};
 
 export const reduceSetActiveProjectHint = (payload: unknown) => ({
 	activeProjectHint: typeof payload === "string" && payload ? payload : null,
