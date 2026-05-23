@@ -22,6 +22,13 @@ export type ReviewGraphSnapshot = {
 	rootActivitySummaries: ReviewGraphNodeSnapshot[];
 };
 
+export type ProjectReviewGraphSnapshot = ReviewGraphSnapshot & {
+	project: ReviewGraphNodeSnapshot;
+	items: ReviewGraphNodeSnapshot[];
+	activitySummaries: ReviewGraphNodeSnapshot[];
+	openItemCount: number;
+};
+
 const REVIEW_SESSION_ATTRS = [
 	"reviewSessionId",
 	"projectId",
@@ -129,4 +136,55 @@ export const inspectReviewGraph = async (
 			),
 		),
 	};
+};
+
+const flattenSessionItems = (
+	sessions: ReviewGraphSessionSnapshot[],
+): ReviewGraphNodeSnapshot[] =>
+	sessions.flatMap((session) => session.items);
+
+const flattenSessionActivitySummaries = (
+	sessions: ReviewGraphSessionSnapshot[],
+): ReviewGraphNodeSnapshot[] =>
+	sessions.flatMap((session) => session.activitySummaries);
+
+export const inspectProjectReviewGraph = async (
+	ctx: DktTestContext,
+	project: DktModel,
+): Promise<ProjectReviewGraphSnapshot> => {
+	const graph = await inspectReviewGraph(ctx, project);
+	const openItemCount = await ctx.queryAttr(project, "reviewOpenItemCount");
+	return {
+		...graph,
+		project: await inspectNode(ctx, project, []),
+		items: flattenSessionItems(graph.reviewSessions),
+		activitySummaries: flattenSessionActivitySummaries(graph.reviewSessions),
+		openItemCount:
+			typeof openItemCount === "number" && Number.isFinite(openItemCount)
+				? openItemCount
+				: 0,
+	};
+};
+
+export const waitForProjectReviewGraph = async (
+	ctx: DktTestContext,
+	project: DktModel,
+	predicate: (graph: ProjectReviewGraphSnapshot) => boolean,
+	options: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<ProjectReviewGraphSnapshot> => {
+	const timeoutMs = options.timeoutMs ?? 5_000;
+	const intervalMs = options.intervalMs ?? 25;
+	const deadline = Date.now() + timeoutMs;
+	let lastGraph = await inspectProjectReviewGraph(ctx, project);
+	while (Date.now() <= deadline) {
+		await ctx.computed();
+		lastGraph = await inspectProjectReviewGraph(ctx, project);
+		if (predicate(lastGraph)) {
+			return lastGraph;
+		}
+		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+	}
+	throw new Error(
+		`Timed out waiting for project review graph: ${JSON.stringify(lastGraph, null, 2)}`,
+	);
 };
