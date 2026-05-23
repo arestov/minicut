@@ -324,6 +324,7 @@ export const reduceHandleCRDTSync = (
 export const reduceHandleCRDTConflictGraph = (
 	payload: unknown,
 	projectIdHint?: unknown,
+	existingReviewItemIds?: unknown,
 ) => {
 	const session = reduceCreateReviewSessionWithLifecycleItems(
 		payload,
@@ -333,27 +334,54 @@ export const reduceHandleCRDTConflictGraph = (
 	if (!session || !Array.isArray(items) || items.length === 0) {
 		return null;
 	}
+	const existingIds = new Set(
+		Array.isArray(existingReviewItemIds)
+			? existingReviewItemIds.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [],
+	);
 	const refs = items.map((item, index) => {
 		const reviewItemId = item.attrs.reviewItemId;
 		return typeof reviewItemId === "string"
 			? `reviewItem:${reviewItemId}`
 			: `reviewItem:${index}`;
 	});
+	const newEntries = items
+		.map((item, index) => ({ item, ref: refs[index] }))
+		.filter(({ item }) => !existingIds.has(String(item.attrs.reviewItemId)));
+	const updateReviewItems = items.map((item) => ({
+		id: item.attrs.reviewItemId,
+		conflictId: item.attrs.conflictId,
+		projectId: item.attrs.projectId,
+		kind: item.attrs.kind,
+		status: item.attrs.status,
+		title: item.attrs.title,
+		affectedObjects: item.attrs.affectedObjects,
+		preview: item.attrs.preview,
+		availableActions: item.attrs.availableActions,
+		source: item.attrs.source,
+	}));
 	return {
-		reviewItems: items.map((item, index) => ({
+		updateReviewItems,
+		reviewItems: newEntries.map(({ item, ref }) => ({
 			...item,
-			hold_ref_id: refs[index],
+			hold_ref_id: ref,
 		})),
-		reviewSession: {
-			attrs: session.attrs,
-			hold_ref_id: "reviewSession",
-		},
-		$output: {
-			rels: {
-				reviewSession: { use_ref_id: "reviewSession" },
-				reviewItem: { use_ref_id: refs[0] },
-			},
-		},
+		...(newEntries.length > 0
+			? {
+					reviewSession: {
+						attrs: session.attrs,
+						hold_ref_id: "reviewSession",
+					},
+					$output: {
+						rels: {
+							reviewSession: { use_ref_id: "reviewSession" },
+							reviewItem: { use_ref_id: newEntries[0].ref },
+						},
+					},
+				}
+			: {}),
 	};
 };
 

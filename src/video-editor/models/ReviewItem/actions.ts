@@ -34,8 +34,24 @@ export const reduceCreateReviewItem = (payload: unknown) => {
 	};
 };
 
-export const reduceSetReviewItem = (payload: unknown) => {
-	const item = asObject<MiniCutReviewItem>(payload);
+const reviewItemsFromPayload = (payload: unknown): MiniCutReviewItem[] =>
+	Array.isArray(payload)
+		? payload.filter((item): item is MiniCutReviewItem =>
+				Boolean(asObject<MiniCutReviewItem>(item)),
+			)
+		: asObject<MiniCutReviewItem>(payload)
+			? [payload as MiniCutReviewItem]
+			: [];
+
+export const reduceSetReviewItem = (
+	payload: unknown,
+	currentReviewItemId?: unknown,
+) => {
+	const items = reviewItemsFromPayload(payload);
+	const item =
+		typeof currentReviewItemId === "string"
+			? items.find((entry) => entry.id === currentReviewItemId)
+			: items[0];
 	if (!item || !asString(item.id) || !asString(item.conflictId)) {
 		return null;
 	}
@@ -56,4 +72,3 @@ export const reduceMaterializeReviewItemFromConflict = (
 		materializeCRDTConflictReviewItem({ conflict, projectId }),
 	);
 };
-

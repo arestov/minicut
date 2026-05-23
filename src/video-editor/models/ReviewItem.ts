@@ -123,8 +123,9 @@ export const ReviewItem = model({
 				updatedAt: ["updatedAt"],
 			},
 			fn: [
-				["$noop"] as const,
-				(payload: unknown, noop: unknown) => reduceSetReviewItem(payload) ?? noop,
+				["$noop", "reviewItemId"] as const,
+				(payload: unknown, noop: unknown, reviewItemId: unknown) =>
+					reduceSetReviewItem(payload, reviewItemId) ?? noop,
 			],
 		},
 	},

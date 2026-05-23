@@ -174,6 +174,36 @@ describe("MiniCut p2p review projection", () => {
 					aggregate: "clipTiming",
 				}) ?? [],
 			).toEqual([]);
+			const [resolvedGraphA, resolvedGraphB] = await Promise.all([
+				waitForProjectReviewGraph(
+					pair.a.ctx,
+					pair.a.project,
+					(snapshot) =>
+						snapshot.items.some(
+							(entry) =>
+								entry.attrs.conflictId === conflictId &&
+								entry.attrs.status === "resolved",
+						),
+				),
+				waitForProjectReviewGraph(
+					pair.b.ctx,
+					pair.b.project,
+					(snapshot) =>
+						snapshot.items.some(
+							(entry) =>
+								entry.attrs.conflictId === conflictId &&
+								entry.attrs.status === "resolved",
+						),
+				),
+			]);
+			for (const graph of [resolvedGraphA, resolvedGraphB]) {
+				const resolvedItem = graph.items.find(
+					(entry) => entry.attrs.conflictId === conflictId,
+				);
+				expect(resolvedItem?.attrs.status).toBe("resolved");
+				expect(graph.openItemCount).toBe(0);
+				expect(graph.reviewSessions[0]?.attrs.openItemCount).toBe(0);
+			}
 		} finally {
 			pair.close();
 		}

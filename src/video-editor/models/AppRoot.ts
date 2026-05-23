@@ -320,6 +320,13 @@ const appProps = mergeDcl({
 							creation_shape: REVIEW_ITEM_CREATION_SHAPE,
 						},
 					],
+					updateReviewItems: [
+						"<< reviewItem",
+						{
+							action: "setReviewItem",
+							sub_flow: true,
+						},
+					],
 					reviewSession: [
 						"<< reviewSession << #",
 						{
@@ -336,12 +343,14 @@ const appProps = mergeDcl({
 						"$noop",
 						"< @one:_node_id < project",
 						"<< @all:project",
+						"< @all:reviewItemId < reviewItem",
 					] as const,
 					(
 						payload: unknown,
 						noop: unknown,
 						rootProjectId: unknown,
 						projects: unknown,
+						existingReviewItemIds: unknown,
 					) =>
 						reduceHandleCRDTConflictGraph(
 							payload,
@@ -350,6 +359,7 @@ const appProps = mergeDcl({
 								rootProjectId,
 								projects,
 							),
+							existingReviewItemIds,
 						) ?? noop,
 				],
 			},
