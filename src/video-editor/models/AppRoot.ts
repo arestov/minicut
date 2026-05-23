@@ -13,8 +13,6 @@ import {
 	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceHandleCRDTSyncGraph,
-	reduceLinkReviewSessionActivityFromOutput,
-	reduceLinkReviewSessionItemsFromOutput,
 	reduceCreateTextModel,
 	reduceCreateTrackModel,
 	reduceSelectReviewItem,
@@ -256,12 +254,11 @@ const appProps = mergeDcl({
 				],
 			},
 			{
-				to: ["*"],
-				fn: [
-					["$noop"] as const,
-					(payload: unknown, noop: unknown) =>
-						reduceLinkReviewSessionActivityFromOutput(payload) ?? noop,
+				to: [
+					"<< reviewSession",
+					{ action: "attachActivitySummaryFromOutput", sub_flow: true },
 				],
+				fn: [["<<<<"] as const, (payload: unknown) => payload],
 			},
 		],
 		handleCRDTConflict: [
@@ -294,12 +291,11 @@ const appProps = mergeDcl({
 				],
 			},
 			{
-				to: ["*"],
-				fn: [
-					["$noop"] as const,
-					(payload: unknown, noop: unknown) =>
-						reduceLinkReviewSessionItemsFromOutput(payload) ?? noop,
+				to: [
+					"<< reviewSession",
+					{ action: "attachReviewItemFromOutput", sub_flow: true },
 				],
+				fn: [["<<<<"] as const, (payload: unknown) => payload],
 			},
 		],
 		setActiveProjectHint: {

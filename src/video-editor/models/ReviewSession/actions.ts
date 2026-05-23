@@ -16,6 +16,13 @@ const asObject = <Value extends object>(value: unknown): Value | null =>
 const asString = (value: unknown): string | null =>
 	typeof value === "string" && value.length > 0 ? value : null;
 
+const getNodeId = (model: unknown): string | null =>
+	model &&
+	typeof model === "object" &&
+	typeof (model as { _node_id?: unknown })._node_id === "string"
+		? (model as { _node_id: string })._node_id
+		: null;
+
 export const reduceCreateReviewSession = (
 	payload: unknown,
 	projectIdHint: unknown,
@@ -171,4 +178,32 @@ export const reduceSelectReviewItem = (payload: unknown) => {
 		selectedReviewItemId: reviewItemId,
 		updatedAt: Date.now(),
 	};
+};
+
+export const reduceAttachReviewItemFromOutput = (
+	payload: unknown,
+	self: unknown,
+) => {
+	const rels = asObject<{ reviewItem?: unknown }>(
+		(payload as { rels?: unknown } | null)?.rels,
+	);
+	const targetSession = rels?.reviewSession;
+	const selfId = getNodeId(self);
+	const targetSessionId = getNodeId(targetSession);
+	const item = rels?.reviewItem;
+	return item && selfId && selfId === targetSessionId ? [item] : null;
+};
+
+export const reduceAttachActivitySummaryFromOutput = (
+	payload: unknown,
+	self: unknown,
+) => {
+	const rels = asObject<{ activitySummary?: unknown }>(
+		(payload as { rels?: unknown } | null)?.rels,
+	);
+	const targetSession = rels?.reviewSession;
+	const selfId = getNodeId(self);
+	const targetSessionId = getNodeId(targetSession);
+	const summary = rels?.activitySummary;
+	return summary && selfId && selfId === targetSessionId ? [summary] : null;
 };

@@ -1,7 +1,11 @@
 import { model } from "dkt/model.js";
 import { ACTIVITY_SUMMARY_CREATION_SHAPE, ActivitySummary } from "./ActivitySummary";
 import { REVIEW_ITEM_CREATION_SHAPE, ReviewItem } from "./ReviewItem";
-import { reduceSelectReviewItem } from "./ReviewSession/actions";
+import {
+	reduceAttachActivitySummaryFromOutput,
+	reduceAttachReviewItemFromOutput,
+	reduceSelectReviewItem,
+} from "./ReviewSession/actions";
 
 export const REVIEW_SESSION_CREATION_SHAPE = {
 	attrs: [
@@ -66,6 +70,32 @@ export const ReviewSession = model({
 				["$noop"] as const,
 				(payload: unknown, noop: unknown) =>
 					reduceSelectReviewItem(payload) ?? noop,
+			],
+		},
+		attachReviewItemFromOutput: {
+			to: [
+				"<< items",
+				{
+					method: "at_end",
+				},
+			],
+			fn: [
+				["$noop", "<<<<"] as const,
+				(payload: unknown, noop: unknown, self: unknown) =>
+					reduceAttachReviewItemFromOutput(payload, self) ?? noop,
+			],
+		},
+		attachActivitySummaryFromOutput: {
+			to: [
+				"<< activitySummaries",
+				{
+					method: "at_end",
+				},
+			],
+			fn: [
+				["$noop", "<<<<"] as const,
+				(payload: unknown, noop: unknown, self: unknown) =>
+					reduceAttachActivitySummaryFromOutput(payload, self) ?? noop,
 			],
 		},
 	},
