@@ -14,6 +14,7 @@ type MiniCutDebugBridge = {
 	getActiveProjectPrimaryTracks: () => unknown;
 	getSelectionState: () => unknown;
 	getActiveProjectDetails: () => unknown;
+	getReviewDebugState: () => unknown;
 	getRuntimeMessages: () => unknown;
 	dumpWorkerState: () => Promise<unknown>;
 	receiveCrdtTransportMessageTesting: (message: unknown) => void;
@@ -152,6 +153,33 @@ export const installMiniCutDebugBridgeTesting = (
 	const getActiveProjectScope = () => getActiveProjectScopeTesting(harness);
 	const waitForRuntimeSettled = () =>
 		harness.pageRuntime?.waitForRuntimeSettled?.() ?? Promise.resolve();
+	const readAttrs = (
+		scope: ReactSyncScopeHandle | null | undefined,
+		names: string[],
+	): Record<string, unknown> => {
+		if (!scope || !harness.pageRuntime) {
+			return {};
+		}
+		return harness.pageRuntime.readAttrs(scope, names) as Record<string, unknown>;
+	};
+	const readMany = (
+		scope: ReactSyncScopeHandle | null | undefined,
+		relName: string,
+	): readonly ReactSyncScopeHandle[] => {
+		if (!scope || !harness.pageRuntime) {
+			return [];
+		}
+		return harness.pageRuntime.readMany(scope, relName);
+	};
+	const readOne = (
+		scope: ReactSyncScopeHandle | null | undefined,
+		relName: string,
+	): ReactSyncScopeHandle | null => {
+		if (!scope || !harness.pageRuntime) {
+			return null;
+		}
+		return harness.pageRuntime.readOne(scope, relName);
+	};
 	const syncKey = (name: string): string | number => {
 		const graph = harness.pageRuntime?.debugDumpGraph?.() as {
 			dict?: readonly (string | undefined)[];
@@ -640,6 +668,88 @@ export const installMiniCutDebugBridgeTesting = (
 						: null,
 				tracks,
 				resources,
+			};
+		},
+		getReviewDebugState: () => {
+			const runtime = harness.pageRuntime;
+			const sessionRoot = runtime?.getRootScope() ?? null;
+			const pioneer = readOne(sessionRoot, "pioneer");
+			const activeProject = getActiveProjectScope();
+			const reviewItems = readMany(pioneer, "reviewItem").map((scope) => ({
+				nodeId: scope._nodeId ?? null,
+				attrs: readAttrs(scope, [
+					"reviewItemId",
+					"conflictId",
+					"projectId",
+					"kind",
+					"status",
+					"title",
+					"reviewItemSnapshot",
+				]),
+			}));
+			const reviewSessions = readMany(pioneer, "reviewSession").map((scope) => ({
+				nodeId: scope._nodeId ?? null,
+				attrs: readAttrs(scope, [
+					"reviewSessionId",
+					"projectId",
+					"openItemCount",
+					"selectedReviewItemId",
+					"reviewSessionSnapshot",
+				]),
+				itemIds: readMany(scope, "items").map((item) => item._nodeId ?? null),
+			}));
+			const activeProjectReviewSessions = readMany(
+				activeProject,
+				"reviewSessions",
+			).map((scope) => ({
+				nodeId: scope._nodeId ?? null,
+				attrs: readAttrs(scope, [
+					"reviewSessionId",
+					"projectId",
+					"openItemCount",
+					"selectedReviewItemId",
+					"reviewSessionSnapshot",
+				]),
+				itemIds: readMany(scope, "items").map((item) => item._nodeId ?? null),
+			}));
+			const selectedClip = readOne(sessionRoot, "selectedClip");
+			return {
+				role: debug.getRole(),
+				peerId: debug.getPeerId(),
+				sessionRoot: {
+					nodeId: sessionRoot?._nodeId ?? null,
+					attrs: readAttrs(sessionRoot, [
+						"activeProjectReviewSnapshot",
+						"selectedEntityId",
+						"selectedClipSummary",
+					]),
+					activeProjectId: activeProject?._nodeId ?? null,
+					pioneerId: pioneer?._nodeId ?? null,
+					selectedClipId: selectedClip?._nodeId ?? null,
+				},
+				activeProject: activeProject
+					? {
+							nodeId: activeProject._nodeId ?? null,
+							attrs: readAttrs(activeProject, [
+								"title",
+								"$meta$model$crdt$open_conflicts_count",
+								"$meta$model$crdt$last_conflict_id",
+								"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+								"$meta$aggregates$crdt$clipTiming$last_conflict_id",
+							]),
+							reviewSessionIds: activeProjectReviewSessions.map(
+								(session) => session.nodeId,
+							),
+						}
+					: null,
+				appRoot: {
+					nodeId: pioneer?._nodeId ?? null,
+					reviewItemCount: reviewItems.length,
+					reviewSessionCount: reviewSessions.length,
+				},
+				reviewItems,
+				reviewSessions,
+				activeProjectReviewSessions,
 			};
 		},
 		getRuntimeMessages: () => harness.pageRuntime?.debugMessages?.() ?? [],

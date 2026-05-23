@@ -61,6 +61,7 @@ export const readP2PDeepDebugState = async (page: Page): Promise<unknown> =>
 				isRuntimeReady?: () => boolean
 				dumpGraphSummary?: () => unknown
 				dumpProjectState?: () => unknown
+				getReviewDebugState?: () => unknown
 				dumpWorkerState?: () => Promise<unknown>
 				getRuntimeMessages?: () => unknown[]
 			}
@@ -87,6 +88,7 @@ export const readP2PDeepDebugState = async (page: Page): Promise<unknown> =>
 			runtimeReady: debug.isRuntimeReady?.(),
 			graphSummary: debug.dumpGraphSummary?.(),
 			projectState: debug.dumpProjectState?.(),
+			reviewDebugState: debug.getReviewDebugState?.(),
 			runtimeMessages: debug.getRuntimeMessages?.() ?? [],
 			workerState,
 			p2pTrace: (globalThis as typeof globalThis & {
