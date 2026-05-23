@@ -76,6 +76,75 @@ describe("MiniCut p2p review projection", () => {
 		}
 	});
 
+	it("resolves a natural timing conflict through the product action", async () => {
+		const { pair, clipA } = await createPairWithClip(
+			"room-review-p2p-timing-resolve",
+		);
+		try {
+			pair.partition();
+			await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
+			await pair.b.dispatch(
+				(await pair.b.queryVideoClips())[0],
+				"trim",
+				{ edge: "end", delta: -2 },
+			);
+			pair.heal();
+			await pair.waitForConvergence();
+
+			const graph = await waitForProjectReviewGraph(
+				pair.a.ctx,
+				pair.a.project,
+				(snapshot) =>
+					snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
+			);
+			const item = graph.items.find(
+				(entry) => entry.attrs.kind === "clip_timing",
+			);
+			const conflictId = item?.attrs.conflictId;
+			if (typeof conflictId !== "string") {
+				throw new Error("Expected materialized timing conflict id");
+			}
+
+			await pair.a.dispatch(
+				clipA,
+				"resolveClipTimingConflict",
+				{
+					conflict_id: conflictId,
+					start: 0,
+					in: 0,
+					duration: 3,
+				},
+				{
+					crdt_resolution_attempt: {
+						conflict_id: conflictId,
+						aggregate: "clipTiming",
+						model_id: clipA._node_id,
+						model_name: "clip",
+					},
+				},
+			);
+			await pair.waitForConvergence();
+
+			expect(await pair.a.ctx.queryAttr(clipA, "duration")).toBe(3);
+			expect(
+				Number(
+					await pair.a.ctx.queryAttr(
+						clipA,
+						"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+					),
+				),
+			).toBe(0);
+			expect(
+				pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.({
+					status: "open",
+					aggregate: "clipTiming",
+				}) ?? [],
+			).toEqual([]);
+		} finally {
+			pair.close();
+		}
+	});
+
 	it("materializes activity summaries from natural p2p sync without conflicts", async () => {
 		const pair = await createCrdtWorkerPair({
 			roomId: "room-review-p2p-sync-activity",
