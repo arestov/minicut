@@ -6,6 +6,7 @@ import {
 	reduceSelectReviewItem,
 } from "./actions";
 import { clipTimingConflictFixture } from "../../dkt/review/testHarness/fixtures/clipTimingConflict";
+import { danglingResourceConflictFixture } from "../../dkt/review/testHarness/fixtures/danglingResourceConflict";
 import { syncBatchFixture } from "../../dkt/review/testHarness/fixtures/syncBatch";
 
 describe("AppRoot review actions", () => {
@@ -54,6 +55,39 @@ describe("AppRoot review actions", () => {
 							reviewItemId: "review:conflict:clip-timing",
 							kind: "clip_timing",
 							status: "open",
+						},
+					},
+				],
+			},
+		});
+	});
+
+	it("materializes every lifecycle conflict into the review session queue", () => {
+		expect(
+			reduceHandleCRDTConflict(
+				{
+					opened: [clipTimingConflictFixture],
+					updated: [],
+					acknowledged: [
+						{ ...danglingResourceConflictFixture, status: "acknowledged" },
+					],
+					resolved: [{ ...clipTimingConflictFixture, status: "resolved" }],
+				},
+				"project:1",
+			),
+		).toMatchObject({
+			rels: {
+				items: [
+					{
+						attrs: {
+							reviewItemId: "review:conflict:dangling-resource",
+							status: "acknowledged",
+						},
+					},
+					{
+						attrs: {
+							reviewItemId: "review:conflict:clip-timing",
+							status: "resolved",
 						},
 					},
 				],

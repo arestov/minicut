@@ -1,6 +1,7 @@
 import { materializeCRDTConflictReviewItem } from "../../dkt/review/materializeCRDTConflictReviewItem";
 import { materializeCRDTSyncSummary } from "../../dkt/review/materializeCRDTSyncSummary";
 import type {
+	CrdtConflictLifecyclePayload,
 	CrdtConflictRecord,
 	CrdtSyncPayload,
 	MiniCutActivitySummary,
@@ -91,6 +92,53 @@ export const reduceCreateReviewSessionWithItem = (
 		rels: {
 			items: [reviewItemCreationFromItem(item)],
 		},
+	};
+};
+
+const lifecycleRecords = (payload: unknown): CrdtConflictRecord[] => {
+	const value = asObject<CrdtConflictLifecyclePayload>(payload);
+	if (!value) {
+		return [];
+	}
+	return [
+		...(Array.isArray(value.opened) ? value.opened : []),
+		...(Array.isArray(value.updated) ? value.updated : []),
+		...(Array.isArray(value.acknowledged) ? value.acknowledged : []),
+		...(Array.isArray(value.resolved) ? value.resolved : []),
+	];
+};
+
+export const reduceCreateReviewSessionWithLifecycleItems = (
+	payload: unknown,
+	projectIdHint: unknown,
+) => {
+	const value = asObject<{ projectId?: unknown }>(payload);
+	const projectId = asString(value?.projectId) ?? asString(projectIdHint);
+	const records = lifecycleRecords(payload);
+	if (!projectId || records.length === 0) {
+		return reduceCreateReviewSessionWithItem(payload, projectIdHint);
+	}
+	const itemsById = new Map<string, ReturnType<typeof reviewItemCreationFromItem>>();
+	for (const conflict of records) {
+		if (!asString(conflict.conflict_id)) {
+			continue;
+		}
+		const item = materializeCRDTConflictReviewItem({ conflict, projectId });
+		itemsById.delete(item.id);
+		itemsById.set(item.id, reviewItemCreationFromItem(item));
+	}
+	const items = [...itemsById.values()];
+	if (items.length === 0) {
+		return null;
+	}
+	const selectedReviewItemId = items[0]?.attrs.reviewItemId;
+	return {
+		attrs: {
+			...reviewSessionAttrsForProject(projectId),
+			selectedReviewItemId:
+				typeof selectedReviewItemId === "string" ? selectedReviewItemId : null,
+		},
+		rels: { items },
 	};
 };
 

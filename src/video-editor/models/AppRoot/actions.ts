@@ -5,7 +5,7 @@ import { reduceCreateReviewItem, reduceMaterializeReviewItemFromConflict } from 
 import {
 	reduceCreateReviewSession,
 	reduceCreateReviewSessionWithActivitySummary,
-	reduceCreateReviewSessionWithItem,
+	reduceCreateReviewSessionWithLifecycleItems,
 } from "../ReviewSession/actions";
 import { defaultTextBox, defaultTextStyle } from "../Text/defaults";
 import { numberOr, numberOrNull, objectOr, stringOr } from "../valueGuards";
@@ -206,37 +206,11 @@ export const reduceCreateReviewSessionModel = (
 export const reduceCreateActivitySummaryModel = (payload: unknown) =>
 	reduceCreateActivitySummary(payload);
 
-const firstLifecycleConflict = (payload: unknown): unknown => {
-	const value =
-		payload && typeof payload === "object"
-			? (payload as {
-					opened?: unknown;
-					updated?: unknown;
-					acknowledged?: unknown;
-					resolved?: unknown;
-					conflict?: unknown;
-				})
-			: null;
-	if (value?.conflict) {
-		return value.conflict;
-	}
-	for (const key of ["opened", "updated", "acknowledged", "resolved"] as const) {
-		const list = value?.[key];
-		if (Array.isArray(list) && list.length > 0) {
-			return list[0];
-		}
-	}
-	return payload;
-};
-
 export const reduceHandleCRDTConflict = (
 	payload: unknown,
 	activeProjectHint?: unknown,
 ) =>
-	reduceCreateReviewSessionWithItem(
-		{ conflict: firstLifecycleConflict(payload) },
-		activeProjectHint,
-	);
+	reduceCreateReviewSessionWithLifecycleItems(payload, activeProjectHint);
 
 export const reduceHandleCRDTSync = (
 	payload: unknown,
