@@ -224,6 +224,13 @@ const waitReady = async (page, label) => {
 		debugEval(page, () => window.__MINICUT_P2P_DEBUG__?.isRuntimeReady?.() === true),
 	)
 	await assertNoHarnessError(page, label)
+	const workerState = await debugEval(page, async () => window.__MINICUT_P2P_DEBUG__?.dumpWorkerState?.())
+	const peerId = workerState?.workerState?.crdt?.peerId ?? workerState?.crdt?.peerId
+	if (typeof peerId !== 'string' || !peerId.startsWith('minicut-browser:')) {
+		throw new Error(
+			`${label}: CRDT test harness transport is not enabled; start Vite with VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS=1`,
+		)
+	}
 }
 
 const importAndAddFixture = async (page) => {
