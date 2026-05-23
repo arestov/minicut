@@ -28,21 +28,21 @@ describe("inspectReviewGraph", () => {
 				attrs: {
 					projectId: "project:inspect",
 					selectedReviewItemId: "review:conflict:clip-timing",
-					openItemCount: 1,
+					openItemCount: 0,
 				},
-				items: [
-					expect.objectContaining({
-						modelName: "review_item",
-						attrs: expect.objectContaining({
-							reviewItemId: "review:conflict:clip-timing",
-							conflictId: "conflict:clip-timing",
-							kind: "clip_timing",
-							status: "open",
-						}),
-					}),
-				],
+				items: [],
 			});
-			expect(graph.rootReviewItems).toHaveLength(1);
+			expect(graph.rootReviewItems).toEqual([
+				expect.objectContaining({
+					modelName: "review_item",
+					attrs: expect.objectContaining({
+						reviewItemId: "review:conflict:clip-timing",
+						conflictId: "conflict:clip-timing",
+						kind: "clip_timing",
+						status: "open",
+					}),
+				}),
+			]);
 		} finally {
 			await ctx.close();
 		}

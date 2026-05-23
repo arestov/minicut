@@ -59,7 +59,7 @@ const activitySummaryShape = defineShape({
 });
 
 const reviewSessionShape = defineShape({
-	attrs: ["reviewSessionId", "selectedReviewItemId", "openItemCount"],
+	attrs: ["reviewSessionId", "projectId", "selectedReviewItemId", "openItemCount"],
 	many: {
 		items: reviewItemShape,
 		activitySummaries: activitySummaryShape,
@@ -146,7 +146,9 @@ export const miniCutEditorRootShape = defineShape({
 				project: projectShape,
 				clip: clipShape,
 				effect: effectShape,
+				reviewItem: reviewItemShape,
 				reviewSession: reviewSessionShape,
+				activitySummary: activitySummaryShape,
 			},
 		}),
 	},

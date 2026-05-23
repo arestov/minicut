@@ -230,43 +230,31 @@ const appProps = mergeDcl({
 			},
 			fn: [["$noop"] as const, (_payload: unknown, noop: unknown) => noop],
 		},
-		handleCRDTConflict: [
-			{
-				to: {
-					reviewItems: [
-						"<< reviewItem << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: REVIEW_ITEM_CREATION_SHAPE,
-						},
-					],
-					reviewSession: [
-						"<< reviewSession << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
-						},
-					],
-					$output: ["$output"],
-				},
-				fn: [
-					["$noop", "activeProjectHint"] as const,
-					(payload: unknown, noop: unknown, activeProjectHint: unknown) =>
-						reduceHandleCRDTConflictGraph(payload, activeProjectHint) ?? noop,
+		handleCRDTConflict: {
+			to: {
+				reviewItems: [
+					"<< reviewItem << #",
+					{
+						method: "at_end",
+						can_create: true,
+						creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+					},
+				],
+				reviewSession: [
+					"<< reviewSession << #",
+					{
+						method: "at_end",
+						can_create: true,
+						creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+					},
 				],
 			},
-			{
-				to: [
-					"<< reviewSession",
-					{ action: "attachReviewItemFromOutput", sub_flow: true },
-				],
-				fn: [["<<<<"] as const, (payload: unknown) => payload],
-			},
-		],
+			fn: [
+				["$noop", "activeProjectHint"] as const,
+				(payload: unknown, noop: unknown, activeProjectHint: unknown) =>
+					reduceHandleCRDTConflictGraph(payload, activeProjectHint) ?? noop,
+			],
+		},
 		setActiveProjectHint: {
 			to: {
 				activeProjectHint: ["activeProjectHint"],

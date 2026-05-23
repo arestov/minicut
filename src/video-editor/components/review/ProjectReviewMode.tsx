@@ -17,6 +17,7 @@ import { ReviewPanel } from "./ReviewPanel";
 
 type ReviewSessionSnapshot = {
 	id: string;
+	projectId: string;
 	selectedReviewItemId: string | null;
 	items: MiniCutReviewItem[];
 	activitySummaries: MiniCutActivitySummary[];
@@ -65,32 +66,6 @@ const useRuntimeMany = (
 		() => (scope ? (runtime.readMany(scope, relName) as ReactSyncScopeHandle[]) : []),
 	);
 };
-
-const reviewItemFromObservedConflict = ({
-	conflictId,
-	clipId,
-	projectId,
-}: ObservedClipConflict): MiniCutReviewItem => ({
-	id: `review:${conflictId}`,
-	conflictId,
-	projectId,
-	kind: "clip_timing",
-	status: "open",
-	title: "Clip timing conflict",
-	affectedObjects: [{ type: "clip", id: clipId }],
-	preview: {
-		type: "clip_timing",
-		conflictId,
-		payload: null,
-		details: null,
-		variants: null,
-	},
-	availableActions: [
-		"resolveClipTimingConflict",
-		"parkIncomingVariantOnReviewTrack",
-	],
-	source: { conflictId },
-});
 
 const ClipCrdtReviewReader = ({
 	scopeId,
@@ -181,10 +156,8 @@ const ActiveTrackCrdtReviewProjectionInner = ({
 
 const ProjectCrdtReviewProjectionBridge = ({
 	appRootScope,
-	onObservedConflict,
 }: {
 	appRootScope: ReactSyncScopeHandle;
-	onObservedConflict: (conflict: ObservedClipConflict) => void;
 }) => {
 	const runtime = useReactScopeRuntime();
 	const sessionScope = useScope();
@@ -221,7 +194,6 @@ const ProjectCrdtReviewProjectionBridge = ({
 							return;
 						}
 						projectedConflictIds.current.add(conflictId);
-						onObservedConflict({ conflictId, clipId, projectId: activeProjectId });
 						runtime.dispatchAction(
 							"handleCRDTConflict",
 							{
@@ -258,7 +230,6 @@ const ProjectCrdtReviewProjectionBridge = ({
 						return;
 					}
 					projectedConflictIds.current.add(conflictId);
-					onObservedConflict({ conflictId, clipId, projectId: activeProjectId });
 					runtime.dispatchAction(
 						"handleCRDTConflict",
 						{
@@ -419,10 +390,11 @@ const ReviewSessionReaderInner = ({
 	scopeId: string;
 	onRead: (snapshot: ReviewSessionSnapshot) => void;
 }) => {
-	const attrs = useAttrs(["reviewSessionId", "selectedReviewItemId"]) as Record<
-		string,
-		unknown
-	>;
+	const attrs = useAttrs([
+		"reviewSessionId",
+		"projectId",
+		"selectedReviewItemId",
+	]) as Record<string, unknown>;
 	const scope = useScope();
 	const itemScopes = useRuntimeMany(scope, "items");
 	const activityScopes = useRuntimeMany(scope, "activitySummaries");
@@ -462,6 +434,7 @@ const ReviewSessionReaderInner = ({
 	const snapshot = useMemo<ReviewSessionSnapshot>(
 		() => ({
 			id: asString(attrs.reviewSessionId) ?? scopeId,
+			projectId: asString(attrs.projectId) ?? "",
 			selectedReviewItemId: asString(attrs.selectedReviewItemId),
 			items: itemScopes.flatMap((scope) => itemsByScope[scope._nodeId] ?? []),
 			activitySummaries: activityScopes.flatMap(
@@ -514,35 +487,56 @@ const ReviewSessionReaderInner = ({
 	);
 };
 
-const AppRootReviewMode = ({
-	projectedItems,
-}: {
-	projectedItems: MiniCutReviewItem[];
-}) => {
+const AppRootReviewMode = () => {
 	const runtime = useReactScopeRuntime();
 	const appRootScope = useScope();
 	const sessionScopes = useRuntimeMany(appRootScope, "reviewSession");
+	const rootItemScopes = useRuntimeMany(appRootScope, "reviewItem");
 	const [isOpen, setIsOpen] = useState(false);
 	const [sessionsById, setSessionsById] = useState<
 		Record<string, ReviewSessionSnapshot>
 	>({});
+	const [rootItemsByScope, setRootItemsByScope] = useState<
+		Record<string, MiniCutReviewItem>
+	>({});
+	const rootItemScopeIds = useMemo(
+		() => new Set(rootItemScopes.map((scope) => scope._nodeId)),
+		[rootItemScopes],
+	);
+	useEffect(() => {
+		setRootItemsByScope((current) =>
+			Object.fromEntries(
+				Object.entries(current).filter(([scopeId]) =>
+					rootItemScopeIds.has(scopeId),
+				),
+			),
+		);
+	}, [rootItemScopeIds]);
+	const rootItems = useMemo(
+		() =>
+			rootItemScopes.flatMap((scope) => rootItemsByScope[scope._nodeId] ?? []),
+		[rootItemScopes, rootItemsByScope],
+	);
 	const sessions = useMemo(
 		() =>
 			sessionScopes
 				.map((scope) => sessionsById[scope._nodeId])
-				.filter((session): session is ReviewSessionSnapshot => Boolean(session)),
-		[sessionScopes, sessionsById],
+				.filter((session): session is ReviewSessionSnapshot => Boolean(session))
+				.map((session) => ({
+					...session,
+					items:
+						session.items.length > 0
+							? session.items
+							: rootItems.filter((item) =>
+									session.selectedReviewItemId
+										? item.id === session.selectedReviewItemId
+										: item.projectId === session.projectId,
+								),
+				})),
+		[sessionScopes, sessionsById, rootItems],
 	);
 	const currentSession =
 		sessions.find((session) => session.items.some((item) => item.status !== "resolved")) ??
-		(projectedItems.length > 0
-			? {
-					id: "projected-crdt-review",
-					selectedReviewItemId: projectedItems[0]?.id ?? null,
-					items: projectedItems,
-					activitySummaries: [],
-				}
-			: null) ??
 		sessions[0] ??
 		null;
 	const openCount =
@@ -554,7 +548,7 @@ const AppRootReviewMode = ({
 		}
 	}, [openCount]);
 
-	if (sessionScopes.length === 0 && projectedItems.length === 0 && !currentSession) {
+	if (sessionScopes.length === 0 && rootItemScopes.length === 0 && !currentSession) {
 		return null;
 	}
 
@@ -573,13 +567,27 @@ const AppRootReviewMode = ({
 					}
 				/>
 			))}
+			{rootItemScopes.map((scope) => (
+				<ReviewItemReader
+					key={scope._nodeId}
+					scope={scope}
+					onRead={(itemScopeId, item) =>
+						setRootItemsByScope((current) =>
+							sameJson(current[itemScopeId], item)
+								? current
+								: { ...current, [itemScopeId]: item },
+						)
+					}
+				/>
+			))}
 			<button
 				type="button"
 				className="ve-project-review-trigger"
+				aria-label={openCount > 0 ? `Review ${openCount}` : "Review"}
 				onClick={() => setIsOpen(true)}
 			>
 				Review
-				{openCount > 0 ? <span>{openCount}</span> : null}
+				{openCount > 0 ? <span> {openCount}</span> : null}
 			</button>
 			{isOpen && currentSession ? (
 				<div className="ve-project-review-drawer">
@@ -618,58 +626,14 @@ const AppRootReviewMode = ({
 
 export const ProjectReviewMode = () => {
 	const appRootScope = useRootOne("pioneer");
-	const [projectedItemsByConflict, setProjectedItemsByConflict] = useState<
-		Record<string, MiniCutReviewItem>
-	>({});
-	const projectedItems = useMemo(
-		() => Object.values(projectedItemsByConflict),
-		[projectedItemsByConflict],
-	);
-	useEffect(() => {
-		const handleReviewItems = (event: Event) => {
-			const items = (event as CustomEvent<{ items?: unknown }>).detail?.items;
-			if (!Array.isArray(items)) {
-				return;
-			}
-			setProjectedItemsByConflict((current) => {
-				let next = current;
-				for (const item of items as MiniCutReviewItem[]) {
-					if (!item?.conflictId || next[item.conflictId]) {
-						continue;
-					}
-					next =
-						next === current
-							? { ...current, [item.conflictId]: item }
-							: { ...next, [item.conflictId]: item };
-				}
-				return next;
-			});
-		};
-		window.addEventListener("minicut:crdt-review-items", handleReviewItems);
-		return () =>
-			window.removeEventListener("minicut:crdt-review-items", handleReviewItems);
-	}, []);
 	if (!appRootScope) {
 		return null;
 	}
 	return (
 		<>
-			<ProjectCrdtReviewProjectionBridge
-				appRootScope={appRootScope}
-				onObservedConflict={(conflict) =>
-					setProjectedItemsByConflict((current) => {
-						if (current[conflict.conflictId]) {
-							return current;
-						}
-						return {
-							...current,
-							[conflict.conflictId]: reviewItemFromObservedConflict(conflict),
-						};
-					})
-				}
-			/>
+			<ProjectCrdtReviewProjectionBridge appRootScope={appRootScope} />
 			<ScopeContext.Provider value={appRootScope}>
-				<AppRootReviewMode projectedItems={projectedItems} />
+				<AppRootReviewMode />
 			</ScopeContext.Provider>
 		</>
 	);

@@ -246,26 +246,10 @@ export const reduceHandleCRDTConflictGraph = (
 	if (!session || !Array.isArray(items) || items.length === 0) {
 		return null;
 	}
-	const refs = items.map((item, index) => {
-		const reviewItemId = item.attrs.reviewItemId;
-		return typeof reviewItemId === "string"
-			? `reviewItem:${reviewItemId}`
-			: `reviewItem:${index}`;
-	});
 	return {
-		reviewItems: items.map((item, index) => ({
-			...item,
-			hold_ref_id: refs[index],
-		})),
+		reviewItems: items,
 		reviewSession: {
 			attrs: session.attrs,
-			hold_ref_id: "reviewSession",
-		},
-		$output: {
-			rels: {
-				reviewSession: { use_ref_id: "reviewSession" },
-				reviewItem: { use_ref_id: refs[0] },
-			},
 		},
 	};
 };
