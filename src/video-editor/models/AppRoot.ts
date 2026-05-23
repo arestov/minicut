@@ -249,7 +249,11 @@ const appProps = mergeDcl({
 					],
 					$output: ["$output"],
 				},
-				fn: [["activeProjectHint"] as const, reduceHandleCRDTSyncGraph],
+				fn: [
+					["$noop", "activeProjectHint"] as const,
+					(payload: unknown, noop: unknown, activeProjectHint: unknown) =>
+						reduceHandleCRDTSyncGraph(payload, activeProjectHint) ?? noop,
+				],
 			},
 			{
 				to: ["*"],
@@ -283,7 +287,11 @@ const appProps = mergeDcl({
 					],
 					$output: ["$output"],
 				},
-				fn: [["activeProjectHint"] as const, reduceHandleCRDTConflictGraph],
+				fn: [
+					["$noop", "activeProjectHint"] as const,
+					(payload: unknown, noop: unknown, activeProjectHint: unknown) =>
+						reduceHandleCRDTConflictGraph(payload, activeProjectHint) ?? noop,
+				],
 			},
 			{
 				to: ["*"],
