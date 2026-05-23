@@ -28,6 +28,44 @@ const conflictShape = defineShape({
 	attrs: ["id", "kind", "scope", "summary", "decision"],
 });
 
+const reviewItemShape = defineShape({
+	attrs: [
+		"reviewItemId",
+		"conflictId",
+		"projectId",
+		"kind",
+		"status",
+		"title",
+		"affectedObjects",
+		"preview",
+		"availableActions",
+		"source",
+	],
+});
+
+const activitySummaryShape = defineShape({
+	attrs: [
+		"activitySummaryId",
+		"projectId",
+		"batchId",
+		"originPeerId",
+		"title",
+		"created",
+		"updated",
+		"deleted",
+		"rootFrames",
+		"happenedAt",
+	],
+});
+
+const reviewSessionShape = defineShape({
+	attrs: ["reviewSessionId", "selectedReviewItemId", "openItemCount"],
+	many: {
+		items: reviewItemShape,
+		activitySummaries: activitySummaryShape,
+	},
+});
+
 const clipShape = defineShape({
 	attrs: [
 		"name",
@@ -106,7 +144,9 @@ export const miniCutEditorRootShape = defineShape({
 		pioneer: defineShape({
 			many: {
 				project: projectShape,
+				clip: clipShape,
 				effect: effectShape,
+				reviewSession: reviewSessionShape,
 			},
 		}),
 	},

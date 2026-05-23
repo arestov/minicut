@@ -296,8 +296,13 @@ test('p2p real CRDT timing conflict renders conflict UX without fake injection',
 			setCrdtPartition(second.page, false),
 		])
 
-		await expect(first.page.locator('.clip-conflict-badge').first()).toBeVisible({ timeout: 30_000 })
-		await expect(second.page.locator('.clip-conflict-badge').first()).toBeVisible({ timeout: 30_000 })
+		await expect(first.page.getByRole('button', { name: /Review\s+1/ })).toBeVisible({ timeout: 30_000 })
+		await expect(second.page.getByRole('button', { name: /Review\s+1/ })).toBeVisible({ timeout: 30_000 })
+		await first.page.getByRole('button', { name: /Review\s+1/ }).click()
+		const projectReview = first.page.getByRole('region', { name: 'Project review' })
+		await expect(projectReview).toBeVisible({ timeout: 10_000 })
+		await expect(projectReview.getByText('clip_timing')).toBeVisible()
+		await expect(first.page.locator('.ve-clip-conflict-popover')).toHaveCount(0)
 		await expectRealConflictTrace(first.page, second.page)
 	} catch (error) {
 		const artifactPath = await writeP2PDebugArtifacts('real-crdt-conflict-timeout', first.page, second.page)

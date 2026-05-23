@@ -17,6 +17,7 @@ import { Inspector } from "./Inspector";
 import { MediaBin } from "./MediaBin";
 import { createPreviewMediaElementRegistry } from "./mediaElementRegistry";
 import { PreviewPanel } from "./PreviewPanel";
+import { ProjectReviewMode } from "./review/ProjectReviewMode";
 import { TimelineView } from "./TimelineView";
 import { Toolbar } from "./Toolbar";
 
@@ -196,6 +197,7 @@ export const VideoEditorApp = () => {
 		<div className="ve-shell">
 			<PlaybackLoop />
 			{showCrdtDebugHarnessPanel ? <CrdtDebugPanel /> : null}
+			<ProjectReviewMode />
 			<Toolbar />
 			<main className="ve-main">
 				<div

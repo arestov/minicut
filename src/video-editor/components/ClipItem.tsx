@@ -421,6 +421,16 @@ export const ClipItem = ({
 			),
 		[conflictItems, clipId],
 	);
+	useEffect(() => {
+		if (reviewItems.length === 0) {
+			return;
+		}
+		window.dispatchEvent(
+			new CustomEvent("minicut:crdt-review-items", {
+				detail: { items: reviewItems },
+			}),
+		);
+	}, [reviewItems]);
 	const width = Math.max(36, duration * timelineZoom);
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx);
 	const selectClip = (): void => {
