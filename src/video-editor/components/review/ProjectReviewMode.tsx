@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ScopeContext } from "../../../dkt-react-sync/context/ScopeContext";
 import { useAttrs } from "../../../dkt-react-sync/hooks/useAttrs";
 import { useReactScopeRuntime } from "../../../dkt-react-sync/hooks/useReactScopeRuntime";
-import { useRootOne } from "../../../dkt-react-sync/hooks/useRootOne";
 import { useScope } from "../../../dkt-react-sync/hooks/useScope";
 import type { ReactSyncScopeHandle } from "../../../dkt-react-sync/scope/ScopeHandle";
 import type {
@@ -284,50 +283,20 @@ const ReviewSessionReaderInner = ({
 	);
 };
 
-const AppRootReviewMode = () => {
+const ProjectReviewModeInner = () => {
 	const runtime = useReactScopeRuntime();
-	const appRootScope = useScope();
-	const sessionScopes = useRuntimeMany(appRootScope, "reviewSession");
-	const rootItemScopes = useRuntimeMany(appRootScope, "reviewItem");
+	const projectScope = useScope();
+	const sessionScopes = useRuntimeMany(projectScope, "reviewSessions");
 	const [isOpen, setIsOpen] = useState(false);
 	const [sessionsById, setSessionsById] = useState<
 		Record<string, ReviewSessionSnapshot>
 	>({});
-	const [rootItemsByScope, setRootItemsByScope] = useState<
-		Record<string, MiniCutReviewItem>
-	>({});
-	const rootItemScopeIds = useMemo(
-		() => new Set(rootItemScopes.map((scope) => scope._nodeId)),
-		[rootItemScopes],
-	);
-	useEffect(() => {
-		setRootItemsByScope((current) =>
-			Object.fromEntries(
-				Object.entries(current).filter(([scopeId]) =>
-					rootItemScopeIds.has(scopeId),
-				),
-			),
-		);
-	}, [rootItemScopeIds]);
-	const rootItems = useMemo(
-		() =>
-			rootItemScopes.flatMap((scope) => rootItemsByScope[scope._nodeId] ?? []),
-		[rootItemScopes, rootItemsByScope],
-	);
 	const sessions = useMemo(
 		() =>
 			sessionScopes
 				.map((scope) => sessionsById[scope._nodeId])
-				.filter((session): session is ReviewSessionSnapshot => Boolean(session))
-				.map((session) => ({
-					...session,
-					items: rootItems.filter((item) =>
-						session.selectedReviewItemId
-							? item.id === session.selectedReviewItemId
-							: item.projectId === session.projectId,
-					),
-				})),
-		[sessionScopes, sessionsById, rootItems],
+				.filter((session): session is ReviewSessionSnapshot => Boolean(session)),
+		[sessionScopes, sessionsById],
 	);
 	const currentSession =
 		sessions.find((session) => session.items.some((item) => item.status !== "resolved")) ??
@@ -342,7 +311,11 @@ const AppRootReviewMode = () => {
 		}
 	}, [openCount]);
 
-	if (sessionScopes.length === 0 && rootItemScopes.length === 0 && !currentSession) {
+	if (
+		!currentSession ||
+		(currentSession.items.length === 0 &&
+			currentSession.activitySummaries.length === 0)
+	) {
 		return null;
 	}
 
@@ -357,19 +330,6 @@ const AppRootReviewMode = () => {
 							sameJson(current[scope._nodeId], snapshot)
 								? current
 								: { ...current, [scope._nodeId]: snapshot },
-						)
-					}
-				/>
-			))}
-			{rootItemScopes.map((scope) => (
-				<ReviewItemReader
-					key={scope._nodeId}
-					scope={scope}
-					onRead={(itemScopeId, item) =>
-						setRootItemsByScope((current) =>
-							sameJson(current[itemScopeId], item)
-								? current
-								: { ...current, [itemScopeId]: item },
 						)
 					}
 				/>
@@ -419,13 +379,24 @@ const AppRootReviewMode = () => {
 };
 
 export const ProjectReviewMode = () => {
-	const appRootScope = useRootOne("pioneer");
-	if (!appRootScope) {
+	const runtime = useReactScopeRuntime();
+	const sessionScope = useScope();
+	const projectScope = useSyncExternalStore(
+		(listener) =>
+			sessionScope
+				? runtime.subscribeOne(sessionScope, "activeProject", listener)
+				: () => {},
+		() =>
+			sessionScope ? runtime.readOne(sessionScope, "activeProject") : null,
+		() =>
+			sessionScope ? runtime.readOne(sessionScope, "activeProject") : null,
+	);
+	if (!projectScope) {
 		return null;
 	}
 	return (
-		<ScopeContext.Provider value={appRootScope}>
-			<AppRootReviewMode />
+		<ScopeContext.Provider value={projectScope}>
+			<ProjectReviewModeInner />
 		</ScopeContext.Provider>
 	);
 };
