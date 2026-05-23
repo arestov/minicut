@@ -145,6 +145,30 @@ describe("MiniCut p2p review projection", () => {
 		}
 	});
 
+	it("keeps natural conflict review state out of clip-local conflict relations", async () => {
+		const { pair, clipA, clipB } = await createPairWithClip(
+			"room-review-p2p-no-clip-local-projection",
+		);
+		try {
+			pair.partition();
+			await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
+			await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -2 });
+			pair.heal();
+			await pair.waitForConvergence();
+
+			const graph = await waitForProjectReviewGraph(
+				pair.a.ctx,
+				pair.a.project,
+				(snapshot) => snapshot.items.length > 0,
+			);
+
+			expect(graph.reviewSessions[0]?.items).toHaveLength(1);
+			expect(await pair.a.ctx.queryRel(clipA, "crdtConflicts")).toEqual([]);
+		} finally {
+			pair.close();
+		}
+	});
+
 	it("materializes activity summaries from natural p2p sync without conflicts", async () => {
 		const pair = await createCrdtWorkerPair({
 			roomId: "room-review-p2p-sync-activity",
