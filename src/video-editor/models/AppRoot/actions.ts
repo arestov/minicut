@@ -2,7 +2,11 @@ import { makeCrdtAcknowledgePayload } from "../../dkt/review/crdtReviewCommands"
 import { defaultClipTransform } from "../Clip/actions";
 import { reduceCreateActivitySummary, reduceMaterializeSyncActivitySummary } from "../ActivitySummary/actions";
 import { reduceCreateReviewItem, reduceMaterializeReviewItemFromConflict } from "../ReviewItem/actions";
-import { reduceCreateReviewSession } from "../ReviewSession/actions";
+import {
+	reduceCreateReviewSession,
+	reduceCreateReviewSessionWithActivitySummary,
+	reduceCreateReviewSessionWithItem,
+} from "../ReviewSession/actions";
 import { defaultTextBox, defaultTextStyle } from "../Text/defaults";
 import { numberOr, numberOrNull, objectOr, stringOr } from "../valueGuards";
 
@@ -229,7 +233,7 @@ export const reduceHandleCRDTConflict = (
 	payload: unknown,
 	activeProjectHint?: unknown,
 ) =>
-	reduceMaterializeReviewItemFromConflict(
+	reduceCreateReviewSessionWithItem(
 		{ conflict: firstLifecycleConflict(payload) },
 		activeProjectHint,
 	);
@@ -237,7 +241,7 @@ export const reduceHandleCRDTConflict = (
 export const reduceHandleCRDTSync = (
 	payload: unknown,
 	activeProjectHint?: unknown,
-) => reduceMaterializeSyncActivitySummary(payload, activeProjectHint);
+) => reduceCreateReviewSessionWithActivitySummary(payload, activeProjectHint);
 
 export const reduceSetActiveProjectHint = (payload: unknown) => ({
 	activeProjectHint: typeof payload === "string" && payload ? payload : null,

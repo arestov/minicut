@@ -222,22 +222,22 @@ const appProps = mergeDcl({
 		},
 		handleCRDTSync: {
 			to: [
-				"<< activitySummary << #",
+				"<< reviewSession << #",
 				{
 					method: "at_end",
 					can_create: true,
-					creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
+					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
 				},
 			],
 			fn: [["activeProjectHint"] as const, reduceHandleCRDTSync],
 		},
 		handleCRDTConflict: {
 			to: [
-				"<< reviewItem << #",
+				"<< reviewSession << #",
 				{
 					method: "at_end",
 					can_create: true,
-					creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
 				},
 			],
 			fn: [["activeProjectHint"] as const, reduceHandleCRDTConflict],

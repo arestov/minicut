@@ -12,14 +12,24 @@ describe("AppRoot review actions", () => {
 	it("materializes CRDT sync hooks as activity summary creation payloads", () => {
 		expect(reduceHandleCRDTSync(syncBatchFixture, "project:1")).toMatchObject({
 			attrs: {
-				activitySummaryId: "activity:peer-b:batch:1",
 				projectId: "project:1",
-				batchId: "peer-b:batch:1",
+				reviewSessionId: "review-session:project:1",
+			},
+			rels: {
+				activitySummaries: [
+					{
+						attrs: {
+							activitySummaryId: "activity:peer-b:batch:1",
+							projectId: "project:1",
+							batchId: "peer-b:batch:1",
+						},
+					},
+				],
 			},
 		});
 	});
 
-	it("materializes CRDT conflict lifecycle hooks as ReviewItem creation payloads", () => {
+	it("materializes CRDT conflict lifecycle hooks as ReviewSession item payloads", () => {
 		expect(
 			reduceHandleCRDTConflict(
 				{
@@ -32,9 +42,21 @@ describe("AppRoot review actions", () => {
 			),
 		).toMatchObject({
 			attrs: {
-				reviewItemId: "review:conflict:clip-timing",
-				kind: "clip_timing",
+				projectId: "project:1",
+				reviewSessionId: "review-session:project:1",
 				status: "open",
+				selectedReviewItemId: "review:conflict:clip-timing",
+			},
+			rels: {
+				items: [
+					{
+						attrs: {
+							reviewItemId: "review:conflict:clip-timing",
+							kind: "clip_timing",
+							status: "open",
+						},
+					},
+				],
 			},
 		});
 	});
@@ -59,4 +81,3 @@ describe("AppRoot review actions", () => {
 		});
 	});
 });
-

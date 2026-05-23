@@ -1,3 +1,14 @@
+import { materializeCRDTConflictReviewItem } from "../../dkt/review/materializeCRDTConflictReviewItem";
+import { materializeCRDTSyncSummary } from "../../dkt/review/materializeCRDTSyncSummary";
+import type {
+	CrdtConflictRecord,
+	CrdtSyncPayload,
+	MiniCutActivitySummary,
+	MiniCutReviewItem,
+} from "../../dkt/review/types";
+import { activitySummaryAttrsFromSummary } from "../ActivitySummary/actions";
+import { reviewItemAttrsFromItem } from "../ReviewItem/actions";
+
 const asObject = <Value extends object>(value: unknown): Value | null =>
 	value && typeof value === "object" ? (value as Value) : null;
 
@@ -35,6 +46,73 @@ export const reduceCreateReviewSession = (
 	};
 };
 
+export const reviewSessionAttrsForProject = (projectId: string) => {
+	const now = Date.now();
+	return {
+		reviewSessionId: `review-session:${projectId}`,
+		projectId,
+		status: "open",
+		selectedReviewItemId: null,
+		filters: { status: "unresolved" },
+		openedAt: now,
+		updatedAt: now,
+	};
+};
+
+export const reviewItemCreationFromItem = (item: MiniCutReviewItem) => ({
+	attrs: {
+		...reviewItemAttrsFromItem(item),
+		createdAt: Date.now(),
+	},
+});
+
+export const activitySummaryCreationFromSummary = (
+	summary: MiniCutActivitySummary,
+) => ({
+	attrs: activitySummaryAttrsFromSummary(summary),
+});
+
+export const reduceCreateReviewSessionWithItem = (
+	payload: unknown,
+	projectIdHint: unknown,
+) => {
+	const value = asObject<{ conflict?: unknown; projectId?: unknown }>(payload);
+	const conflict = asObject<CrdtConflictRecord>(value?.conflict ?? payload);
+	const projectId = asString(value?.projectId) ?? asString(projectIdHint);
+	if (!conflict || !asString(conflict.conflict_id) || !projectId) {
+		return null;
+	}
+	const item = materializeCRDTConflictReviewItem({ conflict, projectId });
+	return {
+		attrs: {
+			...reviewSessionAttrsForProject(projectId),
+			selectedReviewItemId: item.id,
+		},
+		rels: {
+			items: [reviewItemCreationFromItem(item)],
+		},
+	};
+};
+
+export const reduceCreateReviewSessionWithActivitySummary = (
+	payload: unknown,
+	projectIdHint: unknown,
+) => {
+	const value = asObject<{ payload?: unknown; projectId?: unknown }>(payload);
+	const syncPayload = asObject<CrdtSyncPayload>(value?.payload ?? payload);
+	const projectId = asString(value?.projectId) ?? asString(projectIdHint);
+	if (!syncPayload || !asString(syncPayload.batch_id) || !projectId) {
+		return null;
+	}
+	const summary = materializeCRDTSyncSummary({ payload: syncPayload, projectId });
+	return {
+		attrs: reviewSessionAttrsForProject(projectId),
+		rels: {
+			activitySummaries: [activitySummaryCreationFromSummary(summary)],
+		},
+	};
+};
+
 export const reduceSelectReviewItem = (payload: unknown) => {
 	const value = asObject<{ reviewItemId?: unknown }>(payload);
 	const reviewItemId = asString(value?.reviewItemId) ?? asString(payload);
@@ -46,4 +124,3 @@ export const reduceSelectReviewItem = (payload: unknown) => {
 		updatedAt: Date.now(),
 	};
 };
-
