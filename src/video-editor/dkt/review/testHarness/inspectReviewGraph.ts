@@ -152,17 +152,24 @@ export const inspectProjectReviewGraph = async (
 	ctx: DktTestContext,
 	project: DktModel,
 ): Promise<ProjectReviewGraphSnapshot> => {
-	const graph = await inspectReviewGraph(ctx, project);
-	const openItemCount = await ctx.queryAttr(project, "reviewOpenItemCount");
+	const graph = await inspectReviewGraph(ctx, ctx.appModel);
+	const projectId = nodeId(project);
+	const items = graph.rootReviewItems.filter(
+		(item) => item.attrs.projectId === projectId,
+	);
+	const activitySummaries = graph.rootActivitySummaries.filter(
+		(summary) => summary.attrs.projectId === projectId,
+	);
+	const reviewSessions = graph.reviewSessions.filter(
+		(session) => session.attrs.projectId === projectId,
+	);
 	return {
 		...graph,
+		reviewSessions,
 		project: await inspectNode(ctx, project, []),
-		items: flattenSessionItems(graph.reviewSessions),
-		activitySummaries: flattenSessionActivitySummaries(graph.reviewSessions),
-		openItemCount:
-			typeof openItemCount === "number" && Number.isFinite(openItemCount)
-				? openItemCount
-				: 0,
+		items,
+		activitySummaries,
+		openItemCount: items.filter((item) => item.attrs.status !== "resolved").length,
 	};
 };
 

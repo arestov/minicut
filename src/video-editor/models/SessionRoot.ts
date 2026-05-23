@@ -8,6 +8,7 @@ import { WORKSPACE_OPEN_STATUS } from "../dkt/runtime/workspaceOpenState";
 import {
 	reducePreviewFrame,
 	reducePreviewStructure,
+	reduceActiveProjectReviewSnapshot,
 	reduceSelectedClip,
 } from "./SessionRoot/comps";
 import { TIMELINE_ZOOM_DEFAULT } from "./sessionZoom";
@@ -255,6 +256,16 @@ export const EditorSessionRoot = model({
 					ordinal: index + 1,
 				};
 			},
+		],
+		activeProjectReviewSnapshot: [
+			"comp",
+			[
+				"< @one:_node_id < activeProject",
+				"< @all:reviewSessionSnapshot < pioneer.reviewSession",
+				"< @all:reviewItemSnapshot < pioneer.reviewItem",
+				"< @all:activitySummarySnapshot < pioneer.activitySummary",
+			] as const,
+			reduceActiveProjectReviewSnapshot,
 		],
 	},
 	effects: {

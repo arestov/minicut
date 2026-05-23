@@ -1,5 +1,61 @@
 import { model } from "dkt/model.js";
+import type {
+	CrdtConflictStatus,
+	MiniCutReviewItem,
+	MiniCutReviewKind,
+	MiniCutReviewObject,
+} from "../dkt/review/types";
 import { reduceSetReviewItem } from "./ReviewItem/actions";
+
+const asString = (value: unknown, fallback = ""): string =>
+	typeof value === "string" && value.length > 0 ? value : fallback;
+
+const asArray = <Value,>(value: unknown): Value[] =>
+	Array.isArray(value) ? (value as Value[]) : [];
+
+const asKind = (value: unknown): MiniCutReviewKind =>
+	value === "clip_timing" ||
+	value === "dangling_resource" ||
+	value === "delete_vs_edit" ||
+	value === "track_order" ||
+	value === "unknown"
+		? value
+		: "unknown";
+
+const asStatus = (value: unknown): CrdtConflictStatus =>
+	value === "acknowledged" || value === "resolved" ? value : "open";
+
+const reduceReviewItemSnapshot = (
+	nodeId: unknown,
+	reviewItemId: unknown,
+	conflictId: unknown,
+	projectId: unknown,
+	kind: unknown,
+	status: unknown,
+	title: unknown,
+	affectedObjects: unknown,
+	preview: unknown,
+	availableActions: unknown,
+	source: unknown,
+): MiniCutReviewItem => {
+	const id = asString(reviewItemId, asString(nodeId, ""));
+	const resolvedConflictId = asString(conflictId, id);
+	return {
+		id,
+		conflictId: resolvedConflictId,
+		projectId: asString(projectId),
+		kind: asKind(kind),
+		status: asStatus(status),
+		title: asString(title, "CRDT conflict"),
+		affectedObjects: asArray<MiniCutReviewObject>(affectedObjects),
+		preview: preview ?? null,
+		availableActions: asArray<string>(availableActions),
+		source:
+			source && typeof source === "object"
+				? (source as MiniCutReviewItem["source"])
+				: { conflictId: resolvedConflictId },
+	};
+};
 
 export const REVIEW_ITEM_CREATION_SHAPE = {
 	attrs: [
@@ -33,6 +89,23 @@ export const ReviewItem = model({
 		source: ["input", null],
 		createdAt: ["input", 0],
 		updatedAt: ["input", 0],
+		reviewItemSnapshot: [
+			"comp",
+			[
+				"_node_id",
+				"reviewItemId",
+				"conflictId",
+				"projectId",
+				"kind",
+				"status",
+				"title",
+				"affectedObjects",
+				"preview",
+				"availableActions",
+				"source",
+			] as const,
+			reduceReviewItemSnapshot,
+		],
 	},
 	actions: {
 		setReviewItem: {

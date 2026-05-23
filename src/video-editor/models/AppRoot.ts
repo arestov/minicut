@@ -10,9 +10,9 @@ import {
 	reduceCreateReviewSessionModel,
 	reduceAcknowledgeReviewItem,
 	reduceHandleCRDTConflict,
+	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceHandleCRDTSyncGraph,
-	reduceRouteCRDTConflictToProjects,
 	resolveReviewProjectIdHint,
 	reduceCreateTextModel,
 	reduceCreateTrackModel,
@@ -309,14 +309,26 @@ const appProps = mergeDcl({
 		},
 		handleCRDTConflict: [
 			{
-				to: [
-					"<< project",
-					{
-						action: "materializeCRDTConflictReview",
-						sub_flow: true,
-						map_values_list_to_target: true,
-					},
-				],
+				to: {
+					reviewItems: [
+						"<< reviewItem << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+						},
+					],
+					reviewSession: [
+						"<< reviewSession << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_use_refs: true,
+							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+						},
+					],
+				},
 				fn: [
 					[
 						"$noop",
@@ -329,12 +341,14 @@ const appProps = mergeDcl({
 						rootProjectId: unknown,
 						projects: unknown,
 					) =>
-						reduceRouteCRDTConflictToProjects(
+						reduceHandleCRDTConflictGraph(
 							payload,
-							noop,
-							rootProjectId,
-							projects,
-						),
+							resolveReviewProjectIdHint(
+								payload,
+								rootProjectId,
+								projects,
+							),
+						) ?? noop,
 				],
 			},
 		],

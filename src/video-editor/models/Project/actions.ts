@@ -366,7 +366,7 @@ export const reduceEnsureProjectReviewSession = (
 			attrs: reviewSessionAttrsForProject(projectId),
 			hold_ref_id: "projectReviewSession",
 		},
-		reviewSessions: { use_ref_id: "projectReviewSession" },
+		reviewSessions: [{ use_ref_id: "projectReviewSession" }],
 		$output: payload,
 	};
 };

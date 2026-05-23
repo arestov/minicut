@@ -1,11 +1,42 @@
 import { model } from "dkt/model.js";
 import { ACTIVITY_SUMMARY_CREATION_SHAPE, ActivitySummary } from "./ActivitySummary";
 import { REVIEW_ITEM_CREATION_SHAPE, ReviewItem } from "./ReviewItem";
+import type {
+	MiniCutActivitySummary,
+	MiniCutReviewItem,
+} from "../dkt/review/types";
 import {
 	reduceAttachActivitySummaryFromOutput,
 	reduceAttachReviewItemFromOutput,
 	reduceSelectReviewItem,
 } from "./ReviewSession/actions";
+
+export type MiniCutReviewSessionSnapshot = {
+	id: string;
+	projectId: string;
+	selectedReviewItemId: string | null;
+	items: MiniCutReviewItem[];
+	activitySummaries: MiniCutActivitySummary[];
+};
+
+const asString = (value: unknown, fallback = ""): string =>
+	typeof value === "string" && value.length > 0 ? value : fallback;
+
+const reduceReviewSessionSnapshot = (
+	nodeId: unknown,
+	reviewSessionId: unknown,
+	projectId: unknown,
+	selectedReviewItemId: unknown,
+): MiniCutReviewSessionSnapshot => ({
+	id: asString(reviewSessionId, asString(nodeId, "")),
+	projectId: asString(projectId),
+	selectedReviewItemId:
+		typeof selectedReviewItemId === "string" && selectedReviewItemId
+			? selectedReviewItemId
+			: null,
+	items: [],
+	activitySummaries: [],
+});
 
 export const REVIEW_SESSION_CREATION_SHAPE = {
 	attrs: [
@@ -40,6 +71,16 @@ export const ReviewSession = model({
 				Array.isArray(statuses)
 					? statuses.filter((status) => status !== "resolved").length
 					: 0,
+		],
+		reviewSessionSnapshot: [
+			"comp",
+			[
+				"_node_id",
+				"reviewSessionId",
+				"projectId",
+				"selectedReviewItemId",
+			] as const,
+			reduceReviewSessionSnapshot,
 		],
 	},
 	rels: {

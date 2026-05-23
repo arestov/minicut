@@ -40,6 +40,7 @@ const reviewItemShape = defineShape({
 		"preview",
 		"availableActions",
 		"source",
+		"reviewItemSnapshot",
 	],
 });
 
@@ -55,11 +56,18 @@ const activitySummaryShape = defineShape({
 		"deleted",
 		"rootFrames",
 		"happenedAt",
+		"activitySummarySnapshot",
 	],
 });
 
 const reviewSessionShape = defineShape({
-	attrs: ["reviewSessionId", "projectId", "selectedReviewItemId", "openItemCount"],
+	attrs: [
+		"reviewSessionId",
+		"projectId",
+		"selectedReviewItemId",
+		"openItemCount",
+		"reviewSessionSnapshot",
+	],
 	many: {
 		items: reviewItemShape,
 		activitySummaries: activitySummaryShape,
@@ -137,6 +145,7 @@ export const miniCutEditorRootShape = defineShape({
 		"snappingEnabled",
 		"exportProgress",
 		"exportRequest",
+		"activeProjectReviewSnapshot",
 	],
 	one: {
 		activeProject: projectShape,
