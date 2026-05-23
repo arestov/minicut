@@ -224,43 +224,12 @@ const appProps = mergeDcl({
 			],
 			fn: [["activeProjectHint"] as const, reduceHandleCRDTSync],
 		},
-		handleCRDTSync: [
-			{
-				to: {
-					activitySummaries: [
-						"<< activitySummary << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
-						},
-					],
-					reviewSession: [
-						"<< reviewSession << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
-						},
-					],
-					$output: ["$output"],
-				},
-				fn: [
-					["$noop", "activeProjectHint"] as const,
-					(payload: unknown, noop: unknown, activeProjectHint: unknown) =>
-						reduceHandleCRDTSyncGraph(payload, activeProjectHint) ?? noop,
-				],
+		handleCRDTSync: {
+			to: {
+				activeReviewItemId: ["activeReviewItemId"],
 			},
-			{
-				to: [
-					"<< reviewSession",
-					{ action: "attachActivitySummaryFromOutput", sub_flow: true },
-				],
-				fn: [["<<<<"] as const, (payload: unknown) => payload],
-			},
-		],
+			fn: [["$noop"] as const, (_payload: unknown, noop: unknown) => noop],
+		},
 		handleCRDTConflict: [
 			{
 				to: {
