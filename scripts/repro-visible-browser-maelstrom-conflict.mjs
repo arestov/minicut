@@ -16,6 +16,7 @@ const REPORT_PATH = process.env.MINICUT_REPRO_REPORT_PATH ?? path.join(os.tmpdir
 const TRACE_PATH = process.env.MINICUT_REPRO_TRACE_PATH ?? REPORT_PATH.replace(/\.json$/, '.trace.json')
 
 const trace = []
+const requestFailures = []
 const pushTrace = (event, details = {}) => {
 	trace.push({
 		at: new Date().toISOString(),
@@ -43,6 +44,25 @@ const waitFor = async (label, fn, { timeoutMs = 45_000, intervalMs = 250 } = {})
 		await delay(intervalMs)
 	}
 	throw new Error(`${label} timed out${lastError ? `: ${lastError.message}` : ''}`)
+}
+
+const readHarnessError = async (page) =>
+	page.locator('[role="alert"]').filter({ hasText: 'CRDT harness error' }).first()
+		.innerText({ timeout: 250 })
+		.catch(() => null)
+
+const assertNoHarnessError = async (page, label) => {
+	const text = await readHarnessError(page)
+	if (text) {
+		throw new Error(`${label}: ${text}`)
+	}
+}
+
+const assertPeersHealthy = async (a, b, stageLabel) => {
+	await Promise.all([
+		assertNoHarnessError(a.page, `${stageLabel}: A`),
+		assertNoHarnessError(b.page, `${stageLabel}: B`),
+	])
 }
 
 const withTimeout = (label, promise, timeoutMs = 20_000) =>
@@ -151,6 +171,16 @@ const launchProfile = async ({ label, peerId, profileDir, position, broker }) =>
 			})
 		}
 	})
+	page.on('requestfailed', (request) => {
+		const failure = {
+			label,
+			url: request.url(),
+			errorText: request.failure()?.errorText ?? null,
+		}
+		requestFailures.push(failure)
+		pushTrace('browser:requestfailed', failure)
+		process.stdout.write(`[browser-requestfailed:${label}] ${failure.errorText ?? 'failed'} ${failure.url}\n`)
+	})
 	page.on('console', async (message) => {
 		const values = []
 		for (const arg of message.args()) {
@@ -193,10 +223,7 @@ const waitReady = async (page, label) => {
 	await waitFor(`${label}: runtime ready`, async () =>
 		debugEval(page, () => window.__MINICUT_P2P_DEBUG__?.isRuntimeReady?.() === true),
 	)
-	const body = await page.locator('body').innerText({ timeout: 5_000 })
-	if (body.includes('CRDT harness error')) {
-		throw new Error(`${label}: CRDT harness error:\n${body}`)
-	}
+	await assertNoHarnessError(page, label)
 }
 
 const importAndAddFixture = async (page) => {
@@ -366,11 +393,13 @@ const main = async () => {
 	stage = 'wait ready'
 	await Promise.all([waitReady(a.page, 'A'), waitReady(b.page, 'B')])
 	log('both ready')
+	await assertPeersHealthy(a, b, 'after ready')
 	broker.setPaused(false)
 	await broker.flush()
 
 	stage = 'import baseline'
 	await importAndAddFixture(a.page)
+	await assertPeersHealthy(a, b, 'after baseline import')
 	log('A imported baseline')
 	const baselineSummaryA = await projectSummary(a.page)
 	const sharedProjectId = baselineSummaryA.activeProjectId
@@ -379,6 +408,7 @@ const main = async () => {
 	}
 	stage = 'select shared project on B'
 	await selectProjectAndWaitForTimeline(b.page, sharedProjectId)
+	await assertPeersHealthy(a, b, 'after B selects shared project')
 	log('B selected A project', { sharedProjectId })
 	log('B received baseline through transport')
 	const baselineSummaryB = await projectSummary(b.page)
@@ -393,14 +423,17 @@ const main = async () => {
 		dragClipEdgeByUi(a.page, sharedClipId, 'end', -28),
 		dragClipEdgeByUi(b.page, sharedClipId, 'start', 28),
 	])
+	await assertPeersHealthy(a, b, 'after concurrent resize')
 	log('both resized', { sharedClipId, resizeResults })
 	stage = 'wait transport conflict delivery'
 	broker.setPaused(false)
 	await broker.flush()
+	await assertPeersHealthy(a, b, 'after conflict flush')
 	await Promise.all([
 		withTimeout('wait A settle after conflict', debugEval(a.page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000),
 		withTimeout('wait B settle after conflict', debugEval(b.page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000),
 	])
+	await assertPeersHealthy(a, b, 'after conflict settle')
 	log('transport delivered conflict edits')
 
 	await waitFor('visible conflict badges', async () => {
@@ -420,11 +453,15 @@ const main = async () => {
 
 	const [summaryA, summaryB] = await Promise.all([projectSummary(a.page), projectSummary(b.page)])
 	const result = {
-		ok: summaryA.conflictClipCount > 0 && summaryB.conflictClipCount > 0,
+		ok:
+			summaryA.conflictClipCount > 0 &&
+			summaryB.conflictClipCount > 0 &&
+			!requestFailures.some((failure) => failure.url.startsWith('blob:')),
 		roomId: ROOM_ID,
 		targets: { A: a.targetUrl, B: b.targetUrl },
 		profiles: { A: profileA, B: profileB },
 		summary: { A: summaryA, B: summaryB },
+		requestFailures,
 		keepOpen: KEEP_OPEN,
 		tracePath: TRACE_PATH,
 	}
@@ -435,6 +472,7 @@ const main = async () => {
 			A: compactPeerSummary(summaryA),
 			B: compactPeerSummary(summaryB),
 		},
+		requestFailures,
 	}, null, 2)
 	await writeFile(TRACE_PATH, `${JSON.stringify(trace, null, 2)}\n`, 'utf8')
 	await writeFile(REPORT_PATH, `${report}\n`, 'utf8')

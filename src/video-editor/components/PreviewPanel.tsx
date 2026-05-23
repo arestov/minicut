@@ -56,6 +56,15 @@ const PreviewStage = ({
 		visualRenderedClips: frame.visualRenderedClips.map(resolvedClip),
 		audioRenderedClips: frame.audioRenderedClips.map(resolvedClip),
 	};
+	const resolvedStructure: PreviewStructure = {
+		...structure,
+		clipSources: structure.clipSources.map((clip) => ({
+			...clip,
+			resourceUrl: clip.resourceId
+				? resolveResourceUrl(clip.resourceId, clip.resourceUrl)
+				: clip.resourceUrl,
+		})),
+	};
 
 	useEffect(() => {
 		const now = performance.now();
@@ -83,7 +92,7 @@ const PreviewStage = ({
 
 	return (
 		<RendererStage
-			structure={structure}
+			structure={resolvedStructure}
 			frame={resolvedFrame}
 			isPlaying={isPlaying}
 			mediaElementRegistry={mediaElementRegistry}
