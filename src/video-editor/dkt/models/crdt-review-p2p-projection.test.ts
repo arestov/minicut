@@ -40,44 +40,58 @@ describe("MiniCut p2p review projection", () => {
 			pair.heal();
 			await pair.waitForConvergence();
 
-			const graph = await waitForProjectReviewGraph(
-				pair.a.ctx,
-				pair.a.project,
-				(snapshot) =>
-					snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
-			);
-			const item = graph.items.find(
-				(entry) => entry.attrs.kind === "clip_timing",
+			const [graphA, graphB] = await Promise.all([
+				waitForProjectReviewGraph(
+					pair.a.ctx,
+					pair.a.project,
+					(snapshot) =>
+						snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
+				),
+				waitForProjectReviewGraph(
+					pair.b.ctx,
+					pair.b.project,
+					(snapshot) =>
+						snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
+				),
+			]);
+			const items = [graphA, graphB].map((graph) =>
+				graph.items.find((entry) => entry.attrs.kind === "clip_timing"),
 			);
 
-			expect(graph.reviewSessions).toHaveLength(1);
-			expect(graph.openItemCount).toBe(1);
-			expect(item?.attrs).toEqual(
-				expect.objectContaining({
-					kind: "clip_timing",
-					status: "open",
-					source: expect.objectContaining({
-						conflictId: expect.any(String),
-					}),
-				}),
-			);
-			expect(item?.attrs.affectedObjects).toEqual(
-				expect.arrayContaining([
+			for (const [graph, item] of [
+				[graphA, items[0]],
+				[graphB, items[1]],
+			] as const) {
+				expect(graph.reviewSessions).toHaveLength(1);
+				expect(graph.openItemCount).toBe(1);
+				expect(item?.attrs).toEqual(
 					expect.objectContaining({
-						id: clipA._node_id,
+						kind: "clip_timing",
+						status: "open",
+						source: expect.objectContaining({
+							conflictId: expect.any(String),
+						}),
 					}),
-				]),
-			);
-			expect(graph.reviewSessions[0]?.items.map((entry) => entry.nodeId)).toContain(
-				item?.nodeId,
-			);
+				);
+				expect(item?.attrs.affectedObjects).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({
+							id: clipA._node_id,
+						}),
+					]),
+				);
+				expect(
+					graph.reviewSessions[0]?.items.map((entry) => entry.nodeId),
+				).toContain(item?.nodeId);
+			}
+			expect(items[0]?.attrs.conflictId).toBe(items[1]?.attrs.conflictId);
 		} finally {
 			pair.close();
 		}
 	});
 
 	it("resolves a natural timing conflict through the product action", async () => {
-		const { pair, clipA } = await createPairWithClip(
+		const { pair, clipA, clipB } = await createPairWithClip(
 			"room-review-p2p-timing-resolve",
 		);
 		try {
@@ -91,15 +105,28 @@ describe("MiniCut p2p review projection", () => {
 			pair.heal();
 			await pair.waitForConvergence();
 
-			const graph = await waitForProjectReviewGraph(
-				pair.a.ctx,
-				pair.a.project,
-				(snapshot) =>
-					snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
-			);
-			const item = graph.items.find(
+			const [graphA, graphB] = await Promise.all([
+				waitForProjectReviewGraph(
+					pair.a.ctx,
+					pair.a.project,
+					(snapshot) =>
+						snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
+				),
+				waitForProjectReviewGraph(
+					pair.b.ctx,
+					pair.b.project,
+					(snapshot) =>
+						snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
+				),
+			]);
+			expect(graphB.items).toHaveLength(1);
+			const item = graphA.items.find(
 				(entry) => entry.attrs.kind === "clip_timing",
 			);
+			const remoteItem = graphB.items.find(
+				(entry) => entry.attrs.kind === "clip_timing",
+			);
+			expect(remoteItem?.attrs.conflictId).toBe(item?.attrs.conflictId);
 			const conflictId = item?.attrs.conflictId;
 			if (typeof conflictId !== "string") {
 				throw new Error("Expected materialized timing conflict id");
@@ -126,6 +153,7 @@ describe("MiniCut p2p review projection", () => {
 			await pair.waitForConvergence();
 
 			expect(await pair.a.ctx.queryAttr(clipA, "duration")).toBe(3);
+			expect(await pair.b.ctx.queryAttr(clipB, "duration")).toBe(3);
 			expect(
 				Number(
 					await pair.a.ctx.queryAttr(
@@ -156,14 +184,23 @@ describe("MiniCut p2p review projection", () => {
 			pair.heal();
 			await pair.waitForConvergence();
 
-			const graph = await waitForProjectReviewGraph(
-				pair.a.ctx,
-				pair.a.project,
-				(snapshot) => snapshot.items.length > 0,
-			);
+			const [graphA, graphB] = await Promise.all([
+				waitForProjectReviewGraph(
+					pair.a.ctx,
+					pair.a.project,
+					(snapshot) => snapshot.items.length > 0,
+				),
+				waitForProjectReviewGraph(
+					pair.b.ctx,
+					pair.b.project,
+					(snapshot) => snapshot.items.length > 0,
+				),
+			]);
 
-			expect(graph.reviewSessions[0]?.items).toHaveLength(1);
+			expect(graphA.reviewSessions[0]?.items).toHaveLength(1);
+			expect(graphB.reviewSessions[0]?.items).toHaveLength(1);
 			expect(await pair.a.ctx.queryRel(clipA, "crdtConflicts")).toEqual([]);
+			expect(await pair.b.ctx.queryRel(clipB, "crdtConflicts")).toEqual([]);
 		} finally {
 			pair.close();
 		}

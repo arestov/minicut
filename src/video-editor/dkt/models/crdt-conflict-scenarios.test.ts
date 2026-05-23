@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inspectReviewGraph } from "../review/testHarness/inspectReviewGraph";
+import { waitForProjectReviewGraph } from "../review/testHarness/inspectReviewGraph";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const createPairWithClip = async (roomId: string) => {
@@ -237,26 +237,43 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		const { pair } = await createTimingConflict("room-conflict-review-hook");
 		await pair.waitForConvergence();
 
-		const graph = await inspectReviewGraph(pair.a.ctx, pair.a.project);
+		const [graphA, graphB] = await Promise.all([
+			waitForProjectReviewGraph(
+				pair.a.ctx,
+				pair.a.project,
+				(snapshot) => snapshot.items.length > 0,
+			),
+			waitForProjectReviewGraph(
+				pair.b.ctx,
+				pair.b.project,
+				(snapshot) => snapshot.items.length > 0,
+			),
+		]);
+		const conflictIds = [graphA, graphB].map(
+			(graph) => graph.rootReviewItems[0]?.attrs.conflictId,
+		);
 
-		expect(graph.rootReviewItems).toHaveLength(1);
-		expect(graph.reviewSessions).toHaveLength(1);
-		expect(graph.rootReviewItems[0]?.attrs).toEqual(
-			expect.objectContaining({
-				kind: "clip_timing",
-				status: "open",
-				source: expect.objectContaining({
-					conflictId: expect.any(String),
+		for (const graph of [graphA, graphB]) {
+			expect(graph.rootReviewItems).toHaveLength(1);
+			expect(graph.reviewSessions).toHaveLength(1);
+			expect(graph.rootReviewItems[0]?.attrs).toEqual(
+				expect.objectContaining({
+					kind: "clip_timing",
+					status: "open",
+					source: expect.objectContaining({
+						conflictId: expect.any(String),
+					}),
 				}),
-			}),
-		);
-		expect(graph.reviewSessions[0]?.attrs).toEqual(
-			expect.objectContaining({
-				status: "open",
-				selectedReviewItemId: graph.rootReviewItems[0]?.attrs.reviewItemId,
-			}),
-		);
-		expect(graph.reviewSessions[0]?.items).toHaveLength(1);
+			);
+			expect(graph.reviewSessions[0]?.attrs).toEqual(
+				expect.objectContaining({
+					status: "open",
+					selectedReviewItemId: graph.rootReviewItems[0]?.attrs.reviewItemId,
+				}),
+			);
+			expect(graph.reviewSessions[0]?.items).toHaveLength(1);
+		}
+		expect(conflictIds[0]).toBe(conflictIds[1]);
 		pair.close();
 	});
 
