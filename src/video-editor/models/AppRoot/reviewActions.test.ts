@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { bootDktModels } from "../../dkt/testingInit";
 import {
 	reduceAcknowledgeReviewItem,
 	reduceHandleCRDTConflict,
@@ -28,6 +29,24 @@ describe("AppRoot review actions", () => {
 				],
 			},
 		});
+	});
+
+	it("materializes CRDT sync hooks through the app-root DKT action", async () => {
+		const ctx = await bootDktModels();
+		try {
+			await ctx.lockToRead(async () => {
+				await ctx.appModel.dispatch("handleCRDTSync", syncBatchFixture);
+			});
+
+			const summaries = await ctx.queryRel(ctx.appModel, "activitySummary");
+			expect(summaries).toHaveLength(1);
+			expect(await ctx.queryAttr(summaries[0], "activitySummaryId")).toBe(
+				"activity:peer-b:batch:1",
+			);
+			expect(await ctx.queryAttr(summaries[0], "projectId")).toBe("2");
+		} finally {
+			await ctx.close();
+		}
 	});
 
 	it("materializes CRDT conflict lifecycle hooks as ReviewSession item payloads", () => {

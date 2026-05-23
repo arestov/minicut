@@ -388,12 +388,6 @@ export const reduceHandleCRDTSyncGraph = (
 			attrs: session.attrs,
 			hold_ref_id: "reviewSession",
 		},
-		$output: {
-			rels: {
-				reviewSession: { use_ref_id: "reviewSession" },
-				activitySummary: { use_ref_id: refs[0] },
-			},
-		},
 	};
 };
 
