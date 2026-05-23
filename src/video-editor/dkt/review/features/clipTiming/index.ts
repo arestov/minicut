@@ -9,7 +9,7 @@ const timingFields = new Set(["start", "in", "duration", "fadeIn", "fadeOut"]);
 
 export const clipTimingFeature = {
 	kind: "clip_timing" as const,
-	actions: ["resolveClipTimingConflict", "parkIncomingVariantOnReviewTrack"],
+	actions: ["resolveClipTimingConflict"],
 	canMaterialize(conflict: CrdtConflictRecord): boolean {
 		return (
 			conflict.aggregate === "clipTiming" ||
@@ -40,12 +40,8 @@ export const clipTimingFeature = {
 				details: conflict.details ?? null,
 				variants: conflict.variants ?? null,
 			},
-			availableActions: [
-				"resolveClipTimingConflict",
-				"parkIncomingVariantOnReviewTrack",
-			],
+			availableActions: ["resolveClipTimingConflict"],
 			source: sourceFromConflict(conflict),
 		};
 	},
 };
-
