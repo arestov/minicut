@@ -20,23 +20,6 @@ export const REVIEW_ITEM_CREATION_SHAPE = {
 
 export const ReviewItem = model({
 	model_name: "review_item",
-	crdt: {
-		mode: "collaborative",
-		attrs: {
-			reviewItemId: { sync: false, reason: "projection" },
-			conflictId: { sync: false, reason: "projection" },
-			projectId: { sync: false, reason: "projection" },
-			kind: { sync: false, reason: "projection" },
-			status: { sync: false, reason: "projection" },
-			title: { sync: false, reason: "projection" },
-			affectedObjects: { sync: false, reason: "projection" },
-			preview: { sync: false, reason: "projection" },
-			availableActions: { sync: false, reason: "projection" },
-			source: { sync: false, reason: "projection" },
-			createdAt: { sync: false, reason: "projection" },
-			updatedAt: { sync: false, reason: "projection" },
-		},
-	},
 	attrs: {
 		reviewItemId: ["input", ""],
 		conflictId: ["input", ""],
@@ -73,4 +56,3 @@ export const ReviewItem = model({
 		},
 	},
 });
-

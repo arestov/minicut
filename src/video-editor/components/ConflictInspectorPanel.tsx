@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { MiniCutReviewItem } from "../dkt/review/types";
 import { ReviewPanel } from "./review/ReviewPanel";
 
@@ -73,6 +73,7 @@ export const ConflictInspectorPanel = ({
 	conflicts,
 	onClose,
 }: ConflictInspectorPanelProps) => {
+	const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 	const items = useMemo(
 		() => conflicts.map(reviewItemFromLegacyConflict),
 		[conflicts],
@@ -84,6 +85,8 @@ export const ConflictInspectorPanel = ({
 	return (
 		<ReviewPanel
 			items={items}
+			selectedItemId={selectedItemId}
+			onSelectReviewItem={(item) => setSelectedItemId(item.id)}
 			onClose={onClose}
 			onAcknowledgeReviewItem={(item) =>
 				dispatch("acknowledgeReviewItem", {

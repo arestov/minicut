@@ -21,22 +21,6 @@ export const REVIEW_SESSION_CREATION_SHAPE = {
 
 export const ReviewSession = model({
 	model_name: "review_session",
-	crdt: {
-		mode: "collaborative",
-		attrs: {
-			reviewSessionId: { sync: false, reason: "projection" },
-			projectId: { sync: false, reason: "projection" },
-			status: { sync: false, reason: "projection" },
-			selectedReviewItemId: { sync: false, reason: "projection" },
-			filters: { sync: false, reason: "projection" },
-			openedAt: { sync: false, reason: "projection" },
-			updatedAt: { sync: false, reason: "projection" },
-		},
-		rels: {
-			items: { sync: false, reason: "projection" },
-			activitySummaries: { sync: false, reason: "projection" },
-		},
-	},
 	attrs: {
 		reviewSessionId: ["input", ""],
 		projectId: ["input", ""],
@@ -86,4 +70,3 @@ export const ReviewSession = model({
 		},
 	},
 });
-

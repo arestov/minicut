@@ -131,7 +131,9 @@ describe("ConflictInspectorPanel", () => {
 			/>,
 		);
 
-		expect(screen.getByText("Remote delete conflicts with local effect edit")).toBeInTheDocument();
+		expect(
+			screen.getAllByText("Remote delete conflicts with local effect edit"),
+		).toHaveLength(2);
 		expect(screen.queryByRole("button", { name: "Keep local" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Accept delete" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();

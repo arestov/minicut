@@ -196,7 +196,7 @@ describe("ClipItem conflict UX", () => {
 			"clip:1",
 		);
 		await waitFor(() =>
-			expect(screen.getByText("Duration has concurrent edits")).toBeInTheDocument(),
+			expect(screen.getAllByText("Duration has concurrent edits")).toHaveLength(2),
 		);
 
 		await userEvent.click(
@@ -240,8 +240,8 @@ describe("ClipItem conflict UX", () => {
 			expect.anything(),
 		);
 		expect(
-			screen.getByText("Timeline placement has concurrent edits"),
-		).toBeInTheDocument();
+			screen.getAllByText("Timeline placement has concurrent edits"),
+		).toHaveLength(2);
 	});
 
 	it("renders structural conflict projection without raw technical actions", async () => {
@@ -275,7 +275,9 @@ describe("ClipItem conflict UX", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
 		await waitFor(() =>
-			expect(screen.getByText("Remote delete conflicts with local effect edit")).toBeInTheDocument(),
+			expect(
+				screen.getAllByText("Remote delete conflicts with local effect edit"),
+			).toHaveLength(2),
 		);
 
 		expect(screen.queryByRole("button", { name: "Keep local" })).not.toBeInTheDocument();

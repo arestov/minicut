@@ -50,6 +50,7 @@ const MODEL_CASES: ModelCase[] = [
 		fields: {
 			attrs: {
 				activeProjectHint: "projection",
+				activeReviewItemId: "projection",
 				projectMetaList: "projection",
 			},
 			rels: {
@@ -62,6 +63,9 @@ const MODEL_CASES: ModelCase[] = [
 				clip: "projection",
 				text: "projection",
 				effect: "projection",
+				reviewItem: "projection",
+				reviewSession: "projection",
+				activitySummary: "projection",
 			},
 		},
 	},

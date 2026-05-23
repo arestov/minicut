@@ -22,7 +22,7 @@ describe("ReviewPanel", () => {
 		render(<ReviewPanel items={[item]} />);
 
 		expect(screen.getByRole("region", { name: "Project review" })).toBeInTheDocument();
-		expect(screen.getByText("Clip timing conflict")).toBeInTheDocument();
+		expect(screen.getAllByText("Clip timing conflict")).toHaveLength(2);
 		expect(screen.getByText("clip_timing")).toBeInTheDocument();
 		expect(screen.getByText("conflict:1")).toBeInTheDocument();
 	});
@@ -47,4 +47,3 @@ describe("ReviewPanel", () => {
 		expect(onAcknowledgeReviewItem).toHaveBeenCalledWith(item);
 	});
 });
-

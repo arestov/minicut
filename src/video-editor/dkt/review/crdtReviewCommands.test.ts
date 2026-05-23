@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { makeCrdtAcknowledgePayload, makeCrdtResolvePayload } from "./crdtReviewCommands";
 
@@ -40,7 +41,7 @@ describe("crdtReviewCommands", () => {
 
 	it("does not import runtime, React, DKT dispatch, or transport modules", () => {
 		const source = readFileSync(
-			new URL("./crdtReviewCommands.ts", import.meta.url),
+			resolve("src/video-editor/dkt/review/crdtReviewCommands.ts"),
 			"utf8",
 		);
 		expect(source).not.toMatch(/from "react"|from 'react'/);
@@ -48,4 +49,3 @@ describe("crdtReviewCommands", () => {
 		expect(source).not.toMatch(/transport|runtime|subscribe/);
 	});
 });
-
