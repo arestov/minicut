@@ -66,7 +66,7 @@ This profile checks:
 
 - CRDT harness boot with IndexedDB storage;
 - deterministic room bookmark -> workspace/db resolution across reloads;
-- ClipConflictBadge -> ConflictInspectorPanel;
+- ClipConflictBadge -> project Review panel;
 - invalid timing resolve -> durable-style error meta rendered in the inspector;
 - valid clear -> conflict badge disappears;
 - reset clears the selected room workspace DB without touching another room workspace DB;

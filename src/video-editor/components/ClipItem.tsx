@@ -17,13 +17,11 @@ import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
 import { getAttrsShape } from "../../dkt-react-sync/shape/autoShapes";
 import { useShape } from "../../dkt-react-sync/hooks/useShape";
 import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { MiniCutReviewItem } from "../dkt/review/types";
 import type { AnimatedScalar } from "../render/registryTypes";
 import { ClipConflictBadge } from "./ClipConflictBadge";
-import {
-	ConflictInspectorPanel,
-	type ClipConflictItem,
-} from "./ConflictInspectorPanel";
 import { formatPercent, formatSeconds } from "./format";
+import { ReviewPanel } from "./review/ReviewPanel";
 
 const MIN_CLIP_DURATION = 0.5;
 let nextClipGestureIntentId = 0;
@@ -87,6 +85,18 @@ interface ClipRenderAttrs {
 interface ResourceRenderAttrs {
 	duration?: unknown;
 }
+
+type ClipConflictItem = {
+	id: string;
+	kind: string;
+	scope: string;
+	summary: string;
+	decision?: {
+		start?: number;
+		in?: number;
+		duration?: number;
+	};
+};
 
 const EMPTY_ATTRS = Object.freeze({}) as Record<string, unknown>;
 
@@ -192,6 +202,48 @@ const readNumber = (value: unknown): number =>
 
 const readString = (value: unknown): string | null =>
 	typeof value === "string" && value.length > 0 ? value : null;
+
+const reviewKindForClipConflict = (
+	conflict: ClipConflictItem,
+): MiniCutReviewItem["kind"] => {
+	if (conflict.scope === "clipTiming" || conflict.decision) {
+		return "clip_timing";
+	}
+	if (conflict.kind.toLowerCase().includes("delete")) {
+		return "delete_vs_edit";
+	}
+	if (conflict.kind.toLowerCase().includes("dangling")) {
+		return "dangling_resource";
+	}
+	if (conflict.kind.toLowerCase().includes("track")) {
+		return "track_order";
+	}
+	return "unknown";
+};
+
+const reviewItemFromClipConflict = (
+	conflict: ClipConflictItem,
+	clipId: string | null,
+): MiniCutReviewItem => {
+	const kind = reviewKindForClipConflict(conflict);
+	return {
+		id: `review:${conflict.id}`,
+		conflictId: conflict.id,
+		projectId: clipId ?? "clip-scope",
+		kind,
+		status: "open",
+		title: conflict.summary,
+		affectedObjects: clipId ? [{ type: "clip", id: clipId }] : [],
+		preview: {
+			type: kind,
+			conflictId: conflict.id,
+			decision: conflict.decision ?? null,
+		},
+		availableActions:
+			kind === "clip_timing" ? ["resolveClipTimingConflict"] : [],
+		source: { conflictId: conflict.id },
+	};
+};
 
 const ClipConflictProjectionItem = ({
 	scope,
@@ -362,6 +414,13 @@ export const ClipItem = ({
 						},
 				)
 			: metaConflictItems;
+	const reviewItems = useMemo(
+		() =>
+			conflictItems.map((conflictItem) =>
+				reviewItemFromClipConflict(conflictItem, clipId),
+			),
+		[conflictItems, clipId],
+	);
 	const width = Math.max(36, duration * timelineZoom);
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx);
 	const selectClip = (): void => {
@@ -690,10 +749,21 @@ export const ClipItem = ({
 							/>
 						</ScopeContext.Provider>
 					))}
-					<ConflictInspectorPanel
-						model={{ states: clipConflictState, dispatch }}
-						conflicts={conflictItems}
+					<ReviewPanel
+						items={reviewItems}
 						onClose={() => setIsConflictInspectorOpen(false)}
+						onAcknowledgeReviewItem={(item) =>
+							dispatch("acknowledgeReviewItem", {
+								conflict_id: item.conflictId,
+								review_item_id: item.id,
+							})
+						}
+						onReviewAction={(actionId, item) =>
+							dispatch(actionId, {
+								conflict_id: item.conflictId,
+								review_item_id: item.id,
+							})
+						}
 					/>
 				</div>
 			) : null}
