@@ -187,9 +187,10 @@ describe("ClipItem conflict UX", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
 
-		expect(mockState.dispatch).toHaveBeenCalledWith("loadConflicts", {
-			scope: { model: "clip", include_structural: true },
-		});
+		expect(mockState.dispatch).not.toHaveBeenCalledWith(
+			"loadConflicts",
+			expect.anything(),
+		);
 		expect(mockState.sessionDispatch).not.toHaveBeenCalledWith(
 			"selectEntity",
 			"clip:1",
@@ -198,13 +199,13 @@ describe("ClipItem conflict UX", () => {
 			expect(screen.getByText("Duration has concurrent edits")).toBeInTheDocument(),
 		);
 
-		await userEvent.click(screen.getByRole("button", { name: "Resolve timing" }));
+		await userEvent.click(
+			screen.getByRole("button", { name: "resolveClipTimingConflict" }),
+		);
 
 		expect(mockState.dispatch).toHaveBeenCalledWith("resolveClipTimingConflict", {
 			conflict_id: "conflict:duration",
-			start: 0,
-			in: 0,
-			duration: 3,
+			review_item_id: "review:conflict:duration",
 		});
 	});
 
@@ -234,15 +235,16 @@ describe("ClipItem conflict UX", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
 
-		expect(mockState.dispatch).toHaveBeenCalledWith("loadConflicts", {
-			scope: { model: "clip", include_structural: true },
-		});
+		expect(mockState.dispatch).not.toHaveBeenCalledWith(
+			"loadConflicts",
+			expect.anything(),
+		);
 		expect(
 			screen.getByText("Timeline placement has concurrent edits"),
 		).toBeInTheDocument();
 	});
 
-	it("renders structural conflict projection actions from materialized conflicts", async () => {
+	it("renders structural conflict projection without raw technical actions", async () => {
 		const clipScope = { kind: "scope" as const, _nodeId: "clip:structural-actions" };
 		const conflictScope = { kind: "scope" as const, _nodeId: "conflict:structural" };
 		mockState.dispatch.mockClear();
@@ -275,11 +277,11 @@ describe("ClipItem conflict UX", () => {
 		await waitFor(() =>
 			expect(screen.getByText("Remote delete conflicts with local effect edit")).toBeInTheDocument(),
 		);
-		await userEvent.click(screen.getByRole("button", { name: "Keep local" }));
 
-		expect(mockState.dispatch).toHaveBeenCalledWith("resolveStructuralConflict", {
-			conflict_id: "structural:delete:clip-1",
-			decision: { type: "keep_local" },
-		});
+		expect(screen.queryByRole("button", { name: "Keep local" })).not.toBeInTheDocument();
+		expect(mockState.dispatch).not.toHaveBeenCalledWith(
+			"resolveStructuralConflict",
+			expect.anything(),
+		);
 	});
 });

@@ -204,9 +204,12 @@ const ClipConflictProjectionItem = ({
 		ConflictViewAttrs;
 	const item = {
 		id: typeof attrs.id === "string" ? attrs.id : scope._nodeId,
-		kind: typeof attrs.kind === "string" ? attrs.kind : undefined,
-		scope: typeof attrs.scope === "string" ? attrs.scope : undefined,
-		summary: typeof attrs.summary === "string" ? attrs.summary : undefined,
+		kind: typeof attrs.kind === "string" ? attrs.kind : "clip_timing",
+		scope: typeof attrs.scope === "string" ? attrs.scope : "clipTiming",
+		summary:
+			typeof attrs.summary === "string"
+				? attrs.summary
+				: "Timing has concurrent edits",
 		decision: isTimingDecision(attrs.decision) ? attrs.decision : undefined,
 	};
 	useEffect(() => {
@@ -295,7 +298,7 @@ export const ClipItem = ({
 	const metaConflictItems: ClipConflictItem[] =
 		conflictScopes.length > 0
 			? []
-			: [
+			: ([
 					openTimingConflictCount > 0
 						? {
 								id:
@@ -346,14 +349,16 @@ export const ClipItem = ({
 								summary: "Model has concurrent edits",
 							}
 						: null,
-				].filter((item): item is ClipConflictItem => item !== null);
+				].filter((item) => item !== null) as ClipConflictItem[]);
 	const conflictItems: ClipConflictItem[] =
 		conflictScopes.length > 0
 			? conflictScopes.map(
 					(conflictScope) =>
 						conflictItemsById[conflictScope._nodeId] ?? {
 							id: conflictScope._nodeId,
+							kind: "clip_timing",
 							scope: "clipTiming",
+							summary: "Timing has concurrent edits",
 						},
 				)
 			: metaConflictItems;

@@ -13,7 +13,7 @@ describe("ClipConflictBadge", () => {
 		expect(container).toBeEmptyDOMElement();
 	});
 
-	it("materializes timing conflicts through the Clip DKT action", async () => {
+	it("opens Review UI for timing conflicts without materialize_conflicts", async () => {
 		const dispatch = vi.fn();
 		const onOpen = vi.fn();
 		render(
@@ -31,14 +31,13 @@ describe("ClipConflictBadge", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: /2 open conflicts/i }));
 
-		expect(dispatch).toHaveBeenCalledWith("loadConflicts", {
-			scope: { aggregate: "clipTiming" },
-		});
+		expect(dispatch).not.toHaveBeenCalled();
 		expect(onOpen).toHaveBeenCalledOnce();
 	});
 
-	it("materializes structural and model conflicts through the Clip DKT action", async () => {
+	it("opens Review UI for structural and model conflicts without DKT internals", async () => {
 		const dispatch = vi.fn();
+		const onOpen = vi.fn();
 		render(
 			<ClipConflictBadge
 				model={{
@@ -49,14 +48,14 @@ describe("ClipConflictBadge", () => {
 					dispatch,
 				}}
 				scope="all"
+				onOpen={onOpen}
 			/>,
 		);
 
 		await userEvent.click(screen.getByRole("button", { name: /3 open conflicts/i }));
 
-		expect(dispatch).toHaveBeenCalledWith("loadConflicts", {
-			scope: { model: "clip", include_structural: true },
-		});
+		expect(dispatch).not.toHaveBeenCalled();
+		expect(onOpen).toHaveBeenCalledOnce();
 	});
 });
 
@@ -71,43 +70,25 @@ describe("ConflictInspectorPanel", () => {
 		},
 	];
 
-	it("dispatches DKT conflict commands from panel controls", async () => {
+	it("renders the project Review workflow instead of technical conflict controls", async () => {
 		const dispatch = vi.fn();
 		render(<ConflictInspectorPanel model={{ dispatch }} conflicts={conflicts} />);
 
-		await userEvent.click(screen.getByRole("button", { name: "Load details" }));
-		await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
-		await userEvent.clear(screen.getByLabelText("Duration"));
-		await userEvent.type(screen.getByLabelText("Duration"), "2.5");
-		await userEvent.click(screen.getByRole("button", { name: "Resolve timing" }));
-		await userEvent.click(screen.getByRole("button", { name: "Resolve selected" }));
+		expect(screen.getByRole("region", { name: "Project review" })).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Load details" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Resolve selected" })).not.toBeInTheDocument();
 
-		expect(dispatch).toHaveBeenNthCalledWith(1, "requireConflictDetails", {
+		await userEvent.click(
+			screen.getByRole("button", { name: "resolveClipTimingConflict" }),
+		);
+
+		expect(dispatch).toHaveBeenCalledWith("resolveClipTimingConflict", {
 			conflict_id: "conflict:duration",
-		});
-		expect(dispatch).toHaveBeenNthCalledWith(2, "acknowledgeConflict", {
-			conflict_id: "conflict:duration",
-		});
-		expect(dispatch).toHaveBeenNthCalledWith(3, "resolveClipTimingConflict", {
-			conflict_id: "conflict:duration",
-			start: 0,
-			in: 0,
-			duration: 2.5,
-		});
-		expect(dispatch).toHaveBeenNthCalledWith(4, "resolveClipTimingConflictsBatch", {
-			atomic: false,
-			decisions: [
-				{
-					conflict_id: "conflict:duration",
-					start: 0,
-					in: 0,
-					duration: 3,
-				},
-			],
+			review_item_id: "review:conflict:duration",
 		});
 	});
 
-	it("batch resolves only checked conflicts", async () => {
+	it("selects review items without batch resolving from the inspector", async () => {
 		const dispatch = vi.fn();
 		render(
 			<ConflictInspectorPanel
@@ -125,23 +106,16 @@ describe("ConflictInspectorPanel", () => {
 			/>,
 		);
 
-		await userEvent.click(screen.getByRole("checkbox", { name: "Select conflict:start" }));
-		await userEvent.click(screen.getByRole("button", { name: "Resolve selected" }));
+		await userEvent.click(screen.getByRole("button", { name: /Start has concurrent edits/i }));
 
-		expect(dispatch).toHaveBeenCalledWith("resolveClipTimingConflictsBatch", {
-			atomic: false,
-			decisions: [
-				{
-					conflict_id: "conflict:duration",
-					start: 0,
-					in: 0,
-					duration: 3,
-				},
-			],
-		});
+		expect(screen.getByText("conflict:start")).toBeInTheDocument();
+		expect(dispatch).not.toHaveBeenCalledWith(
+			"resolveClipTimingConflictsBatch",
+			expect.anything(),
+		);
 	});
 
-	it("offers product actions for structural conflicts", async () => {
+	it("does not expose raw structural accept/delete/restore buttons", () => {
 		const dispatch = vi.fn();
 		render(
 			<ConflictInspectorPanel
@@ -157,74 +131,27 @@ describe("ConflictInspectorPanel", () => {
 			/>,
 		);
 
-		expect(screen.getByText("Delete conflict · timelineMembership")).toBeInTheDocument();
-
-		await userEvent.click(screen.getByRole("button", { name: "Keep local" }));
-		await userEvent.click(screen.getByRole("button", { name: "Accept delete" }));
-		await userEvent.click(screen.getByRole("button", { name: "Restore" }));
-
-		expect(dispatch).toHaveBeenNthCalledWith(1, "resolveStructuralConflict", {
-			conflict_id: "structural:delete:clip-1",
-			decision: { type: "keep_local" },
-		});
-		expect(dispatch).toHaveBeenNthCalledWith(2, "resolveStructuralConflict", {
-			conflict_id: "structural:delete:clip-1",
-			decision: { type: "accept_remote_delete" },
-		});
-		expect(dispatch).toHaveBeenNthCalledWith(3, "resolveStructuralConflict", {
-			conflict_id: "structural:delete:clip-1",
-			decision: { type: "restore" },
-		});
+		expect(screen.getByText("Remote delete conflicts with local effect edit")).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Keep local" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Accept delete" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+		expect(dispatch).not.toHaveBeenCalled();
 	});
 
-	it("shows and clears CRDT resolution attempt errors", async () => {
+	it("acknowledges through the Review item action boundary", async () => {
 		const dispatch = vi.fn();
 		render(
 			<ConflictInspectorPanel
-				model={{
-					dispatch,
-					states: {
-						"$meta$aggregates$crdt$clipTiming$last_resolution_error": {
-							code: "duration_non_positive",
-						},
-					},
-				}}
+				model={{ dispatch }}
 				conflicts={conflicts}
 			/>,
 		);
 
-		expect(screen.getByText("duration_non_positive")).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
 
-		await userEvent.click(
-			screen.getByRole("button", { name: "Clear resolution error" }),
-		);
-
-		expect(dispatch).toHaveBeenCalledWith("clearResolutionAttempt", {
-			aggregate: "clipTiming",
-			attrs: ["start", "in", "duration"],
+		expect(dispatch).toHaveBeenCalledWith("acknowledgeReviewItem", {
+			conflict_id: "conflict:duration",
+			review_item_id: "review:conflict:duration",
 		});
-	});
-
-	it("renders field-level timing attempt errors and disables submit while resolving", () => {
-		render(
-			<ConflictInspectorPanel
-				model={{
-					states: {
-						"$meta$aggregates$crdt$clipTiming$last_resolution_status": "submitting",
-						"$meta$aggregates$crdt$clipTiming$last_resolution_error": {
-							code: "invalid_timing",
-							fields: {
-								duration: { code: "duration_must_be_positive" },
-							},
-						},
-					},
-				}}
-				conflicts={conflicts}
-			/>,
-		);
-
-		expect(screen.getByText("duration_must_be_positive")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Resolving timing" })).toBeDisabled();
-	expect(screen.getByDisplayValue("3")).toBeDisabled();
 	});
 });

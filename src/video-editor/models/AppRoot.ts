@@ -5,14 +5,30 @@ import {
 	reduceCreateEffectModel,
 	reduceCreateProjectModel,
 	reduceCreateResourceModel,
+	reduceCreateActivitySummaryModel,
+	reduceCreateReviewItemModel,
+	reduceCreateReviewSessionModel,
+	reduceAcknowledgeReviewItem,
+	reduceHandleCRDTConflict,
+	reduceHandleCRDTSync,
 	reduceCreateTextModel,
 	reduceCreateTrackModel,
+	reduceSelectReviewItem,
 	reduceSetActiveProjectHint,
 } from "./AppRoot/actions";
+import {
+	ACTIVITY_SUMMARY_CREATION_SHAPE,
+	ActivitySummary,
+} from "./ActivitySummary";
 import { CLIP_CREATION_SHAPE, Clip } from "./Clip";
 import { EFFECT_CREATION_SHAPE, Effect } from "./Effect";
 import { PROJECT_CREATION_SHAPE, Project } from "./Project";
 import { RESOURCE_CREATION_SHAPE, Resource } from "./Resource";
+import { REVIEW_ITEM_CREATION_SHAPE, ReviewItem } from "./ReviewItem";
+import {
+	REVIEW_SESSION_CREATION_SHAPE,
+	ReviewSession,
+} from "./ReviewSession";
 import { EditorSessionRoot } from "./SessionRoot";
 import { TEXT_CREATION_SHAPE, Text } from "./Text";
 import { TRACK_CREATION_SHAPE, Track } from "./Track";
@@ -34,9 +50,13 @@ const appProps = mergeDcl({
 		clip: ["model", Clip, { many: true }],
 		text: ["model", Text, { many: true }],
 		effect: ["model", Effect, { many: true }],
+		reviewItem: ["model", ReviewItem, { many: true }],
+		reviewSession: ["model", ReviewSession, { many: true }],
+		activitySummary: ["model", ActivitySummary, { many: true }],
 	},
 	attrs: {
 		activeProjectHint: ["input", null],
+		activeReviewItemId: ["input", null],
 		projectMetaList: ["input", []],
 		hasProjects: [
 			"comp",
@@ -49,6 +69,7 @@ const appProps = mergeDcl({
 		mode: "collaborative",
 		attrs: {
 			activeProjectHint: { sync: false, reason: "projection" },
+			activeReviewItemId: { sync: false, reason: "projection" },
 			projectMetaList: { sync: false, reason: "projection" },
 		},
 		rels: {
@@ -61,6 +82,9 @@ const appProps = mergeDcl({
 			clip: { sync: false, reason: "projection" },
 			text: { sync: false, reason: "projection" },
 			effect: { sync: false, reason: "projection" },
+			reviewItem: { sync: false, reason: "projection" },
+			reviewSession: { sync: false, reason: "projection" },
+			activitySummary: { sync: false, reason: "projection" },
 		},
 	},
 	actions: {
@@ -130,11 +154,109 @@ const appProps = mergeDcl({
 			],
 			fn: reduceCreateClipModel,
 		},
+		createReviewItemModel: {
+			to: [
+				"<< reviewItem << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+				},
+			],
+			fn: reduceCreateReviewItemModel,
+		},
+		createReviewSessionModel: {
+			to: [
+				"<< reviewSession << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+				},
+			],
+			fn: [["activeProjectHint"] as const, reduceCreateReviewSessionModel],
+		},
+		createActivitySummaryModel: {
+			to: [
+				"<< activitySummary << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
+				},
+			],
+			fn: reduceCreateActivitySummaryModel,
+		},
+		openProjectReview: {
+			to: [
+				"<< reviewSession << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+				},
+			],
+			fn: [["activeProjectHint"] as const, reduceCreateReviewSessionModel],
+		},
+		materializeCRDTConflictReviewItem: {
+			to: [
+				"<< reviewItem << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+				},
+			],
+			fn: [["activeProjectHint"] as const, reduceHandleCRDTConflict],
+		},
+		materializeCRDTSyncSummary: {
+			to: [
+				"<< activitySummary << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
+				},
+			],
+			fn: [["activeProjectHint"] as const, reduceHandleCRDTSync],
+		},
+		handleCRDTSync: {
+			to: [
+				"<< activitySummary << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
+				},
+			],
+			fn: [["activeProjectHint"] as const, reduceHandleCRDTSync],
+		},
+		handleCRDTConflict: {
+			to: [
+				"<< reviewItem << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+				},
+			],
+			fn: [["activeProjectHint"] as const, reduceHandleCRDTConflict],
+		},
 		setActiveProjectHint: {
 			to: {
 				activeProjectHint: ["activeProjectHint"],
 			},
 			fn: reduceSetActiveProjectHint,
+		},
+		selectReviewItem: {
+			to: {
+				activeReviewItemId: ["activeReviewItemId"],
+			},
+			fn: reduceSelectReviewItem,
+		},
+		acknowledgeReviewItem: {
+			to: ["$crdt:acknowledge"],
+			fn: [[], reduceAcknowledgeReviewItem],
 		},
 	},
 });

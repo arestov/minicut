@@ -44,18 +44,6 @@ const readCount = (
 	return Math.max(0, ...attrs.map((attrName) => readNumber(model, attrName)));
 };
 
-const buildLoadScope = (
-	scope: NonNullable<ClipConflictBadgeProps["scope"]>,
-) => {
-	if (scope === "timing") {
-		return { aggregate: "clipTiming" };
-	}
-	if (scope === "model") {
-		return { model: "clip" };
-	}
-	return { model: "clip", include_structural: true };
-};
-
 export const ClipConflictBadge = ({
 	model,
 	scope,
@@ -70,9 +58,6 @@ export const ClipConflictBadge = ({
 
 	const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
 		event.stopPropagation();
-		void model.dispatch?.("loadConflicts", {
-			scope: buildLoadScope(resolvedScope),
-		});
 		onOpen?.();
 	};
 	const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {

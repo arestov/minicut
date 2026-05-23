@@ -574,18 +574,6 @@ export const Clip = model({
 				},
 			],
 		},
-		loadConflicts: {
-			to: ["$crdt:materialize_conflicts"],
-			fn: [[], (payload: unknown) => payload ?? {}],
-		},
-		requireConflictDetails: {
-			to: ["$crdt:require_details"],
-			fn: [[], (payload: unknown) => payload ?? {}],
-		},
-		acknowledgeConflict: {
-			to: ["$crdt:acknowledge"],
-			fn: [[], (payload: unknown) => payload ?? {}],
-		},
 		resolveClipTimingConflict: {
 			to: {
 				start: ["start"],
@@ -625,46 +613,6 @@ export const Clip = model({
 							conflict_id: conflictId,
 							decision: value?.decision ?? decision,
 						},
-					};
-				},
-			],
-		},
-		resolveClipTimingConflictsBatch: {
-			to: ["$crdt:resolve_batch"],
-			fn: [
-				[],
-				(payload: unknown) => {
-					const value =
-						payload && typeof payload === "object"
-							? (payload as { atomic?: unknown; decisions?: unknown })
-							: null;
-					return {
-						atomic: typeof value?.atomic === "boolean" ? value.atomic : false,
-						decisions: Array.isArray(value?.decisions) ? value.decisions : [],
-					};
-				},
-			],
-		},
-		resolveStructuralConflict: {
-			to: ["$crdt:resolve"],
-			fn: [
-				[],
-				(payload: unknown) => {
-					const value =
-						payload && typeof payload === "object"
-							? (payload as { conflict_id?: unknown; conflictId?: unknown; decision?: unknown; type?: unknown })
-							: null;
-					const conflictId = value?.conflict_id ?? value?.conflictId;
-					if (typeof conflictId !== "string" || conflictId.length === 0) {
-						return null;
-					}
-					const decision =
-						value?.decision && typeof value.decision === "object"
-							? value.decision
-							: { type: typeof value?.type === "string" ? value.type : "keep_local" };
-					return {
-						conflict_id: conflictId,
-						decision,
 					};
 				},
 			],

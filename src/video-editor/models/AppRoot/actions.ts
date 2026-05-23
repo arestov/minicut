@@ -1,4 +1,8 @@
+import { makeCrdtAcknowledgePayload } from "../../dkt/review/crdtReviewCommands";
 import { defaultClipTransform } from "../Clip/actions";
+import { reduceCreateActivitySummary, reduceMaterializeSyncActivitySummary } from "../ActivitySummary/actions";
+import { reduceCreateReviewItem, reduceMaterializeReviewItemFromConflict } from "../ReviewItem/actions";
+import { reduceCreateReviewSession } from "../ReviewSession/actions";
 import { defaultTextBox, defaultTextStyle } from "../Text/defaults";
 import { numberOr, numberOrNull, objectOr, stringOr } from "../valueGuards";
 
@@ -187,6 +191,103 @@ export const reduceCreateClipModel = (payload: unknown) => {
 	};
 };
 
+export const reduceCreateReviewItemModel = (payload: unknown) =>
+	reduceCreateReviewItem(payload);
+
+export const reduceCreateReviewSessionModel = (
+	payload: unknown,
+	activeProjectHint?: unknown,
+) => reduceCreateReviewSession(payload, activeProjectHint);
+
+export const reduceCreateActivitySummaryModel = (payload: unknown) =>
+	reduceCreateActivitySummary(payload);
+
+const firstLifecycleConflict = (payload: unknown): unknown => {
+	const value =
+		payload && typeof payload === "object"
+			? (payload as {
+					opened?: unknown;
+					updated?: unknown;
+					acknowledged?: unknown;
+					resolved?: unknown;
+					conflict?: unknown;
+				})
+			: null;
+	if (value?.conflict) {
+		return value.conflict;
+	}
+	for (const key of ["opened", "updated", "acknowledged", "resolved"] as const) {
+		const list = value?.[key];
+		if (Array.isArray(list) && list.length > 0) {
+			return list[0];
+		}
+	}
+	return payload;
+};
+
+export const reduceHandleCRDTConflict = (
+	payload: unknown,
+	activeProjectHint?: unknown,
+) =>
+	reduceMaterializeReviewItemFromConflict(
+		{ conflict: firstLifecycleConflict(payload) },
+		activeProjectHint,
+	);
+
+export const reduceHandleCRDTSync = (
+	payload: unknown,
+	activeProjectHint?: unknown,
+) => reduceMaterializeSyncActivitySummary(payload, activeProjectHint);
+
 export const reduceSetActiveProjectHint = (payload: unknown) => ({
 	activeProjectHint: typeof payload === "string" && payload ? payload : null,
 });
+
+export const reduceSelectReviewItem = (payload: unknown) => {
+	const value =
+		payload && typeof payload === "object"
+			? (payload as { reviewItemId?: unknown; review_item_id?: unknown })
+			: null;
+	const reviewItemId =
+		typeof value?.reviewItemId === "string"
+			? value.reviewItemId
+			: typeof value?.review_item_id === "string"
+				? value.review_item_id
+				: typeof payload === "string"
+					? payload
+					: null;
+	return { activeReviewItemId: reviewItemId };
+};
+
+export const reduceAcknowledgeReviewItem = (payload: unknown) => {
+	const value =
+		payload && typeof payload === "object"
+			? (payload as {
+					conflictId?: unknown;
+					conflict_id?: unknown;
+					reviewItemId?: unknown;
+					review_item_id?: unknown;
+					action?: unknown;
+				})
+			: null;
+	const conflictId =
+		typeof value?.conflictId === "string"
+			? value.conflictId
+			: typeof value?.conflict_id === "string"
+				? value.conflict_id
+				: "";
+	const reviewItemId =
+		typeof value?.reviewItemId === "string"
+			? value.reviewItemId
+			: typeof value?.review_item_id === "string"
+				? value.review_item_id
+				: "";
+	return makeCrdtAcknowledgePayload({
+		conflictId,
+		reviewItemId,
+		action:
+			typeof value?.action === "string"
+				? value.action
+				: "acknowledgeReviewItem",
+	});
+};
