@@ -17,7 +17,7 @@ export const ActivitySummaryPanel = ({ summaries }: ActivitySummaryPanelProps) =
 					<li key={summary.id}>
 						<strong>{summary.title}</strong>
 						<span>
-							{summary.created.length} created / {summary.updated.length} updated /{" "}
+							{summary.created.length} created · {summary.updated.length} updated ·{" "}
 							{summary.deleted.length} deleted
 						</span>
 					</li>
@@ -26,4 +26,3 @@ export const ActivitySummaryPanel = ({ summaries }: ActivitySummaryPanelProps) =
 		)}
 	</section>
 );
-

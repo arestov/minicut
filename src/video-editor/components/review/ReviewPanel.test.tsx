@@ -23,7 +23,7 @@ describe("ReviewPanel", () => {
 
 		expect(screen.getByRole("region", { name: "Project review" })).toBeInTheDocument();
 		expect(screen.getAllByText("Clip timing conflict")).toHaveLength(2);
-		expect(screen.getByText("clip_timing")).toBeInTheDocument();
+		expect(screen.getAllByText("clip timing")).toHaveLength(2);
 		expect(screen.getByText("conflict:1")).toBeInTheDocument();
 	});
 
@@ -39,7 +39,7 @@ describe("ReviewPanel", () => {
 		);
 
 		await userEvent.click(
-			screen.getByRole("button", { name: "resolveClipTimingConflict" }),
+			screen.getByRole("button", { name: "Use suggested timing" }),
 		);
 		await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
 

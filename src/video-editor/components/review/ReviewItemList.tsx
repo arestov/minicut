@@ -21,10 +21,11 @@ export const ReviewItemList = ({
 					onClick={() => onSelectReviewItem?.(item)}
 				>
 					<span>{item.title}</span>
-					<small>{item.status}</small>
+					<small>
+						{item.kind.replaceAll("_", " ")} · {item.status}
+					</small>
 				</button>
 			</li>
 		))}
 	</ul>
 );
-

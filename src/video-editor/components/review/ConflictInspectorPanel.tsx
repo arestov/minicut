@@ -16,6 +16,11 @@ const previewLabel = (preview: unknown): string => {
 	return typeof type === "string" ? type.replaceAll("_", " ") : "Review preview";
 };
 
+const actionLabel = (actionId: string): string =>
+	actionId === "resolveClipTimingConflict"
+		? "Use suggested timing"
+		: actionId.replace(/([a-z])([A-Z])/g, "$1 $2");
+
 export const ConflictInspectorPanel = ({
 	item,
 	onClose,
@@ -40,14 +45,14 @@ export const ConflictInspectorPanel = ({
 						<span>{previewLabel(item.preview)}</span>
 					</div>
 				</div>
-				<dl>
+				<dl className="ve-review-inspector__meta">
 					<div>
 						<dt>Status</dt>
 						<dd>{item.status}</dd>
 					</div>
 					<div>
 						<dt>Kind</dt>
-						<dd>{item.kind}</dd>
+						<dd>{item.kind.replaceAll("_", " ")}</dd>
 					</div>
 					<div>
 						<dt>Conflict</dt>
@@ -58,7 +63,8 @@ export const ConflictInspectorPanel = ({
 					<ul aria-label="Affected objects">
 						{item.affectedObjects.map((object) => (
 							<li key={`${object.type}:${object.id}`}>
-								{object.label ?? object.type}: {object.id}
+								<span>{object.label ?? object.type}</span>
+								<small>{object.id}</small>
 							</li>
 						))}
 					</ul>
@@ -71,7 +77,7 @@ export const ConflictInspectorPanel = ({
 							onClick={() => onReviewAction?.(actionId, item)}
 						>
 							<Check aria-hidden="true" size={16} />
-							{actionId}
+							{actionLabel(actionId)}
 						</button>
 					))}
 					<button
@@ -88,4 +94,3 @@ export const ConflictInspectorPanel = ({
 		)}
 	</section>
 );
-

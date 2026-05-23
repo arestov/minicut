@@ -30,12 +30,17 @@ export const ReviewPanel = ({
 		() => items.find((item) => item.id === selectedItemId) ?? items[0] ?? null,
 		[items, selectedItemId],
 	);
+	const openCount = items.filter((item) => item.status !== "resolved").length;
 
 	return (
 		<section className="ve-review-panel" aria-label="Project review">
-			<header>
-				<h2>Project review</h2>
-				<span>{items.filter((item) => item.status !== "resolved").length} open</span>
+			<header className="ve-review-panel__header">
+				<div>
+					<h2>Project review</h2>
+					<span>
+						{openCount} open / {items.length} total
+					</span>
+				</div>
 			</header>
 			<div className="ve-review-panel__body">
 				<ReviewItemList
@@ -54,4 +59,3 @@ export const ReviewPanel = ({
 		</section>
 	);
 };
-
