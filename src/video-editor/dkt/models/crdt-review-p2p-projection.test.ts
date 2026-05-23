@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { waitForProjectReviewGraph } from "../review/testHarness/inspectReviewGraph";
+import {
+	inspectReviewGraph,
+	waitForProjectReviewGraph,
+} from "../review/testHarness/inspectReviewGraph";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 const createPairWithClip = async (roomId: string) => {
@@ -67,6 +70,57 @@ describe("MiniCut p2p review projection", () => {
 			);
 			expect(graph.reviewSessions[0]?.items.map((entry) => entry.nodeId)).toContain(
 				item?.nodeId,
+			);
+		} finally {
+			pair.close();
+		}
+	});
+
+	it("materializes activity summaries from natural p2p sync without conflicts", async () => {
+		const pair = await createCrdtWorkerPair({
+			roomId: "room-review-p2p-sync-activity",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		try {
+			await pair.a.dispatch(pair.a.videoTrack, "addClip", {
+				name: "sync-activity.webm",
+				mediaKind: "video",
+				start: 0,
+				in: 0,
+				duration: 4,
+			});
+			await pair.waitForConvergence();
+
+			let graph = await inspectReviewGraph(pair.b.ctx);
+			const deadline = Date.now() + 5_000;
+			while (graph.rootActivitySummaries.length === 0 && Date.now() <= deadline) {
+				await pair.b.ctx.computed();
+				graph = await inspectReviewGraph(pair.b.ctx);
+				await new Promise((resolve) => setTimeout(resolve, 25));
+			}
+
+			expect(graph.rootReviewItems).toHaveLength(0);
+			expect(graph.reviewSessions.flatMap((session) => session.items)).toHaveLength(
+				0,
+			);
+			expect(graph.rootActivitySummaries).toEqual([
+				expect.objectContaining({
+					modelName: "activity_summary",
+					attrs: expect.objectContaining({
+						projectId: expect.any(String),
+						batchId: expect.any(String),
+						title: expect.stringContaining("changes"),
+					}),
+				}),
+			]);
+			expect(graph.rootActivitySummaries[0]?.attrs.created).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						type: expect.any(String),
+						id: expect.any(String),
+					}),
+				]),
 			);
 		} finally {
 			pair.close();
