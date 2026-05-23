@@ -156,7 +156,7 @@ const MODEL_CASES: ModelCase[] = [
 				"$meta$removed": "crdt",
 				name: "crdt",
 				kind: "crdt",
-				url: "crdt",
+				url: "effect-runtime",
 				mime: "crdt",
 				duration: "crdt",
 				width: "crdt",
@@ -164,7 +164,7 @@ const MODEL_CASES: ModelCase[] = [
 				size: "crdt",
 				source: "crdt",
 				status: "effect-runtime",
-				data: "crdt",
+				data: "effect-runtime",
 				timelineAddRequest: "effect-runtime",
 			},
 			rels: {

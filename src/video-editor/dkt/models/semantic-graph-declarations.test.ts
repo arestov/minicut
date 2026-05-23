@@ -404,7 +404,9 @@ describe("semantic graph declarations", () => {
 			getCrdtSection(Resource as unknown as Record<string, unknown>, "attrs"),
 		).toMatchObject({
 			"$meta$removed": "lww",
+			url: { sync: false, reason: "effect-runtime" },
 			status: { sync: false, reason: "effect-runtime" },
+			data: { sync: false, reason: "effect-runtime" },
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		});
 		expect(

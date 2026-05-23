@@ -33,6 +33,18 @@ export const RESOURCE_CREATION_SHAPE = {
 	},
 } as const;
 
+const isPortableResourceUrl = (url: string): boolean =>
+	url.startsWith("data:") ||
+	url.startsWith("http://") ||
+	url.startsWith("https://") ||
+	url.startsWith("/") ||
+	url.startsWith("./");
+
+const portableResourceUrlOrEmpty = (url: unknown): string => {
+	const value = stringOr(url, "");
+	return isPortableResourceUrl(value) ? value : "";
+};
+
 export const Resource = model({
 	model_name: "resource",
 	crdt: {
@@ -41,7 +53,7 @@ export const Resource = model({
 			"$meta$removed": "lww",
 			name: "lww",
 			kind: "lww",
-			url: "lww",
+			url: { sync: false, reason: "effect-runtime" },
 			mime: "lww",
 			duration: "lww",
 			width: "lww",
@@ -49,7 +61,7 @@ export const Resource = model({
 			size: "lww",
 			source: "lww",
 			status: { sync: false, reason: "effect-runtime" },
-			data: "lww",
+			data: { sync: false, reason: "effect-runtime" },
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		},
 		rels: {
@@ -94,7 +106,7 @@ export const Resource = model({
 				name: stringOr(name, "Resource"),
 				kind: stringOr(kind, "video"),
 				duration: finiteNumberOr(duration, 0),
-				url: stringOr(url, ""),
+				url: portableResourceUrlOrEmpty(url),
 				mime: stringOr(mime, "application/octet-stream"),
 			}),
 		],
@@ -110,7 +122,7 @@ export const Resource = model({
 			) => ({
 				name: stringOr(name, "Resource"),
 				kind: stringOr(kind, "video"),
-				url: stringOr(url, ""),
+				url: portableResourceUrlOrEmpty(url),
 				mime: stringOr(mime, "application/octet-stream"),
 				duration: finiteNumberOr(duration, 0),
 			}),
@@ -151,7 +163,7 @@ export const Resource = model({
 					kind === "audio" || kind === "image" || kind === "text"
 						? kind
 						: "video",
-				url: stringOr(url, ""),
+				url: portableResourceUrlOrEmpty(url),
 				mime: stringOr(mime, "application/octet-stream"),
 				duration: finiteNumberOr(duration, 0),
 				width: finiteNumberOrUndefined(width),
