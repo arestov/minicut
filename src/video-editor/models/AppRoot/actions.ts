@@ -346,21 +346,33 @@ export const reduceHandleCRDTConflictGraph = (
 		})),
 		reviewSession: {
 			attrs: session.attrs,
+			hold_ref_id: "reviewSession",
+		},
+		$output: {
+			rels: {
+				reviewSession: { use_ref_id: "reviewSession" },
+				reviewItem: { use_ref_id: refs[0] },
+			},
 		},
 	};
 };
 
 export const reduceLinkReviewSessionItemsFromOutput = (payload: unknown) => {
 	const reviewSession = resolveOutputRelModel(payload, "reviewSession");
-	const reviewItem = resolveOutputRelModel(payload, "reviewItem");
+	const reviewItemsRaw = resolveOutputRelModel(payload, "reviewItem");
+	const reviewItems = Array.isArray(reviewItemsRaw)
+		? reviewItemsRaw
+		: reviewItemsRaw
+			? [reviewItemsRaw]
+			: [];
 	const reviewSessionId = getNodeId(reviewSession);
-	if (!reviewSessionId || !reviewItem) {
+	if (!reviewSessionId || reviewItems.length === 0) {
 		return null;
 	}
 	return {
 		[reviewSessionId]: {
 			rels: {
-				items: [reviewItem],
+				items: reviewItems,
 			},
 		},
 	};

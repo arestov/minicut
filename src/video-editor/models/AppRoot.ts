@@ -13,6 +13,7 @@ import {
 	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceHandleCRDTSyncGraph,
+	reduceLinkReviewSessionItemsFromOutput,
 	resolveReviewProjectIdHint,
 	reduceCreateTextModel,
 	reduceCreateTrackModel,
@@ -324,10 +325,11 @@ const appProps = mergeDcl({
 						{
 							method: "at_end",
 							can_create: true,
-							can_use_refs: true,
+							can_hold_refs: true,
 							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
 						},
 					],
+					$output: ["$output"],
 				},
 				fn: [
 					[
@@ -349,6 +351,14 @@ const appProps = mergeDcl({
 								projects,
 							),
 						) ?? noop,
+				],
+			},
+			{
+				to: ["*"],
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) =>
+						reduceLinkReviewSessionItemsFromOutput(payload) ?? noop,
 				],
 			},
 		],

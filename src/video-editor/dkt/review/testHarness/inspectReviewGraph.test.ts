@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bootDktModels } from "../../testingInit";
-import { inspectReviewGraph } from "./inspectReviewGraph";
+import { waitForProjectReviewGraph } from "./inspectReviewGraph";
 import { clipTimingConflictFixture } from "./fixtures/clipTimingConflict";
 
 describe("inspectReviewGraph", () => {
@@ -10,7 +10,6 @@ describe("inspectReviewGraph", () => {
 			await ctx.lockToRead(async () => {
 				await ctx.appModel.dispatch("handleCRDTConflict", {
 					event_type: "crdt_conflict",
-					projectId: "project:inspect",
 					happened_at: 1,
 					opened: [clipTimingConflictFixture],
 					updated: [],
@@ -24,7 +23,11 @@ describe("inspectReviewGraph", () => {
 			if (!project) {
 				throw new Error("Expected project");
 			}
-			const graph = await inspectReviewGraph(ctx, project);
+			const graph = await waitForProjectReviewGraph(
+				ctx,
+				project,
+				(snapshot) => snapshot.items.length === 1,
+			);
 
 			expect(graph.reviewSessions).toHaveLength(1);
 			expect(graph.reviewSessions[0]).toMatchObject({
