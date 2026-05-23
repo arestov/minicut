@@ -188,13 +188,11 @@ const appProps = mergeDcl({
 			],
 			fn: [
 				[
-					"< @one:activeProjectId < common_session_root",
 					"< @one:_node_id < project",
 					"<< @all:project",
 				] as const,
 				(
 					payload: unknown,
-					activeProjectId: unknown,
 					rootProjectId: unknown,
 					projects: unknown,
 				) =>
@@ -202,7 +200,6 @@ const appProps = mergeDcl({
 						payload,
 						resolveReviewProjectIdHint(
 							payload,
-							activeProjectId,
 							rootProjectId,
 							projects,
 						),
@@ -220,13 +217,11 @@ const appProps = mergeDcl({
 			],
 			fn: [
 				[
-					"< @one:activeProjectId < common_session_root",
 					"< @one:_node_id < project",
 					"<< @all:project",
 				] as const,
 				(
 					payload: unknown,
-					activeProjectId: unknown,
 					rootProjectId: unknown,
 					projects: unknown,
 				) =>
@@ -234,7 +229,6 @@ const appProps = mergeDcl({
 						payload,
 						resolveReviewProjectIdHint(
 							payload,
-							activeProjectId,
 							rootProjectId,
 							projects,
 						),
@@ -252,13 +246,11 @@ const appProps = mergeDcl({
 			],
 			fn: [
 				[
-					"< @one:activeProjectId < common_session_root",
 					"< @one:_node_id < project",
 					"<< @all:project",
 				] as const,
 				(
 					payload: unknown,
-					activeProjectId: unknown,
 					rootProjectId: unknown,
 					projects: unknown,
 				) =>
@@ -266,7 +258,6 @@ const appProps = mergeDcl({
 						payload,
 						resolveReviewProjectIdHint(
 							payload,
-							activeProjectId,
 							rootProjectId,
 							projects,
 						),
@@ -301,14 +292,12 @@ const appProps = mergeDcl({
 			fn: [
 				[
 					"$noop",
-					"< @one:activeProjectId < common_session_root",
 					"< @one:_node_id < project",
 					"<< @all:project",
 				] as const,
 				(
 					payload: unknown,
 					noop: unknown,
-					activeProjectId: unknown,
 					rootProjectId: unknown,
 					projects: unknown,
 				) =>
@@ -316,7 +305,6 @@ const appProps = mergeDcl({
 						payload,
 						resolveReviewProjectIdHint(
 							payload,
-							activeProjectId,
 							rootProjectId,
 							projects,
 						),

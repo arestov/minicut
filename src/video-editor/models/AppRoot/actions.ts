@@ -88,14 +88,11 @@ const findProjectIdForConflictPayload = (
 
 export const resolveReviewProjectIdHint = (
 	payload: unknown,
-	activeProjectId: unknown,
 	rootProjectId: unknown,
 	projects?: unknown,
 ): unknown =>
 	findProjectIdForConflictPayload(payload, projects) ??
-	(typeof activeProjectId === "string" && activeProjectId
-		? activeProjectId
-		: rootProjectId);
+	rootProjectId;
 
 const resolveOutputRelModel = (payload: unknown, relName: string): unknown => {
 	const rels = asRecord((payload as { rels?: unknown } | null)?.rels);
