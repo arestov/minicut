@@ -214,6 +214,48 @@ const lifecycleRecords = (payload: unknown) => {
 	].filter((record) => asString(record?.conflict_id));
 };
 
+const reviewProjectIdHint = (payload: unknown): string | null => {
+	const value = asObject<{ __reviewProjectIdHint?: unknown }>(payload);
+	return asString(value?.__reviewProjectIdHint);
+};
+
+const collectConflictNodeIds = (payload: unknown): Set<string> => {
+	const ids = new Set<string>();
+	for (const record of lifecycleRecords(payload)) {
+		const nodeId = asString(record.node_id);
+		if (nodeId) {
+			ids.add(nodeId);
+		}
+	}
+	return ids;
+};
+
+const modelNodeId = (model: unknown): string | null =>
+	model &&
+	typeof model === "object" &&
+	typeof (model as { _node_id?: unknown })._node_id === "string"
+		? (model as { _node_id: string })._node_id
+		: null;
+
+const projectOwnsConflictPayload = (
+	payload: unknown,
+	projectId: string,
+	projectClips: unknown,
+): boolean => {
+	const hint = reviewProjectIdHint(payload);
+	if (hint) {
+		return hint === projectId;
+	}
+	const conflictNodeIds = collectConflictNodeIds(payload);
+	if (conflictNodeIds.size === 0) {
+		return false;
+	}
+	return (Array.isArray(projectClips) ? projectClips : []).some((clip) => {
+		const clipId = modelNodeId(clip);
+		return clipId ? conflictNodeIds.has(clipId) : false;
+	});
+};
+
 export const getResourceKind = (resource: ResourceLike): string =>
 	getResourceAttr(resource, "kind") === "audio" ||
 	getResourceAttr(resource, "kind") === "image" ||
@@ -353,12 +395,19 @@ export const reduceEnsureProjectReviewSession = (
 	noop: unknown,
 	project: unknown,
 	existingSession: unknown,
+	projectClips: unknown,
 ) => {
-	if (existingSession) {
-		return noop;
-	}
 	const projectId = getNodeId(project);
 	if (!projectId) {
+		return noop;
+	}
+	if (lifecycleRecords(payload).length === 0) {
+		return noop;
+	}
+	if (!projectOwnsConflictPayload(payload, projectId, projectClips)) {
+		return noop;
+	}
+	if (existingSession) {
 		return noop;
 	}
 	return {
@@ -366,7 +415,6 @@ export const reduceEnsureProjectReviewSession = (
 			attrs: reviewSessionAttrsForProject(projectId),
 			hold_ref_id: "projectReviewSession",
 		},
-		reviewSessions: [{ use_ref_id: "projectReviewSession" }],
 		$output: payload,
 	};
 };
@@ -375,9 +423,13 @@ export const reduceMaterializeProjectCRDTConflictReview = (
 	payload: unknown,
 	noop: unknown,
 	project: unknown,
+	projectClips: unknown,
 ) => {
 	const projectId = getNodeId(project);
 	if (!projectId) {
+		return noop;
+	}
+	if (!projectOwnsConflictPayload(payload, projectId, projectClips)) {
 		return noop;
 	}
 	const itemsById = new Map<
@@ -405,7 +457,6 @@ export const reduceMaterializeProjectCRDTConflictReview = (
 			...item,
 			hold_ref_id: refs[index],
 		})),
-		reviewItems: refs.map((ref) => ({ use_ref_id: ref })),
 		sessionItems: refs.map((ref) => ({ use_ref_id: ref })),
 		selectReviewItem:
 			typeof selectedReviewItemId === "string"

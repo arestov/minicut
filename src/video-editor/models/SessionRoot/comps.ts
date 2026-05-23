@@ -5,10 +5,6 @@ import {
 	type PreviewFrame,
 	type PreviewStructure,
 } from "../../read-model/previewComps";
-import type {
-	MiniCutActivitySummary,
-	MiniCutReviewItem,
-} from "../../dkt/review/types";
 import type { MiniCutReviewSessionSnapshot } from "../ReviewSession";
 
 const DEFAULT_PREVIEW_STRUCTURE: PreviewStructure = { clipSources: [] };
@@ -82,58 +78,16 @@ export type ActiveProjectReviewSnapshot = {
 	openCount: number;
 };
 
-const hasProjectId = <Value extends { projectId: string }>(
-	value: Value,
-	projectId: string,
-): boolean => value.projectId === projectId;
-
-const normalizeSnapshots = <Value,>(value: unknown): Value[] =>
-	Array.isArray(value) ? (value.filter(Boolean) as Value[]) : [];
-
 export const reduceActiveProjectReviewSnapshot = (
-	activeProjectId: unknown,
-	reviewSessions: unknown,
-	reviewItems: unknown,
-	activitySummaries: unknown,
+	projectReviewSnapshot: unknown,
 ): ActiveProjectReviewSnapshot => {
-	if (typeof activeProjectId !== "string" || !activeProjectId) {
-		return { session: null, openCount: 0 };
+	if (
+		projectReviewSnapshot &&
+		typeof projectReviewSnapshot === "object" &&
+		"session" in projectReviewSnapshot &&
+		"openCount" in projectReviewSnapshot
+	) {
+		return projectReviewSnapshot as ActiveProjectReviewSnapshot;
 	}
-
-	const items = normalizeSnapshots<MiniCutReviewItem>(reviewItems).filter((item) =>
-		hasProjectId(item, activeProjectId),
-	);
-	const summaries = normalizeSnapshots<MiniCutActivitySummary>(
-		activitySummaries,
-	).filter((summary) => hasProjectId(summary, activeProjectId));
-	const sessions = normalizeSnapshots<MiniCutReviewSessionSnapshot>(
-		reviewSessions,
-	).filter((session) => hasProjectId(session, activeProjectId));
-	const openCount = items.filter((item) => item.status !== "resolved").length;
-	const session =
-		sessions.find(() => openCount > 0) ??
-		sessions[0] ??
-		(items.length || summaries.length
-			? {
-					id: `review-session:${activeProjectId}`,
-					projectId: activeProjectId,
-					selectedReviewItemId: items[0]?.id ?? null,
-					items: [],
-					activitySummaries: [],
-				}
-			: null);
-
-	if (!session) {
-		return { session: null, openCount: 0 };
-	}
-
-	return {
-		openCount,
-		session: {
-			...session,
-			selectedReviewItemId: session.selectedReviewItemId ?? items[0]?.id ?? null,
-			items,
-			activitySummaries: summaries,
-		},
-	};
+	return { session: null, openCount: 0 };
 };

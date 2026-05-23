@@ -712,6 +712,21 @@ export const installMiniCutDebugBridgeTesting = (
 				]),
 				itemIds: readMany(scope, "items").map((item) => item._nodeId ?? null),
 			}));
+			const activeProjectReviewItems = readMany(
+				activeProject,
+				"reviewItems",
+			).map((scope) => ({
+				nodeId: scope._nodeId ?? null,
+				attrs: readAttrs(scope, [
+					"reviewItemId",
+					"conflictId",
+					"projectId",
+					"kind",
+					"status",
+					"title",
+					"reviewItemSnapshot",
+				]),
+			}));
 			const selectedClip = readOne(sessionRoot, "selectedClip");
 			return {
 				role: debug.getRole(),
@@ -732,6 +747,8 @@ export const installMiniCutDebugBridgeTesting = (
 							nodeId: activeProject._nodeId ?? null,
 							attrs: readAttrs(activeProject, [
 								"title",
+								"projectReviewSnapshot",
+								"reviewOpenItemCount",
 								"$meta$model$crdt$open_conflicts_count",
 								"$meta$model$crdt$last_conflict_id",
 								"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
@@ -740,6 +757,7 @@ export const installMiniCutDebugBridgeTesting = (
 							reviewSessionIds: activeProjectReviewSessions.map(
 								(session) => session.nodeId,
 							),
+							reviewItemIds: activeProjectReviewItems.map((item) => item.nodeId),
 						}
 					: null,
 				appRoot: {
@@ -749,6 +767,7 @@ export const installMiniCutDebugBridgeTesting = (
 				},
 				reviewItems,
 				reviewSessions,
+				activeProjectReviewItems,
 				activeProjectReviewSessions,
 			};
 		},

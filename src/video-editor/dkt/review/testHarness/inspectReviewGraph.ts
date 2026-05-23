@@ -153,20 +153,14 @@ export const inspectProjectReviewGraph = async (
 	project: DktModel,
 ): Promise<ProjectReviewGraphSnapshot> => {
 	const graph = await inspectReviewGraph(ctx, ctx.appModel);
-	const projectId = nodeId(project);
-	const items = graph.rootReviewItems.filter(
-		(item) => item.attrs.projectId === projectId,
-	);
-	const activitySummaries = graph.rootActivitySummaries.filter(
-		(summary) => summary.attrs.projectId === projectId,
-	);
-	const reviewSessions = graph.reviewSessions.filter(
-		(session) => session.attrs.projectId === projectId,
-	);
+	const projectGraph = await inspectReviewGraph(ctx, project);
+	const items = projectGraph.rootReviewItems;
+	const activitySummaries = projectGraph.rootActivitySummaries;
+	const reviewSessions = projectGraph.reviewSessions;
 	return {
 		...graph,
 		reviewSessions,
-		project: await inspectNode(ctx, project, []),
+		project: await inspectNode(ctx, project, ["projectReviewSnapshot"]),
 		items,
 		activitySummaries,
 		openItemCount: items.filter((item) => item.attrs.status !== "resolved").length,

@@ -259,12 +259,7 @@ export const EditorSessionRoot = model({
 		],
 		activeProjectReviewSnapshot: [
 			"comp",
-			[
-				"< @one:_node_id < activeProject",
-				"< @all:reviewSessionSnapshot < pioneer.reviewSession",
-				"< @all:reviewItemSnapshot < pioneer.reviewItem",
-				"< @all:activitySummarySnapshot < pioneer.activitySummary",
-			] as const,
+			["< @one:projectReviewSnapshot < activeProject"] as const,
 			reduceActiveProjectReviewSnapshot,
 		],
 	},

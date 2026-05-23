@@ -126,10 +126,13 @@ const projectShape = defineShape({
 		"createdAt",
 		"updatedAt",
 		"isLandscape",
+		"projectReviewSnapshot",
 	],
 	many: {
 		tracks: trackShape,
 		resources: resourceShape,
+		reviewItems: reviewItemShape,
+		reviewSessions: reviewSessionShape,
 	},
 });
 

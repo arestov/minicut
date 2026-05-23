@@ -371,6 +371,13 @@ const appProps = mergeDcl({
 						reduceLinkReviewSessionItemsFromOutput(payload) ?? noop,
 				],
 			},
+			{
+				to: [
+					"<< project",
+					{ action: "materializeCRDTConflictReview", sub_flow: true },
+				],
+				fn: (payload: unknown) => payload,
+			},
 		],
 		selectReviewItem: {
 			to: {

@@ -94,21 +94,6 @@ export const resolveReviewProjectIdHint = (
 	findProjectIdForConflictPayload(payload, projects) ??
 	rootProjectId;
 
-export const reduceRouteCRDTConflictToProjects = (
-	payload: unknown,
-	noop: unknown,
-	rootProjectId: unknown,
-	projects: unknown,
-) => {
-	if (!Array.isArray(projects) || projects.length === 0) {
-		return [];
-	}
-	const projectId = resolveReviewProjectIdHint(payload, rootProjectId, projects);
-	return projects.map((project) =>
-		getNodeId(project) === projectId ? payload : noop,
-	);
-};
-
 const resolveOutputRelModel = (payload: unknown, relName: string): unknown => {
 	const rels = asRecord((payload as { rels?: unknown } | null)?.rels);
 	return rels?.[relName] ?? null;
@@ -375,6 +360,9 @@ export const reduceHandleCRDTConflictGraph = (
 						hold_ref_id: "reviewSession",
 					},
 					$output: {
+						...(payload && typeof payload === "object"
+							? (payload as Record<string, unknown>)
+							: { value: payload }),
 						rels: {
 							reviewSession: { use_ref_id: "reviewSession" },
 							reviewItem: { use_ref_id: newEntries[0].ref },
