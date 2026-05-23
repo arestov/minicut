@@ -1,5 +1,9 @@
 import { model } from "dkt/model.js";
 import {
+	crdtReviewResolveTarget,
+	makeCrdtResolvePayload,
+} from "../dkt/review/crdtReviewCommands";
+import {
 	defaultClipTransform,
 	normalizeEffectCreationAttrs,
 	reduceClipColorAction,
@@ -579,7 +583,7 @@ export const Clip = model({
 				start: ["start"],
 				in: ["in"],
 				duration: ["duration"],
-				close: ["$crdt:resolve"],
+				crdtResolve: [crdtReviewResolveTarget],
 			},
 			fn: [
 				["$noop", "start", "in", "duration"] as const,
@@ -596,12 +600,20 @@ export const Clip = model({
 						duration?: unknown;
 						conflict_id?: unknown;
 						conflictId?: unknown;
+						review_item_id?: unknown;
+						reviewItemId?: unknown;
 						decision?: unknown;
 					} | null;
 					const conflictId = value?.conflict_id ?? value?.conflictId;
 					if (typeof conflictId !== "string") {
 						return noop;
 					}
+					const reviewItemId =
+						typeof value?.review_item_id === "string"
+							? value.review_item_id
+							: typeof value?.reviewItemId === "string"
+								? value.reviewItemId
+								: `review:${conflictId}`;
 					const decision = {
 						start: numberOr(value?.start, numberOr(start, 0)),
 						in: numberOr(value?.in, numberOr(inPoint, 0)),
@@ -609,10 +621,12 @@ export const Clip = model({
 					};
 					return {
 						...decision,
-						close: {
-							conflict_id: conflictId,
-							decision: value?.decision ?? decision,
-						},
+						crdtResolve: makeCrdtResolvePayload({
+							conflictId,
+							reviewItemId,
+							action: "resolveClipTimingConflict",
+							domainResult: decision,
+						}),
 					};
 				},
 			],
