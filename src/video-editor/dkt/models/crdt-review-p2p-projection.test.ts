@@ -168,6 +168,12 @@ describe("MiniCut p2p review projection", () => {
 					aggregate: "clipTiming",
 				}) ?? [],
 			).toEqual([]);
+			expect(
+				pair.b.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.({
+					status: "open",
+					aggregate: "clipTiming",
+				}) ?? [],
+			).toEqual([]);
 		} finally {
 			pair.close();
 		}
