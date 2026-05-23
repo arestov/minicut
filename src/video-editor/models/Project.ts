@@ -19,6 +19,7 @@ import {
 } from "./Project/actions";
 import { reduceProjectPreviewClipSources } from "./Project/comps";
 import { RESOURCE_CREATION_SHAPE } from "./Resource";
+import { REVIEW_SESSION_CREATION_SHAPE } from "./ReviewSession";
 import { TRACK_CREATION_SHAPE } from "./Track";
 import {
 	finiteNumberOr,
@@ -41,6 +42,7 @@ export const PROJECT_CREATION_SHAPE = {
 	rels: {
 		tracks: TRACK_CREATION_SHAPE,
 		resources: RESOURCE_CREATION_SHAPE,
+		reviewSessions: REVIEW_SESSION_CREATION_SHAPE,
 	},
 } as const;
 
@@ -101,6 +103,7 @@ export const Project = model({
 			resources: "or-set",
 			primaryVideoTrack: "lww",
 			primaryAudioTrack: "lww",
+			reviewSessions: { sync: false, reason: "projection" },
 		},
 	},
 	attrs: {
@@ -203,6 +206,18 @@ export const Project = model({
 			["< @all:clipRenderData < tracks.clips"] as const,
 			reduceProjectPreviewClipSources,
 		],
+		reviewOpenItemCount: [
+			"comp",
+			["< @all:openItemCount < reviewSessions"] as const,
+			(counts: unknown) =>
+				Array.isArray(counts)
+					? counts.reduce(
+							(total, count) =>
+								total + (typeof count === "number" ? count : 0),
+							0,
+						)
+					: 0,
+		],
 	},
 	rels: {
 		tracks: [
@@ -234,6 +249,14 @@ export const Project = model({
 		],
 		primaryVideoTrack: ["input", { linking: "<< track << #", role: "projection" }],
 		primaryAudioTrack: ["input", { linking: "<< track << #", role: "projection" }],
+		reviewSessions: [
+			"input",
+			{
+				many: true,
+				linking: "<< reviewSession << #",
+				role: "projection",
+			},
+		],
 	},
 	actions: {
 		handleInit: [
