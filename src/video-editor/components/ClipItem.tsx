@@ -1,7 +1,6 @@
 import {
 	useCallback,
 	useContext,
-	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -18,9 +17,7 @@ import { getAttrsShape } from "../../dkt-react-sync/shape/autoShapes";
 import { useShape } from "../../dkt-react-sync/hooks/useShape";
 import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 import type { AnimatedScalar } from "../render/registryTypes";
-import { ClipConflictBadge } from "./ClipConflictBadge";
 import { formatPercent, formatSeconds } from "./format";
-import { ReviewPanel } from "./review/ReviewPanel";
 
 const MIN_CLIP_DURATION = 0.5;
 let nextClipGestureIntentId = 0;
@@ -69,33 +66,11 @@ interface ClipRenderAttrs {
 	in?: unknown;
 	opacity?: AnimatedScalar;
 	color?: unknown;
-	"$meta$aggregates$crdt$clipTiming$open_conflicts_count"?: unknown;
-	"$meta$aggregates$crdt$clipTiming$last_conflict_id"?: unknown;
-	"$meta$aggregates$crdt$clipTiming$last_resolution_error"?: unknown;
-	"$meta$aggregates$crdt$timelineMembership$open_conflicts_count"?: unknown;
-	"$meta$aggregates$crdt$timelineMembership$last_conflict_id"?: unknown;
-	"$meta$rels$crdt$clips$open_conflicts_count"?: unknown;
-	"$meta$rels$crdt$clips$last_conflict_id"?: unknown;
-	"$meta$model$crdt$open_conflicts_count"?: unknown;
-	"$meta$model$crdt$last_conflict_id"?: unknown;
-	"$meta$model$crdt$last_resolution_error"?: unknown;
 }
 
 interface ResourceRenderAttrs {
 	duration?: unknown;
 }
-
-type ClipConflictItem = {
-	id: string;
-	kind: string;
-	scope: string;
-	summary: string;
-	decision?: {
-		start?: number;
-		in?: number;
-		duration?: number;
-	};
-};
 
 const EMPTY_ATTRS = Object.freeze({}) as Record<string, unknown>;
 
@@ -152,14 +127,6 @@ export const getClipResizeDeltaSecondsForUi = (
 	return Math.round((nextStart - base.start) * 100) / 100;
 };
 
-interface ConflictViewAttrs {
-	id?: unknown;
-	kind?: unknown;
-	scope?: unknown;
-	summary?: unknown;
-	decision?: unknown;
-}
-
 const ClipGradeBadge = () => {
 	const attrs = useAttrs(["kind", "enabled"]) as {
 		kind?: unknown;
@@ -169,62 +136,6 @@ const ClipGradeBadge = () => {
 	return attrs.kind === "color-correction" && attrs.enabled !== false ? (
 		<span className="ve-clip__badge">Grade</span>
 	) : null;
-};
-
-const isTimingDecision = (
-	value: unknown,
-): value is NonNullable<ClipConflictItem["decision"]> => {
-	if (!value || typeof value !== "object") {
-		return false;
-	}
-	const decision = value as { start?: unknown; in?: unknown; duration?: unknown };
-	return (
-		typeof decision.start === "number" ||
-		typeof decision.in === "number" ||
-		typeof decision.duration === "number"
-	);
-};
-
-const sameConflictItem = (
-	left: ClipConflictItem | undefined,
-	right: ClipConflictItem,
-): boolean =>
-	Boolean(left) &&
-	left?.id === right.id &&
-	left?.kind === right.kind &&
-	left?.scope === right.scope &&
-	left?.summary === right.summary &&
-	left?.decision === right.decision;
-
-const readNumber = (value: unknown): number =>
-	typeof value === "number" && Number.isFinite(value) ? value : 0;
-
-const readString = (value: unknown): string | null =>
-	typeof value === "string" && value.length > 0 ? value : null;
-
-const ClipConflictProjectionItem = ({
-	scope,
-	onRead,
-}: {
-	scope: { _nodeId: string };
-	onRead: (item: ClipConflictItem) => void;
-}) => {
-	const attrs = useAttrs(["id", "kind", "scope", "summary", "decision"]) as
-		ConflictViewAttrs;
-	const item = {
-		id: typeof attrs.id === "string" ? attrs.id : scope._nodeId,
-		kind: typeof attrs.kind === "string" ? attrs.kind : "clip_timing",
-		scope: typeof attrs.scope === "string" ? attrs.scope : "clipTiming",
-		summary:
-			typeof attrs.summary === "string"
-				? attrs.summary
-				: "Timing has concurrent edits",
-		decision: isTimingDecision(attrs.decision) ? attrs.decision : undefined,
-	};
-	useEffect(() => {
-		onRead(item);
-	}, [item.id, item.kind, item.scope, item.summary, item.decision, onRead]);
-	return null;
 };
 
 const createClipTimingBatchId = (clipId: string | null): string => {
@@ -239,7 +150,6 @@ export const ClipItem = ({
 }: ClipItemProps) => {
 	const dragState = useRef<ClipPointerDragState | null>(null);
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0);
-	const [isConflictInspectorOpen, setIsConflictInspectorOpen] = useState(false);
 	const dispatch = useActions();
 	const sessionDispatch = useRootDispatch();
 	const scope = useContext(ScopeContext);
@@ -250,19 +160,8 @@ export const ClipItem = ({
 		"in",
 		"opacity",
 		"color",
-		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
-		"$meta$aggregates$crdt$clipTiming$last_conflict_id",
-		"$meta$aggregates$crdt$clipTiming$last_resolution_error",
-		"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
-		"$meta$aggregates$crdt$timelineMembership$last_conflict_id",
-		"$meta$rels$crdt$clips$open_conflicts_count",
-		"$meta$rels$crdt$clips$last_conflict_id",
-		"$meta$model$crdt$open_conflicts_count",
-		"$meta$model$crdt$last_conflict_id",
-		"$meta$model$crdt$last_resolution_error",
 	]) as ClipRenderAttrs;
 	const effectScopes = useMany("effects");
-	const conflictScopes = useMany("crdtConflicts");
 	const resourceScope = useOne("resource");
 	const resourceAttrs = useScopeAttrs(resourceScope, ["duration"]) as ResourceRenderAttrs;
 	const clipId = typeof scope?._nodeId === "string" ? scope._nodeId : null;
@@ -286,91 +185,6 @@ export const ClipItem = ({
 			: null;
 	const opacity = Number(clipAttrs.opacity?.value ?? 1);
 	const color = String(clipAttrs.color ?? "#2563eb");
-	const clipConflictState = clipAttrs as unknown as Record<string, unknown>;
-	const [conflictItemsById, setConflictItemsById] = useState<
-		Record<string, ClipConflictItem>
-	>({});
-	const openTimingConflictCount = readNumber(
-		clipConflictState["$meta$aggregates$crdt$clipTiming$open_conflicts_count"],
-	);
-	const openStructuralConflictCount = Math.max(
-		readNumber(
-			clipConflictState[
-				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count"
-			],
-		),
-		readNumber(clipConflictState["$meta$rels$crdt$clips$open_conflicts_count"]),
-	);
-	const openModelConflictCount = readNumber(
-		clipConflictState["$meta$model$crdt$open_conflicts_count"],
-	);
-	const metaConflictItems: ClipConflictItem[] =
-		conflictScopes.length > 0
-			? []
-			: ([
-					openTimingConflictCount > 0
-						? {
-								id:
-									readString(
-										clipConflictState[
-											"$meta$aggregates$crdt$clipTiming$last_conflict_id"
-										],
-									) ?? `${clipId ?? "clip"}:clipTiming`,
-								kind: "mvr_alternatives",
-								scope: "clipTiming",
-								summary: "Timing has concurrent edits",
-								decision: {
-									start,
-									in: inPoint,
-									duration: Math.max(MIN_CLIP_DURATION, duration),
-								},
-							}
-						: null,
-					openStructuralConflictCount > 0
-						? {
-								id:
-									readString(
-										clipConflictState[
-											"$meta$aggregates$crdt$timelineMembership$last_conflict_id"
-										],
-									) ??
-									readString(
-										clipConflictState[
-											"$meta$rels$crdt$clips$last_conflict_id"
-										],
-									) ??
-									`${clipId ?? "clip"}:timelineMembership`,
-								kind: "structural_conflict",
-								scope: "timelineMembership",
-								summary: "Timeline placement has concurrent edits",
-							}
-						: null,
-					openModelConflictCount > 0 &&
-					openTimingConflictCount === 0 &&
-					openStructuralConflictCount === 0
-						? {
-								id:
-									readString(
-										clipConflictState["$meta$model$crdt$last_conflict_id"],
-									) ?? `${clipId ?? "clip"}:model`,
-								kind: "model_conflict",
-								scope: "model",
-								summary: "Model has concurrent edits",
-							}
-						: null,
-				].filter((item) => item !== null) as ClipConflictItem[]);
-	const conflictItems: ClipConflictItem[] =
-		conflictScopes.length > 0
-			? conflictScopes.map(
-					(conflictScope) =>
-						conflictItemsById[conflictScope._nodeId] ?? {
-							id: conflictScope._nodeId,
-							kind: "clip_timing",
-							scope: "clipTiming",
-							summary: "Timing has concurrent edits",
-						},
-				)
-			: metaConflictItems;
 	const width = Math.max(36, duration * timelineZoom);
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx);
 	const selectClip = (): void => {
@@ -642,11 +456,6 @@ export const ClipItem = ({
 						<ClipGradeBadge />
 					</ScopeContext.Provider>
 				))}
-				<ClipConflictBadge
-					model={{ states: clipConflictState, dispatch }}
-					scope="all"
-					onOpen={() => setIsConflictInspectorOpen(true)}
-				/>
 			</div>
 			<small>
 				{name} | {formatSeconds(start)} / {formatSeconds(duration)} | opacity{" "}
@@ -675,48 +484,6 @@ export const ClipItem = ({
 					finishPointerDrag(event.clientX);
 				}}
 			/>
-			{isConflictInspectorOpen ? (
-				<div
-					className="ve-clip-conflict-popover"
-					onClick={(event) => event.stopPropagation()}
-					onKeyDown={(event) => event.stopPropagation()}
-					onPointerDown={(event) => event.stopPropagation()}
-				>
-					{conflictScopes.map((conflictScope) => (
-						<ScopeContext.Provider
-							key={conflictScope._nodeId}
-							value={conflictScope}
-						>
-							<ClipConflictProjectionItem
-								scope={conflictScope}
-								onRead={(item) =>
-									setConflictItemsById((current) =>
-										sameConflictItem(current[conflictScope._nodeId], item)
-											? current
-											: { ...current, [conflictScope._nodeId]: item },
-									)
-								}
-							/>
-						</ScopeContext.Provider>
-					))}
-					<ReviewPanel
-						items={reviewItems}
-						onClose={() => setIsConflictInspectorOpen(false)}
-						onAcknowledgeReviewItem={(item) =>
-							dispatch("acknowledgeReviewItem", {
-								conflict_id: item.conflictId,
-								review_item_id: item.id,
-							})
-						}
-						onReviewAction={(actionId, item) =>
-							dispatch(actionId, {
-								conflict_id: item.conflictId,
-								review_item_id: item.id,
-							})
-						}
-					/>
-				</div>
-			) : null}
 		</div>
 	);
 };

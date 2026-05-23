@@ -1,5 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
@@ -101,25 +100,32 @@ const renderClipItem = (clipScope: { kind: "scope"; _nodeId: string }) =>
 		</ReactScopeRuntimeContext.Provider>,
 	);
 
+const seedClip = (
+	clipScope: { kind: "scope"; _nodeId: string },
+	attrs: Record<string, unknown> = {},
+) => {
+	mockState.dispatch.mockClear();
+	mockState.sessionDispatch.mockClear();
+	mockState.attrsByNode.clear();
+	mockState.relsByNode.clear();
+	mockState.attrsByNode.set(clipScope._nodeId, {
+		name: "clip.webm",
+		start: 1,
+		in: 0,
+		duration: 4,
+		opacity: { value: 1 },
+		color: "#2563eb",
+		...attrs,
+	});
+	mockState.relsByNode.set(clipScope._nodeId, {
+		effects: [],
+	});
+};
+
 describe("ClipItem conflict UX", () => {
 	it("dispatches clip timing drag preview and final actions with one intent batch", () => {
 		const clipScope = { kind: "scope" as const, _nodeId: "clip:drag" };
-		mockState.dispatch.mockClear();
-		mockState.sessionDispatch.mockClear();
-		mockState.attrsByNode.clear();
-		mockState.relsByNode.clear();
-		mockState.attrsByNode.set(clipScope._nodeId, {
-			name: "drag.webm",
-			start: 1,
-			in: 0,
-			duration: 4,
-			opacity: { value: 1 },
-			color: "#2563eb",
-		});
-		mockState.relsByNode.set(clipScope._nodeId, {
-			effects: [],
-			crdtConflicts: [],
-		});
+		seedClip(clipScope, { name: "drag.webm" });
 
 		renderClipItem(clipScope);
 
@@ -155,135 +161,18 @@ describe("ClipItem conflict UX", () => {
 		expect(commitCall?.[2]).toEqual(previewCall?.[2]);
 	});
 
-	it("opens materialized conflict details and resolves through Clip DKT actions", async () => {
-		const clipScope = { kind: "scope" as const, _nodeId: "clip:1" };
-		const conflictScope = { kind: "scope" as const, _nodeId: "conflict:1" };
-		mockState.dispatch.mockClear();
-		mockState.sessionDispatch.mockClear();
-		mockState.attrsByNode.clear();
-		mockState.relsByNode.clear();
-		mockState.attrsByNode.set(clipScope._nodeId, {
-			name: "conflicted.webm",
-			start: 0,
-			in: 0,
-			duration: 4,
-			opacity: { value: 1 },
-			color: "#2563eb",
+	it("does not expose the legacy clip-level conflict popover from CRDT meta", () => {
+		const clipScope = { kind: "scope" as const, _nodeId: "clip:conflict-meta" };
+		seedClip(clipScope, {
 			"$meta$aggregates$crdt$clipTiming$open_conflicts_count": 1,
-		});
-		mockState.attrsByNode.set(conflictScope._nodeId, {
-			id: "conflict:duration",
-			kind: "mvr_alternatives",
-			scope: "clipTiming",
-			summary: "Duration has concurrent edits",
-			decision: { start: 0, in: 0, duration: 3 },
-		});
-		mockState.relsByNode.set(clipScope._nodeId, {
-			effects: [],
-			crdtConflicts: [conflictScope],
+			"$meta$aggregates$crdt$clipTiming$last_conflict_id": "conflict:duration",
 		});
 
 		renderClipItem(clipScope);
 
-		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
-
-		expect(mockState.dispatch).not.toHaveBeenCalledWith(
-			"loadConflicts",
-			expect.anything(),
-		);
-		expect(mockState.sessionDispatch).not.toHaveBeenCalledWith(
-			"selectEntity",
-			"clip:1",
-		);
-		await waitFor(() =>
-			expect(screen.getAllByText("Duration has concurrent edits")).toHaveLength(2),
-		);
-
-		await userEvent.click(
-			screen.getByRole("button", { name: "resolveClipTimingConflict" }),
-		);
-
-		expect(mockState.dispatch).toHaveBeenCalledWith("resolveClipTimingConflict", {
-			conflict_id: "conflict:duration",
-			review_item_id: "review:conflict:duration",
-		});
-	});
-
-	it("shows meta-backed details while structural conflict relation is not materialized", async () => {
-		const clipScope = { kind: "scope" as const, _nodeId: "clip:structural" };
-		mockState.dispatch.mockClear();
-		mockState.sessionDispatch.mockClear();
-		mockState.attrsByNode.clear();
-		mockState.relsByNode.clear();
-		mockState.attrsByNode.set(clipScope._nodeId, {
-			name: "structural.webm",
-			start: 0,
-			in: 0,
-			duration: 4,
-			opacity: { value: 1 },
-			color: "#2563eb",
-			"$meta$aggregates$crdt$timelineMembership$open_conflicts_count": 1,
-			"$meta$aggregates$crdt$timelineMembership$last_conflict_id":
-				"timeline:conflict",
-		});
-		mockState.relsByNode.set(clipScope._nodeId, {
-			effects: [],
-			crdtConflicts: [],
-		});
-
-		renderClipItem(clipScope);
-
-		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
-
-		expect(mockState.dispatch).not.toHaveBeenCalledWith(
-			"loadConflicts",
-			expect.anything(),
-		);
 		expect(
-			screen.getAllByText("Timeline placement has concurrent edits"),
-		).toHaveLength(2);
-	});
-
-	it("renders structural conflict projection without raw technical actions", async () => {
-		const clipScope = { kind: "scope" as const, _nodeId: "clip:structural-actions" };
-		const conflictScope = { kind: "scope" as const, _nodeId: "conflict:structural" };
-		mockState.dispatch.mockClear();
-		mockState.sessionDispatch.mockClear();
-		mockState.attrsByNode.clear();
-		mockState.relsByNode.clear();
-		mockState.attrsByNode.set(clipScope._nodeId, {
-			name: "structural-actions.webm",
-			start: 0,
-			in: 0,
-			duration: 4,
-			opacity: { value: 1 },
-			color: "#2563eb",
-			"$meta$model$crdt$open_conflicts_count": 1,
-		});
-		mockState.attrsByNode.set(conflictScope._nodeId, {
-			id: "structural:delete:clip-1",
-			kind: "structural_delete_with_concurrent_activity",
-			scope: "timelineMembership",
-			summary: "Remote delete conflicts with local effect edit",
-		});
-		mockState.relsByNode.set(clipScope._nodeId, {
-			effects: [],
-			crdtConflicts: [conflictScope],
-		});
-
-		renderClipItem(clipScope);
-
-		await userEvent.click(screen.getByRole("button", { name: "1 open conflict" }));
-		await waitFor(() =>
-			expect(
-				screen.getAllByText("Remote delete conflicts with local effect edit"),
-			).toHaveLength(2),
-		);
-
-		expect(screen.queryByRole("button", { name: "Keep local" })).not.toBeInTheDocument();
-		expect(mockState.dispatch).not.toHaveBeenCalledWith(
-			"resolveStructuralConflict",
-			expect.anything(),
-		);
+			screen.queryByRole("button", { name: /open conflict/i }),
+		).not.toBeInTheDocument();
+		expect(document.querySelector(".ve-clip-conflict-popover")).toBeNull();
 	});
 });
