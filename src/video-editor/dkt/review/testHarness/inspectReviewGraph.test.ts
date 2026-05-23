@@ -20,17 +20,31 @@ describe("inspectReviewGraph", () => {
 				});
 			});
 
-			const graph = await inspectReviewGraph(ctx);
+			const project = (await ctx.queryRel(ctx.appModel, "project"))[0];
+			if (!project) {
+				throw new Error("Expected project");
+			}
+			const graph = await inspectReviewGraph(ctx, project);
 
 			expect(graph.reviewSessions).toHaveLength(1);
 			expect(graph.reviewSessions[0]).toMatchObject({
 				modelName: "review_session",
 				attrs: {
-					projectId: "project:inspect",
+					projectId: project._node_id,
 					selectedReviewItemId: "review:conflict:clip-timing",
-					openItemCount: 0,
+					openItemCount: 1,
 				},
-				items: [],
+				items: [
+					expect.objectContaining({
+						modelName: "review_item",
+						attrs: expect.objectContaining({
+							reviewItemId: "review:conflict:clip-timing",
+							conflictId: "conflict:clip-timing",
+							kind: "clip_timing",
+							status: "open",
+						}),
+					}),
+				],
 			});
 			expect(graph.rootReviewItems).toEqual([
 				expect.objectContaining({

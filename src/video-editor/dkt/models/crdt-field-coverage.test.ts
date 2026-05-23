@@ -91,6 +91,7 @@ const MODEL_CASES: ModelCase[] = [
 				resources: "crdt",
 				primaryVideoTrack: "crdt",
 				primaryAudioTrack: "crdt",
+				reviewItems: "projection",
 				reviewSessions: "projection",
 			},
 		},

@@ -88,11 +88,12 @@ export const inspectReviewGraph = async (
 	ctx: DktTestContext,
 	root: DktModel = ctx.appModel,
 ): Promise<ReviewGraphSnapshot> => {
+	const isProjectRoot = modelName(root) === "project";
 	const [reviewSessions, rootReviewItems, rootActivitySummaries] =
 		await Promise.all([
-			ctx.queryRel(root, "reviewSession"),
-			ctx.queryRel(root, "reviewItem"),
-			ctx.queryRel(root, "activitySummary"),
+			ctx.queryRel(root, isProjectRoot ? "reviewSessions" : "reviewSession"),
+			ctx.queryRel(root, isProjectRoot ? "reviewItems" : "reviewItem"),
+			isProjectRoot ? Promise.resolve([]) : ctx.queryRel(root, "activitySummary"),
 		]);
 
 	const sessions = await Promise.all(

@@ -237,7 +237,7 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		const { pair } = await createTimingConflict("room-conflict-review-hook");
 		await pair.waitForConvergence();
 
-		const graph = await inspectReviewGraph(pair.a.ctx);
+		const graph = await inspectReviewGraph(pair.a.ctx, pair.a.project);
 
 		expect(graph.rootReviewItems).toHaveLength(1);
 		expect(graph.reviewSessions).toHaveLength(1);
@@ -256,6 +256,7 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				selectedReviewItemId: graph.rootReviewItems[0]?.attrs.reviewItemId,
 			}),
 		);
+		expect(graph.reviewSessions[0]?.items).toHaveLength(1);
 		pair.close();
 	});
 

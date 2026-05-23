@@ -7,6 +7,8 @@ import {
 	reduceAddTrack,
 	reduceHandleInit,
 	reduceImportResourceCreateOnly,
+	reduceEnsureProjectReviewSession,
+	reduceMaterializeProjectCRDTConflictReview,
 	reduceMoveClipToTrackContext,
 	reduceMoveClipToTrackPayload,
 	reduceRenameProject,
@@ -19,6 +21,7 @@ import {
 } from "./Project/actions";
 import { reduceProjectPreviewClipSources } from "./Project/comps";
 import { RESOURCE_CREATION_SHAPE } from "./Resource";
+import { REVIEW_ITEM_CREATION_SHAPE } from "./ReviewItem";
 import { REVIEW_SESSION_CREATION_SHAPE } from "./ReviewSession";
 import { TRACK_CREATION_SHAPE } from "./Track";
 import {
@@ -42,6 +45,7 @@ export const PROJECT_CREATION_SHAPE = {
 	rels: {
 		tracks: TRACK_CREATION_SHAPE,
 		resources: RESOURCE_CREATION_SHAPE,
+		reviewItems: REVIEW_ITEM_CREATION_SHAPE,
 		reviewSessions: REVIEW_SESSION_CREATION_SHAPE,
 	},
 } as const;
@@ -103,6 +107,7 @@ export const Project = model({
 			resources: "or-set",
 			primaryVideoTrack: "lww",
 			primaryAudioTrack: "lww",
+			reviewItems: { sync: false, reason: "projection" },
 			reviewSessions: { sync: false, reason: "projection" },
 		},
 	},
@@ -249,6 +254,14 @@ export const Project = model({
 		],
 		primaryVideoTrack: ["input", { linking: "<< track << #", role: "projection" }],
 		primaryAudioTrack: ["input", { linking: "<< track << #", role: "projection" }],
+		reviewItems: [
+			"input",
+			{
+				many: true,
+				linking: "<< reviewItem << #",
+				role: "projection",
+			},
+		],
 		reviewSessions: [
 			"input",
 			{
@@ -589,6 +602,71 @@ export const Project = model({
 			{
 				to: ["<< primaryVideoTrack", { action: "addTextClip", sub_flow: true }],
 				fn: [["<<<<"] as const, reduceAddTextClipToVideoTrack],
+			},
+		],
+		materializeCRDTConflictReview: [
+			{
+				to: {
+					reviewSession: [
+						"<< reviewSession << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+						},
+					],
+					reviewSessions: [
+						"<< reviewSessions",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+					$output: ["$output"],
+				},
+				fn: [
+					["$noop", "<<<<", "<< @one:reviewSessions"] as const,
+					reduceEnsureProjectReviewSession,
+				],
+			},
+			{
+				to: {
+					reviewItem: [
+						"<< reviewItem << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+						},
+					],
+					reviewItems: [
+						"<< reviewItems",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+					sessionItems: [
+						"<< @one:reviewSessions.items",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+					selectReviewItem: [
+						"<< @one:reviewSessions",
+						{
+							action: "selectReviewItem",
+							sub_flow: true,
+						},
+					],
+				},
+				fn: [
+					["$noop", "<<<<"] as const,
+					reduceMaterializeProjectCRDTConflictReview,
+				],
 			},
 		],
 	},

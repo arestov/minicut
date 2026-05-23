@@ -11,7 +11,13 @@ import type {
 	MiniCutDktResourceSeed,
 	MiniCutDktTrackSeed,
 } from "../../dkt/runtime/seedTypes";
+import type { CrdtConflictLifecyclePayload } from "../../dkt/review/types";
 import { defaultClipTransform } from "../Clip/actions";
+import {
+	reviewItemCreationFromItem,
+	reviewSessionAttrsForProject,
+} from "../ReviewSession/actions";
+import { materializeCRDTConflictReviewItem } from "../../dkt/review/materializeCRDTConflictReviewItem";
 
 export type ProjectAddTrackPayload = MiniCutDktTrackSeed;
 export type ProjectImportResourcePayload = MiniCutDktResourceSeed;
@@ -195,6 +201,19 @@ const getNodeId = (value: unknown): string | null =>
 		? (value as { _node_id: string })._node_id
 		: null;
 
+const lifecycleRecords = (payload: unknown) => {
+	const value = asObject<CrdtConflictLifecyclePayload>(payload);
+	if (!value) {
+		return [];
+	}
+	return [
+		...(Array.isArray(value.opened) ? value.opened : []),
+		...(Array.isArray(value.updated) ? value.updated : []),
+		...(Array.isArray(value.acknowledged) ? value.acknowledged : []),
+		...(Array.isArray(value.resolved) ? value.resolved : []),
+	].filter((record) => asString(record?.conflict_id));
+};
+
 export const getResourceKind = (resource: ResourceLike): string =>
 	getResourceAttr(resource, "kind") === "audio" ||
 	getResourceAttr(resource, "kind") === "image" ||
@@ -326,6 +345,72 @@ export const reduceHandleInit = (
 				audioTrack: { use_ref_id: "defaultAudioTrack" },
 			},
 		},
+	};
+};
+
+export const reduceEnsureProjectReviewSession = (
+	payload: unknown,
+	noop: unknown,
+	project: unknown,
+	existingSession: unknown,
+) => {
+	if (existingSession) {
+		return noop;
+	}
+	const projectId = getNodeId(project);
+	if (!projectId) {
+		return noop;
+	}
+	return {
+		reviewSession: {
+			attrs: reviewSessionAttrsForProject(projectId),
+			hold_ref_id: "projectReviewSession",
+		},
+		reviewSessions: { use_ref_id: "projectReviewSession" },
+		$output: payload,
+	};
+};
+
+export const reduceMaterializeProjectCRDTConflictReview = (
+	payload: unknown,
+	noop: unknown,
+	project: unknown,
+) => {
+	const projectId = getNodeId(project);
+	if (!projectId) {
+		return noop;
+	}
+	const itemsById = new Map<
+		string,
+		ReturnType<typeof reviewItemCreationFromItem>
+	>();
+	for (const conflict of lifecycleRecords(payload)) {
+		const item = materializeCRDTConflictReviewItem({ conflict, projectId });
+		itemsById.delete(item.id);
+		itemsById.set(item.id, reviewItemCreationFromItem(item));
+	}
+	const items = [...itemsById.values()];
+	if (items.length === 0) {
+		return noop;
+	}
+	const refs = items.map((item, index) => {
+		const reviewItemId = item.attrs.reviewItemId;
+		return typeof reviewItemId === "string"
+			? `reviewItem:${reviewItemId}`
+			: `reviewItem:${index}`;
+	});
+	const selectedReviewItemId = items[0]?.attrs.reviewItemId;
+	return {
+		reviewItem: items.map((item, index) => ({
+			...item,
+			hold_ref_id: refs[index],
+		})),
+		reviewItems: refs.map((ref) => ({ use_ref_id: ref })),
+		sessionItems: refs.map((ref) => ({ use_ref_id: ref })),
+		selectReviewItem:
+			typeof selectedReviewItemId === "string"
+				? { reviewItemId: selectedReviewItemId }
+				: noop,
 	};
 };
 

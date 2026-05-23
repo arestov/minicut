@@ -10,9 +10,9 @@ import {
 	reduceCreateReviewSessionModel,
 	reduceAcknowledgeReviewItem,
 	reduceHandleCRDTConflict,
-	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceHandleCRDTSyncGraph,
+	reduceRouteCRDTConflictToProjects,
 	resolveReviewProjectIdHint,
 	reduceCreateTextModel,
 	reduceCreateTrackModel,
@@ -270,47 +270,37 @@ const appProps = mergeDcl({
 			},
 			fn: [["$noop"] as const, (_payload: unknown, noop: unknown) => noop],
 		},
-		handleCRDTConflict: {
-			to: {
-				reviewItems: [
-					"<< reviewItem << #",
+		handleCRDTConflict: [
+			{
+				to: [
+					"<< project",
 					{
-						method: "at_end",
-						can_create: true,
-						creation_shape: REVIEW_ITEM_CREATION_SHAPE,
+						action: "materializeCRDTConflictReview",
+						sub_flow: true,
+						map_values_list_to_target: true,
 					},
 				],
-				reviewSession: [
-					"<< reviewSession << #",
-					{
-						method: "at_end",
-						can_create: true,
-						creation_shape: REVIEW_SESSION_CREATION_SHAPE,
-					},
-				],
-			},
-			fn: [
-				[
-					"$noop",
-					"< @one:_node_id < project",
-					"<< @all:project",
-				] as const,
-				(
-					payload: unknown,
-					noop: unknown,
-					rootProjectId: unknown,
-					projects: unknown,
-				) =>
-					reduceHandleCRDTConflictGraph(
-						payload,
-						resolveReviewProjectIdHint(
+				fn: [
+					[
+						"$noop",
+						"< @one:_node_id < project",
+						"<< @all:project",
+					] as const,
+					(
+						payload: unknown,
+						noop: unknown,
+						rootProjectId: unknown,
+						projects: unknown,
+					) =>
+						reduceRouteCRDTConflictToProjects(
 							payload,
+							noop,
 							rootProjectId,
 							projects,
 						),
-					) ?? noop,
-			],
-		},
+				],
+			},
+		],
 		selectReviewItem: {
 			to: {
 				activeReviewItemId: ["activeReviewItemId"],
