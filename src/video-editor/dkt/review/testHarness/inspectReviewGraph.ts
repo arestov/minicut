@@ -160,7 +160,7 @@ export const inspectProjectReviewGraph = async (
 	return {
 		...graph,
 		reviewSessions,
-		project: await inspectNode(ctx, project, ["projectReviewSnapshot"]),
+		project: await inspectNode(ctx, project, ["reviewOpenItemCount"]),
 		items,
 		activitySummaries,
 		openItemCount: items.filter((item) => item.attrs.status !== "resolved").length,

@@ -275,7 +275,7 @@ const getCrdtSection = (
 	return value as Record<string, unknown>;
 };
 
-const getInputFieldNames = (
+const getDeclaredCrdtFieldNames = (
 	model: Record<string, unknown>,
 	section: FieldSection,
 ): string[] =>
@@ -283,7 +283,9 @@ const getInputFieldNames = (
 		.filter(([, descriptor]) => {
 			return (
 				Array.isArray(descriptor) &&
-				(descriptor[0] === "input" || descriptor[0] === "model")
+				(descriptor[0] === "input" ||
+					descriptor[0] === "model" ||
+					descriptor[0] === "sel")
 			);
 		})
 		.map(([name]) => name)
@@ -308,14 +310,14 @@ describe("CRDT field coverage", () => {
 				const systemFields = Object.keys(entry.fields[section]).filter((name) =>
 					name.startsWith("$meta$"),
 				);
-				const inputFields = [
-					...getInputFieldNames(entry.model, section),
+				const declaredFields = [
+					...getDeclaredCrdtFieldNames(entry.model, section),
 					...systemFields,
 				].sort();
 				const classifiedFields = Object.keys(entry.fields[section]).sort();
 
 				expect(classifiedFields, entry.name + "." + section).toEqual(
-					inputFields,
+					declaredFields,
 				);
 
 				for (const [field, classification] of Object.entries(

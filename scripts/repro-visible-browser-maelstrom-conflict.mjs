@@ -337,6 +337,9 @@ const projectSummary = async (page) =>
 				},
 				clips,
 				badgeCount: document.querySelectorAll('.clip-conflict-badge').length,
+				reviewButtonText: Array.from(document.querySelectorAll('button'))
+					.map((button) => button.textContent?.trim() ?? '')
+					.find((text) => /^Review\s+\d+/.test(text)) ?? null,
 				conflictClipCount: clips.filter((clip) =>
 					Number(clip.openModel) > 0 ||
 					Number(clip.openTiming) > 0 ||
@@ -347,20 +350,19 @@ const projectSummary = async (page) =>
 		})
 	})
 
-const openFirstConflictPopover = async (page) => {
-	const badge = page.locator('.clip-conflict-badge').first()
-	await badge.waitFor({ state: 'visible', timeout: 20_000 })
-	await badge.click()
-	const popover = page.locator('.ve-clip-conflict-popover').first()
-	await popover.waitFor({
+const openProjectReview = async (page) => {
+	const reviewButton = page.getByRole('button', { name: /Review\s+[1-9]\d*/ }).first()
+	await reviewButton.waitFor({ state: 'visible', timeout: 20_000 })
+	await reviewButton.click()
+	const panel = page.getByRole('region', { name: 'Project review' })
+	await panel.waitFor({
 		state: 'visible',
 		timeout: 20_000,
 	})
-	await waitFor('conflict popover details', async () => {
-		const text = await popover.innerText().catch(() => '')
+	await waitFor('project review details', async () => {
+		const text = await panel.innerText().catch(() => '')
 		return text &&
-			!text.includes('No open conflicts') &&
-			!text.includes('details are loading')
+			/text timing|clip timing|conflict/i.test(text)
 			? text
 			: null
 	}, { timeoutMs: 20_000, intervalMs: 250 })
@@ -371,6 +373,7 @@ const compactPeerSummary = (summary) => ({
 	activeProjectId: summary?.activeProjectId ?? null,
 	clips: summary?.clips ?? [],
 	badgeCount: summary?.badgeCount ?? 0,
+	reviewButtonText: summary?.reviewButtonText ?? null,
 	conflictClipCount: summary?.conflictClipCount ?? 0,
 	projects: summary?.worker?.projects ?? [],
 	sessionRoots: summary?.worker?.sessionRoots ?? [],
@@ -452,10 +455,10 @@ const main = async () => {
 
 	if (OPEN_CONFLICT) {
 		await Promise.all([
-			openFirstConflictPopover(a.page),
-			openFirstConflictPopover(b.page),
+			openProjectReview(a.page),
+			openProjectReview(b.page),
 		])
-		log('opened conflict popovers')
+		log('opened project review panels')
 	}
 
 	const [summaryA, summaryB] = await Promise.all([projectSummary(a.page), projectSummary(b.page)])

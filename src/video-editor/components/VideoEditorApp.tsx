@@ -27,8 +27,10 @@ const inspectorWidthMax = 460;
 const previewWidthMin = 360;
 const showCrdtDebugHarnessPanel =
 	import.meta.env.DEV &&
-	(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "1" ||
-		import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "true");
+	(String(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS ?? "").trim() ===
+		"1" ||
+		String(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS ?? "").trim() ===
+			"true");
 
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value));

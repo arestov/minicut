@@ -5,7 +5,6 @@ import {
 	type PreviewFrame,
 	type PreviewStructure,
 } from "../../read-model/previewComps";
-import type { MiniCutReviewSessionSnapshot } from "../ReviewSession";
 
 const DEFAULT_PREVIEW_STRUCTURE: PreviewStructure = { clipSources: [] };
 
@@ -71,23 +70,4 @@ export const reduceSelectedClip = (
 	}
 
 	return null;
-};
-
-export type ActiveProjectReviewSnapshot = {
-	session: MiniCutReviewSessionSnapshot | null;
-	openCount: number;
-};
-
-export const reduceActiveProjectReviewSnapshot = (
-	projectReviewSnapshot: unknown,
-): ActiveProjectReviewSnapshot => {
-	if (
-		projectReviewSnapshot &&
-		typeof projectReviewSnapshot === "object" &&
-		"session" in projectReviewSnapshot &&
-		"openCount" in projectReviewSnapshot
-	) {
-		return projectReviewSnapshot as ActiveProjectReviewSnapshot;
-	}
-	return { session: null, openCount: 0 };
 };

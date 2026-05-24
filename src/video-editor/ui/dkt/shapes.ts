@@ -126,7 +126,6 @@ const projectShape = defineShape({
 		"createdAt",
 		"updatedAt",
 		"isLandscape",
-		"projectReviewSnapshot",
 	],
 	many: {
 		tracks: trackShape,
@@ -148,7 +147,6 @@ export const miniCutEditorRootShape = defineShape({
 		"snappingEnabled",
 		"exportProgress",
 		"exportRequest",
-		"activeProjectReviewSnapshot",
 	],
 	one: {
 		activeProject: projectShape,

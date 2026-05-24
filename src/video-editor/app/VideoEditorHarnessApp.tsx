@@ -35,8 +35,10 @@ const formatErrorMessage = (error: unknown): string =>
 
 const isCrdtHarnessEnabled = (): boolean =>
 	import.meta.env.DEV &&
-	(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "1" ||
-		import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "true");
+	(String(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS ?? "").trim() ===
+		"1" ||
+		String(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS ?? "").trim() ===
+			"true");
 
 const normalizeList = (raw: string | null | undefined): string[] =>
 	String(raw ?? "")

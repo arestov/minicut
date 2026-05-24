@@ -311,6 +311,10 @@ export const reduceHandleCRDTConflictGraph = (
 	projectIdHint?: unknown,
 	existingReviewItemIds?: unknown,
 ) => {
+	const resolvedProjectIdHint =
+		typeof projectIdHint === "string" && projectIdHint.length > 0
+			? projectIdHint
+			: null;
 	const session = reduceCreateReviewSessionWithLifecycleItems(
 		payload,
 		projectIdHint,
@@ -363,6 +367,9 @@ export const reduceHandleCRDTConflictGraph = (
 						...(payload && typeof payload === "object"
 							? (payload as Record<string, unknown>)
 							: { value: payload }),
+						...(resolvedProjectIdHint
+							? { __reviewProjectIdHint: resolvedProjectIdHint }
+							: null),
 						rels: {
 							reviewSession: { use_ref_id: "reviewSession" },
 							reviewItem: { use_ref_id: newEntries[0].ref },

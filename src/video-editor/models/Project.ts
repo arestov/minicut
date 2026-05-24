@@ -21,8 +21,6 @@ import {
 } from "./Project/actions";
 import {
 	reduceProjectPreviewClipSources,
-	reduceProjectReviewModels,
-	reduceProjectReviewSnapshot,
 } from "./Project/comps";
 import { RESOURCE_CREATION_SHAPE } from "./Resource";
 import { REVIEW_ITEM_CREATION_SHAPE } from "./ReviewItem";
@@ -227,15 +225,6 @@ export const Project = model({
 						)
 					: 0,
 		],
-		projectReviewSnapshot: [
-			"comp",
-			[
-				"_node_id",
-				"< @all:reviewSessionSnapshot < reviewSessions",
-				"< @all:reviewItemSnapshot < reviewItems",
-			] as const,
-			reduceProjectReviewSnapshot,
-		],
 	},
 	rels: {
 		tracks: [
@@ -268,31 +257,31 @@ export const Project = model({
 		primaryVideoTrack: ["input", { linking: "<< track << #", role: "projection" }],
 		primaryAudioTrack: ["input", { linking: "<< track << #", role: "projection" }],
 		reviewItems: [
-			"comp",
-			[
-				"_node_id",
-				"<< @all:$root.reviewItem",
-				"< @all:projectId < $root.reviewItem",
-			] as const,
-			reduceProjectReviewModels,
+			"sel",
 			{
-				many: true,
-				linking: "<< reviewItem << #",
-				role: "projection",
+				from: "$root.reviewItem",
+				where: {
+					">projectId": ["=", "_node_id"],
+				},
+				rel_shape: {
+					many: true,
+					linking: "<< reviewItem << #",
+					role: "projection",
+				},
 			},
 		],
 		reviewSessions: [
-			"comp",
-			[
-				"_node_id",
-				"<< @all:$root.reviewSession",
-				"< @all:projectId < $root.reviewSession",
-			] as const,
-			reduceProjectReviewModels,
+			"sel",
 			{
-				many: true,
-				linking: "<< reviewSession << #",
-				role: "projection",
+				from: "$root.reviewSession",
+				where: {
+					">projectId": ["=", "_node_id"],
+				},
+				rel_shape: {
+					many: true,
+					linking: "<< reviewSession << #",
+					role: "projection",
+				},
 			},
 		],
 	},
@@ -648,7 +637,6 @@ export const Project = model({
 						"$noop",
 						"<<<<",
 						"<< @one:reviewSessions",
-						"<< @all:tracks.clips",
 					] as const,
 					reduceEnsureProjectReviewSession,
 				],
@@ -680,7 +668,7 @@ export const Project = model({
 					],
 				},
 				fn: [
-					["$noop", "<<<<", "<< @all:tracks.clips"] as const,
+					["$noop", "<<<<"] as const,
 					reduceMaterializeProjectCRDTConflictReview,
 				],
 			},

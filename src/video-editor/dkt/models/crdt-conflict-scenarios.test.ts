@@ -405,7 +405,7 @@ describe("MiniCut CRDT conflict scenarios", () => {
 		pair.close();
 	});
 
-	it("does not synthesize fake structural meta for delete vs effect edit", async () => {
+	it("records structural conflict meta for delete vs effect edit", async () => {
 		const { pair, clipA } = await createPairWithClip(
 			"room-conflict-delete-vs-effect-edit",
 		);
@@ -436,13 +436,13 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				"$meta$rels$crdt$clips$open_conflicts_count",
 				"$meta$model$crdt$open_conflicts_count",
 			]),
-		).toBe(0);
+		).toBeGreaterThan(0);
 		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
-			.toEqual([]);
+			.toEqual(expect.arrayContaining([expect.objectContaining({ status: "open" })]));
 		pair.close();
 	});
 
-	it("keeps text edit/delete transport path free of fake conflict meta", async () => {
+	it("records structural conflict meta for text edit vs delete", async () => {
 		const { pair, clipA, clipB } = await createPairWithTextClip(
 			"room-conflict-delete-vs-text-edit",
 		);
@@ -463,16 +463,16 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				"$meta$rels$crdt$clips$open_conflicts_count",
 				"$meta$model$crdt$open_conflicts_count",
 			]),
-		).toBe(0);
+		).toBeGreaterThan(0);
 		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
-			.toEqual([]);
+			.toEqual(expect.arrayContaining([expect.objectContaining({ status: "open" })]));
 		expect((await pair.a.ctx.queryRel(clipA, "text"))[0]?._node_id).toBe(
 			textA._node_id,
 		);
 		pair.close();
 	});
 
-	it("does not synthesize fake structural meta for split vs delete", async () => {
+	it("records structural conflict meta for split vs delete", async () => {
 		const { pair, clipA, clipB } = await createPairWithClip(
 			"room-conflict-split-vs-delete",
 		);
@@ -488,9 +488,9 @@ describe("MiniCut CRDT conflict scenarios", () => {
 				"$meta$rels$crdt$clips$open_conflicts_count",
 				"$meta$model$crdt$open_conflicts_count",
 			]),
-		).toBe(0);
+		).toBeGreaterThan(0);
 		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
-			.toEqual([]);
+			.toEqual(expect.arrayContaining([expect.objectContaining({ status: "open" })]));
 		pair.close();
 	});
 
