@@ -336,8 +336,8 @@ button:disabled {
 }
 
 .ve-toolbar {
-	display: flex;
-	justify-content: space-between;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 	align-items: center;
 	height: 56px;
 	padding: 11px 16px;
@@ -351,6 +351,13 @@ button:disabled {
 	display: flex;
 	align-items: center;
 	gap: 12px;
+	min-width: 0;
+}
+
+.ve-toolbar__center {
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	min-width: 0;
 }
 
@@ -2271,10 +2278,6 @@ button:disabled {
 }
 
 .ve-project-review-trigger {
-	position: fixed;
-	right: 20px;
-	top: 68px;
-	z-index: 55;
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
@@ -2284,7 +2287,8 @@ button:disabled {
 	color: #92400e;
 	font-size: 13px;
 	font-weight: 700;
-	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+	box-shadow: none;
+	white-space: nowrap;
 }
 
 .ve-project-review-trigger span {
@@ -2301,7 +2305,7 @@ button:disabled {
 
 .ve-project-review-drawer {
 	position: fixed;
-	inset: 112px 20px 20px auto;
+	inset: 68px 20px 20px auto;
 	z-index: 54;
 	width: min(860px, calc(100vw - 40px));
 	min-height: 0;
@@ -2912,10 +2916,15 @@ button:disabled {
 
 @media (max-width: 900px) {
 	.ve-toolbar {
+		grid-template-columns: 1fr;
 		height: auto;
 		min-height: var(--ve-toolbar-height);
 		align-items: flex-start;
-		flex-wrap: wrap;
+	}
+
+	.ve-toolbar__center {
+		justify-content: flex-start;
+		width: 100%;
 	}
 
 	.ve-toolbar__actions {

@@ -8,6 +8,7 @@ import {
 import { useVideoEditor } from "../app/VideoEditorContext";
 import { IconButton } from "./ControlPrimitives";
 import { ProjectDropdown } from "./ProjectDropdown";
+import { ProjectReviewMode } from "./review/ProjectReviewMode";
 
 const parseExportProgress = (value: unknown): ExportProgressState | null =>
 	value && typeof value === "object" && "stage" in value
@@ -57,6 +58,9 @@ export const Toolbar = () => {
 				>
 					New
 				</IconButton>
+			</div>
+			<div className="ve-toolbar__center">
+				<ProjectReviewMode />
 			</div>
 			<div className="ve-toolbar__actions">
 				<IconButton
