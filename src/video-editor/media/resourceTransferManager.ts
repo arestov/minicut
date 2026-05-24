@@ -258,7 +258,8 @@ const computeProgress = (
 	return isReady ? 1 : 0;
 };
 
-const isPortableMediaUrl = (url: string): boolean =>
+const isRealMediaUrl = (url: string): boolean =>
+	url.startsWith("blob:") ||
 	url.startsWith("data:") ||
 	url.startsWith("http") ||
 	url.startsWith("/") ||
@@ -360,13 +361,6 @@ export const createResourceTransferManager = (
 	>();
 	let destroyed = false;
 
-	const revokeObjectUrlSoon = (url: string): void => {
-		if (!url.startsWith("blob:")) {
-			return;
-		}
-		window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
-	};
-
 	const clearRetryTimeout = (state: RemoteResourceState): void => {
 		if (state.retryTimeoutId !== null) {
 			window.clearTimeout(state.retryTimeoutId);
@@ -382,16 +376,14 @@ export const createResourceTransferManager = (
 	};
 
 	const revokeRemoteUrls = (state: RemoteResourceState): void => {
-		const urls = new Set(
-			[state.previewUrl, state.playbackUrl].filter(
-				(url): url is string => typeof url === "string" && url.length > 0,
-			),
-		);
-		for (const url of urls) {
-			revokeObjectUrlSoon(url);
+		if (state.previewUrl) {
+			URL.revokeObjectURL(state.previewUrl);
+			state.previewUrl = "";
 		}
-		state.previewUrl = "";
-		state.playbackUrl = "";
+		if (state.playbackUrl && state.playbackUrl !== state.previewUrl) {
+			URL.revokeObjectURL(state.playbackUrl);
+			state.playbackUrl = "";
+		}
 		state.lastPreviewSignature = "";
 	};
 
@@ -729,7 +721,7 @@ export const createResourceTransferManager = (
 		const previewUrl =
 			state.playbackUrl ||
 			state.previewUrl ||
-			(isPortableMediaUrl(state.fallbackUrl) ? state.fallbackUrl : "");
+			(isRealMediaUrl(state.fallbackUrl) ? state.fallbackUrl : "");
 		transfers$.setItem(resourceId, {
 			resourceId,
 			name: state.name,
@@ -1548,7 +1540,7 @@ export const createResourceTransferManager = (
 				return transfer.playbackUrl;
 			}
 
-			return isPortableMediaUrl(fallbackUrl) ? fallbackUrl : "";
+			return fallbackUrl;
 		},
 
 		requestPlayheadWindow(resourceId, time) {

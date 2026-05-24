@@ -67,10 +67,8 @@ const createPageBridgeCrdtTransport = (): MiniCutCrdtTransport => ({
 });
 
 const isCrdtTestHarnessEnabled = (): boolean =>
-	String(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS ?? "").trim() ===
-		"1" ||
-	String(import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS ?? "").trim() ===
-		"true";
+	import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "1" ||
+	import.meta.env.VITE_MINICUT_ENABLE_CRDT_TEST_HARNESS === "true";
 
 type ProductRoomRuntime = {
 	owner: ReturnType<typeof createProductRoomTransportOwner>;
