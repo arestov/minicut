@@ -2491,6 +2491,43 @@ button:disabled {
 	font-weight: 600;
 }
 
+.ve-review-inspector__timing {
+	width: 100%;
+	margin: 0 0 14px;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+.ve-review-inspector__timing caption {
+	margin-bottom: 6px;
+	color: #52525b;
+	font-weight: 700;
+	text-align: left;
+}
+
+.ve-review-inspector__timing th,
+.ve-review-inspector__timing td {
+	padding: 6px 8px;
+	border: 1px solid #e4e4e7;
+	text-align: left;
+}
+
+.ve-review-inspector__timing thead th {
+	background: #f4f4f5;
+	color: #52525b;
+	font-weight: 700;
+}
+
+.ve-review-inspector__timing tbody th {
+	color: #71717a;
+	font-weight: 600;
+}
+
+.ve-review-inspector__timing td {
+	font-variant-numeric: tabular-nums;
+	font-weight: 700;
+}
+
 .ve-review-inspector ul[aria-label="Affected objects"] {
 	display: grid;
 	gap: 6px;

@@ -13,7 +13,11 @@ type ReviewPanelProps = {
 	selectedItemId?: string | null;
 	onSelectReviewItem?: (item: MiniCutReviewItem) => void;
 	onAcknowledgeReviewItem?: (item: MiniCutReviewItem) => void;
-	onReviewAction?: (actionId: string, item: MiniCutReviewItem) => void;
+	onReviewAction?: (
+		actionId: string,
+		item: MiniCutReviewItem,
+		payload?: unknown,
+	) => void;
 	onClose?: () => void;
 };
 

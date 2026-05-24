@@ -67,6 +67,9 @@ const asString = (value: unknown, fallback = ""): string =>
 const asArray = <Value,>(value: unknown): Value[] =>
 	Array.isArray(value) ? (value as Value[]) : [];
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
 const asKind = (value: unknown): MiniCutReviewKind =>
 	value === "clip_timing" ||
 	value === "dangling_resource" ||
@@ -313,7 +316,7 @@ const ProjectReviewContent = ({
 								review_item_id: item.id,
 							})
 						}
-						onReviewAction={(actionId, item) => {
+						onReviewAction={(actionId, item, payload) => {
 							const affectedClip = item.affectedObjects.find(
 								(object) => object.type === "clip",
 							);
@@ -322,6 +325,7 @@ const ProjectReviewContent = ({
 								{
 									conflict_id: item.conflictId,
 									review_item_id: item.id,
+									...(isRecord(payload) ? payload : {}),
 								},
 								affectedClip
 									? { kind: "scope", _nodeId: affectedClip.id }
