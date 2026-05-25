@@ -44,6 +44,8 @@ const ACTIVITY_SUMMARY_ATTRS = [
 	"deleted",
 	"rootFrames",
 	"happenedAt",
+	"openedConflictIds",
+	"updatedConflictIds",
 ] as const;
 
 type ReviewSessionView = {
@@ -136,6 +138,8 @@ const toActivitySummary = ({
 		typeof attrs.happenedAt === "number" && Number.isFinite(attrs.happenedAt)
 			? attrs.happenedAt
 			: 0,
+	openedConflictIds: asArray<string>(attrs.openedConflictIds),
+	updatedConflictIds: asArray<string>(attrs.updatedConflictIds),
 });
 
 const sameAttrSnapshots = (

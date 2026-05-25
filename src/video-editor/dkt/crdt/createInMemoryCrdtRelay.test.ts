@@ -175,6 +175,53 @@ describe("createInMemoryCrdtRelay", () => {
 		});
 	});
 
+	it("serves late sync activity without conflict resolution commands", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-sync-activity-negative",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const b = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-sync-activity-negative",
+			peerId: "B",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+
+		a.send(makeWireMessage("A"));
+		b.requestSync("sync:activity:negative", {});
+
+		const sync = b.received.find(
+			(message) =>
+				message.type === "crdt-sync-response" &&
+				message.requestId === "sync:activity:negative",
+		);
+		expect(sync).toMatchObject({
+			type: "crdt-sync-response",
+			to: "B",
+			packet: {
+				payload: expect.objectContaining({
+					batches: [
+						expect.objectContaining({
+							batch_id: "A:batch:1",
+							created_models: [{ node_id: "crdt:child", model_name: "clip", tombstone: false }],
+							ops: expect.arrayContaining([
+								expect.objectContaining({ op_id: "A:op:1", name: "name" }),
+							]),
+						}),
+					],
+				}),
+			},
+		});
+		expect(JSON.stringify(sync)).not.toMatch(
+			/\$crdt:(resolve|acknowledge)|resolve[A-Z]|acknowledgeReviewItem/,
+		);
+	});
+
 	it("removes peers on close", () => {
 		const relay = createInMemoryCrdtRelay();
 		const a = createTestWorkerCrdtTransport({

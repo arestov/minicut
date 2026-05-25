@@ -90,6 +90,7 @@ export type MiniCutReviewObject = {
 	type: string;
 	id: string;
 	label?: string;
+	status?: "applied" | "rejected";
 };
 
 export type MiniCutReviewItem = {
@@ -122,6 +123,8 @@ export type MiniCutActivitySummary = {
 	deleted: MiniCutReviewObject[];
 	rootFrames: Array<{ frameId: number; opCount: number; createCount: number }>;
 	happenedAt: number;
+	openedConflictIds?: string[];
+	updatedConflictIds?: string[];
 };
 
 export type MiniCutReviewSessionSnapshot = {
@@ -129,4 +132,3 @@ export type MiniCutReviewSessionSnapshot = {
 	items: MiniCutReviewItem[];
 	activitySummaries: MiniCutActivitySummary[];
 };
-
