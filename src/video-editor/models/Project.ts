@@ -1,6 +1,9 @@
 import { model } from "dkt/model.js";
 import { crdtReviewResolveTarget } from "../dkt/review/crdtReviewCommands";
-import { reduceParkIncomingVariantOnReviewTrack } from "../dkt/review/features/clipTiming/clipTimingActions";
+import {
+	reduceAcceptParkedClipOnReviewTrack,
+	reduceParkIncomingVariantOnReviewTrack,
+} from "../dkt/review/features/clipTiming/clipTimingActions";
 import { CLIP_CREATION_SHAPE } from "./Clip";
 import {
 	reduceAddEmbeddedAudio,
@@ -809,59 +812,58 @@ export const Project = model({
 				],
 			},
 		],
-		parkIncomingVariantOnReviewTrack: {
-			input_base_rel_shape: CLIP_INPUT_BASE_REL_SHAPE,
-			to: {
-				reviewTrack: [
-					"<< track << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: TRACK_CREATION_SHAPE,
-					},
+		parkIncomingVariantOnReviewTrack: [
+			{
+				input_base_rel_shape: CLIP_INPUT_BASE_REL_SHAPE,
+				to: {
+					reviewTrack: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					reviewTracks: [
+						"<< tracks",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+					parkedClip: [
+						"<< clip << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
+					],
+					crdtResolve: [crdtReviewResolveTarget],
+					$output: ["$output"],
+				},
+				fn: [
+					["$noop", "<<<<", "<<<< $input_id:clipId"] as const,
+					(
+						payload: unknown,
+						noop: unknown,
+						project: unknown,
+						sourceClip: unknown,
+					) =>
+						reduceParkIncomingVariantOnReviewTrack(
+							payload,
+							noop,
+							project,
+							sourceClip,
+						),
 				],
-				reviewTracks: [
-					"<< tracks",
-					{
-						method: "at_end",
-						can_use_refs: true,
-					},
-				],
-				parkedClip: [
-					"<< clip << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: CLIP_CREATION_SHAPE,
-					},
-				],
-				reviewTrackClips: [
-					"<< track.clips",
-					{
-						method: "at_end",
-						can_use_refs: true,
-					},
-				],
-				crdtResolve: [crdtReviewResolveTarget],
-				$output: ["$output"],
 			},
-			fn: [
-				["$noop", "<<<<", "<<<< $input_id:clipId"] as const,
-				(
-					payload: unknown,
-					noop: unknown,
-					project: unknown,
-					sourceClip: unknown,
-				) =>
-					reduceParkIncomingVariantOnReviewTrack(
-						payload,
-						noop,
-						project,
-						sourceClip,
-					),
-			],
-		},
+			{
+				to: ["<< tracks", { action: "acceptClipIfTarget", sub_flow: true }],
+				fn: reduceAcceptParkedClipOnReviewTrack,
+			},
+		],
 	},
 });

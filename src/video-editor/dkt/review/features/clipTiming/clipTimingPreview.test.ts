@@ -27,4 +27,41 @@ describe("extractClipTimingPreview", () => {
 			extractClipTimingPreview({ payload: { current: { start: 0 } } }),
 		).toThrow("Unsupported clip timing conflict payload");
 	});
+
+	it("reads validator invariant timing details from payload.details", () => {
+		expect(
+			extractClipTimingPreview({
+				payload: {
+					invariant: "duration_non_positive",
+					code: "duration_non_positive",
+					details: {
+						current: { start: 0, in: 0, duration: 4 },
+						incoming: { start: 0, in: 0, duration: -1 },
+					},
+				},
+			}),
+		).toMatchObject({
+			current: { start: 0, in: 0, duration: 4 },
+			incoming: { start: 0, in: 0, duration: -1 },
+		});
+	});
+
+	it("reads CRDT MVR field alternatives when full timing details are unavailable", () => {
+		expect(
+			extractClipTimingPreview({
+				field_name: "duration",
+				payload: {
+					alternatives: [
+						{ value: 2, origin: "B" },
+						{ value: 3, origin: "A" },
+					],
+				},
+				alternatives: [3, 2],
+			}),
+		).toMatchObject({
+			current: { duration: 3 },
+			incoming: { duration: 2 },
+			fields: ["duration"],
+		});
+	});
 });

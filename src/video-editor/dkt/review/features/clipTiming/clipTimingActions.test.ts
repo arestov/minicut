@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { reduceParkIncomingVariantOnReviewTrack } from "./clipTimingActions";
+import {
+	reduceAcceptParkedClipOnReviewTrack,
+	reduceParkIncomingVariantOnReviewTrack,
+} from "./clipTimingActions";
 
 describe("reduceParkIncomingVariantOnReviewTrack", () => {
 	it("creates a disabled muted review track, duplicate clip, and CRDT resolve", () => {
@@ -83,6 +86,18 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 					},
 				},
 			},
+		});
+	});
+
+	it("routes parked clip to the newly created review track owner rel", () => {
+		expect(
+			reduceAcceptParkedClipOnReviewTrack({
+				clip: { _node_id: "clip:parked" },
+				targetTrack: { _node_id: "track:review" },
+			}),
+		).toEqual({
+			clip: { _node_id: "clip:parked" },
+			targetTrack: { _node_id: "track:review" },
 		});
 	});
 

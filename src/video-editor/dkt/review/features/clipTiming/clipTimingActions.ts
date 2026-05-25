@@ -129,7 +129,6 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 			},
 			hold_ref_id: "parkedIncomingClip",
 		},
-		reviewTrackClips: { use_ref_id: "parkedIncomingClip" },
 		crdtResolve: makeCrdtResolvePayload({
 			conflictId,
 			reviewItemId,
@@ -145,6 +144,19 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 		$output: {
 			clipId,
 			projectId: getNodeId(project),
+			clip: { use_ref_id: "parkedIncomingClip" },
+			targetTrack: { use_ref_id: "incomingReviewTrack" },
 		},
+	};
+};
+
+export const reduceAcceptParkedClipOnReviewTrack = (payload: unknown) => {
+	if (!isRecord(payload)) {
+		return payload;
+	}
+	const rels = isRecord(payload.rels) ? payload.rels : null;
+	return {
+		clip: payload.clip ?? rels?.clip,
+		targetTrack: payload.targetTrack ?? rels?.targetTrack,
 	};
 };

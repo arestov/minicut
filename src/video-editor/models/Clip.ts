@@ -43,7 +43,7 @@ export const Clip = model({
 				},
 			},
 			validate(ctx: {
-				members: Record<string, { value: unknown }>;
+				members: Record<string, { value: unknown; old_value?: unknown }>;
 				phase?: string;
 				summary?: { staged_ops?: readonly unknown[] };
 				deps?: Record<string, { value: unknown; status?: string }>;
@@ -52,6 +52,18 @@ export const Clip = model({
 					ok: false,
 					code,
 					kind: "group_invariant_violation",
+					details: {
+						current: {
+							start: numberOr(ctx.members.start.old_value, 0),
+							in: numberOr(ctx.members.inPoint.old_value, 0),
+							duration: numberOr(ctx.members.duration.old_value, 0),
+						},
+						incoming: {
+							start: numberOr(ctx.members.start.value, 0),
+							in: numberOr(ctx.members.inPoint.value, 0),
+							duration: numberOr(ctx.members.duration.value, 0),
+						},
+					},
 				});
 				const start = Number(ctx.members.start.value);
 				const inPoint = Number(ctx.members.inPoint.value);
