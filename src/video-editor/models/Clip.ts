@@ -607,20 +607,24 @@ export const Clip = model({
 			to: ["$crdt:clear_resolution_attempt"],
 			fn: [[], (payload: unknown) => payload ?? {}],
 		},
-		resolveDanglingResourceByRelink: {
-			to: [
-				"<< resource",
-				{ action: "resolveDanglingResourceByRelink", sub_flow: true },
-			],
-			fn: [[], (payload: unknown) => payload ?? {}],
-		},
-		keepOfflinePlaceholder: {
-			to: [
-				"<< resource",
-				{ action: "keepOfflinePlaceholder", sub_flow: true },
-			],
-			fn: [[], (payload: unknown) => payload ?? {}],
-		},
+		resolveDanglingResourceByRelink: [
+			{
+				to: [
+					"<< resource",
+					{ action: "resolveDanglingResourceByRelink", sub_flow: true },
+				],
+				fn: [[], (payload: unknown) => payload ?? {}],
+			},
+		],
+		keepOfflinePlaceholder: [
+			{
+				to: [
+					"<< resource",
+					{ action: "keepOfflinePlaceholder", sub_flow: true },
+				],
+				fn: [[], (payload: unknown) => payload ?? {}],
+			},
+		],
 		removeSelf: [
 			{
 				to: ["<< track", { action: "removeClip", sub_flow: true }],
