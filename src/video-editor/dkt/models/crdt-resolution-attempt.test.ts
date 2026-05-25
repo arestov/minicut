@@ -25,7 +25,7 @@ const readOpenTimingConflictId = (runtime: unknown, clipId: unknown): string => 
 };
 
 describe("CRDT resolution attempt meta", () => {
-	it("rolls back invalid timing resolve and clears local error after valid resolve", async () => {
+	it("ignores invalid product timing resolve and closes after valid review action", async () => {
 		const sim = await createMiniCutCrdtSimulation({ peers: ["A", "B"] });
 		const { clips } = await createMiniCutTimelineFixture(
 			[sim.peer("A"), sim.peer("B")],
@@ -49,7 +49,14 @@ describe("CRDT resolution attempt meta", () => {
 		await sim.peer("A").dispatch(
 			clipA,
 			"resolveClipTimingConflict",
-			{ conflict_id: conflictId, start: 0, in: 0, duration: 0 },
+			{
+				conflictId,
+				reviewItemId: `review:${conflictId}`,
+				selectedVariant: "incoming",
+				start: 0,
+				in: 0,
+				duration: 0,
+			},
 			{
 				crdt_resolution_attempt: {
 					conflict_id: conflictId,
@@ -61,14 +68,21 @@ describe("CRDT resolution attempt meta", () => {
 		);
 
 		expect(sim.peer("A").ctx.getAttr(clipA, "duration")).toBe(previousDuration);
-		expect(sim.peer("A").ctx.getAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error"))
-			.toEqual(expect.objectContaining({ code: "duration_non_positive" }));
+		expect(Number(sim.peer("A").ctx.getAttr(clipA, "$meta$aggregates$crdt$clipTiming$open_conflicts_count") ?? 0)).toBe(1);
+		expect(sim.peer("A").ctx.getAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error") ?? null).toBeNull();
 		expect(drainCrdtOutbox(sim.peer("A").ctx.runtime)).toEqual([]);
 
 		await sim.peer("A").dispatch(
 			clipA,
 			"resolveClipTimingConflict",
-			{ conflict_id: conflictId, start: 0, in: 0, duration: 3 },
+			{
+				conflictId,
+				reviewItemId: `review:${conflictId}`,
+				selectedVariant: "incoming",
+				start: 0,
+				in: 0,
+				duration: 3,
+			},
 			{
 				crdt_resolution_attempt: {
 					conflict_id: conflictId,
