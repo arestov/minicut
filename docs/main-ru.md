@@ -3,6 +3,22 @@
 Дата: 2026-05-25  
 Назначение: операторская память для pilot-alignment в Spore перед запуском fleet/worktree/tmux orchestration на репозитории MiniCut.
 
+
+## Практический компас DKT
+
+1. DKT state - pure data: graph nodes, attrs и rels. Side effects живут на границе `effects.*`, `$fx_`, runtime/task APIs, но не внутри state.
+2. `action` и `comp` - оба pure state primitives. `action` - push style: intent/event frame пишет attrs/rels через декларативные targets. `comp` - pull style: live/reactive query, которая вычисляет derived attrs/rels из уже объявленного graph state.
+3. `handleAttr` и `handleRel` - граница, где pull/reactive model превращается в push transition: изменение attr/rel вызывает declared action path, а не imperative observer code.
+4. `$fx_` и `effects.out` - side-effect boundary. Используй их, когда pure data соприкасается с реальным миром: сеть, файлы, browser/electron APIs, timers, workers, media, storage.
+5. Render path - top-down tree by scope. `RootScope` задаёт root scope; `Path`/`One`/`Many` переходят по rel и меняют `ScopeContext`; `useAttrs`/`useActions` работают с текущей scope-моделью. Если UI нужен attr/rel/projection, подготовь его в DKT model через attrs/rels/comp, а не собирай в React/debug traversal.
+6. Эффективное вычисление и доставка view updates через компактный diff строятся на простых attrs/rels и mounted shapes. `Many rel` даёт stable scope list и key по `_nodeId`, `useAttrs` подписан на конкретные attr names, а shape registry запрашивает только реально смонтированные attrs/rels. Предпочитай простые состояния и проброс rel-связей вместо больших nested objects в comp attr, потому что большой объект превращает точечный diff в скрытый read-model.
+7. В одной транзакции могут быть цепочки, но они должны быть видны фреймворку через декларативные targets: `to`, `$output`, `sub_flow`, `$fx_`, declared child targets. Не прячь orchestration в `dispatch -> read -> dispatch`.
+8. Flow tests должны разделять write step и read step. Для DKT runtime/lazy state читать `queryAttr`, `queryRel`, `queryAddr` внутри отдельного `input`/`readInput`; см. [flow-step-read-write-testing](</D:/code/linkcraft/dkt/docs/internal/flow-step-read-write-testing.md>).
+9. `runtimeRef` нужен только для live runtime objects вроде `File`, `Blob`, file handle, `MessagePort`, `OffscreenCanvas`. В DKT state можно класть serializable id/metadata/status, но не сам файл или handler object.
+10. Если точно найден баг в DKT, сначала сделай DKT test/repro, который его воспроизводит; MiniCut workaround не должен скрывать framework bug.
+11. Декларативность DKT = framework-visible intent. Не прячь важные зависимости, rel traversal, writes, side-effect triggers и cross-model transitions в adapter/helper code. Описывай их в model attrs/rels/comp/actions/effects, чтобы DKT мог оптимизировать, доставлять compact diff, lazy-load-ить graph state, реплицировать/persist-ить нужный подграф, а также поддерживать статический анализ и визуализацию.
+
+
 ## Сводная таблица замечаний
 
 | ID | Замечание | Важность | Почему это важно | Рекомендация для align |
@@ -236,11 +252,44 @@ actions: {
 }
 ```
 
+- [DKT Model-First Rendering AppGuide](</D:/code/minicut/src/dkt-react-sync/docs/model-rendering-appguide-ru.md>) - MiniCut-specific rendering guide: top-down по DKT model tree, current scope, `useAttrs`, `One`, `Many`, `Path`, local `useActions`, и запрет на graph-wide selectors/debug traversal в render path.
+
+Пример: компонент внутри `<Many rel="clips">` читает attrs текущего clip через `useAttrs(["start", "duration"])`; если нужен project-level summary, он должен быть comp/rel на модели, а не вычисляться поиском по replica graph.
+
 ### Actions, flow и адресация
 
 - [DKT addressing и special addresses](</D:/code/minicut/docs/dkt-addressing-and-spec-addr-ru.md>) - как читать и писать deps/targets: `state`, `nesting`, `resource`, `base`, а также `<<`, `<<<<`, `$input`, `$output`, `$noop`.
 
 Пример: `"< @all:clipRenderData < tracks.clips"` читает `clipRenderData` у всех clips через `tracks.clips`.
+
+- [State nests/rels reference](</D:/code/linkcraft/dkt/docs/State/nests.md>) - краткий reference по rel declarations: `nest`, `model`, `conj`, `sel`, `compx`. Полезно, когда нужно выбрать правильный тип relation вместо ручного traversal или debug scan.
+
+Пример:
+
+```js
+rels: {
+  clips: ["input", { many: true, linking: "<< clip << #", role: "owner" }],
+  activeClips: ["sel", { from: "clips", where: { ">duration": [">", 0] } }],
+}
+```
+
+Пример `sel`, где критерий справа - другой attr/state, а не захардкоженное значение:
+
+```js
+rels: {
+  projectReviewItems: [
+    "sel",
+    {
+      from: "$root.reviewItem",
+      where: {
+        ">projectId": ["=", "_node_id"],
+      },
+    },
+  ],
+}
+```
+
+Здесь `>projectId` читается у candidate item из `reviewItem`, а `_node_id` читается у текущей модели. Для literal/static value DKT использует массив из одного элемента, например `{ ">isOpen": ["=", [true]] }`.
 
 - [Saga Action Reference](</D:/code/linkcraft/dkt/docs/State/saga-action-reference.md>) - reference по многошаговым actions, `$input`, `$output`, `hold_ref_id`, `use_ref_id`, `when`, child action calls и `sub_flow`.
 
