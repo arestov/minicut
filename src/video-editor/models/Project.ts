@@ -18,7 +18,10 @@ import {
 	reduceMaterializeProjectCRDTConflictReview,
 	reduceMoveClipToTrackContext,
 	reduceMoveClipToTrackPayload,
+	reduceParkEditedVariantOnReviewTrack,
+	reducePreserveDeleteAndArchiveIncomingEdit,
 	reduceRenameProject,
+	reduceResolveDeleteVsEditByRestoreVariant,
 	reduceRequestImportFiles,
 	reduceSetImportProgress,
 	reduceSetProjectDuration,
@@ -55,6 +58,7 @@ export const PROJECT_CREATION_SHAPE = {
 		"createdAt",
 		"updatedAt",
 		"autoCreateDefaultTracks",
+		"reviewArchiveEntries",
 	],
 	rels: {
 		tracks: TRACK_CREATION_SHAPE,
@@ -122,6 +126,7 @@ export const Project = model({
 			lastImportError: { sync: false, reason: "pipeline" },
 			activeImportTaskId: { sync: false, reason: "effect-runtime" },
 			previewFrame: { sync: false, reason: "projection" },
+			reviewArchiveEntries: { sync: false, reason: "review-projection" },
 		},
 		rels: {
 			tracks: "sequence",
@@ -159,6 +164,7 @@ export const Project = model({
 			{ aggregate: { name: "importPipeline", as: "activeImportTaskId" } },
 		],
 		previewFrame: ["input", null],
+		reviewArchiveEntries: ["input", []],
 		createdAt: ["input", 0],
 		updatedAt: ["input", 0],
 		autoCreateDefaultTracks: ["input", false],
@@ -906,5 +912,87 @@ export const Project = model({
 				fn: reduceAcceptParkedClipOnReviewTrack,
 			},
 		],
+		resolveDeleteVsEditByRestoreVariant: {
+			input_base_rel_shape: {
+				targetTrackId: {
+					any: true,
+					many: false,
+				},
+			},
+			to: {
+				clip: [
+					"<< clip << #",
+					{
+						method: "at_end",
+						can_create: true,
+						can_hold_refs: true,
+						creation_shape: CLIP_CREATION_SHAPE,
+					},
+				],
+				targetTrackClips: [
+					"<<<< $input_id:targetTrackId.clips",
+					{
+						method: "at_end",
+						can_use_refs: true,
+					},
+				],
+				crdtResolve: [crdtReviewResolveTarget],
+			},
+			fn: [
+				["$noop", "<<<<", "<<<< $input_id:targetTrackId"] as const,
+				reduceResolveDeleteVsEditByRestoreVariant,
+			],
+		},
+		parkEditedVariantOnReviewTrack: [
+			{
+				to: {
+					reviewTrack: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					reviewTracks: [
+						"<< tracks",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+					parkedClip: [
+						"<< clip << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
+					],
+					crdtResolve: [crdtReviewResolveTarget],
+					$output: ["$output"],
+				},
+				fn: [
+					["$noop", "<<<<", "<< @all:tracks"] as const,
+					reduceParkEditedVariantOnReviewTrack,
+				],
+			},
+			{
+				to: ["<< tracks", { action: "acceptClipIfTarget", sub_flow: true }],
+				fn: reduceAcceptParkedClipOnReviewTrack,
+			},
+		],
+		preserveDeleteAndArchiveIncomingEdit: {
+			to: {
+				reviewArchiveEntries: ["reviewArchiveEntries"],
+				crdtResolve: [crdtReviewResolveTarget],
+			},
+			fn: [
+				["$noop"] as const,
+				reducePreserveDeleteAndArchiveIncomingEdit,
+			],
+		},
 	},
 });

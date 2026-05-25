@@ -12,6 +12,7 @@ import type {
 	MiniCutDktTrackSeed,
 } from "../../dkt/runtime/seedTypes";
 import type { CrdtConflictLifecyclePayload } from "../../dkt/review/types";
+import { makeCrdtResolvePayload } from "../../dkt/review/crdtReviewCommands";
 import type {
 	TrackOrderEntry,
 	TrackOrderPreview,
@@ -23,6 +24,7 @@ import {
 } from "../ReviewSession/actions";
 import { materializeCRDTConflictReviewItem } from "../../dkt/review/materializeCRDTConflictReviewItem";
 import {
+	REVIEW_TRACK_ROLES,
 	makeReviewTrackAttrs,
 	type ReviewTrackRole,
 } from "../../dkt/review/reviewTrackPrimitives";
@@ -62,6 +64,14 @@ export type ProjectResolveTrackOrderConflictPayload = {
 	selectedOrder?: unknown;
 	trackIds?: unknown;
 	preview?: unknown;
+};
+export type DeleteVsEditVariantActionPayload = {
+	conflictId?: unknown;
+	reviewItemId?: unknown;
+	clipId?: unknown;
+	targetTrackId?: unknown;
+	deletedVariant?: unknown;
+	editedVariant?: unknown;
 };
 
 const asString = (value: unknown): string | null =>
@@ -599,6 +609,221 @@ const getModelAttr = (model: unknown, key: string): unknown => {
 	return statesValue !== undefined
 		? statesValue
 		: (model as Record<string, unknown>)[key];
+};
+
+const nonEmptyString = (value: unknown): string | null =>
+	typeof value === "string" && value.length > 0 ? value : null;
+
+const asAttrsRecord = (value: unknown): Record<string, unknown> =>
+	value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+
+const editedVariantFromPayload = (
+	payload: unknown,
+): Record<string, unknown> | null => {
+	const value = asObject<DeleteVsEditVariantActionPayload>(payload);
+	const variant = asObject<{ clipAttrs?: unknown; clip_attrs?: unknown }>(
+		value?.editedVariant,
+	);
+	if (!variant) {
+		return null;
+	}
+	return {
+		...asAttrsRecord(variant.clip_attrs),
+		...asAttrsRecord(variant.clipAttrs),
+	};
+};
+
+const normalizeRestoredClipAttrs = (clipAttrs: Record<string, unknown>) => ({
+	name: nonEmptyString(clipAttrs.name) ?? "Restored edited clip",
+	color: nonEmptyString(clipAttrs.color) ?? "#f59e0b",
+	mediaKind: nonEmptyString(clipAttrs.mediaKind) ?? "video",
+	start: asNonNegativeNumber(clipAttrs.start),
+	in: asNonNegativeNumber(clipAttrs.in),
+	duration: Math.max(0.1, asNonNegativeNumber(clipAttrs.duration, 0.1)),
+	fadeIn: asNonNegativeNumber(clipAttrs.fadeIn),
+	fadeOut: asNonNegativeNumber(clipAttrs.fadeOut),
+	audio: asObject(clipAttrs.audio) ?? { gain: 1, pan: 0 },
+	opacity: asObject(clipAttrs.opacity) ?? { value: 1 },
+	transform: asObject(clipAttrs.transform) ?? defaultClipTransform,
+});
+
+const existingReviewTrack = (
+	tracks: unknown,
+	role: ReviewTrackRole,
+): unknown | null => {
+	const currentTracks = Array.isArray(tracks) ? tracks : [];
+	return (
+		currentTracks.find((track) => getModelAttr(track, "trackRole") === role) ??
+		null
+	);
+};
+
+export const reduceResolveDeleteVsEditByRestoreVariant = (
+	payload: unknown,
+	noop: unknown,
+	project: unknown,
+	targetTrack: unknown,
+) => {
+	const value = asObject<DeleteVsEditVariantActionPayload>(payload);
+	const conflictId = nonEmptyString(value?.conflictId);
+	const reviewItemId = nonEmptyString(value?.reviewItemId);
+	const sourceConflictClipId =
+		nonEmptyString(value?.clipId) ??
+		nonEmptyString(
+			asObject<{ clipId?: unknown }>(value?.deletedVariant)?.clipId,
+		);
+	const clipAttrs = editedVariantFromPayload(payload);
+	const targetTrackId = nonEmptyString(value?.targetTrackId);
+	if (
+		!conflictId ||
+		!reviewItemId ||
+		!sourceConflictClipId ||
+		!clipAttrs ||
+		!targetTrack ||
+		typeof targetTrack !== "object" ||
+		getNodeId(targetTrack) !== targetTrackId
+	) {
+		return noop;
+	}
+	const restoredAttrs = normalizeRestoredClipAttrs(clipAttrs);
+	return {
+		clip: {
+			attrs: restoredAttrs,
+			rels: {
+				project,
+				track: targetTrack,
+				resource: asObject(value?.editedVariant)?.resource ?? null,
+			},
+			hold_ref_id: "restoredDeleteVsEditClip",
+		},
+		targetTrackClips: { use_ref_id: "restoredDeleteVsEditClip" },
+		crdtResolve: makeCrdtResolvePayload({
+			conflictId,
+			reviewItemId,
+			action: "resolveDeleteVsEditByRestoreVariant",
+			domainResult: {
+				type: "deleted_variant_restored",
+				restoredClipId: { use_ref_id: "restoredDeleteVsEditClip" },
+				targetTrackId,
+				sourceConflictClipId,
+				restoredAttrs,
+			},
+		}),
+	};
+};
+
+export const reduceParkEditedVariantOnReviewTrack = (
+	payload: unknown,
+	noop: unknown,
+	project: unknown,
+	tracks: unknown,
+) => {
+	const value = asObject<DeleteVsEditVariantActionPayload>(payload);
+	const conflictId = nonEmptyString(value?.conflictId);
+	const reviewItemId = nonEmptyString(value?.reviewItemId);
+	const sourceConflictClipId =
+		nonEmptyString(value?.clipId) ??
+		nonEmptyString(
+			asObject<{ clipId?: unknown }>(value?.deletedVariant)?.clipId,
+		);
+	const clipAttrs = editedVariantFromPayload(payload);
+	if (!conflictId || !reviewItemId || !sourceConflictClipId || !clipAttrs) {
+		return noop;
+	}
+	const restoredAttrs = normalizeRestoredClipAttrs(clipAttrs);
+	const reviewTrack = existingReviewTrack(tracks, REVIEW_TRACK_ROLES.incoming);
+	const trackRef = reviewTrack || { use_ref_id: "deleteVsEditReviewTrack" };
+	const trackId = reviewTrack
+		? getNodeId(reviewTrack)
+		: { use_ref_id: "deleteVsEditReviewTrack" };
+	return {
+		...(reviewTrack
+			? null
+			: {
+					reviewTrack: {
+						attrs: {
+							...makeReviewTrackAttrs({
+								role: REVIEW_TRACK_ROLES.incoming,
+								kind:
+									restoredAttrs.mediaKind === "audio" ? "audio" : "video",
+							}),
+							name: `Incoming Review - ${restoredAttrs.name}`,
+						},
+						rels: { project },
+						hold_ref_id: "deleteVsEditReviewTrack",
+					},
+					reviewTracks: { use_ref_id: "deleteVsEditReviewTrack" },
+				}),
+		parkedClip: {
+			attrs: {
+				...restoredAttrs,
+				name: `${restoredAttrs.name} edited variant`,
+			},
+			rels: {
+				project,
+				track: trackRef,
+				resource: asObject(value?.editedVariant)?.resource ?? null,
+			},
+			hold_ref_id: "parkedDeleteVsEditClip",
+		},
+		crdtResolve: makeCrdtResolvePayload({
+			conflictId,
+			reviewItemId,
+			action: "parkEditedVariantOnReviewTrack",
+			domainResult: {
+				type: "edited_variant_parked",
+				parkedClipId: { use_ref_id: "parkedDeleteVsEditClip" },
+				reviewTrackId: trackId,
+				sourceConflictClipId,
+			},
+		}),
+		$output: {
+			clip: { use_ref_id: "parkedDeleteVsEditClip" },
+			targetTrack: trackRef,
+		},
+	};
+};
+
+export const reducePreserveDeleteAndArchiveIncomingEdit = (
+	payload: unknown,
+	noop: unknown,
+) => {
+	const value = asObject<DeleteVsEditVariantActionPayload>(payload);
+	const conflictId = nonEmptyString(value?.conflictId);
+	const reviewItemId = nonEmptyString(value?.reviewItemId);
+	const sourceConflictClipId =
+		nonEmptyString(value?.clipId) ??
+		nonEmptyString(
+			asObject<{ clipId?: unknown }>(value?.deletedVariant)?.clipId,
+		);
+	const editedVariant = asObject(value?.editedVariant);
+	if (!conflictId || !reviewItemId || !sourceConflictClipId || !editedVariant) {
+		return noop;
+	}
+	const archivedVariantId = `archive:${reviewItemId}:${sourceConflictClipId}`;
+	return {
+		reviewArchiveEntries: [
+			{
+				id: archivedVariantId,
+				conflictId,
+				reviewItemId,
+				sourceConflictClipId,
+				editedVariant,
+			},
+		],
+		crdtResolve: makeCrdtResolvePayload({
+			conflictId,
+			reviewItemId,
+			action: "preserveDeleteAndArchiveIncomingEdit",
+			domainResult: {
+				type: "delete_preserved_edit_archived",
+				sourceConflictClipId,
+				archivedVariantId,
+			},
+		}),
+	};
 };
 
 export const reduceCreateReviewTrack = (payload: unknown) => {
