@@ -56,6 +56,23 @@ describe("materializeDanglingResourceReviewItem", () => {
 		expect(danglingResourceFeature.canMaterialize(conflict)).toBe(true);
 	});
 
+	it("uses the resourceLifecycle anchor node as the resource id", () => {
+		const item = materializeDanglingResourceReviewItem({
+			conflict: {
+				...danglingResourceConflictFixture,
+				model_name: "resourceLifecycle",
+				payload: { clipIds: ["clip:1"] },
+			},
+			projectId: "project:1",
+		});
+
+		expect(item.preview).toMatchObject({
+			type: "dangling_resource",
+			resourceId: "resource:1",
+			clipIds: ["clip:1"],
+		});
+	});
+
 	it("does not classify delete-vs-edit clip lifecycle conflicts", () => {
 		const conflict: CrdtConflictRecord = {
 			...danglingResourceConflictFixture,

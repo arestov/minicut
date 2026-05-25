@@ -1,4 +1,5 @@
 import type { CrdtConflictRecord, MiniCutReviewItem } from "../../types";
+import { extractDanglingResourcePreview } from "./danglingResourcePreview";
 import { materializeDanglingResourceReviewItem } from "./materializeDanglingResourceReviewItem";
 
 const includesToken = (value: string | null | undefined, token: string) =>
@@ -44,13 +45,19 @@ export const danglingResourceFeature = {
 	actions: ["resolveDanglingResourceByRelink", "keepOfflinePlaceholder"],
 	canMaterialize(conflict: CrdtConflictRecord): boolean {
 		if (isDeleteVsEditClipLifecycle(conflict)) return false;
-		return (
+		const looksLikeDanglingResource =
 			conflict.aggregate === "resourceLifecycle" ||
 			includesToken(conflict.kind, "dangling") ||
 			includesToken(conflict.kind, "orphan") ||
 			includesToken(conflict.kind, "missing") ||
-			payloadIdentifiesMissingResourceRelation(conflict)
-		);
+			payloadIdentifiesMissingResourceRelation(conflict);
+		if (!looksLikeDanglingResource) return false;
+		try {
+			extractDanglingResourcePreview(conflict);
+			return true;
+		} catch {
+			return false;
+		}
 	},
 	materialize({
 		conflict,
