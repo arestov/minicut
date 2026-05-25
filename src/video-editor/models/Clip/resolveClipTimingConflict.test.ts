@@ -93,4 +93,19 @@ describe("reduceResolveClipTimingConflict", () => {
 			),
 		).toBeNull();
 	});
+
+	it("rejects missing review item id without a CRDT resolve command", () => {
+		expect(
+			reduceResolveClipTimingConflict(
+				{
+					conflictId: "conflict:1",
+					selectedVariant: "incoming",
+					start: 0,
+					in: 0,
+					duration: 3,
+				},
+				clip,
+			),
+		).toBeNull();
+	});
 });

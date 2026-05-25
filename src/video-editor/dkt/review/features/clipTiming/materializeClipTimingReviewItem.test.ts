@@ -49,6 +49,22 @@ describe("materializeClipTimingReviewItem", () => {
 		expect(clipTimingFeature.canMaterialize(conflict)).toBe(false);
 	});
 
+	it("does not classify resource conflicts with timing-like payloads as clip timing", () => {
+		const conflict: CrdtConflictRecord = {
+			...clipTimingConflictFixture,
+			kind: "dangling_resource",
+			aggregate: "resourceLifecycle",
+			model_name: "resource",
+			field_name: "url",
+			payload: {
+				current: { start: 0, in: 0, duration: 4 },
+				incoming: { start: 2, in: 1, duration: 3 },
+			},
+		};
+
+		expect(clipTimingFeature.canMaterialize(conflict)).toBe(false);
+	});
+
 	it("throws for unsupported timing payloads in materializer tests", () => {
 		expect(() =>
 			materializeClipTimingReviewItem({
