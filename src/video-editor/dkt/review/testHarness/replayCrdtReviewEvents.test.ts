@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { replayCrdtReviewEvents } from "./replayCrdtReviewEvents";
 import { clipTimingConflictFixture } from "./fixtures/clipTimingConflict";
+import { danglingResourceConflictFixture } from "./fixtures/danglingResourceConflict";
 import { syncBatchFixture } from "./fixtures/syncBatch";
 
 describe("replayCrdtReviewEvents", () => {
@@ -91,6 +92,46 @@ describe("replayCrdtReviewEvents", () => {
 		expect(result.items[0]).toEqual(
 			expect.objectContaining({
 				conflictId: "conflict:clip-timing",
+				status: "resolved",
+			}),
+		);
+	});
+
+	it("updates dangling resource review items to resolved after lifecycle events", () => {
+		const result = replayCrdtReviewEvents({
+			projectId: "project:1",
+			conflictPayloads: [
+				{
+					event_type: "crdt_conflict",
+					happened_at: 2,
+					opened: [danglingResourceConflictFixture],
+					updated: [],
+					acknowledged: [],
+					resolved: [],
+					previous: { [danglingResourceConflictFixture.conflict_id]: null },
+				},
+				{
+					event_type: "crdt_conflict",
+					happened_at: 3,
+					opened: [],
+					updated: [],
+					acknowledged: [],
+					resolved: [
+						{ ...danglingResourceConflictFixture, status: "resolved" },
+					],
+					previous: {
+						[danglingResourceConflictFixture.conflict_id]:
+							danglingResourceConflictFixture,
+					},
+				},
+			],
+		});
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0]).toEqual(
+			expect.objectContaining({
+				conflictId: "conflict:dangling-resource",
+				kind: "dangling_resource",
 				status: "resolved",
 			}),
 		);
