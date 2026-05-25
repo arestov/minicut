@@ -150,6 +150,65 @@ describe("Project action contracts", () => {
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 
+	it("ensure review track actions materialize disabled timeline-visible tracks", async () => {
+		const harness = await createActionContractHarness();
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.project,
+			"ensureIncomingReviewTrack",
+			{ kind: "video" },
+		);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.project,
+			"ensureCurrentReviewTrack",
+			{ kind: "audio" },
+		);
+
+		const tracks = await harness.ctx.queryRel(harness.project, "tracks");
+		const incoming = tracks.find(
+			(track) => harness.ctx.getAttr(track, "trackRole") === "incomingReview",
+		);
+		const current = tracks.find(
+			(track) => harness.ctx.getAttr(track, "trackRole") === "currentReview",
+		);
+		expect(incoming?._node_id).toBeTruthy();
+		expect(current?._node_id).toBeTruthy();
+		if (!incoming || !current) {
+			throw new Error("expected review tracks");
+		}
+
+		expect(harness.ctx.getAttr(incoming, "name")).toBe("Incoming Review");
+		expect(harness.ctx.getAttr(incoming, "enabled")).toBe(false);
+		expect(harness.ctx.getAttr(incoming, "visibleInPreview")).toBe(false);
+		expect(harness.ctx.getAttr(incoming, "muted")).toBe(true);
+		expect(harness.ctx.getAttr(incoming, "isVisible")).toBe(true);
+		expect(harness.ctx.getAttr(current, "name")).toBe("Current Review");
+		expect(harness.ctx.getAttr(current, "enabled")).toBe(false);
+		expect(harness.ctx.getAttr(current, "visibleInPreview")).toBe(false);
+		expect(tracks).toContain(incoming);
+		expect(tracks).toContain(current);
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.project,
+			"ensureIncomingReviewTrack",
+			{ kind: "video" },
+		);
+		const tracksAfterSecondEnsure = await harness.ctx.queryRel(
+			harness.project,
+			"tracks",
+		);
+		expect(
+			tracksAfterSecondEnsure.filter(
+				(track) =>
+					harness.ctx.getAttr(track, "trackRole") === "incomingReview",
+			),
+		).toHaveLength(1);
+		await expectProjectGraphInvariants(harness.ctx);
+	});
+
 	it("importResource creates a resource and addResourceToTimeline routes video plus embedded audio", async () => {
 		const harness = await createActionContractHarness();
 		const videoAppendStartBefore = harness.ctx.getAttr(
