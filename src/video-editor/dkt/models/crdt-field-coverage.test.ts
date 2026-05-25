@@ -108,6 +108,8 @@ const MODEL_CASES: ModelCase[] = [
 				enabled: "crdt",
 				isVisible: "crdt",
 				height: "crdt",
+				trackRole: "crdt",
+				visibleInPreview: "crdt",
 				trackDuration: "projection",
 				clipCount: "projection",
 			},
