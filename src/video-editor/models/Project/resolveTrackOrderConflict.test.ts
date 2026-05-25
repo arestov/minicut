@@ -37,7 +37,10 @@ describe("Project track order review actions", () => {
 				tracks,
 			),
 		).toEqual({
-			tracks: ["track:audio", "track:video"],
+			tracks: {
+				id: null,
+				value: [tracks[1], tracks[0]],
+			},
 			crdtResolve: {
 				conflict_id: "conflict:track-order",
 				decision: {
@@ -65,7 +68,10 @@ describe("Project track order review actions", () => {
 				tracks,
 			),
 		).toMatchObject({
-			tracks: ["track:video", "track:audio"],
+			tracks: {
+				id: null,
+				value: [tracks[0], tracks[1]],
+			},
 			crdtResolve: {
 				decision: {
 					domain_result: {

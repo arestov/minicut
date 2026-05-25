@@ -656,7 +656,7 @@ export const Project = model({
 			to: {
 				tracks: [
 					"<< tracks",
-					{ method: "set_many", can_use_refs: true },
+					{ method: "insert_after_id" },
 				],
 				crdtResolve: [crdtReviewResolveTarget],
 			},
@@ -670,7 +670,7 @@ export const Project = model({
 			to: {
 				tracks: [
 					"<< tracks",
-					{ method: "set_many", can_use_refs: true },
+					{ method: "insert_after_id" },
 				],
 				crdtResolve: [crdtReviewResolveTarget],
 			},

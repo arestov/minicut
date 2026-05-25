@@ -243,6 +243,20 @@ const trackIdsFromModels = (tracks: unknown): string[] =>
 			})
 		: [];
 
+const trackModelsForIds = (tracks: unknown, ids: readonly string[]): unknown[] | null => {
+	if (!Array.isArray(tracks)) {
+		return null;
+	}
+	const byId = new Map(
+		tracks.flatMap((track) => {
+			const id = getNodeId(track);
+			return id ? [[id, track] as const] : [];
+		}),
+	);
+	const models = ids.map((id) => byId.get(id));
+	return models.every(Boolean) ? models : null;
+};
+
 const isUniqueStringList = (value: unknown): value is string[] =>
 	Array.isArray(value) &&
 	value.length > 0 &&
@@ -1023,8 +1037,15 @@ export const reduceResolveTrackOrderConflict = (
 	) {
 		return noop;
 	}
+	const orderedTracks = trackModelsForIds(currentTracks, trackIds);
+	if (!orderedTracks) {
+		return noop;
+	}
 	return {
-		tracks: trackIds,
+		tracks: {
+			id: null,
+			value: orderedTracks,
+		},
 		crdtResolve: {
 			conflict_id: conflictId,
 			decision: {
