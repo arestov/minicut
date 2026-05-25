@@ -1,4 +1,5 @@
 import type { MiniCutDktEffectSeed } from "../../dkt/runtime/seedTypes";
+import { makeCrdtResolvePayload } from "../../dkt/review/crdtReviewCommands";
 import type { AnimatedScalar } from "../../render/registryTypes";
 import { defaultEffectAttrs } from "../Effect/defaults";
 import { numberOr, objectOr, stringOr } from "../valueGuards";
@@ -319,6 +320,103 @@ const getNodeId = (model: unknown): string | null =>
 	typeof (model as { _node_id?: unknown })._node_id === "string"
 		? (model as { _node_id: string })._node_id
 		: null;
+
+export type ResolveClipTimingVariant = "current" | "incoming" | "custom";
+
+export type ResolveClipTimingPayload = {
+	conflictId: string;
+	reviewItemId: string;
+	selectedVariant: ResolveClipTimingVariant;
+	start: number;
+	in: number;
+	duration: number;
+	fadeIn?: number;
+	fadeOut?: number;
+};
+
+const asResolveVariant = (value: unknown): ResolveClipTimingVariant =>
+	value === "current" || value === "incoming" ? value : "custom";
+
+export const normalizeResolveClipTimingPayload = (
+	payload: unknown,
+): ResolveClipTimingPayload | null => {
+	const value = asObject<Record<string, unknown>>(payload);
+	if (!value) {
+		return null;
+	}
+	const conflictId =
+		asString(value.conflictId) ?? asString(value.conflict_id);
+	const reviewItemId =
+		asString(value.reviewItemId) ?? asString(value.review_item_id);
+	if (!conflictId || !reviewItemId) {
+		return null;
+	}
+	return {
+		conflictId,
+		reviewItemId,
+		selectedVariant: asResolveVariant(value.selectedVariant),
+		start: asNumber(value.start) ?? Number.NaN,
+		in: asNumber(value.in) ?? Number.NaN,
+		duration: asNumber(value.duration) ?? Number.NaN,
+		fadeIn: asNumber(value.fadeIn) ?? undefined,
+		fadeOut: asNumber(value.fadeOut) ?? undefined,
+	};
+};
+
+export const validateClipTimingDecision = (
+	value: ResolveClipTimingPayload,
+): boolean => {
+	const fadeIn = value.fadeIn ?? 0;
+	const fadeOut = value.fadeOut ?? 0;
+	return (
+		value.conflictId.length > 0 &&
+		value.reviewItemId.length > 0 &&
+		Number.isFinite(value.start) &&
+		Number.isFinite(value.in) &&
+		Number.isFinite(value.duration) &&
+		Number.isFinite(fadeIn) &&
+		Number.isFinite(fadeOut) &&
+		value.duration > 0 &&
+		value.start >= 0 &&
+		value.in >= 0 &&
+		fadeIn >= 0 &&
+		fadeOut >= 0 &&
+		fadeIn + fadeOut <= value.duration
+	);
+};
+
+export const reduceResolveClipTimingConflict = (
+	payload: unknown,
+	clip: unknown,
+) => {
+	const value = normalizeResolveClipTimingPayload(payload);
+	if (!value || !validateClipTimingDecision(value)) {
+		return null;
+	}
+	const fadeIn = value.fadeIn ?? 0;
+	const fadeOut = value.fadeOut ?? 0;
+	return {
+		start: value.start,
+		in: value.in,
+		duration: value.duration,
+		fadeIn,
+		fadeOut,
+		crdtResolve: makeCrdtResolvePayload({
+			conflictId: value.conflictId,
+			reviewItemId: value.reviewItemId,
+			action: "resolveClipTimingConflict",
+			domainResult: {
+				clipId: getNodeId(clip),
+				selectedVariant: value.selectedVariant,
+				start: value.start,
+				in: value.in,
+				duration: value.duration,
+				fadeIn,
+				fadeOut,
+			},
+		}),
+	};
+};
 
 export const reorderEffectRefs = (
 	effects: unknown[],

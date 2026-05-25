@@ -1,8 +1,5 @@
 import { model } from "dkt/model.js";
-import {
-	crdtReviewResolveTarget,
-	makeCrdtResolvePayload,
-} from "../dkt/review/crdtReviewCommands";
+import { crdtReviewResolveTarget } from "../dkt/review/crdtReviewCommands";
 import {
 	defaultClipTransform,
 	normalizeEffectCreationAttrs,
@@ -18,6 +15,7 @@ import {
 	reduceSetFade,
 	reduceSetProject,
 	reduceSetResource,
+	reduceResolveClipTimingConflict,
 	reduceSetText,
 	reduceSetTimelineAttrs,
 	reduceSetTrack,
@@ -45,7 +43,7 @@ export const Clip = model({
 				},
 			},
 			validate(ctx: {
-				members: Record<string, { value: unknown }>;
+				members: Record<string, { value: unknown; old_value?: unknown }>;
 				phase?: string;
 				summary?: { staged_ops?: readonly unknown[] };
 				deps?: Record<string, { value: unknown; status?: string }>;
@@ -54,6 +52,18 @@ export const Clip = model({
 					ok: false,
 					code,
 					kind: "group_invariant_violation",
+					details: {
+						current: {
+							start: numberOr(ctx.members.start.old_value, 0),
+							in: numberOr(ctx.members.inPoint.old_value, 0),
+							duration: numberOr(ctx.members.duration.old_value, 0),
+						},
+						incoming: {
+							start: numberOr(ctx.members.start.value, 0),
+							in: numberOr(ctx.members.inPoint.value, 0),
+							duration: numberOr(ctx.members.duration.value, 0),
+						},
+					},
 				});
 				const start = Number(ctx.members.start.value);
 				const inPoint = Number(ctx.members.inPoint.value);
@@ -583,52 +593,14 @@ export const Clip = model({
 				start: ["start"],
 				in: ["in"],
 				duration: ["duration"],
+				fadeIn: ["fadeIn"],
+				fadeOut: ["fadeOut"],
 				crdtResolve: [crdtReviewResolveTarget],
 			},
 			fn: [
-				["$noop", "start", "in", "duration"] as const,
-				(
-					payload: unknown,
-					noop: unknown,
-					start: unknown,
-					inPoint: unknown,
-					duration: unknown,
-				) => {
-					const value = payload as {
-						start?: unknown;
-						in?: unknown;
-						duration?: unknown;
-						conflict_id?: unknown;
-						conflictId?: unknown;
-						review_item_id?: unknown;
-						reviewItemId?: unknown;
-						decision?: unknown;
-					} | null;
-					const conflictId = value?.conflict_id ?? value?.conflictId;
-					if (typeof conflictId !== "string") {
-						return noop;
-					}
-					const reviewItemId =
-						typeof value?.review_item_id === "string"
-							? value.review_item_id
-							: typeof value?.reviewItemId === "string"
-								? value.reviewItemId
-								: `review:${conflictId}`;
-					const decision = {
-						start: numberOr(value?.start, numberOr(start, 0)),
-						in: numberOr(value?.in, numberOr(inPoint, 0)),
-						duration: numberOr(value?.duration, numberOr(duration, 0)),
-					};
-					return {
-						...decision,
-						crdtResolve: makeCrdtResolvePayload({
-							conflictId,
-							reviewItemId,
-							action: "resolveClipTimingConflict",
-							domainResult: decision,
-						}),
-					};
-				},
+				["$noop", "<<<<"] as const,
+				(payload: unknown, noop: unknown, clip: unknown) =>
+					reduceResolveClipTimingConflict(payload, clip) ?? noop,
 			],
 		},
 		clearResolutionAttempt: {

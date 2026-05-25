@@ -287,7 +287,9 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			await clipA.dispatch(
 				"resolveClipTimingConflict",
 				{
-					conflict_id: conflictId,
+					conflictId,
+					reviewItemId: `review:${conflictId}`,
+					selectedVariant: "incoming",
 					start: 0,
 					in: 0,
 					duration: 0,
@@ -317,8 +319,8 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			pair.a.ctx.getAttr(
 				clipA,
 				"$meta$aggregates$crdt$clipTiming$last_resolution_error",
-			),
-		).toEqual(expect.objectContaining({ code: "duration_non_positive" }));
+			) ?? null,
+		).toBeNull();
 		pair.close();
 	});
 
@@ -331,7 +333,9 @@ describe("MiniCut CRDT conflict scenarios", () => {
 			await clipA.dispatch(
 				"resolveClipTimingConflict",
 				{
-					conflict_id: conflictId,
+					conflictId,
+					reviewItemId: `review:${conflictId}`,
+					selectedVariant: "incoming",
 					start: 0,
 					in: 0,
 					duration: 3,

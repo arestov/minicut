@@ -59,5 +59,40 @@ describe("replayCrdtReviewEvents", () => {
 			}),
 		]);
 	});
-});
 
+	it("updates an opened item to resolved without creating a duplicate", () => {
+		const result = replayCrdtReviewEvents({
+			projectId: "project:1",
+			conflictPayloads: [
+				{
+					event_type: "crdt_conflict",
+					happened_at: 2,
+					opened: [clipTimingConflictFixture],
+					updated: [],
+					acknowledged: [],
+					resolved: [],
+					previous: { [clipTimingConflictFixture.conflict_id]: null },
+				},
+				{
+					event_type: "crdt_conflict",
+					happened_at: 3,
+					opened: [],
+					updated: [],
+					acknowledged: [],
+					resolved: [{ ...clipTimingConflictFixture, status: "resolved" }],
+					previous: {
+						[clipTimingConflictFixture.conflict_id]: clipTimingConflictFixture,
+					},
+				},
+			],
+		});
+
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0]).toEqual(
+			expect.objectContaining({
+				conflictId: "conflict:clip-timing",
+				status: "resolved",
+			}),
+		);
+	});
+});

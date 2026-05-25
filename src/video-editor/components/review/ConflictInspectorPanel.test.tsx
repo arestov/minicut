@@ -37,12 +37,14 @@ describe("review ConflictInspectorPanel", () => {
 			affectedObjects: [{ type: "clip", id: "clip:1" }],
 			preview: {
 				type: "clip_timing",
-				payload: {
-					current: { start: 0, in: 0, duration: 4 },
-					incoming: { start: 2, in: 1, duration: 3 },
-				},
+				current: { start: 0, in: 0, duration: 4, fadeIn: 0, fadeOut: 0 },
+				incoming: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
+				fields: ["start", "in", "duration"],
 			},
-			availableActions: ["resolveClipTimingConflict"],
+			availableActions: [
+				"resolveClipTimingConflict",
+				"parkIncomingVariantOnReviewTrack",
+			],
 			source: { conflictId: "conflict:clip" },
 		};
 		const onReviewAction = vi.fn();
@@ -55,10 +57,10 @@ describe("review ConflictInspectorPanel", () => {
 		);
 
 		expect(
-			screen.getByRole("table", { name: "Timing alternatives" }),
+			screen.getByRole("table", { name: "Timing variants" }),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("columnheader", { name: "Local" }),
+			screen.getByRole("columnheader", { name: "Current" }),
 		).toBeInTheDocument();
 		expect(
 			screen.getByRole("columnheader", { name: "Incoming" }),
@@ -70,23 +72,41 @@ describe("review ConflictInspectorPanel", () => {
 		expect(screen.getByText("3s")).toBeInTheDocument();
 
 		await userEvent.click(
-			screen.getByRole("button", { name: "Use local changes" }),
+			screen.getByRole("button", { name: "Choose current" }),
 		);
 		await userEvent.click(
-			screen.getByRole("button", { name: "Use incoming changes" }),
+			screen.getByRole("button", { name: "Choose incoming" }),
 		);
 
 		expect(onReviewAction).toHaveBeenNthCalledWith(
 			1,
 			"resolveClipTimingConflict",
 			item,
-			{ start: 0, in: 0, duration: 4 },
+			{
+				conflictId: "conflict:clip",
+				reviewItemId: "review:clip",
+				selectedVariant: "current",
+				start: 0,
+				in: 0,
+				duration: 4,
+				fadeIn: 0,
+				fadeOut: 0,
+			},
 		);
 		expect(onReviewAction).toHaveBeenNthCalledWith(
 			2,
 			"resolveClipTimingConflict",
 			item,
-			{ start: 2, in: 1, duration: 3 },
+			{
+				conflictId: "conflict:clip",
+				reviewItemId: "review:clip",
+				selectedVariant: "incoming",
+				start: 2,
+				in: 1,
+				duration: 3,
+				fadeIn: 0,
+				fadeOut: 0,
+			},
 		);
 	});
 });

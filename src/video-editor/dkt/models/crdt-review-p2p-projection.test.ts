@@ -136,7 +136,9 @@ describe("MiniCut p2p review projection", () => {
 				clipA,
 				"resolveClipTimingConflict",
 				{
-					conflict_id: conflictId,
+					conflictId,
+					reviewItemId: `review:${conflictId}`,
+					selectedVariant: "incoming",
 					start: 0,
 					in: 0,
 					duration: 3,
