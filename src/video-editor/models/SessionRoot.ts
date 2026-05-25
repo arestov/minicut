@@ -50,7 +50,7 @@ export const EditorSessionRoot = model({
 		],
 		storageOpenStatus: [
 			"input",
-			WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+			WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
 			{
 				aggregate: {
 					name: "sessionProjection",

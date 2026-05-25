@@ -38,7 +38,7 @@ const createHarnessDbName = (roomId: string) =>
 
 const WORKSPACE_OPEN_STATUS = {
 	READY: 1,
-	EMPTY_INITIALIZED: 2,
+	LOCAL_EMPTY_READY: 2,
 } as const
 
 const gotoIndexedDbSeedPage = async (page: Page) => {
@@ -324,12 +324,12 @@ test.describe('CRDT UI E2E', () => {
 		const first = await readStorageSnapshot(page)
 		expect((first.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
 		expect((first.snapshot as { workspaceOpenState?: { status?: unknown; failureReason?: unknown } } | null)?.workspaceOpenState).toEqual({
-			status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+			status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
 			failureReason: 0,
 		})
 		expect((first.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown; statusLabel?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
-			status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
-			statusLabel: 'empty_initialized',
+			status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
+			statusLabel: 'local_empty_ready',
 			manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
 		})
 		await page.getByRole('button', { name: 'CRDT', exact: true }).click()

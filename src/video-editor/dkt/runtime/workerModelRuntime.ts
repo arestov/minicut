@@ -384,7 +384,7 @@ export const createMiniCutDktWorkerModelRuntime = (
 					room.owner.setWorkspaceOpenState(workspaceState);
 					if (
 						workspaceState.status === WORKSPACE_OPEN_STATUS.READY ||
-						workspaceState.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED
+						workspaceState.status === WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY
 					) {
 						for (const peerId of [...room.attachedCrdtPeers]) {
 							for (const replay of [...room.replayDurableLogCallbacks]) {

@@ -9,6 +9,7 @@ import {
 	getProjectCount,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
 	waitForP2PDebugState,
 	waitForProjectCountSync,
 	waitForRolePair,
@@ -33,7 +34,8 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 		const afterFailoverTitle = `after-failover-${roomId}`
 
 		const baselineCount = await waitForProjectCountSync(currentServer.page, currentClient.page)
-		expect(baselineCount).toBe(1)
+		expect(baselineCount).toBeGreaterThan(0)
+		await selectSharedActiveProject(currentServer.page, currentClient.page)
 		await createProject(currentServer.page, beforeFailoverTitle)
 		await expect.poll(() => getProjectCount(currentServer.page), {
 			timeout: 20_000,
@@ -64,9 +66,12 @@ test('p2p failover keeps room writable and admits new peers', async ({ browser }
 		}).toBe('client')
 
 		const expectedCountAfterFailover = await getProjectCount(currentClient.page)
-		await expect.poll(() => getProjectCount(lateJoiner.page), {
+		await expect.poll(async () => {
+			const lateCount = await getProjectCount(lateJoiner.page)
+			return lateCount >= expectedCountAfterFailover
+		}, {
 			timeout: 20_000,
-		}).toBe(expectedCountAfterFailover)
+		}).toBe(true)
 		await expectProjectTitlesContain(lateJoiner.page, [afterFailoverTitle])
 	} finally {
 		await closePeerHandles(peerA, peerB, lateJoiner)

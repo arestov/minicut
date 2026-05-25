@@ -22,7 +22,7 @@ import { MiniCutAppRoot } from "../models/AppRoot";
 import { sanitizeDktCrdtStoragePackage } from "./crdt/sanitizeStoragePackage";
 import type { DktCrdtTransport } from "./crdt/testRelayContracts";
 import {
-	WORKSPACE_EMPTY_INITIALIZED_STATE,
+	WORKSPACE_LOCAL_EMPTY_READY_STATE,
 	WORKSPACE_OPEN_STATUS,
 } from "./runtime/workspaceOpenState";
 import {
@@ -370,7 +370,7 @@ const createCrdtRuntimeForTests = async (
 	}
 	if (
 		storageOpen?.ok === true &&
-		storageOpen.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED &&
+		storageOpen.status === WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY &&
 		workspaceId
 	) {
 		const stagedManifest = stageMiniCutWorkspaceManifest({
@@ -500,7 +500,7 @@ export const bootDktModels = async (
 						route: null,
 						storageOpenStatus:
 							storageOpen?.openState.status ??
-							WORKSPACE_EMPTY_INITIALIZED_STATE.status,
+							WORKSPACE_LOCAL_EMPTY_READY_STATE.status,
 					});
 					resolve(sr as AnyModel);
 				} catch (err) {

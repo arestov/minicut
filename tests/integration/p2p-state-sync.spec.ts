@@ -8,6 +8,7 @@ import {
 	getProjectCount,
 	readP2PTrace,
 	openP2PPeer,
+	selectSharedActiveProject,
 	waitForP2PDebugState,
 	waitForProjectCountSync,
 	waitForRolePair,
@@ -36,6 +37,7 @@ test('p2p state sync works over WebRTC across isolated browser contexts', async 
 
 		const syncedBeforeCount = await waitForProjectCountSync(first.page, second.page)
 		expect(syncedBeforeCount).toBeGreaterThan(0)
+		await selectSharedActiveProject(first.page, second.page)
 
 		await createProject(first.page)
 		await expect.poll(() => getProjectCount(first.page), {

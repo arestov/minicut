@@ -92,11 +92,11 @@ describe("MiniCut workspace manifest", () => {
 
 		expect(result).toMatchObject({
 			ok: true,
-			status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
-			statusLabel: "empty_initialized",
+			status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
+			statusLabel: "local_empty_ready",
 			sourceStatus: "empty",
 			openState: {
-				status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+				status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
 				failureReason: WORKSPACE_OPEN_FAILURE.NONE,
 			},
 		});

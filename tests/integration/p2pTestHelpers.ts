@@ -185,6 +185,7 @@ export const readP2PDebugState = async (page: Page): Promise<DebugState | null> 
 				getPeerId?: () => string | null
 				isRuntimeReady?: () => boolean
 				waitForRuntimeSettled?: () => Promise<void>
+				dispatchRootAction?: (actionName: string, payload?: unknown) => Promise<void>
 			}
 		}).__MINICUT_P2P_DEBUG__
 
@@ -226,6 +227,60 @@ export const getProjectCount = async (page: Page): Promise<number> => {
 export const getProjectTitles = async (page: Page): Promise<string[]> => {
 	const state = await readP2PDebugState(page)
 	return state?.projectTitles ?? []
+}
+
+export const readActiveProjectNodeId = async (page: Page): Promise<string | null> =>
+	page.evaluate(() => {
+		const state = window.__MINICUT_P2P_DEBUG__?.dumpProjectState?.() as {
+			activeProjectNodeId?: unknown
+			projectNodeId?: unknown
+		} | null
+		const candidate = state?.activeProjectNodeId ?? state?.projectNodeId
+		return typeof candidate === 'string' ? candidate : null
+	})
+
+export const getActiveProjectNodeId = async (page: Page): Promise<string> => {
+	const projectId = await readActiveProjectNodeId(page)
+	if (!projectId) {
+		throw new Error('Expected active project node id')
+	}
+	return projectId
+}
+
+export const waitForActiveProjectNodeId = async (page: Page): Promise<string> => {
+	await expect.poll(() => readActiveProjectNodeId(page), {
+		timeout: 20_000,
+	}).not.toBeNull()
+	return getActiveProjectNodeId(page)
+}
+
+export const setActiveProject = async (page: Page, projectId: string): Promise<void> => {
+	await page.evaluate(async (nextProjectId) => {
+		const debug = window.__MINICUT_P2P_DEBUG__
+		if (!debug?.dispatchRootAction) {
+			throw new Error('P2P debug bridge is unavailable')
+		}
+		await debug.dispatchRootAction('setActiveProject', nextProjectId)
+	}, projectId)
+}
+
+export const selectSharedActiveProject = async (
+	sourcePage: Page,
+	...targetPages: Page[]
+): Promise<string> => {
+	const projectId = await waitForActiveProjectNodeId(sourcePage)
+	await Promise.all(targetPages.map((page) => setActiveProject(page, projectId)))
+	await Promise.all([
+		expect.poll(() => getActiveProjectNodeId(sourcePage), {
+			timeout: 20_000,
+		}).toBe(projectId),
+		...targetPages.map((page) =>
+			expect.poll(() => getActiveProjectNodeId(page), {
+				timeout: 20_000,
+			}).toBe(projectId),
+		),
+	])
+	return projectId
 }
 
 export const getPeerId = async (page: Page): Promise<string | null> => {

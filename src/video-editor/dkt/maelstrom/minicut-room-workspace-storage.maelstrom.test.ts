@@ -60,9 +60,9 @@ describe("MiniCut maelstrom room workspace storage", () => {
 		expect(expectedDbName).toContain("minicut-crdt-workspace-");
 		expect(peerA.ctx.crdtStorageOpen).toMatchObject({
 			ok: true,
-			status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+			status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
 			openState: {
-				status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+				status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
 				failureReason: WORKSPACE_OPEN_FAILURE.NONE,
 			},
 			manifest: { workspaceId: expectedWorkspaceId },

@@ -61,7 +61,7 @@ const DEFAULT_HEARTBEAT_TIMEOUT_MS = 15_000;
 
 const canAttachForWorkspace = (state: WorkspaceOpenState | null): boolean =>
 	state?.status === WORKSPACE_OPEN_STATUS.READY ||
-	state?.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED;
+	state?.status === WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY;
 
 export const createProductRoomTransportOwner = ({
 	roomId,

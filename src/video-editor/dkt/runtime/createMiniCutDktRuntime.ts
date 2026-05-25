@@ -28,7 +28,7 @@ import { createMiniCutDktTestRuntimeProtocol } from "./createMiniCutDktTestRunti
 import {
 	WORKSPACE_OPEN_STATUS,
 	WORKSPACE_OPENING_STATE,
-	WORKSPACE_EMPTY_INITIALIZED_STATE,
+	WORKSPACE_LOCAL_EMPTY_READY_STATE,
 	getWorkspaceOpenFailureLabel,
 	getWorkspaceOpenStatusLabel,
 	type WorkspaceOpenState,
@@ -284,7 +284,7 @@ const createCrdtRuntime = async (
 		: null;
 	if (
 		storageOpen?.ok === true &&
-		storageOpen.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED &&
+		storageOpen.status === WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY &&
 		workspaceId
 	) {
 		const stagedManifest = stageMiniCutWorkspaceManifest({
@@ -678,7 +678,7 @@ export const createMiniCutDktRuntime = (
 						const crdt = crdtPromise ? await crdtPromise : null;
 						const storageOpenStatus =
 							crdt?.workspaceOpenState?.status ??
-							WORKSPACE_EMPTY_INITIALIZED_STATE.status;
+							WORKSPACE_LOCAL_EMPTY_READY_STATE.status;
 						const sessionRoot = await hookSessionRoot(
 							app.appModel,
 							app.appModel.start_page,
