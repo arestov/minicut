@@ -14,12 +14,14 @@ const item: MiniCutReviewItem = {
 	affectedObjects: [{ type: "clip", id: "clip:1" }],
 	preview: {
 		type: "clip_timing",
-		payload: {
-			current: { start: 0, in: 0, duration: 4 },
-			incoming: { start: 2, in: 1, duration: 3 },
-		},
+		current: { start: 0, in: 0, duration: 4, fadeIn: 0, fadeOut: 0 },
+		incoming: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
+		fields: ["start", "in", "duration"],
 	},
-	availableActions: ["resolveClipTimingConflict"],
+	availableActions: [
+		"resolveClipTimingConflict",
+		"parkIncomingVariantOnReviewTrack",
+	],
 	source: { conflictId: "conflict:1", frameId: 2, rootFrameId: 1 },
 };
 
@@ -45,14 +47,19 @@ describe("ReviewPanel", () => {
 		);
 
 		await userEvent.click(
-			screen.getByRole("button", { name: "Use incoming changes" }),
+			screen.getByRole("button", { name: "Choose incoming" }),
 		);
 		await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
 
 		expect(onReviewAction).toHaveBeenCalledWith("resolveClipTimingConflict", item, {
+			conflictId: "conflict:1",
+			reviewItemId: "review:conflict:1",
+			selectedVariant: "incoming",
 			start: 2,
 			in: 1,
 			duration: 3,
+			fadeIn: 0,
+			fadeOut: 0,
 		});
 		expect(onAcknowledgeReviewItem).toHaveBeenCalledWith(item);
 	});

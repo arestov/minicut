@@ -12,7 +12,8 @@ describe("review type contract", () => {
 		expect(item.preview).not.toBe(clipTimingConflictFixture);
 		expect(item.preview).toMatchObject({
 			type: "clip_timing",
-			conflictId: clipTimingConflictFixture.conflict_id,
+			current: { start: 0, in: 0, duration: 4 },
+			incoming: { start: 2, in: 1, duration: 3 },
 		});
 	});
 
@@ -31,4 +32,3 @@ describe("review type contract", () => {
 		});
 	});
 });
-
