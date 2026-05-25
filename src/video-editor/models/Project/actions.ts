@@ -18,8 +18,18 @@ import {
 	reviewSessionAttrsForProject,
 } from "../ReviewSession/actions";
 import { materializeCRDTConflictReviewItem } from "../../dkt/review/materializeCRDTConflictReviewItem";
+import {
+	makeReviewTrackAttrs,
+	type ReviewTrackRole,
+} from "../../dkt/review/reviewTrackPrimitives";
 
 export type ProjectAddTrackPayload = MiniCutDktTrackSeed;
+type ProjectTrackCreationInput = MiniCutDktTrackSeed & {
+	isVisible?: boolean;
+	trackRole?: "normal" | ReviewTrackRole;
+	enabled?: boolean;
+	visibleInPreview?: boolean;
+};
 export type ProjectImportResourcePayload = MiniCutDktResourceSeed;
 export type ProjectRequestImportFilesPayload = {
 	inputBatchHandleId?: unknown;
@@ -36,6 +46,11 @@ export type ProjectMoveClipToTrackPayload = {
 	targetTrackId?: unknown;
 	clip?: unknown;
 	targetTrack?: unknown;
+};
+export type ProjectCreateReviewTrackPayload = {
+	role?: unknown;
+	kind?: unknown;
+	name?: unknown;
 };
 
 const asString = (value: unknown): string | null =>
@@ -142,13 +157,21 @@ type ResourceLike = {
 };
 
 export const normalizeTrackCreationAttrs = (payload: unknown) => {
-	const value = payload as ProjectAddTrackPayload | null;
+	const value = payload as ProjectTrackCreationInput | null;
 	return {
 		kind: value?.kind === "audio" ? "audio" : "video",
 		name: asString(value?.name) ?? "Track",
 		muted: asBoolean(value?.muted) ?? false,
 		locked: asBoolean(value?.locked) ?? false,
+		isVisible: asBoolean(value?.isVisible) ?? true,
 		height: asNumber(value?.height) ?? 84,
+		trackRole:
+			value?.trackRole === "incomingReview" ||
+			value?.trackRole === "currentReview"
+				? value.trackRole
+				: "normal",
+		enabled: asBoolean(value?.enabled) ?? true,
+		visibleInPreview: asBoolean(value?.visibleInPreview) ?? true,
 	};
 };
 
@@ -483,6 +506,89 @@ export const reduceAddTrack = (payload: unknown) => {
 		$output: {
 			rels: {
 				track: { use_ref_id: "newTrack" },
+			},
+		},
+	};
+};
+
+const asReviewTrackRole = (value: unknown): ReviewTrackRole | null =>
+	value === "incomingReview" || value === "currentReview" ? value : null;
+
+const getModelAttr = (model: unknown, key: string): unknown => {
+	if (!model || typeof model !== "object") {
+		return undefined;
+	}
+	const statesValue = (model as { states?: Record<string, unknown> }).states?.[
+		key
+	];
+	return statesValue !== undefined
+		? statesValue
+		: (model as Record<string, unknown>)[key];
+};
+
+export const reduceCreateReviewTrack = (payload: unknown) => {
+	const value = payload as ProjectCreateReviewTrackPayload | null;
+	const role = asReviewTrackRole(value?.role);
+	if (!role) {
+		return null;
+	}
+	const kind = value?.kind === "audio" ? "audio" : "video";
+	const attrs = makeReviewTrackAttrs({ role, kind });
+	return {
+		track: {
+			attrs: {
+				...attrs,
+				...(typeof value?.name === "string" && value.name
+					? { name: value.name }
+					: {}),
+			},
+			hold_ref_id: "newReviewTrack",
+		},
+		tracks: { use_ref_id: "newReviewTrack" },
+		$output: {
+			rels: {
+				track: { use_ref_id: "newReviewTrack" },
+			},
+		},
+	};
+};
+
+export const reduceEnsureReviewTrack = (
+	payload: unknown,
+	noop: unknown,
+	tracks: unknown,
+	role: ReviewTrackRole,
+) => {
+	const currentTracks = Array.isArray(tracks) ? tracks : [];
+	if (
+		currentTracks.some((track) => getModelAttr(track, "trackRole") === role)
+	) {
+		return noop;
+	}
+	return reduceCreateReviewTrack({
+		...(payload && typeof payload === "object"
+			? (payload as Record<string, unknown>)
+			: {}),
+		role,
+	});
+};
+
+export const reduceSetProjectTrackPreviewEnabled = (payload: unknown) => {
+	const value = payload as {
+		trackId?: unknown;
+		enabled?: unknown;
+		value?: unknown;
+	} | null;
+	const trackId = value?.trackId;
+	const enabled = value?.enabled ?? value?.value;
+	if (typeof trackId !== "string" || typeof enabled !== "boolean") {
+		return null;
+	}
+	return {
+		[trackId]: {
+			attrs: {
+				enabled,
+				visibleInPreview: enabled,
 			},
 		},
 	};

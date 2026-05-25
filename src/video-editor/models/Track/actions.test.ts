@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRightSplitClipAttrs, removeClipRef } from "./actions";
+import {
+	normalizeRightSplitClipAttrs,
+	removeClipRef,
+	reduceSetTrackPreviewEnabled,
+} from "./actions";
 
 const modelRef = (_node_id: string) => ({ _node_id });
 
@@ -32,5 +36,16 @@ describe("Track model actions", () => {
 				splitTime: 8,
 			}),
 		).toBeNull();
+	});
+
+	it("updates enabled and visibleInPreview together", () => {
+		expect(reduceSetTrackPreviewEnabled({ enabled: false })).toEqual({
+			enabled: false,
+			visibleInPreview: false,
+		});
+		expect(reduceSetTrackPreviewEnabled(true)).toEqual({
+			enabled: true,
+			visibleInPreview: true,
+		});
 	});
 });
