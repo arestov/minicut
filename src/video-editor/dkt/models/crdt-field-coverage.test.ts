@@ -105,6 +105,7 @@ const MODEL_CASES: ModelCase[] = [
 				name: "crdt",
 				muted: "crdt",
 				locked: "crdt",
+				enabled: "crdt",
 				isVisible: "crdt",
 				height: "crdt",
 				trackRole: "crdt",

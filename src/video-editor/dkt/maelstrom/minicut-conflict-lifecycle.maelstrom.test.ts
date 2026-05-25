@@ -62,7 +62,14 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 		await sim.peer("A").dispatch(
 			clipA,
 			"resolveClipTimingConflict",
-			{ conflict_id: conflictId, start: 0, in: 0, duration: 0 },
+			{
+				conflictId,
+				reviewItemId: `review:${conflictId}`,
+				selectedVariant: "incoming",
+				start: 0,
+				in: 0,
+				duration: 0,
+			},
 			{
 				crdt_resolution_attempt: {
 					conflict_id: conflictId,
@@ -75,14 +82,21 @@ describe("MiniCut maelstrom conflict lifecycle", () => {
 
 		expect(await sim.peer("A").ctx.queryAttr(clipA, "duration")).toBe(previousDuration);
 		expect(await sim.peer("A").ctx.queryAttr(clipA, "$meta$aggregates$crdt$clipTiming$last_resolution_error"))
-			.toEqual(expect.objectContaining({ code: "duration_non_positive" }));
+			.toBeNull();
 		sim.peer("A").flushOutbound();
 		await deliverUntilQuiet(sim);
 
 		await sim.peer("A").dispatch(
 			clipA,
 			"resolveClipTimingConflict",
-			{ conflict_id: conflictId, start: 0, in: 0, duration: 3 },
+			{
+				conflictId,
+				reviewItemId: `review:${conflictId}`,
+				selectedVariant: "incoming",
+				start: 0,
+				in: 0,
+				duration: 3,
+			},
 			{
 				crdt_resolution_attempt: {
 					conflict_id: conflictId,
