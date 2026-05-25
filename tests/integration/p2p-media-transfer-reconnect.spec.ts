@@ -6,6 +6,8 @@ import {
 	createP2PRoomId,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
+	waitForProjectCountSync,
 	waitForRolePair,
 } from './p2pTestHelpers'
 
@@ -28,6 +30,7 @@ test('p2p media transfer resumes after the remote peer reconnects mid-transfer',
 		const originalClient = serverPage === first.page ? second : first
 		const generatedVideo = await createFixtureVideo()
 
+		await selectSharedActiveProject(serverPage, originalClient.page)
 		await serverPage.getByLabel('Import media files').setInputFiles(generatedVideo)
 		const originalClientRow = originalClient.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(originalClientRow).toBeVisible()
@@ -39,6 +42,8 @@ test('p2p media transfer resumes after the remote peer reconnects mid-transfer',
 		await expect.poll(() => getRole(replacementClient.page), {
 			timeout: 20_000,
 		}).toBe('client')
+		await waitForProjectCountSync(serverPage, replacementClient.page)
+		await selectSharedActiveProject(serverPage, replacementClient.page)
 
 		const replacementRow = replacementClient.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(replacementRow).toBeVisible()

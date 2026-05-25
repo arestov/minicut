@@ -100,6 +100,16 @@ export const writeP2PDebugArtifacts = async (
 	firstPage: Page,
 	secondPage: Page,
 ): Promise<string> => {
+	return writeP2PDebugArtifactsMany(label, [
+		{ label: 'first', page: firstPage },
+		{ label: 'second', page: secondPage },
+	])
+}
+
+export const writeP2PDebugArtifactsMany = async (
+	label: string,
+	peers: Array<{ label: string; page: Page }>,
+): Promise<string> => {
 	const dir = path.join('test-results', 'p2p-debug')
 	await mkdir(dir, { recursive: true })
 	const baseName =
@@ -109,28 +119,23 @@ export const writeP2PDebugArtifacts = async (
 		`${baseName}.json`,
 	)
 	const tracePath = path.join(dir, `${baseName}.trace.ndjson`)
-	const [first, second] = await Promise.all([
-		readP2PDeepDebugState(firstPage).catch((error: unknown) => ({
+	const states = await Promise.all(peers.map(async (peer) => ({
+		label: peer.label,
+		state: await readP2PDeepDebugState(peer.page).catch((error: unknown) => ({
 			error: error instanceof Error ? error.stack || error.message : String(error),
 		})),
-		readP2PDeepDebugState(secondPage).catch((error: unknown) => ({
-			error: error instanceof Error ? error.stack || error.message : String(error),
-		})),
-	])
-	const firstTrace = Array.isArray((first as { p2pTrace?: unknown })?.p2pTrace)
-		? ((first as { p2pTrace: unknown[] }).p2pTrace)
-		: []
-	const secondTrace = Array.isArray((second as { p2pTrace?: unknown })?.p2pTrace)
-		? ((second as { p2pTrace: unknown[] }).p2pTrace)
-		: []
-	const traceLines = [
-		...firstTrace.map((entry) => ({ peer: 'first', entry })),
-		...secondTrace.map((entry) => ({ peer: 'second', entry })),
-	]
+	})))
+	const traceLines = states.flatMap(({ label: peerLabel, state }) => {
+		const trace = Array.isArray((state as { p2pTrace?: unknown })?.p2pTrace)
+			? ((state as { p2pTrace: unknown[] }).p2pTrace)
+			: []
+		return trace.map((entry) => ({ peer: peerLabel, entry }))
+	})
+	const payload = Object.fromEntries(states.map(({ label: peerLabel, state }) => [peerLabel, state]))
 	await Promise.all([
 		writeFile(
 			filePath,
-			`${JSON.stringify({ first, second, tracePath }, null, 2)}\n`,
+			`${JSON.stringify({ peers: payload, tracePath }, null, 2)}\n`,
 			'utf8',
 		),
 		writeFile(
@@ -185,6 +190,7 @@ export const readP2PDebugState = async (page: Page): Promise<DebugState | null> 
 				getPeerId?: () => string | null
 				isRuntimeReady?: () => boolean
 				waitForRuntimeSettled?: () => Promise<void>
+				dispatchRootAction?: (actionName: string, payload?: unknown) => Promise<void>
 			}
 		}).__MINICUT_P2P_DEBUG__
 
@@ -228,6 +234,92 @@ export const getProjectTitles = async (page: Page): Promise<string[]> => {
 	return state?.projectTitles ?? []
 }
 
+export const readActiveProjectNodeId = async (page: Page): Promise<string | null> =>
+	page.evaluate(() => {
+		const state = window.__MINICUT_P2P_DEBUG__?.dumpProjectState?.() as {
+			activeProjectNodeId?: unknown
+			projectNodeId?: unknown
+		} | null
+		const candidate = state?.activeProjectNodeId ?? state?.projectNodeId
+		return typeof candidate === 'string' ? candidate : null
+	})
+
+export const getActiveProjectNodeId = async (page: Page): Promise<string> => {
+	const projectId = await readActiveProjectNodeId(page)
+	if (!projectId) {
+		throw new Error('Expected active project node id')
+	}
+	return projectId
+}
+
+export const waitForActiveProjectNodeId = async (page: Page): Promise<string> => {
+	await expect.poll(() => readActiveProjectNodeId(page), {
+		timeout: 20_000,
+	}).not.toBeNull()
+	return getActiveProjectNodeId(page)
+}
+
+export const setActiveProject = async (page: Page, projectId: string): Promise<void> => {
+	await page.evaluate(async (nextProjectId) => {
+		const debug = window.__MINICUT_P2P_DEBUG__
+		if (!debug?.dispatchRootAction) {
+			throw new Error('P2P debug bridge is unavailable')
+		}
+		await debug.dispatchRootAction('setActiveProject', nextProjectId)
+	}, projectId)
+}
+
+export const waitForProjectNode = async (page: Page, projectId: string): Promise<void> => {
+	await expect.poll(() =>
+		page.evaluate((targetProjectId) => {
+			const graph = window.__MINICUT_P2P_DEBUG__?.dumpGraph?.() as {
+				dict?: unknown
+				nodes?: unknown
+			} | null
+			const nodes: unknown[] = []
+			if (Array.isArray(graph?.nodes)) {
+				nodes.push(...graph.nodes)
+			}
+			if (graph?.dict && typeof graph.dict === 'object') {
+				nodes.push(...Object.values(graph.dict as Record<string, unknown>))
+			}
+			return nodes.some((node) => {
+				if (!node || typeof node !== 'object') {
+					return false
+				}
+				const candidate = node as {
+					nodeId?: unknown
+					id?: unknown
+					_node_id?: unknown
+				}
+				const nodeId = candidate.nodeId ?? candidate.id ?? candidate._node_id
+				return nodeId === targetProjectId
+			})
+		}, projectId), {
+		timeout: 20_000,
+	}).toBe(true)
+}
+
+export const selectSharedActiveProject = async (
+	sourcePage: Page,
+	...targetPages: Page[]
+): Promise<string> => {
+	const projectId = await waitForActiveProjectNodeId(sourcePage)
+	await Promise.all(targetPages.map((page) => waitForProjectNode(page, projectId)))
+	await Promise.all(targetPages.map((page) => setActiveProject(page, projectId)))
+	await Promise.all([
+		expect.poll(() => getActiveProjectNodeId(sourcePage), {
+			timeout: 20_000,
+		}).toBe(projectId),
+		...targetPages.map((page) =>
+			expect.poll(() => getActiveProjectNodeId(page), {
+				timeout: 20_000,
+			}).toBe(projectId),
+		),
+	])
+	return projectId
+}
+
 export const getPeerId = async (page: Page): Promise<string | null> => {
 	const state = await readP2PDebugState(page)
 	return state?.peerId ?? null
@@ -255,12 +347,32 @@ export const closePeerHandles = async (...handles: Array<PeerHandle | null | und
 }
 
 export const waitForRolePair = async (firstPage: Page, secondPage: Page): Promise<void> => {
-	await expect.poll(async () => {
-		const roles = await Promise.all([getRole(firstPage), getRole(secondPage)])
-		return roles.includes('server') && roles.includes('client')
-	}, {
-		timeout: 20_000,
-	}).toBe(true)
+	let lastRoles: Array<'server' | 'client' | 'undecided' | null> = []
+	try {
+		await expect.poll(async () => {
+			const roles = await Promise.all([getRole(firstPage), getRole(secondPage)])
+			lastRoles = roles
+			return roles.includes('server') && roles.includes('client')
+		}, {
+			timeout: 20_000,
+		}).toBe(true)
+	} catch (error) {
+		const artifactPath = await writeP2PDebugArtifacts(
+			'role-pair-timeout',
+			firstPage,
+			secondPage,
+		).catch((artifactError: unknown) =>
+			`<failed to write debug artifact: ${
+				artifactError instanceof Error
+					? artifactError.message
+					: String(artifactError)
+			}>`,
+		)
+		throw new Error(
+			`Timed out waiting for P2P server/client role pair. Last roles: ${JSON.stringify(lastRoles)} Debug artifact: ${artifactPath}`,
+			{ cause: error },
+		)
+	}
 }
 
 export const waitForProjectCountSync = async (firstPage: Page, secondPage: Page): Promise<number> => {
@@ -400,6 +512,21 @@ export const waitForReadyTransfer = async (
 			lastError: null,
 		}) as DebugTransfer,
 	]))
+}
+
+export const waitForRendererVideoReady = async (
+	page: Page,
+	resourceName: string,
+): Promise<void> => {
+	await expect.poll(() =>
+		page.getByRole('region', { name: 'Renderer stage' }).locator(`video[data-resource-name="${resourceName}"]`).evaluateAll((videos) =>
+			videos.some((video) => {
+				const element = video as HTMLVideoElement
+				return element.readyState >= element.HAVE_CURRENT_DATA && element.videoWidth > 0 && element.videoHeight > 0
+			}),
+		), {
+		timeout: 20_000,
+	}).toBe(true)
 }
 
 export const waitForBlobPreview = async (page: Page): Promise<void> => {

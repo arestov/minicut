@@ -61,7 +61,7 @@ const DEFAULT_HEARTBEAT_TIMEOUT_MS = 15_000;
 
 const canAttachForWorkspace = (state: WorkspaceOpenState | null): boolean =>
 	state?.status === WORKSPACE_OPEN_STATUS.READY ||
-	state?.status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED;
+	state?.status === WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY;
 
 export const createProductRoomTransportOwner = ({
 	roomId,
@@ -161,6 +161,30 @@ export const createProductRoomTransportOwner = ({
 		} satisfies ProductRoomDetachWebRtc);
 	};
 
+	const attachOwner = (tabId: string): void => {
+		const tab = tabs.get(tabId);
+		if (!tab) {
+			return;
+		}
+		const lease = {
+			tabId,
+			transportGeneration: ++transportGeneration,
+			lastHeartbeatAt: now(),
+			attached: false,
+		};
+		ownerLease = lease;
+		traceP2P("room-owner:elect-owner", {
+			roomId,
+			tabId,
+			transportGeneration: lease.transportGeneration,
+		});
+		tab.send({
+			type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+			roomId,
+			transportGeneration: lease.transportGeneration,
+		} satisfies ProductRoomAttachWebRtc);
+	};
+
 	const detachOwner = (notifyOwner: boolean): void => {
 		const lease = ownerLease;
 		ownerLease = null;
@@ -183,23 +207,7 @@ export const createProductRoomTransportOwner = ({
 				continue;
 			}
 
-			const lease = {
-				tabId,
-				transportGeneration: ++transportGeneration,
-				lastHeartbeatAt: now(),
-				attached: false,
-			};
-			ownerLease = lease;
-			traceP2P("room-owner:elect-owner", {
-				roomId,
-				tabId,
-				transportGeneration: lease.transportGeneration,
-			});
-			tab.send({
-				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
-				roomId,
-				transportGeneration: lease.transportGeneration,
-			} satisfies ProductRoomAttachWebRtc);
+			attachOwner(tabId);
 			return;
 		}
 	};
@@ -229,6 +237,15 @@ export const createProductRoomTransportOwner = ({
 		});
 		if (hello.canHostWebRtc) {
 			disabledOwnerTabs.delete(hello.tabId);
+		}
+		if (ownerLease?.tabId === hello.tabId) {
+			if (hello.canHostWebRtc && canAttachForWorkspace(workspaceOpenState)) {
+				attachOwner(hello.tabId);
+			} else {
+				detachOwner(false);
+				electOwner();
+			}
+			return;
 		}
 		electOwner();
 	};

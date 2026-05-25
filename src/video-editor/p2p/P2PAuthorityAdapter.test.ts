@@ -63,13 +63,18 @@ const createLocalAuthorityHarness = (): EditorAuthorityClient & {
 const createCrdtTransportHarness = (): P2PCrdtTransportLike & {
 	sent: unknown[];
 	destroyed: boolean;
+	failSends: boolean;
 	emit(packet: unknown, remotePeerId?: string): void;
 } => {
 	const listeners = new Set<(packet: unknown, remotePeerId: string) => void>();
 	return {
 		sent: [],
 		destroyed: false,
+		failSends: false,
 		send(packet) {
+			if (this.failSends) {
+				throw new Error("transport_not_ready");
+			}
 			this.sent.push(packet);
 		},
 		listen(listener) {
@@ -109,6 +114,9 @@ const createManagerHarness = () => {
 		},
 		becomeClient() {
 			eventsRef?.onBecomeClient(authorityTransport);
+		},
+		becomeServer() {
+			eventsRef?.onBecomeServer();
 		},
 		openClientCrdt(transport: P2PCrdtTransportLike) {
 			eventsRef?.onClientCrdtTransport?.(transport);
@@ -448,6 +456,131 @@ describe("P2PAuthorityAdapter CRDT worker bridge", () => {
 
 		expect(peerB.sent).toEqual([{ broadcast: true }]);
 		expect(peerC.sent).toEqual([{ broadcast: true }, { targeted: true }]);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
+	it("drops failed CRDT transports without blocking broadcast to live peers", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const stalePeer = createCrdtTransportHarness();
+		const livePeer = createCrdtTransportHarness();
+		stalePeer.failSends = true;
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+		manager.openServerCrdt("stale-peer", stalePeer);
+		manager.openServerCrdt("live-peer", livePeer);
+
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 10,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 10,
+				packet: { broadcastAfterFailure: true },
+			}),
+		);
+
+		expect(stalePeer.destroyed).toBe(true);
+		expect(livePeer.sent).toEqual([{ broadcastAfterFailure: true }]);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
+	it("replaces client CRDT listeners when failover opens a new server channel", () => {
+		const manager = createManagerHarness();
+		const localAuthorities: ReturnType<typeof createLocalAuthorityHarness>[] = [];
+		const oldServer = createCrdtTransportHarness();
+		const newServer = createCrdtTransportHarness();
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => {
+				const next = createLocalAuthorityHarness();
+				localAuthorities.push(next);
+				return next;
+			},
+		});
+		const dktTransport = adapter.openDktTransport();
+
+		manager.becomeClient();
+		manager.openClientCrdt(oldServer);
+		expect(localAuthorities).toHaveLength(1);
+		const firstTransport = localAuthorities[0].opened[0];
+		firstTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 1,
+			}),
+		);
+		oldServer.emit({ fromOldServer: true }, "server");
+		expect(firstTransport.sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				roomId: "room-1",
+				transportGeneration: 1,
+				packet: { fromOldServer: true },
+				sourcePeerId: "server",
+			}),
+		);
+
+		manager.becomeClient();
+		expect(localAuthorities).toHaveLength(2);
+		expect(oldServer.destroyed).toBe(true);
+		manager.openClientCrdt(newServer);
+		const secondTransport = localAuthorities[1].opened[0];
+		secondTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 2,
+			}),
+		);
+		expect(secondTransport.sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 2,
+				peerId: "server",
+			}),
+		);
+		newServer.emit({ fromNewServer: true }, "server");
+		oldServer.emit({ staleOldServer: true }, "server");
+
+		expect(secondTransport.sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				roomId: "room-1",
+				transportGeneration: 2,
+				packet: { fromNewServer: true },
+				sourcePeerId: "server",
+			}),
+		);
+		expect(secondTransport.sent).not.toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				roomId: "room-1",
+				transportGeneration: 2,
+				packet: { staleOldServer: true },
+				sourcePeerId: "server",
+			}),
+		);
 
 		dktTransport.destroy();
 		adapter.destroy();

@@ -89,6 +89,16 @@ export const createP2PAuthorityAdapter = (
 		activeClient = null;
 	};
 
+	const clearActiveCrdtTransports = (): void => {
+		for (const transport of crdtTransports.values()) {
+			transport.destroy();
+		}
+		crdtTransports.clear();
+		for (const cb of crdtTransportChangeCallbacks) {
+			cb();
+		}
+	};
+
 	const setActiveCrdtTransport = (
 		remotePeerId: string,
 		transport: P2PCrdtTransportLike,
@@ -109,6 +119,9 @@ export const createP2PAuthorityAdapter = (
 			return;
 		}
 
+		if (activeClient !== nextClient) {
+			clearActiveCrdtTransports();
+		}
 		cleanupActiveClient();
 		role = nextRole;
 		activeClient = nextClient;
@@ -266,6 +279,7 @@ export const createP2PAuthorityAdapter = (
 			let attachedRoomGeneration: number | null = null;
 			let isDestroyed = false;
 			const crdtUnlistens = new Map<string, () => void>();
+			const crdtListenerTransports = new Map<string, P2PCrdtTransportLike>();
 			const announcedCrdtPeers = new Set<string>();
 			const pendingCrdtSends: ProductRoomCrdtSend[] = [];
 
@@ -301,6 +315,16 @@ export const createP2PAuthorityAdapter = (
 				if (attachedRoomGeneration == null) {
 					return;
 				}
+				const previousTransport = crdtListenerTransports.get(remotePeerId);
+				if (previousTransport === transport && crdtUnlistens.has(remotePeerId)) {
+					return;
+				}
+				const previousUnlisten = crdtUnlistens.get(remotePeerId);
+				if (previousUnlisten) {
+					previousUnlisten();
+					crdtUnlistens.delete(remotePeerId);
+				}
+				crdtListenerTransports.delete(remotePeerId);
 				if (!announcedCrdtPeers.has(remotePeerId)) {
 					announcedCrdtPeers.add(remotePeerId);
 					traceP2P("authority:announce-crdt-peer", {
@@ -315,9 +339,6 @@ export const createP2PAuthorityAdapter = (
 						transportGeneration: attachedRoomGeneration,
 						peerId: remotePeerId,
 					});
-				}
-				if (crdtUnlistens.has(remotePeerId)) {
-					return;
 				}
 				const unlisten = transport.listen((packet, sourcePeerId) => {
 					if (attachedRoomGeneration == null) {
@@ -351,6 +372,7 @@ export const createP2PAuthorityAdapter = (
 					});
 				});
 				crdtUnlistens.set(remotePeerId, unlisten);
+				crdtListenerTransports.set(remotePeerId, transport);
 			};
 
 			const attachCrdtListeners = (): void => {
@@ -376,6 +398,29 @@ export const createP2PAuthorityAdapter = (
 					unlisten();
 				}
 				crdtUnlistens.clear();
+				crdtListenerTransports.clear();
+			};
+
+			const dropCrdtTransport = (remotePeerId: string): void => {
+				const transport = crdtTransports.get(remotePeerId);
+				if (transport) {
+					transport.destroy();
+					crdtTransports.delete(remotePeerId);
+				}
+				const unlisten = crdtUnlistens.get(remotePeerId);
+				if (unlisten) {
+					unlisten();
+					crdtUnlistens.delete(remotePeerId);
+				}
+				crdtListenerTransports.delete(remotePeerId);
+				if (attachedRoomGeneration != null && announcedCrdtPeers.delete(remotePeerId)) {
+					sendProductRoomToWorker({
+						type: PRODUCT_ROOM_MSG.CRDT_PEER_DETACHED,
+						roomId: config.roomId,
+						transportGeneration: attachedRoomGeneration,
+						peerId: remotePeerId,
+					});
+				}
 			};
 
 			const sendCrdtPacket = (message: ProductRoomCrdtSend): boolean => {
@@ -409,7 +454,12 @@ export const createP2PAuthorityAdapter = (
 						});
 						return false;
 					}
-					transport.send(message.packet);
+					try {
+						transport.send(message.packet);
+					} catch {
+						dropCrdtTransport(message.targetPeerId);
+						return false;
+					}
 					traceP2P("authority:crdt-send-targeted", {
 						roomId: config.roomId,
 						pagePeerId: manager.peerId,
@@ -426,16 +476,23 @@ export const createP2PAuthorityAdapter = (
 					});
 					return false;
 				}
-				for (const [remotePeerId, transport] of crdtTransports) {
-					transport.send(message.packet);
+				let sentAny = false;
+				for (const [remotePeerId, transport] of [...crdtTransports]) {
+					try {
+						transport.send(message.packet);
+					} catch {
+						dropCrdtTransport(remotePeerId);
+						continue;
+					}
 					traceP2P("authority:crdt-send-broadcast-peer", {
 						roomId: config.roomId,
 						pagePeerId: manager.peerId,
 						remotePeerId,
 						...describeP2PPacket(message.packet),
 					});
+					sentAny = true;
 				}
-				return true;
+				return sentAny;
 			};
 
 			const flushPendingCrdtSends = (): void => {
@@ -538,6 +595,9 @@ export const createP2PAuthorityAdapter = (
 				const isFailover =
 					realTransportClient !== null && realTransportClient !== activeClient;
 				if (isFailover) {
+					detachCrdtListeners();
+					attachedRoomGeneration = null;
+					pendingCrdtSends.length = 0;
 					teardownRealTransport();
 					const sessionLostMessage: MiniCutDktTransportMessage = {
 						type: DKT_MSG.P2P_SESSION_LOST,

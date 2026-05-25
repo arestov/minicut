@@ -1,7 +1,7 @@
 export const WORKSPACE_OPEN_STATUS = {
 	OPENING: 0,
 	READY: 1,
-	EMPTY_INITIALIZED: 2,
+	LOCAL_EMPTY_READY: 2,
 	FAILED: 3,
 } as const;
 
@@ -29,7 +29,7 @@ export type WorkspaceOpenState =
 			failureReason: typeof WORKSPACE_OPEN_FAILURE.NONE;
 	  }
 	| {
-			status: typeof WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED;
+			status: typeof WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY;
 			failureReason: typeof WORKSPACE_OPEN_FAILURE.NONE;
 	  }
 	| {
@@ -50,8 +50,8 @@ export const WORKSPACE_READY_STATE: WorkspaceOpenState = {
 	failureReason: WORKSPACE_OPEN_FAILURE.NONE,
 };
 
-export const WORKSPACE_EMPTY_INITIALIZED_STATE: WorkspaceOpenState = {
-	status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+export const WORKSPACE_LOCAL_EMPTY_READY_STATE: WorkspaceOpenState = {
+	status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
 	failureReason: WORKSPACE_OPEN_FAILURE.NONE,
 };
 
@@ -68,7 +68,7 @@ export const createWorkspaceOpenFailedState = (
 export const WORKSPACE_OPEN_STATUS_LABEL = {
 	[WORKSPACE_OPEN_STATUS.OPENING]: "opening",
 	[WORKSPACE_OPEN_STATUS.READY]: "ready",
-	[WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED]: "empty_initialized",
+	[WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY]: "local_empty_ready",
 	[WORKSPACE_OPEN_STATUS.FAILED]: "failed",
 } as const satisfies Record<WorkspaceOpenStatus, string>;
 

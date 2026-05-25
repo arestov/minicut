@@ -109,6 +109,34 @@ describe("product room transport owner", () => {
 		});
 	});
 
+	it("renews the owner lease when the same tab reconnects", () => {
+		const harness = createHarness();
+		harness.coordinator.setWorkspaceOpenState(readyState);
+		harness.register("tab-a", true);
+		harness.coordinator.handleOwnerStatus({
+			type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+			tabId: "tab-a",
+			roomId: "room-a",
+			transportGeneration: 1,
+			status: WEBRTC_OWNER_STATUS.ATTACHED,
+		});
+
+		harness.register("tab-a", true);
+
+		expect(harness.coordinator.getOwner()).toMatchObject({
+			tabId: "tab-a",
+			transportGeneration: 2,
+			attached: false,
+		});
+		expect(harness.sent.get("tab-a")).toEqual([
+			{
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-a",
+				transportGeneration: 2,
+			},
+		]);
+	});
+
 	it("re-elects after a room mismatch reject", () => {
 		const harness = createHarness();
 		harness.coordinator.setWorkspaceOpenState(readyState);

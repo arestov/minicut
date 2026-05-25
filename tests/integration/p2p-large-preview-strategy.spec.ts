@@ -6,6 +6,7 @@ import {
 	createP2PRoomId,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
 	waitForRolePair,
 } from './p2pTestHelpers'
 
@@ -29,6 +30,7 @@ test('large-file preview uses head-first partial blob and bounded sequential req
 		const clientPage = serverPage === first.page ? second.page : first.page
 		const generatedVideo = await createFixtureVideo('fixture-3mb.webm')
 
+		await selectSharedActiveProject(serverPage, clientPage)
 		await serverPage.getByLabel('Import media files').setInputFiles(generatedVideo)
 		const remoteRow = clientPage.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-3mb.webm' })
 		await expect(remoteRow).toBeVisible()

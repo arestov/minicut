@@ -1,5 +1,5 @@
 import { Gauge, Pause, Play, Timer } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRootAttrs } from "../../dkt-react-sync/hooks/useRootAttrs";
 import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
 import { useVideoEditor } from "../app/VideoEditorContext";
@@ -177,7 +177,13 @@ export const PreviewPanel = ({
 		resolveResourceUrl,
 		requestResourcePlayheadWindow,
 		noteResourcePreviewError,
+		resourceTransfers$,
 	} = useVideoEditor();
+	useSyncExternalStore(
+		resourceTransfers$.subscribe,
+		resourceTransfers$.get,
+		resourceTransfers$.get,
+	);
 	const sessionDispatch = useRootDispatch();
 	const attrs = useRootAttrs([
 		"activeInspectorTab",

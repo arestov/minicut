@@ -60,6 +60,20 @@ const parseRequestMessages = (
 	return messages;
 };
 
+const parseControlMessages = (
+	transport: P2PRawTransportLike,
+): Array<{ type?: string; [key: string]: unknown }> => {
+	const messages: Array<{ type?: string; [key: string]: unknown }> = [];
+	transport.listen((data) => {
+		if (typeof data !== "string") {
+			return;
+		}
+
+		messages.push(JSON.parse(data) as { type?: string; [key: string]: unknown });
+	});
+	return messages;
+};
+
 const sendChunk = (
 	transport: P2PRawTransportLike,
 	message: {
@@ -648,6 +662,78 @@ describe("resource transfer manager", () => {
 
 		server.destroy();
 		client.destroy();
+	});
+
+	it("rejects mirrored range requests when the cache is still partial", async () => {
+		const [ownerServerTransport, ownerClientTransport] = createTransportPair();
+		const [lateServerTransport, lateClientTransport] = createTransportPair();
+		const lateControlMessages = parseControlMessages(lateClientTransport);
+		const server = createResourceTransferManager({
+			getRole: () => "server",
+			getPeerId: () => "peer-a",
+			chunkSize: 8,
+			headBytes: 8,
+		});
+		server.attachServerTransport("peer-b", ownerServerTransport);
+		syncResource(server, "res-partial-mirror", {
+			size: 24,
+			duration: 8,
+			name: "Partial mirror clip",
+			source: { kind: "p2p", ownerPeerId: "peer-b" },
+			data: createMissingResourceData(8),
+		});
+
+		sendChunk(
+			ownerClientTransport,
+			{
+				resourceId: "res-partial-mirror",
+				index: 0,
+				start: 0,
+				end: 8,
+				totalSize: 24,
+				reason: "replication",
+			},
+			"abcdefgh",
+		);
+
+		await vi.waitFor(() => {
+			expect(server.getTransfer("res-partial-mirror")).toMatchObject({
+				status: "partial",
+				loadedBytes: 8,
+			});
+		});
+
+		server.attachServerTransport("peer-c", lateServerTransport);
+		lateClientTransport.send(
+			JSON.stringify({
+				type: "resource-request",
+				resourceId: "res-partial-mirror",
+				ranges: [[8, 24]],
+				reason: "sequential",
+				requestId: "late-tail",
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(lateControlMessages).toContainEqual(
+				expect.objectContaining({
+					type: "resource-error",
+					resourceId: "res-partial-mirror",
+					requestId: "late-tail",
+					reason: "sequential",
+					error: "Resource chunks unavailable",
+				}),
+			);
+		});
+		expect(lateControlMessages).not.toContainEqual(
+			expect.objectContaining({
+				type: "resource-chunk-complete",
+				resourceId: "res-partial-mirror",
+				requestId: "late-tail",
+			}),
+		);
+
+		server.destroy();
 	});
 
 	it("requests missing ranges again after an incomplete chunk-complete signal", async () => {

@@ -586,7 +586,7 @@ export const sessionHandleInitAction = [
 					};
 				}
 
-				if (storageOpenStatus !== WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED) {
+				if (storageOpenStatus !== WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY) {
 					return {
 						activeProjectId: null,
 						pendingProjectInit: null,

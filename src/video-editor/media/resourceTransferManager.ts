@@ -155,21 +155,35 @@ type PendingChunkPayload = {
 export interface ResourceTransferStore {
 	get(): Record<string, ResourceTransferView>;
 	getItem(resourceId: string): ResourceTransferView | undefined;
+	subscribe(listener: () => void): () => void;
 	setItem(resourceId: string, view: ResourceTransferView): void;
 	deleteItem(resourceId: string): void;
 }
 
 const createResourceTransferStore = (): ResourceTransferStore => {
 	let state: Record<string, ResourceTransferView> = {};
+	const listeners = new Set<() => void>();
+	const emit = (): void => {
+		for (const listener of listeners) {
+			listener();
+		}
+	};
 
 	return {
 		get: () => state,
 		getItem: (resourceId: string) => state[resourceId],
+		subscribe: (listener: () => void) => {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
 		setItem: (resourceId: string, view: ResourceTransferView) => {
 			state = {
 				...state,
 				[resourceId]: view,
 			};
+			emit();
 		},
 		deleteItem: (resourceId: string) => {
 			if (!(resourceId in state)) {
@@ -178,6 +192,7 @@ const createResourceTransferStore = (): ResourceTransferStore => {
 
 			const { [resourceId]: _ignored, ...rest } = state;
 			state = rest;
+			emit();
 		},
 	};
 };
@@ -1181,6 +1196,7 @@ export const createResourceTransferManager = (
 		requestId: string,
 		generation?: number,
 	): Promise<void> => {
+		let hasMissingChunks = false;
 		for (const range of mergeByteRanges(ranges)) {
 			for (const index of getChunkIndexesForRange(range, state.chunkSize)) {
 				if (!isCurrentTransportGeneration(peerKey, generation)) {
@@ -1188,6 +1204,7 @@ export const createResourceTransferManager = (
 				}
 				const buffer = state.chunks.get(index);
 				if (!buffer) {
+					hasMissingChunks = true;
 					continue;
 				}
 				const start = index * state.chunkSize;
@@ -1220,6 +1237,20 @@ export const createResourceTransferManager = (
 				await getTransport(peerKey)?.transport.send(buffer.slice(0));
 				await wait(chunkSendDelayMs);
 			}
+		}
+		if (hasMissingChunks) {
+			await sendControl(
+				peerKey,
+				{
+					type: "resource-error",
+					resourceId: state.resourceId,
+					error: "Resource chunks unavailable",
+					reason,
+					requestId,
+				},
+				generation,
+			);
+			return;
 		}
 		await sendControl(
 			peerKey,

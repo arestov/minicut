@@ -6,7 +6,10 @@ import {
 	createP2PRoomId,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
+	waitForReadyTransfer,
 	waitForRolePair,
+	writeP2PDebugArtifactsMany,
 } from './p2pTestHelpers'
 
 test('client-owned media imports transfer to main without sticking in error', async ({ browser }) => {
@@ -26,6 +29,7 @@ test('client-owned media imports transfer to main without sticking in error', as
 		const clientPeer = serverPeer === first ? second : first
 		const generatedVideo = await createFixtureVideo()
 
+		await selectSharedActiveProject(serverPeer.page, clientPeer.page)
 		await clientPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
 		const clientRow = clientPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(clientRow).toBeVisible()
@@ -55,9 +59,11 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 		const ownerPeer = serverPeer === first ? second : first
 		const generatedVideo = await createFixtureVideo()
 
+		await selectSharedActiveProject(serverPeer.page, ownerPeer.page)
 		await ownerPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
 		const serverRow = serverPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(serverRow).toBeVisible()
+		await waitForReadyTransfer(serverPeer.page, 'remote')
 
 		await ownerPeer.context.close()
 
@@ -65,6 +71,15 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 		await expect.poll(() => getRole(lateJoiner.page), {
 			timeout: 20_000,
 		}).toBe('client')
+		try {
+			await selectSharedActiveProject(serverPeer.page, lateJoiner.page)
+		} catch (error) {
+			const artifactPath = await writeP2PDebugArtifactsMany('client-owned-relay-project-select-timeout', [
+				{ label: 'server', page: serverPeer.page },
+				{ label: 'lateJoiner', page: lateJoiner.page },
+			])
+			throw new Error(`Timed out selecting server project on late joiner. Debug artifact: ${artifactPath}`, { cause: error })
+		}
 
 		const lateJoinerRow = lateJoiner.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(lateJoinerRow).toBeVisible()

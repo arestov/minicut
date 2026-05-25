@@ -6,6 +6,7 @@ import {
 	createP2PRoomId,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
 	waitForRolePair,
 } from './p2pTestHelpers'
 
@@ -46,6 +47,7 @@ for (const scenario of scenarios) {
 				const importer = scenario.importer === 'main' ? mainPeer : clientPeer
 				const observer = scenario.importer === 'main' ? clientPeer : mainPeer
 
+				await selectSharedActiveProject(mainPeer.page, clientPeer.page)
 				await importer.page.getByLabel('Import media files').setInputFiles(videoFile)
 				const observerRow = observer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 				await expect(observerRow).toBeVisible()
@@ -74,6 +76,7 @@ for (const scenario of scenarios) {
 			const importer = scenario.importer === 'main' ? serverPeer : clientPeers[0]
 			const observer = scenario.importer === 'main' ? clientPeers[0] : serverPeer
 
+			await selectSharedActiveProject(serverPeer.page, ...clientPeers.map((peer) => peer.page))
 			await importer.page.getByLabel('Import media files').setInputFiles(videoFile)
 			const observerRow = observer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 			await expect(observerRow).toBeVisible()

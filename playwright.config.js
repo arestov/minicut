@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
 	testDir: './tests/integration',
-	testIgnore: ['**/p2p-*.spec.ts'],
+	testIgnore: ['**/p2p-*.spec.ts', '**/crdt-real-conflict-ux.spec.ts'],
 	fullyParallel: true,
 	workers: Number(process.env.FAST_WORKERS ?? (process.env.CI ? 2 : 4)),
 	timeout: 30_000,

@@ -3,7 +3,7 @@ import {
 	inspectDktStorageForOpen,
 } from "dkt-all/libs/provoda/crdt/storage/atomic/dktStorageOpenPolicy.js";
 import {
-	WORKSPACE_EMPTY_INITIALIZED_STATE,
+	WORKSPACE_LOCAL_EMPTY_READY_STATE,
 	WORKSPACE_OPEN_FAILURE,
 	WORKSPACE_OPEN_STATUS,
 	WORKSPACE_READY_STATE,
@@ -40,7 +40,7 @@ export type MiniCutWorkspaceOpenFailure = Exclude<
 
 export type MiniCutWorkspaceReadyStatus =
 	| typeof WORKSPACE_OPEN_STATUS.READY
-	| typeof WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED;
+	| typeof WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY;
 
 export type MiniCutWorkspaceOpenResult =
 	| {
@@ -237,8 +237,8 @@ const createReadyOpenResult = ({
 	dktManifest: unknown;
 }): Extract<MiniCutWorkspaceOpenResult, { ok: true }> => {
 	const openState =
-		status === WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED
-			? WORKSPACE_EMPTY_INITIALIZED_STATE
+		status === WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY
+			? WORKSPACE_LOCAL_EMPTY_READY_STATE
 			: WORKSPACE_READY_STATE;
 	return {
 		ok: true,
@@ -315,7 +315,7 @@ export const openMiniCutWorkspaceStorage = async ({
 
 		if (inspected.kind === "empty") {
 			return createReadyOpenResult({
-				status: WORKSPACE_OPEN_STATUS.EMPTY_INITIALIZED,
+				status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
 				sourceStatus: "empty",
 				storage,
 				manifest,
