@@ -72,6 +72,17 @@ const expectAttrOp = (
 	);
 };
 
+const expectNoAttrOp = (
+	batches: readonly CanonicalBatch[],
+	partial: { model_name?: string; name: string },
+) => {
+	expect(allOps(batches)).not.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ kind: "attr", ...partial }),
+		]),
+	);
+};
+
 const collectObjectKeys = (value: unknown, keys = new Set<string>()): Set<string> => {
 	if (!value || typeof value !== "object") {
 		return keys;
@@ -265,15 +276,9 @@ describe("MiniCut canonical CRDT batches", () => {
 		expect(keys.has("blob")).toBe(false);
 		expect(keys.has("arrayBuffer")).toBe(false);
 		expect(keys.has("base64")).toBe(false);
-		expectAttrOp(importBatches, {
-			model_name: "resource",
-			name: "data",
-			value: expect.objectContaining({
-				status: "partial",
-				chunkSize: 4,
-				loadedBytes: 4,
-			}),
-		});
+		expectNoAttrOp(importBatches, { model_name: "resource", name: "data" });
+		expectNoAttrOp(importBatches, { model_name: "resource", name: "status" });
+		expectNoAttrOp(importBatches, { model_name: "resource", name: "url" });
 
 		await sender.close();
 	});
