@@ -1,5 +1,6 @@
 import { Check, Info, X } from "lucide-react";
 import type { MiniCutReviewItem } from "../../dkt/review/types";
+import { ClipTimingConflictInspector } from "./features/ClipTimingConflictInspector";
 
 type ConflictInspectorPanelProps = {
 	item: MiniCutReviewItem | null;
@@ -10,15 +11,6 @@ type ConflictInspectorPanelProps = {
 		item: MiniCutReviewItem,
 		payload?: unknown,
 	) => void;
-};
-
-const timingFields = ["start", "in", "duration", "fadeIn", "fadeOut"] as const;
-
-type TimingField = (typeof timingFields)[number];
-type TimingDecision = Partial<Record<TimingField, number>>;
-type ClipTimingAlternatives = {
-	local: TimingDecision | null;
-	incoming: TimingDecision | null;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -32,95 +24,16 @@ const previewLabel = (preview: unknown): string => {
 	return typeof type === "string" ? type.replaceAll("_", " ") : "Review preview";
 };
 
-const toTimingDecision = (value: unknown): TimingDecision | null => {
-	if (!isRecord(value)) {
-		return null;
-	}
-	const result: TimingDecision = {};
-	for (const field of timingFields) {
-		const fieldValue = value[field];
-		if (typeof fieldValue === "number" && Number.isFinite(fieldValue)) {
-			result[field] = fieldValue;
-		}
-	}
-	return Object.keys(result).length > 0 ? result : null;
-};
-
-const clipTimingAlternatives = (
-	preview: unknown,
-): ClipTimingAlternatives | null => {
-	if (!isRecord(preview) || preview.type !== "clip_timing") {
-		return null;
-	}
-	const payload = isRecord(preview.payload) ? preview.payload : null;
-	const variants = isRecord(preview.variants) ? preview.variants : null;
-	const local =
-		toTimingDecision(payload?.current) ??
-		toTimingDecision(payload?.local) ??
-		toTimingDecision(variants?.current) ??
-		toTimingDecision(variants?.local);
-	const incoming =
-		toTimingDecision(payload?.incoming) ?? toTimingDecision(variants?.incoming);
-	if (!local && !incoming) {
-		return null;
-	}
-	return { local, incoming };
-};
-
-const formatTimingValue = (value: number | undefined): string =>
-	typeof value === "number" ? `${Number(value.toFixed(3))}s` : "-";
-
 const actionLabel = (actionId: string): string =>
 	actionId === "resolveClipTimingConflict"
 		? "Resolve conflict"
 		: actionId.replace(/([a-z])([A-Z])/g, "$1 $2");
 
-const ClipTimingPreview = ({
-	alternatives,
-}: {
-	alternatives: ClipTimingAlternatives | null;
-}) => {
-	if (!alternatives) {
-		return null;
-	}
-	const rows = timingFields.filter(
-		(field) =>
-			alternatives.local?.[field] !== undefined ||
-			alternatives.incoming?.[field] !== undefined,
-	);
-	if (rows.length === 0) {
-		return null;
-	}
-	return (
-		<table className="ve-review-inspector__timing">
-			<caption>Timing alternatives</caption>
-			<thead>
-				<tr>
-					<th scope="col">Field</th>
-					<th scope="col">Local</th>
-					<th scope="col">Incoming</th>
-				</tr>
-			</thead>
-			<tbody>
-				{rows.map((field) => (
-					<tr key={field}>
-						<th scope="row">{field}</th>
-						<td>{formatTimingValue(alternatives.local?.[field])}</td>
-						<td>{formatTimingValue(alternatives.incoming?.[field])}</td>
-					</tr>
-				))}
-			</tbody>
-		</table>
-	);
-};
-
 const ActionButtons = ({
 	item,
-	alternatives,
 	onReviewAction,
 }: {
 	item: MiniCutReviewItem;
-	alternatives: ClipTimingAlternatives | null;
 	onReviewAction?: (
 		actionId: string,
 		item: MiniCutReviewItem,
@@ -129,35 +42,11 @@ const ActionButtons = ({
 }) => (
 	<>
 		{item.availableActions.flatMap((actionId) => {
-			if (actionId === "resolveClipTimingConflict" && alternatives) {
-				return [
-					<button
-						key={`${actionId}:local`}
-						type="button"
-						disabled={!alternatives.local}
-						onClick={() =>
-							onReviewAction?.(actionId, item, alternatives.local ?? undefined)
-						}
-					>
-						<Check aria-hidden="true" size={16} />
-						Use local changes
-					</button>,
-					<button
-						key={`${actionId}:incoming`}
-						type="button"
-						disabled={!alternatives.incoming}
-						onClick={() =>
-							onReviewAction?.(
-								actionId,
-								item,
-								alternatives.incoming ?? undefined,
-							)
-						}
-					>
-						<Check aria-hidden="true" size={16} />
-						Use incoming changes
-					</button>,
-				];
+			if (
+				actionId === "resolveClipTimingConflict" ||
+				actionId === "parkIncomingVariantOnReviewTrack"
+			) {
+				return [];
 			}
 			return (
 				<button
@@ -179,7 +68,6 @@ export const ConflictInspectorPanel = ({
 	onAcknowledgeReviewItem,
 	onReviewAction,
 }: ConflictInspectorPanelProps) => {
-	const alternatives = clipTimingAlternatives(item?.preview);
 	return (
 		<section className="ve-review-inspector" aria-label="Conflict inspector">
 			<header>
@@ -218,7 +106,25 @@ export const ConflictInspectorPanel = ({
 							<dd>{item.conflictId}</dd>
 						</div>
 					</dl>
-					<ClipTimingPreview alternatives={alternatives} />
+					{item.kind === "clip_timing" ? (
+						<ClipTimingConflictInspector
+							item={item}
+							onResolve={(payload) =>
+								onReviewAction?.(
+									"resolveClipTimingConflict",
+									item,
+									payload,
+								)
+							}
+							onParkVariant={(payload) =>
+								onReviewAction?.(
+									"parkIncomingVariantOnReviewTrack",
+									item,
+									payload,
+								)
+							}
+						/>
+					) : null}
 					{item.affectedObjects.length > 0 ? (
 						<ul aria-label="Affected objects">
 							{item.affectedObjects.map((object) => (
@@ -232,7 +138,6 @@ export const ConflictInspectorPanel = ({
 					<div className="ve-review-inspector__actions">
 						<ActionButtons
 							item={item}
-							alternatives={alternatives}
 							onReviewAction={onReviewAction}
 						/>
 						<button
