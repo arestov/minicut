@@ -139,7 +139,7 @@ export const ClipTimingConflictInspector = ({
 						onParkVariant({
 							conflictId: item.conflictId,
 							reviewItemId: item.id,
-							sourceClipId: item.affectedObjects.find(
+							clipId: item.affectedObjects.find(
 								(object) => object.type === "clip",
 							)?.id,
 							variant: "incoming",

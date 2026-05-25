@@ -7,7 +7,7 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 			{
 				conflictId: "conflict:clip",
 				reviewItemId: "review:clip",
-				sourceClipId: "clip:1",
+				clipId: "clip:1",
 				variant: "incoming",
 				timing: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
 			},

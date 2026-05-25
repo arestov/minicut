@@ -24,9 +24,9 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	}
 	const conflictId = stringOrNull(payload.conflictId);
 	const reviewItemId = stringOrNull(payload.reviewItemId);
-	const sourceClipId = stringOrNull(payload.sourceClipId);
+	const clipId = stringOrNull(payload.clipId) ?? stringOrNull(payload.sourceClipId);
 	const timing = parseClipTimingVariant(payload.timing);
-	if (!conflictId || !reviewItemId || !sourceClipId || !timing) {
+	if (!conflictId || !reviewItemId || !clipId || !timing) {
 		return noop;
 	}
 	return {
@@ -79,12 +79,12 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 				type: "parked_variant",
 				parkedClipId: { use_ref_id: "parkedIncomingClip" },
 				reviewTrackId: { use_ref_id: "incomingReviewTrack" },
-				sourceClipId,
+				sourceClipId: clipId,
 				variant: "incoming",
 			},
 		}),
 		$output: {
-			sourceClipId,
+			clipId,
 			projectId: getNodeId(project),
 		},
 	};
