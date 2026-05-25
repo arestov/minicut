@@ -19,6 +19,7 @@ export const deleteVsEditConflictFixture: CrdtConflictRecord = {
 				name: "Edited remote clip",
 				color: "#f59e0b",
 				mediaKind: "video",
+				targetTrackId: "track:main",
 				start: 5,
 				in: 1,
 				duration: 2,

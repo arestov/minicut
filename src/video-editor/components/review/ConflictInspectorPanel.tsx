@@ -2,6 +2,7 @@ import { Check, Info, X } from "lucide-react";
 import type { MiniCutReviewItem } from "../../dkt/review/types";
 import { ClipTimingConflictInspector } from "./features/ClipTimingConflictInspector";
 import { TrackOrderInspector } from "./features/TrackOrderInspector";
+import { DeleteVsEditInspector } from "./features/DeleteVsEditInspector";
 
 type ConflictInspectorPanelProps = {
 	item: MiniCutReviewItem | null;
@@ -149,6 +150,32 @@ export const ConflictInspectorPanel = ({
 							onCreateManualSuggestion={(payload) =>
 								onReviewAction?.(
 									"createManualTrackOrderSuggestion",
+									item,
+									payload,
+								)
+							}
+						/>
+					) : null}
+					{item.kind === "delete_vs_edit" ? (
+						<DeleteVsEditInspector
+							item={item}
+							onRestoreVariant={(payload) =>
+								onReviewAction?.(
+									"resolveDeleteVsEditByRestoreVariant",
+									item,
+									payload,
+								)
+							}
+							onParkVariant={(payload) =>
+								onReviewAction?.(
+									"parkEditedVariantOnReviewTrack",
+									item,
+									payload,
+								)
+							}
+							onPreserveDelete={(payload) =>
+								onReviewAction?.(
+									"preserveDeleteAndArchiveIncomingEdit",
 									item,
 									payload,
 								)

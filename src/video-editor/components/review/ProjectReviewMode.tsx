@@ -324,6 +324,14 @@ const ProjectReviewContent = ({
 							const affectedClip = item.affectedObjects.find(
 								(object) => object.type === "clip",
 							);
+							const actionScope =
+								actionId === "resolveDeleteVsEditByRestoreVariant" ||
+								actionId === "parkEditedVariantOnReviewTrack" ||
+								actionId === "preserveDeleteAndArchiveIncomingEdit"
+									? null
+									: affectedClip
+										? { kind: "scope" as const, _nodeId: affectedClip.id }
+										: null;
 							runtime.dispatchAction(
 								actionId,
 								{
@@ -331,9 +339,7 @@ const ProjectReviewContent = ({
 									review_item_id: item.id,
 									...(isRecord(payload) ? payload : {}),
 								},
-								affectedClip
-									? { kind: "scope", _nodeId: affectedClip.id }
-									: null,
+								actionScope,
 							);
 						}}
 					/>
