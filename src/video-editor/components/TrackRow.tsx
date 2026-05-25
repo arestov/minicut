@@ -71,7 +71,7 @@ export const TrackLabel = () => {
 				<strong>{trackName}</strong>
 				<small>
 					{roleLabel ?? trackKind}
-					{isPreviewEnabled ? null : " · Preview disabled"}
+					{isPreviewEnabled ? null : " - Preview disabled"}
 				</small>
 			</div>
 			<div className="ve-track-row__controls">
