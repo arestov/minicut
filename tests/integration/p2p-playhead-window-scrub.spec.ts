@@ -6,6 +6,7 @@ import {
 	createP2PRoomId,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
 	waitForRolePair,
 } from './p2pTestHelpers'
 
@@ -49,6 +50,7 @@ test('scrubbing the remote timeline triggers a non-zero playhead window request'
 		const clientPage = serverPage === first.page ? second.page : first.page
 		const videoFile = await createFixtureVideo()
 
+		await selectSharedActiveProject(serverPage, clientPage)
 		await serverPage.getByLabel('Import media files').setInputFiles(videoFile)
 
 		const remoteRow = clientPage.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })

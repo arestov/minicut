@@ -6,6 +6,7 @@ import {
 	createP2PRoomId,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
 	waitForRolePair,
 } from './p2pTestHelpers'
 
@@ -42,6 +43,7 @@ for (const direction of directions) {
 			const importer = direction.importer === 'main' ? mainPeer : clientPeer
 			const observer = direction.importer === 'main' ? clientPeer : mainPeer
 
+			await selectSharedActiveProject(mainPeer.page, clientPeer.page)
 			await importer.page.getByLabel('Import media files').setInputFiles(fixture3mb)
 
 			const remoteRow = observer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-3mb.webm' })

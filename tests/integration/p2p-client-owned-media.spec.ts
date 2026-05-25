@@ -6,6 +6,8 @@ import {
 	createP2PRoomId,
 	getRole,
 	openP2PPeer,
+	selectSharedActiveProject,
+	waitForProjectCountSync,
 	waitForRolePair,
 } from './p2pTestHelpers'
 
@@ -26,6 +28,7 @@ test('client-owned media imports transfer to main without sticking in error', as
 		const clientPeer = serverPeer === first ? second : first
 		const generatedVideo = await createFixtureVideo()
 
+		await selectSharedActiveProject(serverPeer.page, clientPeer.page)
 		await clientPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
 		const clientRow = clientPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(clientRow).toBeVisible()
@@ -55,6 +58,7 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 		const ownerPeer = serverPeer === first ? second : first
 		const generatedVideo = await createFixtureVideo()
 
+		await selectSharedActiveProject(serverPeer.page, ownerPeer.page)
 		await ownerPeer.page.getByLabel('Import media files').setInputFiles(generatedVideo)
 		const serverRow = serverPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(serverRow).toBeVisible()
@@ -65,6 +69,8 @@ test('main relays a client-owned resource to a late joiner after the owner disco
 		await expect.poll(() => getRole(lateJoiner.page), {
 			timeout: 20_000,
 		}).toBe('client')
+		await waitForProjectCountSync(serverPeer.page, lateJoiner.page)
+		await selectSharedActiveProject(serverPeer.page, lateJoiner.page)
 
 		const lateJoinerRow = lateJoiner.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(lateJoinerRow).toBeVisible()
