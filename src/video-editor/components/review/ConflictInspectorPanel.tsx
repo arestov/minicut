@@ -1,6 +1,7 @@
 import { Check, Info, X } from "lucide-react";
 import type { MiniCutReviewItem } from "../../dkt/review/types";
 import { ClipTimingConflictInspector } from "./features/ClipTimingConflictInspector";
+import { TrackOrderInspector } from "./features/TrackOrderInspector";
 
 type ConflictInspectorPanelProps = {
 	item: MiniCutReviewItem | null;
@@ -44,7 +45,10 @@ const ActionButtons = ({
 		{item.availableActions.flatMap((actionId) => {
 			if (
 				actionId === "resolveClipTimingConflict" ||
-				actionId === "parkIncomingVariantOnReviewTrack"
+				actionId === "parkIncomingVariantOnReviewTrack" ||
+				actionId === "resolveTrackOrderConflict" ||
+				actionId === "preserveCurrentTrackOrder" ||
+				actionId === "createManualTrackOrderSuggestion"
 			) {
 				return [];
 			}
@@ -119,6 +123,32 @@ export const ConflictInspectorPanel = ({
 							onParkVariant={(payload) =>
 								onReviewAction?.(
 									"parkIncomingVariantOnReviewTrack",
+									item,
+									payload,
+								)
+							}
+						/>
+					) : null}
+					{item.kind === "track_order" ? (
+						<TrackOrderInspector
+							item={item}
+							onApplyOrder={(payload) =>
+								onReviewAction?.(
+									"resolveTrackOrderConflict",
+									item,
+									payload,
+								)
+							}
+							onPreserveCurrentOrder={(payload) =>
+								onReviewAction?.(
+									"preserveCurrentTrackOrder",
+									item,
+									payload,
+								)
+							}
+							onCreateManualSuggestion={(payload) =>
+								onReviewAction?.(
+									"createManualTrackOrderSuggestion",
 									item,
 									payload,
 								)

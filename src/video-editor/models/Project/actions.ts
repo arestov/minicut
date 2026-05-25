@@ -12,6 +12,10 @@ import type {
 	MiniCutDktTrackSeed,
 } from "../../dkt/runtime/seedTypes";
 import type { CrdtConflictLifecyclePayload } from "../../dkt/review/types";
+import type {
+	TrackOrderEntry,
+	TrackOrderPreview,
+} from "../../dkt/review/features/trackOrder";
 import { defaultClipTransform } from "../Clip/actions";
 import {
 	reviewItemCreationFromItem,
@@ -51,6 +55,13 @@ export type ProjectCreateReviewTrackPayload = {
 	role?: unknown;
 	kind?: unknown;
 	name?: unknown;
+};
+export type ProjectResolveTrackOrderConflictPayload = {
+	conflictId?: unknown;
+	reviewItemId?: unknown;
+	selectedOrder?: unknown;
+	trackIds?: unknown;
+	preview?: unknown;
 };
 
 const asString = (value: unknown): string | null =>
@@ -223,6 +234,70 @@ const getNodeId = (value: unknown): string | null =>
 	typeof (value as { _node_id?: unknown })._node_id === "string"
 		? (value as { _node_id: string })._node_id
 		: null;
+
+const trackIdsFromModels = (tracks: unknown): string[] =>
+	Array.isArray(tracks)
+		? tracks.flatMap((track) => {
+				const id = getNodeId(track);
+				return id ? [id] : [];
+			})
+		: [];
+
+const trackModelsForIds = (tracks: unknown, ids: readonly string[]): unknown[] | null => {
+	if (!Array.isArray(tracks)) {
+		return null;
+	}
+	const byId = new Map(
+		tracks.flatMap((track) => {
+			const id = getNodeId(track);
+			return id ? [[id, track] as const] : [];
+		}),
+	);
+	const models = ids.map((id) => byId.get(id));
+	return models.every(Boolean) ? models : null;
+};
+
+const isUniqueStringList = (value: unknown): value is string[] =>
+	Array.isArray(value) &&
+	value.length > 0 &&
+	value.every((entry) => typeof entry === "string" && entry.length > 0) &&
+	new Set(value).size === value.length;
+
+const sameStringSet = (left: readonly string[], right: readonly string[]) =>
+	left.length === right.length && left.every((entry) => right.includes(entry));
+
+const asTrackOrderPreview = (value: unknown): TrackOrderPreview | null => {
+	const preview = asObject<TrackOrderPreview>(value);
+	if (
+		!preview ||
+		preview.type !== "track_order" ||
+		!Array.isArray(preview.currentOrder) ||
+		!Array.isArray(preview.incomingOrder)
+	) {
+		return null;
+	}
+	return preview;
+};
+
+const trackEntriesForIds = (
+	ids: readonly string[],
+	preview: TrackOrderPreview,
+): TrackOrderEntry[] => {
+	const entries = new Map(
+		[...preview.currentOrder, ...preview.incomingOrder].map((entry) => [
+			entry.trackId,
+			entry,
+		]),
+	);
+	return ids.map(
+		(trackId) =>
+			entries.get(trackId) ?? {
+				trackId,
+				name: trackId,
+				kind: "video",
+			},
+	);
+};
 
 const lifecycleRecords = (payload: unknown) => {
 	const value = asObject<CrdtConflictLifecyclePayload>(payload);
@@ -938,6 +1013,90 @@ export const reduceSetTracks = (payload: unknown) => {
 export const reduceSetResources = (payload: unknown) => {
 	const resources = (payload as { resources?: unknown } | null)?.resources;
 	return { resources: Array.isArray(resources) ? resources : [] };
+};
+
+export const reduceResolveTrackOrderConflict = (
+	payload: unknown,
+	noop: unknown,
+	currentTracks: unknown,
+) => {
+	const value = payload as ProjectResolveTrackOrderConflictPayload | null;
+	const conflictId = asString(value?.conflictId);
+	const reviewItemId = asString(value?.reviewItemId);
+	const selectedOrder = value?.selectedOrder;
+	const trackIds = value?.trackIds;
+	const knownTrackIds = trackIdsFromModels(currentTracks);
+	if (
+		!conflictId ||
+		!reviewItemId ||
+		(selectedOrder !== "current" &&
+			selectedOrder !== "incoming" &&
+			selectedOrder !== "manual") ||
+		!isUniqueStringList(trackIds) ||
+		!sameStringSet(trackIds, knownTrackIds)
+	) {
+		return noop;
+	}
+	const orderedTracks = trackModelsForIds(currentTracks, trackIds);
+	if (!orderedTracks) {
+		return noop;
+	}
+	return {
+		tracks: {
+			id: null,
+			value: orderedTracks,
+		},
+		crdtResolve: {
+			conflict_id: conflictId,
+			decision: {
+				action: "resolveTrackOrderConflict",
+				review_item_id: reviewItemId,
+				domain_result: {
+					type: "track_order_applied",
+					selectedOrder,
+					trackIds,
+				},
+			},
+		},
+	};
+};
+
+export const reducePreserveCurrentTrackOrder = (
+	payload: unknown,
+	noop: unknown,
+	currentTracks: unknown,
+) =>
+	reduceResolveTrackOrderConflict(
+		{
+			...(payload && typeof payload === "object"
+				? (payload as Record<string, unknown>)
+				: {}),
+			selectedOrder: "current",
+		},
+		noop,
+		currentTracks,
+	);
+
+export const reduceCreateManualTrackOrderSuggestion = (
+	payload: unknown,
+	noop: unknown,
+) => {
+	const value = payload as ProjectResolveTrackOrderConflictPayload | null;
+	const preview = asTrackOrderPreview(value?.preview);
+	const trackIds = value?.trackIds;
+	if (!preview || !isUniqueStringList(trackIds)) {
+		return noop;
+	}
+	const knownTrackIds = preview.currentOrder.map((entry) => entry.trackId);
+	if (!sameStringSet(trackIds, knownTrackIds)) {
+		return noop;
+	}
+	return {
+		preview: {
+			...preview,
+			manualOrder: trackEntriesForIds(trackIds, preview),
+		},
+	};
 };
 
 export const reduceMoveClipToTrackContext = (
