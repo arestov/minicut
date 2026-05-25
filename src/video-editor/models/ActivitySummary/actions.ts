@@ -20,6 +20,8 @@ export const activitySummaryAttrsFromSummary = (
 	deleted: summary.deleted,
 	rootFrames: summary.rootFrames,
 	happenedAt: summary.happenedAt,
+	openedConflictIds: summary.openedConflictIds ?? [],
+	updatedConflictIds: summary.updatedConflictIds ?? [],
 });
 
 export const reduceCreateActivitySummary = (payload: unknown) => {
@@ -46,4 +48,3 @@ export const reduceMaterializeSyncActivitySummary = (
 		materializeCRDTSyncSummary({ payload: syncPayload, projectId }),
 	);
 };
-

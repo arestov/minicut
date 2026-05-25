@@ -13,6 +13,7 @@ import {
 	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceHandleCRDTSyncGraph,
+	reduceLinkReviewSessionActivityFromOutput,
 	reduceLinkReviewSessionItemsFromOutput,
 	resolveReviewProjectIdHint,
 	reduceCreateTextModel,
@@ -265,49 +266,60 @@ const appProps = mergeDcl({
 					),
 			],
 		},
-		handleCRDTSync: {
-			to: {
-				activitySummaries: [
-					"<< activitySummary << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
-					},
-				],
-				reviewSession: [
-					"<< reviewSession << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: REVIEW_SESSION_CREATION_SHAPE,
-					},
+		handleCRDTSync: [
+			{
+				to: {
+					activitySummaries: [
+						"<< activitySummary << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
+						},
+					],
+					reviewSession: [
+						"<< reviewSession << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
+						},
+					],
+					$output: ["$output"],
+				},
+				fn: [
+					[
+						"$noop",
+						"< @one:_node_id < project",
+						"<< @all:project",
+					] as const,
+					(
+						payload: unknown,
+						noop: unknown,
+						rootProjectId: unknown,
+						projects: unknown,
+					) =>
+						reduceHandleCRDTSyncGraph(
+							payload,
+							resolveReviewProjectIdHint(
+								payload,
+								rootProjectId,
+								projects,
+							),
+						) ?? noop,
 				],
 			},
-			fn: [
-				[
-					"$noop",
-					"< @one:_node_id < project",
-					"<< @all:project",
-				] as const,
-				(
-					payload: unknown,
-					noop: unknown,
-					rootProjectId: unknown,
-					projects: unknown,
-				) =>
-					reduceHandleCRDTSyncGraph(
-						payload,
-						resolveReviewProjectIdHint(
-							payload,
-							rootProjectId,
-							projects,
-						),
-					) ?? noop,
-			],
-		},
+			{
+				to: ["*"],
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) =>
+						reduceLinkReviewSessionActivityFromOutput(payload) ?? noop,
+				],
+			},
+		],
 		handleCRDTConflict: [
 			{
 				to: {

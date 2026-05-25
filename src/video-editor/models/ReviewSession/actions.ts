@@ -184,7 +184,7 @@ export const reduceAttachReviewItemFromOutput = (
 	payload: unknown,
 	self: unknown,
 ) => {
-	const rels = asObject<{ reviewItem?: unknown }>(
+	const rels = asObject<{ reviewSession?: unknown; reviewItem?: unknown }>(
 		(payload as { rels?: unknown } | null)?.rels,
 	);
 	const targetSession = rels?.reviewSession;
@@ -198,7 +198,7 @@ export const reduceAttachActivitySummaryFromOutput = (
 	payload: unknown,
 	self: unknown,
 ) => {
-	const rels = asObject<{ activitySummary?: unknown }>(
+	const rels = asObject<{ reviewSession?: unknown; activitySummary?: unknown }>(
 		(payload as { rels?: unknown } | null)?.rels,
 	);
 	const targetSession = rels?.reviewSession;

@@ -22,6 +22,8 @@ const reduceActivitySummarySnapshot = (
 	deleted: unknown,
 	rootFrames: unknown,
 	happenedAt: unknown,
+	openedConflictIds: unknown,
+	updatedConflictIds: unknown,
 ): MiniCutActivitySummary => ({
 	id: asString(activitySummaryId, asString(nodeId, "")),
 	projectId: asString(projectId),
@@ -33,6 +35,8 @@ const reduceActivitySummarySnapshot = (
 	deleted: asArray<MiniCutReviewObject>(deleted),
 	rootFrames: asArray(rootFrames),
 	happenedAt: typeof happenedAt === "number" ? happenedAt : 0,
+	openedConflictIds: asArray<string>(openedConflictIds),
+	updatedConflictIds: asArray<string>(updatedConflictIds),
 });
 
 export const ACTIVITY_SUMMARY_CREATION_SHAPE = {
@@ -47,6 +51,8 @@ export const ACTIVITY_SUMMARY_CREATION_SHAPE = {
 		"deleted",
 		"rootFrames",
 		"happenedAt",
+		"openedConflictIds",
+		"updatedConflictIds",
 	],
 } as const;
 
@@ -63,6 +69,8 @@ export const ActivitySummary = model({
 		deleted: ["input", []],
 		rootFrames: ["input", []],
 		happenedAt: ["input", 0],
+		openedConflictIds: ["input", []],
+		updatedConflictIds: ["input", []],
 		activitySummarySnapshot: [
 			"comp",
 			[
@@ -77,6 +85,8 @@ export const ActivitySummary = model({
 				"deleted",
 				"rootFrames",
 				"happenedAt",
+				"openedConflictIds",
+				"updatedConflictIds",
 			] as const,
 			reduceActivitySummarySnapshot,
 		],
