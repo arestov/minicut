@@ -26,6 +26,9 @@ import {
 	reduceSetProjectTrackPreviewEnabled,
 	reduceSetResources,
 	reduceSetTracks,
+	reduceResolveTrackOrderConflict,
+	reducePreserveCurrentTrackOrder,
+	reduceCreateManualTrackOrderSuggestion,
 } from "./Project/actions";
 import { REVIEW_TRACK_ROLES } from "../dkt/review/reviewTrackPrimitives";
 import {
@@ -648,6 +651,44 @@ export const Project = model({
 				tracks: ["<< tracks", { method: "set_many" }],
 			},
 			fn: reduceSetTracks,
+		},
+		resolveTrackOrderConflict: {
+			to: {
+				tracks: [
+					"<< tracks",
+					{ method: "set_many", can_use_refs: true },
+				],
+				crdtResolve: [crdtReviewResolveTarget],
+			},
+			fn: [
+				["$noop", "<< @all:tracks"] as const,
+				(payload: unknown, noop: unknown, tracks: unknown) =>
+					reduceResolveTrackOrderConflict(payload, noop, tracks),
+			],
+		},
+		preserveCurrentTrackOrder: {
+			to: {
+				tracks: [
+					"<< tracks",
+					{ method: "set_many", can_use_refs: true },
+				],
+				crdtResolve: [crdtReviewResolveTarget],
+			},
+			fn: [
+				["$noop", "<< @all:tracks"] as const,
+				(payload: unknown, noop: unknown, tracks: unknown) =>
+					reducePreserveCurrentTrackOrder(payload, noop, tracks),
+			],
+		},
+		createManualTrackOrderSuggestion: {
+			to: {
+				preview: ["preview"],
+			},
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceCreateManualTrackOrderSuggestion(payload, noop),
+			],
 		},
 		setResources: {
 			to: {
