@@ -1,5 +1,6 @@
-import { Eye, Lock, Volume2 } from "lucide-react";
+import { Eye, EyeOff, Lock, Volume2 } from "lucide-react";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
+import { useActions } from "../../dkt-react-sync/hooks/useActions";
 import { useAttrs } from "../../dkt-react-sync/hooks/useAttrs";
 import { useMany } from "../../dkt-react-sync/hooks/useMany";
 import { ClipItem } from "./ClipItem";
@@ -16,25 +17,67 @@ interface TrackRenderAttrs {
 	kind?: unknown;
 	muted?: unknown;
 	locked?: unknown;
+	enabled?: unknown;
+	visibleInPreview?: unknown;
+	trackRole?: unknown;
 }
 
 export const TrackLabel = () => {
+	const dispatch = useActions();
 	const trackAttrs = useAttrs([
 		"name",
 		"kind",
 		"muted",
 		"locked",
+		"enabled",
+		"visibleInPreview",
+		"trackRole",
 	]) as TrackRenderAttrs;
 	const trackName = String(trackAttrs.name);
 	const trackKind = String(trackAttrs.kind);
 	const isMuted = Boolean(trackAttrs.muted);
 	const isLocked = Boolean(trackAttrs.locked);
+	const isPreviewEnabled =
+		trackAttrs.enabled !== false && trackAttrs.visibleInPreview !== false;
+	const roleLabel =
+		trackAttrs.trackRole === "incomingReview"
+			? "Incoming Review"
+			: trackAttrs.trackRole === "currentReview"
+				? "Current Review"
+				: null;
+	const previewToggleLabel = isPreviewEnabled
+		? roleLabel
+			? "Preview enabled"
+			: "Track visible"
+		: "Preview disabled";
 
 	return (
-		<div className="ve-track-row__label">
+		<div
+			className={[
+				"ve-track-row__label",
+				trackAttrs.trackRole === "incomingReview" ||
+				trackAttrs.trackRole === "currentReview"
+					? "ve-track-row__label--review"
+					: null,
+				isPreviewEnabled ? null : "ve-track-row__label--preview-disabled",
+			]
+				.filter(Boolean)
+				.join(" ")}
+			style={{
+				opacity: isPreviewEnabled ? 1 : 0.72,
+				borderLeft:
+					trackAttrs.trackRole === "incomingReview" ||
+					trackAttrs.trackRole === "currentReview"
+						? "3px solid var(--ve-accent, #2563eb)"
+						: undefined,
+			}}
+		>
 			<div>
 				<strong>{trackName}</strong>
-				<small>{trackKind}</small>
+				<small>
+					{roleLabel ?? trackKind}
+					{isPreviewEnabled ? null : " - Preview disabled"}
+				</small>
 			</div>
 			<div className="ve-track-row__controls">
 				<IconButton
@@ -53,10 +96,14 @@ export const TrackLabel = () => {
 				/>
 				<IconButton
 					type="button"
-					icon={Eye}
-					label="Track visible"
-					variant="ghost"
-					disabled
+					icon={isPreviewEnabled ? Eye : EyeOff}
+					label={previewToggleLabel}
+					variant={isPreviewEnabled ? "ghost" : "secondary"}
+					onClick={() =>
+						dispatch("setTrackPreviewEnabled", {
+							enabled: !isPreviewEnabled,
+						})
+					}
 				/>
 			</div>
 		</div>
@@ -69,10 +116,29 @@ export const TrackLane = ({
 	selectedEntityId,
 }: TrackRowProps) => {
 	const clipScopes = useMany("clips");
+	const trackAttrs = useAttrs([
+		"enabled",
+		"visibleInPreview",
+		"trackRole",
+	]) as TrackRenderAttrs;
 	const trackWidth = Math.max(960, clipScopes.length * 180);
+	const isReviewTrack =
+		trackAttrs.trackRole === "incomingReview" ||
+		trackAttrs.trackRole === "currentReview";
+	const isPreviewEnabled =
+		trackAttrs.enabled !== false && trackAttrs.visibleInPreview !== false;
 
 	return (
-		<div className="ve-track-row__rail">
+		<div
+			className={[
+				"ve-track-row__rail",
+				isReviewTrack ? "ve-track-row__rail--review" : null,
+				isPreviewEnabled ? null : "ve-track-row__rail--preview-disabled",
+			]
+				.filter(Boolean)
+				.join(" ")}
+			style={{ opacity: isPreviewEnabled ? 1 : 0.72 }}
+		>
 			{clipScopes.length === 0 ? (
 				<p className="ve-empty">Drop clips here.</p>
 			) : (

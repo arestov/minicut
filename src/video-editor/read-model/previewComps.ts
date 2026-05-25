@@ -68,6 +68,34 @@ export interface PreviewStructure {
 	clipSources: PreviewClipSource[];
 }
 
+export const reduceProjectPreviewClipSources = (
+	allTrackClipData: unknown,
+	allClipTrackState?: unknown,
+): PreviewStructure => {
+	const sources: PreviewClipSource[] = [];
+	if (!Array.isArray(allTrackClipData)) {
+		return { clipSources: sources };
+	}
+	for (let index = 0; index < allTrackClipData.length; index += 1) {
+		const laneState = Array.isArray(allClipTrackState)
+			? allClipTrackState[index]
+			: null;
+		if (
+			laneState &&
+			typeof laneState === "object" &&
+			((laneState as { enabled?: unknown }).enabled === false ||
+				(laneState as { visibleInPreview?: unknown }).visibleInPreview === false)
+		) {
+			continue;
+		}
+		const clipData = allTrackClipData[index];
+		if (clipData && typeof clipData === "object" && "id" in clipData) {
+			sources.push(clipData as PreviewClipSource);
+		}
+	}
+	return { clipSources: sources };
+};
+
 export interface PreviewScene {
 	cursor: number;
 	isPlaying: boolean;

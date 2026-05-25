@@ -5,7 +5,9 @@ import {
 	reduceAddResourceToTimeline,
 	reduceAddTextClipToVideoTrack,
 	reduceAddTrack,
+	reduceCreateReviewTrack,
 	reduceHandleInit,
+	reduceEnsureReviewTrack,
 	reduceImportResourceCreateOnly,
 	reduceEnsureProjectReviewSession,
 	reduceMaterializeProjectCRDTConflictReview,
@@ -16,12 +18,14 @@ import {
 	reduceSetImportProgress,
 	reduceSetProjectDuration,
 	reduceSetProjectFormat,
+	reduceSetProjectTrackPreviewEnabled,
 	reduceSetResources,
 	reduceSetTracks,
 } from "./Project/actions";
+import { REVIEW_TRACK_ROLES } from "../dkt/review/reviewTrackPrimitives";
 import {
 	reduceProjectPreviewClipSources,
-} from "./Project/comps";
+} from "../read-model/previewComps";
 import { RESOURCE_CREATION_SHAPE } from "./Resource";
 import { REVIEW_ITEM_CREATION_SHAPE } from "./ReviewItem";
 import { REVIEW_SESSION_CREATION_SHAPE } from "./ReviewSession";
@@ -210,7 +214,10 @@ export const Project = model({
 		],
 		previewClipSources: [
 			"comp",
-			["< @all:clipRenderData < tracks.clips"] as const,
+			[
+				"< @all:clipRenderData < tracks.clips",
+				"< @all:laneRenderState < tracks.clips.track",
+			] as const,
 			reduceProjectPreviewClipSources,
 		],
 		reviewOpenItemCount: [
@@ -438,6 +445,126 @@ export const Project = model({
 				],
 			},
 		],
+		createReviewTrack: [
+			{
+				to: {
+					track: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					tracks: [
+						"<< tracks",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+				},
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) =>
+						reduceCreateReviewTrack(payload) ?? noop,
+				],
+			},
+			{
+				to: ["<< tracks", { action: "setProject", sub_flow: true }],
+				fn: [
+					["<<<<"] as const,
+					(_payload: unknown, self: unknown) => ({ project: self }),
+				],
+			},
+		],
+		ensureIncomingReviewTrack: [
+			{
+				to: {
+					track: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					tracks: [
+						"<< tracks",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+				},
+				fn: [
+					["$noop", "<< @all:tracks"] as const,
+					(payload: unknown, noop: unknown, tracks: unknown) =>
+						reduceEnsureReviewTrack(
+							payload,
+							noop,
+							tracks,
+							REVIEW_TRACK_ROLES.incoming,
+						),
+				],
+			},
+			{
+				to: ["<< tracks", { action: "setProject", sub_flow: true }],
+				fn: [
+					["<<<<"] as const,
+					(_payload: unknown, self: unknown) => ({ project: self }),
+				],
+			},
+		],
+		ensureCurrentReviewTrack: [
+			{
+				to: {
+					track: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					tracks: [
+						"<< tracks",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+				},
+				fn: [
+					["$noop", "<< @all:tracks"] as const,
+					(payload: unknown, noop: unknown, tracks: unknown) =>
+						reduceEnsureReviewTrack(
+							payload,
+							noop,
+							tracks,
+							REVIEW_TRACK_ROLES.current,
+						),
+				],
+			},
+			{
+				to: ["<< tracks", { action: "setProject", sub_flow: true }],
+				fn: [
+					["<<<<"] as const,
+					(_payload: unknown, self: unknown) => ({ project: self }),
+				],
+			},
+		],
+		setTrackPreviewEnabled: {
+			to: ["*"],
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) =>
+					reduceSetProjectTrackPreviewEnabled(payload) ?? noop,
+			],
+		},
 		requestImportFiles: {
 			aggregate: {
 				name: "importPipeline",

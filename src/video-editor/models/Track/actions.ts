@@ -143,6 +143,17 @@ export const reduceSetTrackLocked = (payload: unknown) => {
 	return typeof locked === "boolean" ? { locked } : null;
 };
 
+export const reduceSetTrackPreviewEnabled = (payload: unknown) => {
+	const enabled =
+		typeof payload === "boolean"
+			? payload
+			: (payload as { enabled?: unknown; value?: unknown } | null)?.enabled ??
+				(payload as { value?: unknown } | null)?.value;
+	return typeof enabled === "boolean"
+		? { enabled, visibleInPreview: enabled }
+		: null;
+};
+
 const resolveResourceRef = (payload: unknown): unknown => {
 	const value = payload as { resource?: unknown } | null;
 	return value?.resource ?? null;
