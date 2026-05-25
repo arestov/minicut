@@ -48,3 +48,10 @@ export const reduceMaterializeSyncActivitySummary = (
 		materializeCRDTSyncSummary({ payload: syncPayload, projectId }),
 	);
 };
+
+export const materializeCrdtSyncSummary = reduceMaterializeSyncActivitySummary;
+
+export const updateCrdtSyncSummary = (
+	payload: unknown,
+	projectIdHint: unknown,
+) => reduceMaterializeSyncActivitySummary(payload, projectIdHint)?.attrs ?? null;
