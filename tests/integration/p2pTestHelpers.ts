@@ -269,11 +269,43 @@ export const setActiveProject = async (page: Page, projectId: string): Promise<v
 	}, projectId)
 }
 
+export const waitForProjectNode = async (page: Page, projectId: string): Promise<void> => {
+	await expect.poll(() =>
+		page.evaluate((targetProjectId) => {
+			const graph = window.__MINICUT_P2P_DEBUG__?.dumpGraph?.() as {
+				dict?: unknown
+				nodes?: unknown
+			} | null
+			const nodes: unknown[] = []
+			if (Array.isArray(graph?.nodes)) {
+				nodes.push(...graph.nodes)
+			}
+			if (graph?.dict && typeof graph.dict === 'object') {
+				nodes.push(...Object.values(graph.dict as Record<string, unknown>))
+			}
+			return nodes.some((node) => {
+				if (!node || typeof node !== 'object') {
+					return false
+				}
+				const candidate = node as {
+					nodeId?: unknown
+					id?: unknown
+					_node_id?: unknown
+				}
+				const nodeId = candidate.nodeId ?? candidate.id ?? candidate._node_id
+				return nodeId === targetProjectId
+			})
+		}, projectId), {
+		timeout: 20_000,
+	}).toBe(true)
+}
+
 export const selectSharedActiveProject = async (
 	sourcePage: Page,
 	...targetPages: Page[]
 ): Promise<string> => {
 	const projectId = await waitForActiveProjectNodeId(sourcePage)
+	await Promise.all(targetPages.map((page) => waitForProjectNode(page, projectId)))
 	await Promise.all(targetPages.map((page) => setActiveProject(page, projectId)))
 	await Promise.all([
 		expect.poll(() => getActiveProjectNodeId(sourcePage), {
@@ -460,6 +492,21 @@ export const waitForReadyTransfer = async (
 			lastError: null,
 		}) as DebugTransfer,
 	]))
+}
+
+export const waitForRendererVideoReady = async (
+	page: Page,
+	resourceName: string,
+): Promise<void> => {
+	await expect.poll(() =>
+		page.getByRole('region', { name: 'Renderer stage' }).locator(`video[data-resource-name="${resourceName}"]`).evaluateAll((videos) =>
+			videos.some((video) => {
+				const element = video as HTMLVideoElement
+				return element.readyState >= element.HAVE_CURRENT_DATA && element.videoWidth > 0 && element.videoHeight > 0
+			}),
+		), {
+		timeout: 20_000,
+	}).toBe(true)
 }
 
 export const waitForBlobPreview = async (page: Page): Promise<void> => {

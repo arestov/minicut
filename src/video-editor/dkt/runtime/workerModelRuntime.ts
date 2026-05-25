@@ -77,12 +77,103 @@ type ProductRoomRuntime = {
 	canDeliverIncomingMessages: boolean;
 	replayDurableLogCallbacks: Set<(targetPeerId: string) => void>;
 	attachedCrdtPeers: Set<string>;
+	replayRetryTimeouts: Map<string, ReturnType<typeof setTimeout>>;
 };
 
 type CrdtRuntimeWithReadableStorage = {
 	storage?: {
 		getBatchesAfter?: (clock?: Record<string, number>) => Promise<unknown[]>;
 	};
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+	value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+const nodeIdFromCreatedModel = (value: unknown): string | null => {
+	if (typeof value === "string") {
+		return value;
+	}
+	const record = asRecord(value);
+	const candidate = record?.node_id ?? record?.nodeId ?? record?.id;
+	return typeof candidate === "string" ? candidate : null;
+};
+
+const collectNodeRefs = (value: unknown, refs: Set<string>): void => {
+	if (typeof value === "string") {
+		if (value.startsWith("crdt:") || value === "ROOT") {
+			refs.add(value);
+		}
+		return;
+	}
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			collectNodeRefs(item, refs);
+		}
+		return;
+	}
+	const record = asRecord(value);
+	if (!record) {
+		return;
+	}
+	for (const item of Object.values(record)) {
+		collectNodeRefs(item, refs);
+	}
+};
+
+export const orderCrdtReplayBatchesForDelivery = (batches: unknown[]): unknown[] => {
+	const creatorByNodeId = new Map<string, number>();
+	const batchDeps = batches.map(() => new Set<number>());
+
+	batches.forEach((batch, index) => {
+		const record = asRecord(batch);
+		const createdModels = Array.isArray(record?.created_models)
+			? record.created_models
+			: [];
+		for (const created of createdModels) {
+			const nodeId = nodeIdFromCreatedModel(created);
+			if (nodeId && !creatorByNodeId.has(nodeId)) {
+				creatorByNodeId.set(nodeId, index);
+			}
+		}
+	});
+
+	batches.forEach((batch, index) => {
+		const record = asRecord(batch);
+		const refs = new Set<string>();
+		const ops = Array.isArray(record?.ops) ? record.ops : [];
+		for (const op of ops) {
+			const opRecord = asRecord(op);
+			collectNodeRefs(opRecord?.node_id, refs);
+			collectNodeRefs(opRecord?.value, refs);
+		}
+		for (const ref of refs) {
+			const creatorIndex = creatorByNodeId.get(ref);
+			if (creatorIndex != null && creatorIndex !== index) {
+				batchDeps[index].add(creatorIndex);
+			}
+		}
+	});
+
+	const ordered: unknown[] = [];
+	const visiting = new Set<number>();
+	const visited = new Set<number>();
+	const visit = (index: number): void => {
+		if (visited.has(index) || visiting.has(index)) {
+			return;
+		}
+		visiting.add(index);
+		for (const dep of batchDeps[index]) {
+			visit(dep);
+		}
+		visiting.delete(index);
+		visited.add(index);
+		ordered.push(batches[index]);
+	};
+
+	for (let index = 0; index < batches.length; index += 1) {
+		visit(index);
+	}
+	return ordered;
 };
 
 const cloneUnknownWireMessage = (message: unknown): DktCrdtWireMessage =>
@@ -123,6 +214,12 @@ export const createMiniCutDktWorkerModelRuntime = (
 		};
 		const replayDurableLogCallbacks = new Set<(targetPeerId: string) => void>();
 		const attachedCrdtPeers = new Set<string>();
+		const replayRetryTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+		const replayDurableLogToPeer = (peerId: string): void => {
+			for (const replay of [...replayDurableLogCallbacks]) {
+				replay(peerId);
+			}
+		};
 		const owner = createProductRoomTransportOwner({
 			roomId,
 			onCrdtPacket(packet) {
@@ -159,12 +256,20 @@ export const createMiniCutDktWorkerModelRuntime = (
 					transportGeneration: peer.transportGeneration,
 					replayCallbackCount: replayDurableLogCallbacks.size,
 				});
-				for (const replay of [...replayDurableLogCallbacks]) {
-					replay(peer.peerId);
-				}
+				replayDurableLogToPeer(peer.peerId);
+				clearTimeout(replayRetryTimeouts.get(peer.peerId));
+				const timeoutId = setTimeout(() => {
+					replayRetryTimeouts.delete(peer.peerId);
+					if (attachedCrdtPeers.has(peer.peerId)) {
+						replayDurableLogToPeer(peer.peerId);
+					}
+				}, 750);
+				replayRetryTimeouts.set(peer.peerId, timeoutId);
 			},
 			onCrdtPeerDetached(peer) {
 				attachedCrdtPeers.delete(peer.peerId);
+				clearTimeout(replayRetryTimeouts.get(peer.peerId));
+				replayRetryTimeouts.delete(peer.peerId);
 			},
 		});
 		room = {
@@ -180,6 +285,7 @@ export const createMiniCutDktWorkerModelRuntime = (
 			},
 			replayDurableLogCallbacks,
 			attachedCrdtPeers,
+			replayRetryTimeouts,
 		};
 		productRooms.set(roomId, room);
 		return room;
@@ -193,7 +299,10 @@ export const createMiniCutDktWorkerModelRuntime = (
 					(crdtRuntime as CrdtRuntimeWithReadableStorage).storage
 						?.getBatchesAfter?.({}) ?? [],
 				).then((batches) => {
-					if (!Array.isArray(batches) || batches.length === 0) {
+					const orderedBatches = Array.isArray(batches)
+						? orderCrdtReplayBatchesForDelivery(batches)
+						: [];
+					if (orderedBatches.length === 0) {
 						traceP2P("worker-runtime:durable-replay-empty", {
 							roomId,
 							targetPeerId,
@@ -205,8 +314,8 @@ export const createMiniCutDktWorkerModelRuntime = (
 						roomId,
 						targetPeerId,
 						peerId: context.peerId,
-						batchCount: batches.length,
-						batchIds: batches
+						batchCount: orderedBatches.length,
+						batchIds: orderedBatches
 							.map((batch) =>
 								batch && typeof batch === "object"
 									? (batch as { batch_id?: unknown }).batch_id
@@ -220,13 +329,16 @@ export const createMiniCutDktWorkerModelRuntime = (
 							from: context.peerId,
 							profile_id: context.profileId,
 							profile_version: context.profileVersion,
-							batches,
+							batches: orderedBatches,
 						} as DktCrdtWireMessage);
 					ensureP2PMessageId(replayMessage, "crdt-replay");
 					room.owner.sendCrdtPacket(replayMessage, targetPeerId);
 				});
 			};
 			room.replayDurableLogCallbacks.add(replayDurableLog);
+			for (const peerId of room.attachedCrdtPeers) {
+				replayDurableLog(peerId);
+			}
 			const transport: DktCrdtTransport = {
 				send(message) {
 					ensureP2PMessageId(message, "crdt-worker");

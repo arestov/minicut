@@ -4,7 +4,10 @@ import {
 	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
-import { createMiniCutDktWorkerModelRuntime } from "./workerModelRuntime";
+import {
+	createMiniCutDktWorkerModelRuntime,
+	orderCrdtReplayBatchesForDelivery,
+} from "./workerModelRuntime";
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
 	for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -41,6 +44,32 @@ const createMemoryTransport = () => {
 };
 
 describe("createMiniCutDktWorkerModelRuntime", () => {
+	it("orders replay batches before batches that reference their created nodes", () => {
+		const resourceBatch = {
+			batch_id: "owner:batch:2",
+			created_models: ["crdt:resource"],
+			ops: [
+				{
+					type: "rel",
+					node_id: "crdt:resource",
+					name: "project",
+					value: "crdt:project",
+				},
+			],
+		};
+		const projectBatch = {
+			batch_id: "server:batch:1",
+			created_models: ["crdt:project"],
+			ops: [{ type: "attr", node_id: "crdt:project", name: "title" }],
+		};
+
+		expect(
+			orderCrdtReplayBatchesForDelivery([resourceBatch, projectBatch]).map(
+				(batch) => (batch as { batch_id: string }).batch_id,
+			),
+		).toEqual(["server:batch:1", "owner:batch:2"]);
+	});
+
 	it("tracks model sessions per worker connection", async () => {
 		const workerRuntime = createMiniCutDktWorkerModelRuntime({
 			enableProductionCrdt: false,

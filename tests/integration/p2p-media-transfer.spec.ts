@@ -12,7 +12,9 @@ import {
 	selectSharedActiveProject,
 	setActiveProject,
 	waitForReadyTransfer,
+	waitForRendererVideoReady,
 	waitForRolePair,
+	writeP2PDebugArtifactsMany,
 } from './p2pTestHelpers'
 
 const createRenamedFixtureVideo = async (name: string): Promise<{ name: string; mimeType: string; buffer: Buffer }> => {
@@ -85,16 +87,15 @@ test('p2p timeline clip created on the main peer renders preview on the remote p
 		const clientTimeline = clientPage.getByRole('region', { name: 'Timeline', exact: true })
 		await expect(clientTimeline.getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 		await waitForReadyTransfer(clientPage, 'remote')
-		const clientRenderer = clientPage.getByRole('region', { name: 'Renderer stage' })
-		await expect(clientRenderer.locator('video[data-resource-name="fixture-video.webm"]')).toHaveCount(1)
-		await expect.poll(async () => {
-			return clientRenderer.locator('video[data-resource-name="fixture-video.webm"]').evaluate((video) => {
-				const element = video as HTMLVideoElement
-				return element.readyState >= element.HAVE_CURRENT_DATA && element.videoWidth > 0 && element.videoHeight > 0
-			})
-		}, {
-			timeout: 20_000,
-		}).toBe(true)
+		try {
+			await waitForRendererVideoReady(clientPage, 'fixture-video.webm')
+		} catch (error) {
+			const artifactPath = await writeP2PDebugArtifactsMany('main-timeline-preview-missing-video', [
+				{ label: 'server', page: serverPage },
+				{ label: 'client', page: clientPage },
+			])
+			throw new Error(`Timed out waiting for remote renderer video. Debug artifact: ${artifactPath}`, { cause: error })
+		}
 	} finally {
 		await closePeerHandles(first, second)
 	}
