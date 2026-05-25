@@ -74,6 +74,13 @@ const MOVE_CLIP_INPUT_BASE_REL_SHAPE = {
 	},
 } as const;
 
+const CLIP_INPUT_BASE_REL_SHAPE = {
+	clipId: {
+		any: true,
+		many: false,
+	},
+} as const;
+
 export const Project = model({
 	model_name: "project",
 	aggregates: {
@@ -803,6 +810,7 @@ export const Project = model({
 			},
 		],
 		parkIncomingVariantOnReviewTrack: {
+			input_base_rel_shape: CLIP_INPUT_BASE_REL_SHAPE,
 			to: {
 				reviewTrack: [
 					"<< track << #",
@@ -840,9 +848,19 @@ export const Project = model({
 				$output: ["$output"],
 			},
 			fn: [
-				["$noop", "<<<<"] as const,
-				(payload: unknown, noop: unknown, project: unknown) =>
-					reduceParkIncomingVariantOnReviewTrack(payload, noop, project),
+				["$noop", "<<<<", "<<<< $input_id:clipId"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					project: unknown,
+					sourceClip: unknown,
+				) =>
+					reduceParkIncomingVariantOnReviewTrack(
+						payload,
+						noop,
+						project,
+						sourceClip,
+					),
 			],
 		},
 	},
