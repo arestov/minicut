@@ -1,6 +1,7 @@
 import { Check, Info, X } from "lucide-react";
 import type { MiniCutReviewItem } from "../../dkt/review/types";
 import { ClipTimingConflictInspector } from "./features/ClipTimingConflictInspector";
+import { DanglingResourceInspector } from "./features/DanglingResourceInspector";
 import { TrackOrderInspector } from "./features/TrackOrderInspector";
 import { DeleteVsEditInspector } from "./features/DeleteVsEditInspector";
 
@@ -49,7 +50,9 @@ const ActionButtons = ({
 				actionId === "parkIncomingVariantOnReviewTrack" ||
 				actionId === "resolveTrackOrderConflict" ||
 				actionId === "preserveCurrentTrackOrder" ||
-				actionId === "createManualTrackOrderSuggestion"
+				actionId === "createManualTrackOrderSuggestion" ||
+				actionId === "resolveDanglingResourceByRelink" ||
+				actionId === "keepOfflinePlaceholder"
 			) {
 				return [];
 			}
@@ -176,6 +179,25 @@ export const ConflictInspectorPanel = ({
 							onPreserveDelete={(payload) =>
 								onReviewAction?.(
 									"preserveDeleteAndArchiveIncomingEdit",
+									item,
+									payload,
+								)
+							}
+						/>
+					) : null}
+					{item.kind === "dangling_resource" ? (
+						<DanglingResourceInspector
+							item={item}
+							onRelink={(payload) =>
+								onReviewAction?.(
+									"resolveDanglingResourceByRelink",
+									item,
+									payload,
+								)
+							}
+							onKeepPlaceholder={(payload) =>
+								onReviewAction?.(
+									"keepOfflinePlaceholder",
 									item,
 									payload,
 								)

@@ -1,7 +1,10 @@
 import { model } from "dkt/model.js";
+import { crdtReviewResolveTarget } from "../dkt/review/crdtReviewCommands";
 import {
+	reduceKeepOfflinePlaceholder,
 	reduceRenameResource,
 	reduceRequestAddToTimeline,
+	reduceResolveDanglingResourceByRelink,
 	reduceSetClipsRef,
 	reduceSetProjectRef,
 	reduceSetResourceAttrs,
@@ -281,6 +284,40 @@ export const Resource = model({
 				clips: ["<< clips", { method: "set_many" }],
 			},
 			fn: reduceSetClipsRef,
+		},
+		resolveDanglingResourceByRelink: {
+			to: {
+				url: ["url"],
+				status: ["status"],
+				source: ["source"],
+				data: ["data"],
+				crdtResolve: [crdtReviewResolveTarget],
+			},
+			fn: [
+				["$noop", "<<<<", "<< @all:clips"] as const,
+				(payload: unknown, noop: unknown, resource: unknown, clips: unknown) =>
+					reduceResolveDanglingResourceByRelink(payload, resource, clips) ??
+					noop,
+			],
+		},
+		keepOfflinePlaceholder: {
+			to: {
+				status: ["status"],
+				source: ["source"],
+				crdtResolve: [crdtReviewResolveTarget],
+			},
+			fn: [
+				["$noop", "<<<<", "<< @all:clips", "source"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					resource: unknown,
+					clips: unknown,
+					source: unknown,
+				) =>
+					reduceKeepOfflinePlaceholder(payload, resource, clips, source) ??
+					noop,
+			],
 		},
 	},
 });
