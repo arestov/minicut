@@ -1,17 +1,36 @@
-import {
-	affectedObjectFromConflict,
-	reviewItemIdForConflict,
-	sourceFromConflict,
-} from "../../reviewItemSource";
-import type { CrdtConflictRecord, MiniCutReviewItem } from "../../types";
+import type { CrdtConflictRecord } from "../../types";
+import { materializeDeleteVsEditReviewItem } from "./materializeDeleteVsEditReviewItem";
 
-const hasDeleteEditShape = (value: unknown): boolean =>
-	Boolean(
-		value &&
-			typeof value === "object" &&
-			("tombstone" in value || "deleted" in value) &&
-			("edit" in value || "edited" in value || "concurrent" in value),
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const hasDeleteEditShape = (value: unknown): boolean => {
+	if (!isRecord(value)) {
+		return false;
+	}
+	const hasDelete = isRecord(value.tombstone) || isRecord(value.deleted);
+	const hasEdit =
+		isRecord(value.edit) || isRecord(value.edited) || isRecord(value.concurrent);
+	return hasDelete && hasEdit;
+};
+
+const lifecycleRecordDescribesDeleteEdit = (value: unknown): boolean =>
+	isRecord(value) &&
+	(value.concurrent === "delete_edit" ||
+		value.conflict === "delete_edit" ||
+		value.reason === "delete_vs_edit" ||
+		hasDeleteEditShape(value));
+
+const lifecyclePayloadDescribesDeleteEdit = (value: unknown): boolean => {
+	if (!isRecord(value)) {
+		return false;
+	}
+	return Object.values(value).some((entry) =>
+		Array.isArray(entry)
+			? entry.some(lifecycleRecordDescribesDeleteEdit)
+			: lifecycleRecordDescribesDeleteEdit(entry),
 	);
+};
 
 export const deleteVsEditFeature = {
 	kind: "delete_vs_edit" as const,
@@ -21,41 +40,35 @@ export const deleteVsEditFeature = {
 		"preserveDeleteAndArchiveIncomingEdit",
 	],
 	canMaterialize(conflict: CrdtConflictRecord): boolean {
+		const kind = conflict.kind.toLowerCase();
+		if (
+			kind.includes("dangling") ||
+			kind.includes("track_order") ||
+			kind.includes("ordering")
+		) {
+			return false;
+		}
+		if (hasDeleteEditShape(conflict.payload)) {
+			return true;
+		}
+		if (
+			(kind.includes("delete") && kind.includes("edit")) ||
+			kind.includes("structural_delete_with_concurrent_activity")
+		) {
+			return true;
+		}
 		return (
-			conflict.kind.toLowerCase().includes("delete") ||
-			conflict.aggregate === "clipLifecycle" ||
-			hasDeleteEditShape(conflict.payload)
+			(conflict.aggregate === "clipLifecycle" ||
+				conflict.aggregate === "resourceLifecycle") &&
+			lifecyclePayloadDescribesDeleteEdit(conflict.payload)
 		);
 	},
-	materialize({
-		conflict,
-		projectId,
-	}: {
-		conflict: CrdtConflictRecord;
-		projectId: string;
-	}): MiniCutReviewItem {
-		return {
-			id: reviewItemIdForConflict(conflict.conflict_id),
-			conflictId: conflict.conflict_id,
-			projectId,
-			kind: "delete_vs_edit",
-			status: conflict.status,
-			title: "Deleted item was edited elsewhere",
-			affectedObjects: affectedObjectFromConflict(conflict),
-			preview: {
-				type: "delete_vs_edit",
-				conflictId: conflict.conflict_id,
-				payload: conflict.payload ?? null,
-				details: conflict.details ?? null,
-				variants: conflict.variants ?? null,
-			},
-			availableActions: [
-				"resolveDeleteVsEditByRestoreVariant",
-				"parkEditedVariantOnReviewTrack",
-				"preserveDeleteAndArchiveIncomingEdit",
-			],
-			source: sourceFromConflict(conflict),
-		};
-	},
+	materialize: materializeDeleteVsEditReviewItem,
 };
 
+export { materializeDeleteVsEditReviewItem };
+export type {
+	DeleteVsEditDeletedVariant,
+	DeleteVsEditEditedVariant,
+	DeleteVsEditPreview,
+} from "./deleteVsEditPreview";

@@ -18,7 +18,11 @@ import {
 	reduceMaterializeProjectCRDTConflictReview,
 	reduceMoveClipToTrackContext,
 	reduceMoveClipToTrackPayload,
+	reduceParkEditedVariantOnReviewTrack,
+	reducePreserveDeleteAndArchiveIncomingEdit,
+	reduceCommitDeleteVsEditRestoreVariant,
 	reduceRenameProject,
+	reduceResolveDeleteVsEditByRestoreVariant,
 	reduceRequestImportFiles,
 	reduceSetImportProgress,
 	reduceSetProjectDuration,
@@ -35,6 +39,7 @@ import {
 	reduceProjectPreviewClipSources,
 } from "../read-model/previewComps";
 import { RESOURCE_CREATION_SHAPE } from "./Resource";
+import { REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE } from "./ReviewArchiveEntry";
 import { REVIEW_ITEM_CREATION_SHAPE } from "./ReviewItem";
 import { REVIEW_SESSION_CREATION_SHAPE } from "./ReviewSession";
 import { TRACK_CREATION_SHAPE } from "./Track";
@@ -59,6 +64,7 @@ export const PROJECT_CREATION_SHAPE = {
 	rels: {
 		tracks: TRACK_CREATION_SHAPE,
 		resources: RESOURCE_CREATION_SHAPE,
+		reviewArchiveEntries: REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
 		reviewItems: REVIEW_ITEM_CREATION_SHAPE,
 		reviewSessions: REVIEW_SESSION_CREATION_SHAPE,
 	},
@@ -129,6 +135,7 @@ export const Project = model({
 			primaryVideoTrack: "lww",
 			primaryAudioTrack: "lww",
 			reviewItems: { sync: false, reason: "projection" },
+			reviewArchiveEntries: { sync: false, reason: "projection" },
 			reviewSessions: { sync: false, reason: "projection" },
 		},
 	},
@@ -288,6 +295,20 @@ export const Project = model({
 				rel_shape: {
 					many: true,
 					linking: "<< reviewItem << #",
+					role: "projection",
+				},
+			},
+		],
+		reviewArchiveEntries: [
+			"sel",
+			{
+				from: "$root.reviewArchiveEntry",
+				where: {
+					">projectId": ["=", "_node_id"],
+				},
+				rel_shape: {
+					many: true,
+					linking: "<< reviewArchiveEntry << #",
 					role: "projection",
 				},
 			},
@@ -906,5 +927,100 @@ export const Project = model({
 				fn: reduceAcceptParkedClipOnReviewTrack,
 			},
 		],
+		resolveDeleteVsEditByRestoreVariant: [
+			{
+				input_base_rel_shape: {
+					targetTrackId: {
+						any: true,
+						many: false,
+					},
+				},
+				to: {
+					clip: [
+						"<< clip << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
+					],
+					$output: ["$output"],
+				},
+				fn: [
+					["$noop", "<<<<", "<<<< $input_id:targetTrackId"] as const,
+					reduceResolveDeleteVsEditByRestoreVariant,
+				],
+			},
+			{
+				to: {
+					targetTracks: [
+						"<< tracks",
+						{ action: "acceptClipIfTarget", sub_flow: true },
+					],
+					crdtResolve: [crdtReviewResolveTarget],
+				},
+				fn: reduceCommitDeleteVsEditRestoreVariant,
+			},
+		],
+		parkEditedVariantOnReviewTrack: [
+			{
+				to: {
+					reviewTrack: [
+						"<< track << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
+						},
+					],
+					reviewTracks: [
+						"<< tracks",
+						{
+							method: "at_end",
+							can_use_refs: true,
+						},
+					],
+					parkedClip: [
+						"<< clip << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
+					],
+					crdtResolve: [crdtReviewResolveTarget],
+					$output: ["$output"],
+				},
+				fn: [
+					["$noop", "<<<<", "<< @all:tracks"] as const,
+					reduceParkEditedVariantOnReviewTrack,
+				],
+			},
+			{
+				to: ["<< tracks", { action: "acceptClipIfTarget", sub_flow: true }],
+				fn: reduceAcceptParkedClipOnReviewTrack,
+			},
+		],
+		preserveDeleteAndArchiveIncomingEdit: {
+			to: {
+				reviewArchiveEntry: [
+					"<< reviewArchiveEntry << #",
+					{
+						method: "at_end",
+						can_create: true,
+						can_hold_refs: true,
+						creation_shape: REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
+					},
+				],
+				crdtResolve: [crdtReviewResolveTarget],
+			},
+			fn: [
+				["$noop", "<<<<"] as const,
+				reducePreserveDeleteAndArchiveIncomingEdit,
+			],
+		},
 	},
 });

@@ -109,4 +109,59 @@ describe("review ConflictInspectorPanel", () => {
 			},
 		);
 	});
+
+	it("shows delete-vs-edit review actions without raw CRDT labels", async () => {
+		const item: MiniCutReviewItem = {
+			id: "review:delete",
+			conflictId: "conflict:delete",
+			projectId: "project:1",
+			kind: "delete_vs_edit",
+			status: "open",
+			title: "Deleted item was edited elsewhere",
+			affectedObjects: [{ type: "clip", id: "clip:deleted" }],
+			preview: {
+				type: "delete_vs_edit",
+				deletedVariant: { clipId: "clip:deleted" },
+				editedVariant: {
+					clipAttrs: {
+						name: "Edited remote clip",
+						targetTrackId: "track:main",
+						start: 2,
+						duration: 4,
+					},
+				},
+			},
+			availableActions: [
+				"resolveDeleteVsEditByRestoreVariant",
+				"parkEditedVariantOnReviewTrack",
+				"preserveDeleteAndArchiveIncomingEdit",
+			],
+			source: { conflictId: "conflict:delete" },
+		};
+		const onReviewAction = vi.fn();
+
+		render(
+			<ConflictInspectorPanel
+				item={item}
+				onReviewAction={onReviewAction}
+			/>,
+		);
+
+		await userEvent.click(
+			screen.getByRole("button", { name: "Restore edited variant" }),
+		);
+
+		expect(onReviewAction).toHaveBeenCalledWith(
+			"resolveDeleteVsEditByRestoreVariant",
+			item,
+			expect.objectContaining({
+				conflictId: "conflict:delete",
+				reviewItemId: "review:delete",
+				targetTrackId: "track:main",
+			}),
+		);
+		expect(screen.queryByText("$crdt:resolve")).not.toBeInTheDocument();
+		expect(screen.queryByText(/accept incoming/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/keep local/i)).not.toBeInTheDocument();
+	});
 });
