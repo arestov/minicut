@@ -149,4 +149,41 @@ describe("MiniCut CRDT relay convergence", () => {
 		);
 		pair.close();
 	});
+
+	it("does not send conflict resolution commands during late catch-up sync", async () => {
+		const pair = await createCrdtWorkerPair(pairOptions("room-late-sync-no-resolve"));
+
+		await pair.a.dispatch(pair.a.project, "renameProject", "Catch-up activity");
+		pair.a.flushOutbound();
+		await pair.waitForConvergence();
+
+		pair.transportB.requestSync("sync:late:no-resolve", {});
+		await pair.waitForConvergence();
+
+		const syncResponse = pair.transportB.received.find(
+			(message) =>
+				message.type === "crdt-sync-response" &&
+				message.requestId === "sync:late:no-resolve",
+		);
+		expect(syncResponse).toEqual(
+			expect.objectContaining({
+				type: "crdt-sync-response",
+				packet: expect.objectContaining({
+					payload: expect.objectContaining({
+						batches: expect.arrayContaining([
+							expect.objectContaining({
+								ops: expect.arrayContaining([
+									expect.objectContaining({ name: "title" }),
+								]),
+							}),
+						]),
+					}),
+				}),
+			}),
+		);
+		expect(JSON.stringify(syncResponse)).not.toMatch(
+			/\$crdt:(resolve|acknowledge)|resolve[A-Z]|acknowledgeReviewItem/,
+		);
+		pair.close();
+	});
 });
