@@ -808,6 +808,7 @@ export const reduceParkEditedVariantOnReviewTrack = (
 export const reducePreserveDeleteAndArchiveIncomingEdit = (
 	payload: unknown,
 	noop: unknown,
+	project: unknown,
 ) => {
 	const value = asObject<DeleteVsEditVariantActionPayload>(payload);
 	const conflictId = nonEmptyString(value?.conflictId);
@@ -818,20 +819,29 @@ export const reducePreserveDeleteAndArchiveIncomingEdit = (
 			asObject<{ clipId?: unknown }>(value?.deletedVariant)?.clipId,
 		);
 	const editedVariant = asObject(value?.editedVariant);
-	if (!conflictId || !reviewItemId || !sourceConflictClipId || !editedVariant) {
+	const projectId = getNodeId(project);
+	if (
+		!conflictId ||
+		!reviewItemId ||
+		!sourceConflictClipId ||
+		!editedVariant ||
+		!projectId
+	) {
 		return noop;
 	}
 	const archivedVariantId = `archive:${reviewItemId}:${sourceConflictClipId}`;
 	return {
-		reviewArchiveEntries: [
-			{
-				id: archivedVariantId,
+		reviewArchiveEntry: {
+			attrs: {
+				archiveEntryId: archivedVariantId,
 				conflictId,
 				reviewItemId,
+				projectId,
 				sourceConflictClipId,
 				editedVariant,
 			},
-		],
+			hold_ref_id: "deleteVsEditArchiveEntry",
+		},
 		crdtResolve: makeCrdtResolvePayload({
 			conflictId,
 			reviewItemId,

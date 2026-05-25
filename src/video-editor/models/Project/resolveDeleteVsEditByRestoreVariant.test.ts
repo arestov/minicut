@@ -101,18 +101,22 @@ describe("preserveDeleteAndArchiveIncomingEdit", () => {
 		const result = reducePreserveDeleteAndArchiveIncomingEdit(
 			payload,
 			Symbol("noop"),
+			{ _node_id: "project:1" },
 		);
 
 		expect(result).toMatchObject({
-			reviewArchiveEntries: [
-				{
-					id: "archive:review:conflict:delete-vs-edit:clip:deleted",
+			reviewArchiveEntry: {
+				attrs: {
+					archiveEntryId:
+						"archive:review:conflict:delete-vs-edit:clip:deleted",
 					conflictId: "conflict:delete-vs-edit",
 					reviewItemId: "review:conflict:delete-vs-edit",
+					projectId: "project:1",
 					sourceConflictClipId: "clip:deleted",
 					editedVariant: payload.editedVariant,
 				},
-			],
+				hold_ref_id: "deleteVsEditArchiveEntry",
+			},
 			crdtResolve: {
 				conflict_id: "conflict:delete-vs-edit",
 				decision: {

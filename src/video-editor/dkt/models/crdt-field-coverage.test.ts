@@ -4,6 +4,7 @@ import { Effect } from "../../models/Effect";
 import { MiniCutAppRoot } from "../../models/AppRoot";
 import { Project } from "../../models/Project";
 import { Resource } from "../../models/Resource";
+import { ReviewArchiveEntry } from "../../models/ReviewArchiveEntry";
 import { EditorSessionRoot } from "../../models/SessionRoot";
 import { Text } from "../../models/Text";
 import { Track } from "../../models/Track";
@@ -63,6 +64,7 @@ const MODEL_CASES: ModelCase[] = [
 				text: "projection",
 				effect: "projection",
 				reviewItem: "projection",
+				reviewArchiveEntry: "projection",
 				reviewSession: "projection",
 				activitySummary: "projection",
 			},
@@ -82,7 +84,6 @@ const MODEL_CASES: ModelCase[] = [
 				lastImportError: "pipeline",
 				activeImportTaskId: "effect-runtime",
 				previewFrame: "projection",
-				reviewArchiveEntries: "projection",
 				createdAt: "crdt",
 				updatedAt: "crdt",
 				autoCreateDefaultTracks: "bootstrap-only",
@@ -93,8 +94,25 @@ const MODEL_CASES: ModelCase[] = [
 				primaryVideoTrack: "crdt",
 				primaryAudioTrack: "crdt",
 				reviewItems: "projection",
+				reviewArchiveEntries: "projection",
 				reviewSessions: "projection",
 			},
+		},
+	},
+	{
+		name: "ReviewArchiveEntry",
+		model: ReviewArchiveEntry as unknown as Record<string, unknown>,
+		fields: {
+			attrs: {
+				archiveEntryId: "projection",
+				conflictId: "projection",
+				reviewItemId: "projection",
+				projectId: "projection",
+				sourceConflictClipId: "projection",
+				editedVariant: "projection",
+				createdAt: "projection",
+			},
+			rels: {},
 		},
 	},
 	{
@@ -300,7 +318,10 @@ describe("CRDT field coverage", () => {
 	it("declares collaborative and local model modes explicitly", () => {
 		for (const entry of MODEL_CASES) {
 			const mode = getCrdtBlock(entry.model)?.mode;
-			if (entry.name === "EditorSessionRoot") {
+			if (
+				entry.name === "EditorSessionRoot" ||
+				entry.name === "ReviewArchiveEntry"
+			) {
 				expect(mode, entry.name).toBe("local");
 				continue;
 			}

@@ -28,6 +28,10 @@ import { CLIP_CREATION_SHAPE, Clip } from "./Clip";
 import { EFFECT_CREATION_SHAPE, Effect } from "./Effect";
 import { PROJECT_CREATION_SHAPE, Project } from "./Project";
 import { RESOURCE_CREATION_SHAPE, Resource } from "./Resource";
+import {
+	REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
+	ReviewArchiveEntry,
+} from "./ReviewArchiveEntry";
 import { REVIEW_ITEM_CREATION_SHAPE, ReviewItem } from "./ReviewItem";
 import {
 	REVIEW_SESSION_CREATION_SHAPE,
@@ -55,6 +59,7 @@ const appProps = mergeDcl({
 		text: ["model", Text, { many: true }],
 		effect: ["model", Effect, { many: true }],
 		reviewItem: ["model", ReviewItem, { many: true }],
+		reviewArchiveEntry: ["model", ReviewArchiveEntry, { many: true }],
 		reviewSession: ["model", ReviewSession, { many: true }],
 		activitySummary: ["model", ActivitySummary, { many: true }],
 	},
@@ -85,6 +90,7 @@ const appProps = mergeDcl({
 			text: { sync: false, reason: "projection" },
 			effect: { sync: false, reason: "projection" },
 			reviewItem: { sync: false, reason: "projection" },
+			reviewArchiveEntry: { sync: false, reason: "projection" },
 			reviewSession: { sync: false, reason: "projection" },
 			activitySummary: { sync: false, reason: "projection" },
 		},
@@ -166,6 +172,17 @@ const appProps = mergeDcl({
 				},
 			],
 			fn: reduceCreateReviewItemModel,
+		},
+		createReviewArchiveEntryModel: {
+			to: [
+				"<< reviewArchiveEntry << #",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
+				},
+			],
+			fn: (payload: unknown) => payload,
 		},
 		createActivitySummaryModel: {
 			to: [

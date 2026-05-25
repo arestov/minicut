@@ -39,6 +39,7 @@ import {
 	reduceProjectPreviewClipSources,
 } from "../read-model/previewComps";
 import { RESOURCE_CREATION_SHAPE } from "./Resource";
+import { REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE } from "./ReviewArchiveEntry";
 import { REVIEW_ITEM_CREATION_SHAPE } from "./ReviewItem";
 import { REVIEW_SESSION_CREATION_SHAPE } from "./ReviewSession";
 import { TRACK_CREATION_SHAPE } from "./Track";
@@ -59,11 +60,11 @@ export const PROJECT_CREATION_SHAPE = {
 		"createdAt",
 		"updatedAt",
 		"autoCreateDefaultTracks",
-		"reviewArchiveEntries",
 	],
 	rels: {
 		tracks: TRACK_CREATION_SHAPE,
 		resources: RESOURCE_CREATION_SHAPE,
+		reviewArchiveEntries: REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
 		reviewItems: REVIEW_ITEM_CREATION_SHAPE,
 		reviewSessions: REVIEW_SESSION_CREATION_SHAPE,
 	},
@@ -127,7 +128,6 @@ export const Project = model({
 			lastImportError: { sync: false, reason: "pipeline" },
 			activeImportTaskId: { sync: false, reason: "effect-runtime" },
 			previewFrame: { sync: false, reason: "projection" },
-			reviewArchiveEntries: { sync: false, reason: "projection" },
 		},
 		rels: {
 			tracks: "sequence",
@@ -135,6 +135,7 @@ export const Project = model({
 			primaryVideoTrack: "lww",
 			primaryAudioTrack: "lww",
 			reviewItems: { sync: false, reason: "projection" },
+			reviewArchiveEntries: { sync: false, reason: "projection" },
 			reviewSessions: { sync: false, reason: "projection" },
 		},
 	},
@@ -165,7 +166,6 @@ export const Project = model({
 			{ aggregate: { name: "importPipeline", as: "activeImportTaskId" } },
 		],
 		previewFrame: ["input", null],
-		reviewArchiveEntries: ["input", []],
 		createdAt: ["input", 0],
 		updatedAt: ["input", 0],
 		autoCreateDefaultTracks: ["input", false],
@@ -295,6 +295,20 @@ export const Project = model({
 				rel_shape: {
 					many: true,
 					linking: "<< reviewItem << #",
+					role: "projection",
+				},
+			},
+		],
+		reviewArchiveEntries: [
+			"sel",
+			{
+				from: "$root.reviewArchiveEntry",
+				where: {
+					">projectId": ["=", "_node_id"],
+				},
+				rel_shape: {
+					many: true,
+					linking: "<< reviewArchiveEntry << #",
 					role: "projection",
 				},
 			},
@@ -992,11 +1006,19 @@ export const Project = model({
 		],
 		preserveDeleteAndArchiveIncomingEdit: {
 			to: {
-				reviewArchiveEntries: ["reviewArchiveEntries"],
+				reviewArchiveEntry: [
+					"<< reviewArchiveEntry << #",
+					{
+						method: "at_end",
+						can_create: true,
+						can_hold_refs: true,
+						creation_shape: REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
+					},
+				],
 				crdtResolve: [crdtReviewResolveTarget],
 			},
 			fn: [
-				["$noop"] as const,
+				["$noop", "<<<<"] as const,
 				reducePreserveDeleteAndArchiveIncomingEdit,
 			],
 		},
