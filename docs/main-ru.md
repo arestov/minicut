@@ -312,6 +312,10 @@ rels: {
 
 Пример: `["<< clips", { method: "at_end", can_use_refs: true }]` добавляет ref в rel через previously held ref.
 
+- [CRDT Relation Method Mapping](</D:/code/linkcraft/dkt/docs/crdt/crdt-relation-method-mapping.md>) - reference по тому, как `action.to` rel target `method` превращается в domain relation update и CRDT op. Для user edits предпочитай semantic methods (`at_end`, `without`, `insert_after_id`, `insert_before_id`, `replace`) вместо грубых `set_many`/`set_one`, потому что они точнее выражают intent, stable anchors и conflict context.
+
+Пример: reorder/move клипа лучше писать как `["<< clips", { method: "insert_after_id" }]` с payload `{ id: previousClipIdOrNull, value: clipRef }`; `set_many` оставлять для import/restore/repair full list.
+
 - [Flow transaction boundary guide](</D:/code/linkcraft/dkt/docs/internal/flow-transaction-boundary-guide.md>) - как выбирать `input`, `nextTick`, `scheduleFollowupTransaction`, `planSequence`, чтобы не создавать второй action/queue system.
 
 Пример: CRDT sync recap должен идти как ordered follow-up transaction, а не как произвольный `dispatch` из callback-а.
