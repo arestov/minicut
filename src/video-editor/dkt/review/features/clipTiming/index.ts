@@ -49,3 +49,8 @@ export {
 	extractClipTimingPreview,
 	parseClipTimingVariant,
 } from "./clipTimingPreview";
+export type {
+	ClipTimingField,
+	ClipTimingPreview,
+	ClipTimingVariant,
+} from "./clipTimingPreview";

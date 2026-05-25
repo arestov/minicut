@@ -13,23 +13,12 @@ import {
 	reduceSetTrackProject,
 	reduceSetTrackLocked,
 	reduceSetTrackMuted,
-	reduceSetTrackPreviewEnabled,
 	reduceSplitClipAt,
 } from "./Track/actions";
 import { reduceTrackAppendStart } from "./Track/comps";
 
 export const TRACK_CREATION_SHAPE = {
-	attrs: [
-		"kind",
-		"name",
-		"muted",
-		"locked",
-		"isVisible",
-		"height",
-		"trackRole",
-		"enabled",
-		"visibleInPreview",
-	],
+	attrs: ["kind", "name", "muted", "locked", "enabled", "isVisible", "height"],
 	rels: {
 		project: {},
 	},
@@ -52,11 +41,9 @@ export const Track = model({
 			name: "lww",
 			muted: "lww",
 			locked: "lww",
+			enabled: "lww",
 			isVisible: "lww",
 			height: "lww",
-			trackRole: "lww",
-			enabled: "lww",
-			visibleInPreview: "lww",
 			trackDuration: { sync: false, reason: "projection" },
 			clipCount: { sync: false, reason: "projection" },
 		},
@@ -70,11 +57,9 @@ export const Track = model({
 		name: ["input", "Track"],
 		muted: ["input", false],
 		locked: ["input", false],
+		enabled: ["input", true],
 		isVisible: ["input", true],
 		height: ["input", 84],
-		trackRole: ["input", "normal"],
-		enabled: ["input", true],
-		visibleInPreview: ["input", true],
 		trackDuration: ["input", 0],
 		clipCount: ["input", 0],
 		appendStart: [
@@ -84,24 +69,11 @@ export const Track = model({
 		],
 		laneRenderState: [
 			"comp",
-			["muted", "locked", "isVisible", "enabled", "visibleInPreview", "trackRole"],
-			(
-				muted: unknown,
-				locked: unknown,
-				isVisible: unknown,
-				enabled: unknown,
-				visibleInPreview: unknown,
-				trackRole: unknown,
-			) => ({
+			["muted", "locked", "isVisible"],
+			(muted: unknown, locked: unknown, isVisible: unknown) => ({
 				muted: muted === true,
 				locked: locked === true,
 				isVisible: isVisible !== false,
-				enabled: enabled !== false,
-				visibleInPreview: visibleInPreview !== false,
-				trackRole:
-					trackRole === "incomingReview" || trackRole === "currentReview"
-						? trackRole
-						: "normal",
 			}),
 		],
 	},
@@ -162,17 +134,6 @@ export const Track = model({
 				["$noop"] as const,
 				(payload: unknown, noop: unknown) =>
 					reduceSetTrackLocked(payload) ?? noop,
-			],
-		},
-		setTrackPreviewEnabled: {
-			to: {
-				enabled: ["enabled"],
-				visibleInPreview: ["visibleInPreview"],
-			},
-			fn: [
-				["$noop"] as const,
-				(payload: unknown, noop: unknown) =>
-					reduceSetTrackPreviewEnabled(payload) ?? noop,
 			],
 		},
 		addClip: {
