@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	reduceCommitDeleteVsEditRestoreVariant,
 	reducePreserveDeleteAndArchiveIncomingEdit,
 	reduceResolveDeleteVsEditByRestoreVariant,
 } from "./actions";
@@ -46,16 +47,19 @@ describe("resolveDeleteVsEditByRestoreVariant", () => {
 				},
 				hold_ref_id: "restoredDeleteVsEditClip",
 			},
-			targetTrackClips: { use_ref_id: "restoredDeleteVsEditClip" },
-			crdtResolve: {
-				conflict_id: "conflict:delete-vs-edit",
-				decision: {
-					action: "resolveDeleteVsEditByRestoreVariant",
-					domain_result: {
-						type: "deleted_variant_restored",
-						restoredClipId: { use_ref_id: "restoredDeleteVsEditClip" },
-						targetTrackId: "track:main",
-						sourceConflictClipId: "clip:deleted",
+			$output: {
+				clip: { use_ref_id: "restoredDeleteVsEditClip" },
+				targetTrack: { _node_id: "track:main" },
+				crdtResolve: {
+					conflict_id: "conflict:delete-vs-edit",
+					decision: {
+						action: "resolveDeleteVsEditByRestoreVariant",
+						domain_result: {
+							type: "deleted_variant_restored",
+							restoredClipId: { use_ref_id: "restoredDeleteVsEditClip" },
+							targetTrackId: "track:main",
+							sourceConflictClipId: "clip:deleted",
+						},
 					},
 				},
 			},
@@ -73,6 +77,22 @@ describe("resolveDeleteVsEditByRestoreVariant", () => {
 				{ _node_id: "track:main" },
 			),
 		).toBe(noop);
+	});
+
+	it("links the restored clip before forwarding CRDT resolve", () => {
+		expect(
+			reduceCommitDeleteVsEditRestoreVariant({
+				clip: { _node_id: "clip:restored" },
+				targetTrack: { _node_id: "track:main" },
+				crdtResolve: { conflict_id: "conflict:delete-vs-edit" },
+			}),
+		).toEqual({
+			targetTracks: {
+				clip: { _node_id: "clip:restored" },
+				targetTrack: { _node_id: "track:main" },
+			},
+			crdtResolve: { conflict_id: "conflict:delete-vs-edit" },
+		});
 	});
 });
 

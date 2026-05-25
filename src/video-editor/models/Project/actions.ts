@@ -698,19 +698,38 @@ export const reduceResolveDeleteVsEditByRestoreVariant = (
 			},
 			hold_ref_id: "restoredDeleteVsEditClip",
 		},
-		targetTrackClips: { use_ref_id: "restoredDeleteVsEditClip" },
-		crdtResolve: makeCrdtResolvePayload({
-			conflictId,
-			reviewItemId,
-			action: "resolveDeleteVsEditByRestoreVariant",
-			domainResult: {
-				type: "deleted_variant_restored",
-				restoredClipId: { use_ref_id: "restoredDeleteVsEditClip" },
-				targetTrackId,
-				sourceConflictClipId,
-				restoredAttrs,
-			},
-		}),
+		$output: {
+			clip: { use_ref_id: "restoredDeleteVsEditClip" },
+			targetTrack,
+			crdtResolve: makeCrdtResolvePayload({
+				conflictId,
+				reviewItemId,
+				action: "resolveDeleteVsEditByRestoreVariant",
+				domainResult: {
+					type: "deleted_variant_restored",
+					restoredClipId: { use_ref_id: "restoredDeleteVsEditClip" },
+					targetTrackId,
+					sourceConflictClipId,
+					restoredAttrs,
+				},
+			}),
+		},
+	};
+};
+
+export const reduceCommitDeleteVsEditRestoreVariant = (payload: unknown) => {
+	const value = asObject<{
+		clip?: unknown;
+		rels?: { clip?: unknown; targetTrack?: unknown };
+		targetTrack?: unknown;
+		crdtResolve?: unknown;
+	}>(payload);
+	return {
+		targetTracks: {
+			clip: value?.clip ?? value?.rels?.clip,
+			targetTrack: value?.targetTrack ?? value?.rels?.targetTrack,
+		},
+		crdtResolve: value?.crdtResolve,
 	};
 };
 

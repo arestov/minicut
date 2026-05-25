@@ -82,6 +82,7 @@ const MODEL_CASES: ModelCase[] = [
 				lastImportError: "pipeline",
 				activeImportTaskId: "effect-runtime",
 				previewFrame: "projection",
+				reviewArchiveEntries: "projection",
 				createdAt: "crdt",
 				updatedAt: "crdt",
 				autoCreateDefaultTracks: "bootstrap-only",

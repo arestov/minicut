@@ -20,6 +20,7 @@ import {
 	reduceMoveClipToTrackPayload,
 	reduceParkEditedVariantOnReviewTrack,
 	reducePreserveDeleteAndArchiveIncomingEdit,
+	reduceCommitDeleteVsEditRestoreVariant,
 	reduceRenameProject,
 	reduceResolveDeleteVsEditByRestoreVariant,
 	reduceRequestImportFiles,
@@ -126,7 +127,7 @@ export const Project = model({
 			lastImportError: { sync: false, reason: "pipeline" },
 			activeImportTaskId: { sync: false, reason: "effect-runtime" },
 			previewFrame: { sync: false, reason: "projection" },
-			reviewArchiveEntries: { sync: false, reason: "review-projection" },
+			reviewArchiveEntries: { sync: false, reason: "projection" },
 		},
 		rels: {
 			tracks: "sequence",
@@ -912,37 +913,42 @@ export const Project = model({
 				fn: reduceAcceptParkedClipOnReviewTrack,
 			},
 		],
-		resolveDeleteVsEditByRestoreVariant: {
-			input_base_rel_shape: {
-				targetTrackId: {
-					any: true,
-					many: false,
+		resolveDeleteVsEditByRestoreVariant: [
+			{
+				input_base_rel_shape: {
+					targetTrackId: {
+						any: true,
+						many: false,
+					},
 				},
-			},
-			to: {
-				clip: [
-					"<< clip << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: CLIP_CREATION_SHAPE,
-					},
+				to: {
+					clip: [
+						"<< clip << #",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
+					],
+					$output: ["$output"],
+				},
+				fn: [
+					["$noop", "<<<<", "<<<< $input_id:targetTrackId"] as const,
+					reduceResolveDeleteVsEditByRestoreVariant,
 				],
-				targetTrackClips: [
-					"<<<< $input_id:targetTrackId.clips",
-					{
-						method: "at_end",
-						can_use_refs: true,
-					},
-				],
-				crdtResolve: [crdtReviewResolveTarget],
 			},
-			fn: [
-				["$noop", "<<<<", "<<<< $input_id:targetTrackId"] as const,
-				reduceResolveDeleteVsEditByRestoreVariant,
-			],
-		},
+			{
+				to: {
+					targetTracks: [
+						"<< tracks",
+						{ action: "acceptClipIfTarget", sub_flow: true },
+					],
+					crdtResolve: [crdtReviewResolveTarget],
+				},
+				fn: reduceCommitDeleteVsEditRestoreVariant,
+			},
+		],
 		parkEditedVariantOnReviewTrack: [
 			{
 				to: {
