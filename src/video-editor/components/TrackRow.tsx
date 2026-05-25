@@ -45,6 +45,11 @@ export const TrackLabel = () => {
 			: trackAttrs.trackRole === "currentReview"
 				? "Current Review"
 				: null;
+	const previewToggleLabel = isPreviewEnabled
+		? roleLabel
+			? "Preview enabled"
+			: "Track visible"
+		: "Preview disabled";
 
 	return (
 		<div
@@ -92,9 +97,7 @@ export const TrackLabel = () => {
 				<IconButton
 					type="button"
 					icon={isPreviewEnabled ? Eye : EyeOff}
-					label={
-						isPreviewEnabled ? "Preview enabled" : "Preview disabled"
-					}
+					label={previewToggleLabel}
 					variant={isPreviewEnabled ? "ghost" : "secondary"}
 					onClick={() =>
 						dispatch("setTrackPreviewEnabled", {
