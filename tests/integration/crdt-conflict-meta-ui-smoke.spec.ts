@@ -1,5 +1,4 @@
 import { expect, test, type Page } from '@playwright/test'
-import path from 'node:path'
 
 // This spec injects conflict meta to smoke-test UI rendering only.
 // It does not prove real CRDT conflict generation or propagation.
@@ -187,105 +186,12 @@ const readIndexedDbManifest = async (page: Page, dbName: string) =>
 		})
 	}, dbName)
 
-const waitForRuntimeSettled = async (page: Page) => {
-	await page.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.())
-}
-
-const waitForActiveProject = async (page: Page, title?: string) => {
-	await page.waitForFunction(() => {
-		const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.()
-		return typeof details?.projectId === 'string' && details.projectId.length > 0
-	})
-	if (title) {
-		await expect.poll(async () => page.evaluate(() => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.()), {
-			timeout: 20_000,
-		}).toMatchObject({ title })
-	}
-}
-
-const waitForFixtureClip = async (page: Page) => {
-	await expect
-		.poll(
-			async () =>
-				page.evaluate(() => {
-					const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() as {
-						tracks?: Array<{ clips?: Array<{ name?: unknown; mediaKind?: unknown }> }>
-					} | null
-					return (
-						details?.tracks?.some((track) =>
-							track.clips?.some((clip) => clip.mediaKind === 'video' || clip.name === 'fixture-video.webm'),
-						) ?? false
-					)
-				}),
-			{ timeout: 20_000 },
-		)
-		.toBe(true)
-}
-
 const createProjectViaDebug = async (page: Page, title: string) => {
 	await page.evaluate(async (projectTitle) => {
 		const debug = window.__MINICUT_P2P_DEBUG__
 		if (!debug?.dispatchCreateProject) throw new Error('MiniCut debug bridge is unavailable')
 		await debug.dispatchCreateProject(projectTitle)
 	}, title)
-}
-
-const importFixtureVideo = async (page: Page) => {
-	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
-	await expect(page.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible({ timeout: 20_000 })
-}
-
-const openFirstClipConflictInspector = async (page: Page) => {
-	const badge = page.locator('.clip-conflict-badge').first()
-	await expect(badge).toBeVisible({ timeout: 20_000 })
-	await badge.evaluate((element) => (element as HTMLButtonElement).click())
-	return page.getByRole('region', { name: 'Conflict inspector' })
-}
-
-const expectNoConflictBadges = async (page: Page) => {
-	await expect(page.locator('.clip-conflict-badge')).toHaveCount(0)
-}
-
-const expectFirstConflictBadge = async (page: Page) => {
-	await expect(page.locator('.clip-conflict-badge').first()).toBeVisible({ timeout: 20_000 })
-}
-
-type InjectConflictOptions = {
-	timing?: boolean
-	summary?: string
-}
-
-const injectFirstClipConflict = async (page: Page, options: InjectConflictOptions = {}) =>
-	page.evaluate(async (conflictOptions) => {
-		const debug = window.__MINICUT_P2P_DEBUG__
-		if (!debug?.injectFirstClipConflictTesting) throw new Error('Conflict injector is unavailable')
-		return debug.injectFirstClipConflictTesting(conflictOptions)
-	}, options)
-
-const injectFirstClipConflictUntilBadge = async (page: Page, options: InjectConflictOptions = {}) => {
-	let fixture: unknown = null
-	await expect
-		.poll(
-			async () => {
-				fixture = await injectFirstClipConflict(page, options)
-				return page.locator('.clip-conflict-badge').count()
-			},
-			{ timeout: 20_000, intervals: [100, 250, 500] },
-		)
-		.toBeGreaterThan(0)
-	return fixture
-}
-
-const setupClipProject = async (page: Page, title: string) => {
-	const roomId = `clip-project-${Date.now()}-${Math.random().toString(36).slice(2)}`
-	await enableDebugBridge(page)
-	await page.goto(`/#/${roomId}`)
-	await waitForDebugBridge(page)
-	await createProjectViaDebug(page, title)
-	await waitForRuntimeSettled(page)
-	await importFixtureVideo(page)
-	await waitForRuntimeSettled(page)
-	await waitForFixtureClip(page)
 }
 
 test.describe('CRDT UI E2E', () => {
@@ -422,94 +328,4 @@ test.describe('CRDT UI E2E', () => {
 		await inspector.close()
 	})
 
-	test('@crdt-conflict shows timing conflict, failed resolution, and cleared resolution', async ({ page }) => {
-		await setupClipProject(page, `CRDT conflict ${Date.now()}`)
-		const fixture = await injectFirstClipConflictUntilBadge(page, {
-			timing: true,
-			summary: 'Duration has concurrent edits',
-		})
-		const inspector = await openFirstClipConflictInspector(page)
-		await expect(inspector.getByText('Duration has concurrent edits')).toBeVisible()
-		await expect(inspector.getByText(/Timing conflict.*clipTiming/)).toBeVisible()
-
-		await inspector.getByLabel('Duration').fill('0')
-		await inspector.getByRole('button', { name: 'Resolve timing' }).click()
-		await page.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.injectFirstClipResolutionErrorTesting?.())
-		await expect(inspector.getByText('Duration must be greater than 0')).toBeVisible()
-		await expect(inspector.getByText('duration_must_be_positive')).toBeVisible()
-		await expect(inspector.getByRole('button', { name: 'Resolve timing' })).toBeEnabled()
-
-		await inspector.getByLabel('Duration').fill('3')
-		await inspector.getByRole('button', { name: 'Resolve timing' }).click()
-		await page.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.clearFirstClipConflictTesting?.())
-		await expectNoConflictBadges(page)
-		expect((fixture as { conflictId?: unknown }).conflictId).toContain('timing:playwright')
-	})
-
-	test('@crdt-conflict syncs controlled conflict UX across two room tabs', async ({ context }) => {
-		const firstPage = await context.newPage()
-		const secondPage = await context.newPage()
-		const roomId = `two-tab-room-${Date.now()}`
-		await Promise.all([enableDebugBridge(firstPage), enableDebugBridge(secondPage)])
-		await Promise.all([firstPage.goto(`/#/${roomId}`), secondPage.goto(`/#/${roomId}`)])
-		await Promise.all([waitForDebugBridge(firstPage), waitForDebugBridge(secondPage)])
-
-		const [firstStorage, secondStorage] = await Promise.all([
-			waitForStorageSnapshot(firstPage, roomId),
-			waitForStorageSnapshot(secondPage, roomId),
-		])
-		for (const storage of [firstStorage, secondStorage]) {
-			expect((storage.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
-			const storageOpen = (storage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown } } } | null)?.crdt?.storageOpen
-			if (storageOpen) {
-				expect(storageOpen).toMatchObject({
-					manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
-				})
-			}
-		}
-		const firstWorkspaceId = (firstStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId
-		const secondWorkspaceId = (secondStorage.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown } } } } | null)?.crdt?.storageOpen?.manifest?.workspaceId
-		if (firstWorkspaceId || secondWorkspaceId) {
-			expect(firstWorkspaceId).toBe(secondWorkspaceId)
-		}
-
-		const title = `CRDT two tab ${Date.now()}`
-		await createProjectViaDebug(firstPage, title)
-		await waitForRuntimeSettled(firstPage)
-		await waitForRuntimeSettled(secondPage)
-		await importFixtureVideo(firstPage)
-		await waitForRuntimeSettled(firstPage)
-		await waitForRuntimeSettled(secondPage)
-
-		await expect(secondPage.getByLabel('Media bin').locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible({ timeout: 20_000 })
-		await Promise.all([
-			injectFirstClipConflictUntilBadge(firstPage, { timing: true }),
-			injectFirstClipConflictUntilBadge(secondPage, { timing: true }),
-		])
-
-		await openFirstClipConflictInspector(firstPage)
-		await openFirstClipConflictInspector(secondPage)
-		await firstPage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.clearFirstClipConflictTesting?.())
-		await secondPage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.clearFirstClipConflictTesting?.())
-
-		await expectNoConflictBadges(firstPage)
-		await expectNoConflictBadges(secondPage)
-	})
-
-	test('@crdt-conflict reloads the CRDT test harness and keeps debug UX usable', async ({ page }) => {
-		const title = `CRDT reload ${Date.now()}`
-		await setupClipProject(page, title)
-		await injectFirstClipConflictUntilBadge(page, { timing: true })
-		await expectFirstConflictBadge(page)
-
-		await page.reload()
-		await waitForDebugBridge(page)
-		const reloadedTitle = `CRDT reload after ${Date.now()}`
-		await createProjectViaDebug(page, reloadedTitle)
-		await waitForActiveProject(page, reloadedTitle)
-		await importFixtureVideo(page)
-		await waitForFixtureClip(page)
-		await injectFirstClipConflictUntilBadge(page, { timing: true })
-		await expectFirstConflictBadge(page)
-	})
 })

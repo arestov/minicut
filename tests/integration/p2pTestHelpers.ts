@@ -347,12 +347,32 @@ export const closePeerHandles = async (...handles: Array<PeerHandle | null | und
 }
 
 export const waitForRolePair = async (firstPage: Page, secondPage: Page): Promise<void> => {
-	await expect.poll(async () => {
-		const roles = await Promise.all([getRole(firstPage), getRole(secondPage)])
-		return roles.includes('server') && roles.includes('client')
-	}, {
-		timeout: 20_000,
-	}).toBe(true)
+	let lastRoles: Array<'server' | 'client' | 'undecided' | null> = []
+	try {
+		await expect.poll(async () => {
+			const roles = await Promise.all([getRole(firstPage), getRole(secondPage)])
+			lastRoles = roles
+			return roles.includes('server') && roles.includes('client')
+		}, {
+			timeout: 20_000,
+		}).toBe(true)
+	} catch (error) {
+		const artifactPath = await writeP2PDebugArtifacts(
+			'role-pair-timeout',
+			firstPage,
+			secondPage,
+		).catch((artifactError: unknown) =>
+			`<failed to write debug artifact: ${
+				artifactError instanceof Error
+					? artifactError.message
+					: String(artifactError)
+			}>`,
+		)
+		throw new Error(
+			`Timed out waiting for P2P server/client role pair. Last roles: ${JSON.stringify(lastRoles)} Debug artifact: ${artifactPath}`,
+			{ cause: error },
+		)
+	}
 }
 
 export const waitForProjectCountSync = async (firstPage: Page, secondPage: Page): Promise<number> => {

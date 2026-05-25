@@ -62,17 +62,18 @@ The Playwright CRDT profile starts Vite with `VITE_MINICUT_ENABLE_CRDT_TEST_HARN
 npm run test:integration:crdt
 ```
 
-This profile checks:
+This profile checks browser CRDT storage and debug-harness boot semantics:
 
 - CRDT harness boot with IndexedDB storage;
 - deterministic room bookmark -> workspace/db resolution across reloads;
-- ClipConflictBadge -> project Review panel;
-- invalid timing resolve -> durable-style error meta rendered in the inspector;
-- valid clear -> conflict badge disappears;
 - reset clears the selected room workspace DB without touching another room workspace DB;
 - newer/incompatible storage open policy failures surface a user-facing harness error;
-- controlled two-tab conflict UX;
 - browser reload of the CRDT test harness.
+
+Natural browser conflict UX coverage belongs to the P2P Playwright profile, where
+the test can use the real signaling backend, role election, network partitioning,
+and user actions to produce CRDT conflicts. The browser CRDT profile must not
+create integration conflicts through debug injection.
 
 The browser reload test intentionally does not claim durable restore of a specific MiniCut project. Durable app-state restore is proven in runtime/storage tests. A product browser E2E for project restore, offline, rejoin, and real multi-peer transport belongs to a future app-level CRDT session runtime, not to the current production worker bridge.
 
