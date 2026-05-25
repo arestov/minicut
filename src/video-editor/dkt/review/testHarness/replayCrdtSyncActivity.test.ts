@@ -39,4 +39,39 @@ describe("replay CRDT sync activity", () => {
 			{ type: "clip", id: "clip:1", label: "start" },
 		]);
 	});
+
+	it("keeps rejected sync activity separate from conflict review items", () => {
+		const result = replayCrdtReviewEvents({
+			projectId: "project:1",
+			syncPayloads: [
+				{
+					...syncBatchFixture,
+					created_models: [],
+					ops: [],
+					rejected_ops: [
+						{
+							op_id: "op:rejected",
+							node_id: "clip:1",
+							model_name: "clip",
+							field_name: "duration",
+						},
+					],
+				},
+			],
+		});
+
+		expect(result.items).toEqual([]);
+		expect(result.activitySummaries).toEqual([
+			expect.objectContaining({
+				updated: [
+					{
+						type: "clip",
+						id: "clip:1",
+						label: "duration",
+						status: "rejected",
+					},
+				],
+			}),
+		]);
+	});
 });
