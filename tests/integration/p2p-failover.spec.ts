@@ -14,6 +14,7 @@ import {
 	waitForProjectCountSync,
 	waitForRolePair,
 	waitForRuntimeReady,
+	writeP2PDebugArtifactsMany,
 } from './p2pTestHelpers'
 
 test('p2p failover keeps room writable and admits new peers', async ({ browser }) => {
@@ -93,6 +94,37 @@ test('p2p survives two consecutive leader failovers across three peers', async (
 	try {
 		await Promise.all(peers.map(({ page }) => waitForP2PDebugState(page)))
 
+		const writeActiveArtifacts = (label: string) =>
+			writeP2PDebugArtifactsMany(label, activePeers.map((peer, index) => ({
+				label: `peer-${index + 1}`,
+				page: peer.page,
+			})))
+
+		const expectActivePeersContainTitle = async (
+			label: string,
+			handles: typeof peers,
+			expectedTitle: string,
+		): Promise<void> => {
+			try {
+				await Promise.all(handles.map(async ({ page }) => {
+					await waitForRuntimeReady(page)
+					await expectProjectTitlesContain(page, [expectedTitle])
+				}))
+			} catch (error) {
+				const artifactPath = await writeActiveArtifacts(label).catch((artifactError: unknown) =>
+					`<failed to write debug artifact: ${
+						artifactError instanceof Error
+							? artifactError.message
+							: String(artifactError)
+					}>`,
+				)
+				throw new Error(
+					`Timed out waiting for ${expectedTitle} across active P2P peers. Debug artifact: ${artifactPath}`,
+					{ cause: error },
+				)
+			}
+		}
+
 		const splitPeersByRole = async (handles: typeof peers): Promise<{ server: typeof peers[number]; clients: typeof peers }> => {
 			await expect.poll(async () => {
 				const roles = await Promise.all(handles.map(({ page }) => getRole(page)))
@@ -111,17 +143,14 @@ test('p2p survives two consecutive leader failovers across three peers', async (
 
 		let active = await splitPeersByRole(activePeers)
 		await createProject(active.server.page, titles[0])
-		await Promise.all(active.clients.map(({ page }) => expectProjectTitlesContain(page, [titles[0]])))
+		await expectActivePeersContainTitle('three-peer-epoch-1-sync-timeout', activePeers, titles[0])
 
 		await active.server.context.close()
 		activePeers = active.clients
 		active = await splitPeersByRole(activePeers)
 		await waitForRuntimeReady(active.server.page)
 		await createProjectEventually(active.server.page, titles[1])
-		await Promise.all(active.clients.map(async ({ page }) => {
-			await waitForRuntimeReady(page)
-			await expectProjectTitlesContain(page, [titles[1]])
-		}))
+		await expectActivePeersContainTitle('three-peer-epoch-2-sync-timeout', activePeers, titles[1])
 
 		await active.server.context.close()
 		activePeers = active.clients

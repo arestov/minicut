@@ -100,6 +100,16 @@ export const writeP2PDebugArtifacts = async (
 	firstPage: Page,
 	secondPage: Page,
 ): Promise<string> => {
+	return writeP2PDebugArtifactsMany(label, [
+		{ label: 'first', page: firstPage },
+		{ label: 'second', page: secondPage },
+	])
+}
+
+export const writeP2PDebugArtifactsMany = async (
+	label: string,
+	peers: Array<{ label: string; page: Page }>,
+): Promise<string> => {
 	const dir = path.join('test-results', 'p2p-debug')
 	await mkdir(dir, { recursive: true })
 	const baseName =
@@ -109,28 +119,23 @@ export const writeP2PDebugArtifacts = async (
 		`${baseName}.json`,
 	)
 	const tracePath = path.join(dir, `${baseName}.trace.ndjson`)
-	const [first, second] = await Promise.all([
-		readP2PDeepDebugState(firstPage).catch((error: unknown) => ({
+	const states = await Promise.all(peers.map(async (peer) => ({
+		label: peer.label,
+		state: await readP2PDeepDebugState(peer.page).catch((error: unknown) => ({
 			error: error instanceof Error ? error.stack || error.message : String(error),
 		})),
-		readP2PDeepDebugState(secondPage).catch((error: unknown) => ({
-			error: error instanceof Error ? error.stack || error.message : String(error),
-		})),
-	])
-	const firstTrace = Array.isArray((first as { p2pTrace?: unknown })?.p2pTrace)
-		? ((first as { p2pTrace: unknown[] }).p2pTrace)
-		: []
-	const secondTrace = Array.isArray((second as { p2pTrace?: unknown })?.p2pTrace)
-		? ((second as { p2pTrace: unknown[] }).p2pTrace)
-		: []
-	const traceLines = [
-		...firstTrace.map((entry) => ({ peer: 'first', entry })),
-		...secondTrace.map((entry) => ({ peer: 'second', entry })),
-	]
+	})))
+	const traceLines = states.flatMap(({ label: peerLabel, state }) => {
+		const trace = Array.isArray((state as { p2pTrace?: unknown })?.p2pTrace)
+			? ((state as { p2pTrace: unknown[] }).p2pTrace)
+			: []
+		return trace.map((entry) => ({ peer: peerLabel, entry }))
+	})
+	const payload = Object.fromEntries(states.map(({ label: peerLabel, state }) => [peerLabel, state]))
 	await Promise.all([
 		writeFile(
 			filePath,
-			`${JSON.stringify({ first, second, tracePath }, null, 2)}\n`,
+			`${JSON.stringify({ peers: payload, tracePath }, null, 2)}\n`,
 			'utf8',
 		),
 		writeFile(
