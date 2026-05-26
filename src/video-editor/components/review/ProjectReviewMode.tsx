@@ -320,15 +320,19 @@ const ProjectReviewContent = ({
 						onSelectReviewItem={(item) => setSelectedItemId(item.id)}
 						onClose={() => setIsOpen(false)}
 						onAcknowledgeReviewItem={(item) =>
-							runtime.dispatchAction("acknowledgeReviewItem", {
-								conflict_id: item.conflictId,
-								review_item_id: item.id,
-							})
+							runtime.dispatch(
+								"acknowledgeReviewItem",
+								{
+									conflict_id: item.conflictId,
+									review_item_id: item.id,
+								},
+								null,
+							)
 						}
 						onReviewAction={(actionId, item, payload) => {
 							const actionScope = reviewActionScopeForItem(item, actionId);
 							if (!actionScope) return;
-							runtime.dispatchAction(
+							runtime.dispatch(
 								actionId,
 								{
 									conflict_id: item.conflictId,
