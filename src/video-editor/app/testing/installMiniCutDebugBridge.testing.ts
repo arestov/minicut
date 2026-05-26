@@ -539,12 +539,14 @@ export const installMiniCutDebugBridgeTesting = (
 					const trackAttrs = runtime.readAttrs(trackScope, [
 						"name",
 						"kind",
+						"trackRole",
 						"muted",
 						"locked",
 						"height",
 					]) as {
 						name?: unknown;
 						kind?: unknown;
+						trackRole?: unknown;
 						muted?: unknown;
 						locked?: unknown;
 						height?: unknown;
@@ -559,6 +561,8 @@ export const installMiniCutDebugBridgeTesting = (
 								"start",
 								"in",
 								"duration",
+								"fadeIn",
+								"fadeOut",
 							]) as {
 								clipRenderData?: unknown;
 								name?: unknown;
@@ -566,6 +570,8 @@ export const installMiniCutDebugBridgeTesting = (
 								start?: unknown;
 								in?: unknown;
 								duration?: unknown;
+								fadeIn?: unknown;
+								fadeOut?: unknown;
 							};
 							const clipRenderData =
 								clipAttrs.clipRenderData &&
@@ -599,6 +605,12 @@ export const installMiniCutDebugBridgeTesting = (
 									typeof clipAttrs.duration === "number"
 										? clipAttrs.duration
 										: null,
+								fadeIn:
+									typeof clipAttrs.fadeIn === "number" ? clipAttrs.fadeIn : null,
+								fadeOut:
+									typeof clipAttrs.fadeOut === "number"
+										? clipAttrs.fadeOut
+										: null,
 							};
 						});
 
@@ -607,6 +619,10 @@ export const installMiniCutDebugBridgeTesting = (
 						name:
 							typeof trackAttrs.name === "string" ? trackAttrs.name : "Track",
 						kind: typeof trackAttrs.kind === "string" ? trackAttrs.kind : null,
+						trackRole:
+							typeof trackAttrs.trackRole === "string"
+								? trackAttrs.trackRole
+								: null,
 						muted: trackAttrs.muted === true,
 						locked: trackAttrs.locked === true,
 						height:
@@ -678,12 +694,17 @@ export const installMiniCutDebugBridgeTesting = (
 			const reviewItems = readMany(pioneer, "reviewItem").map((scope) => ({
 				nodeId: scope._nodeId ?? null,
 				attrs: readAttrs(scope, [
+					"reviewItemSnapshot",
 					"reviewItemId",
 					"conflictId",
 					"projectId",
 					"kind",
 					"status",
 					"title",
+					"affectedObjects",
+					"preview",
+					"availableActions",
+					"actionTargets",
 				]),
 			}));
 			const reviewSessions = readMany(pioneer, "reviewSession").map((scope) => ({
@@ -715,12 +736,17 @@ export const installMiniCutDebugBridgeTesting = (
 			).map((scope) => ({
 				nodeId: scope._nodeId ?? null,
 				attrs: readAttrs(scope, [
+					"reviewItemSnapshot",
 					"reviewItemId",
 					"conflictId",
 					"projectId",
 					"kind",
 					"status",
 					"title",
+					"affectedObjects",
+					"preview",
+					"availableActions",
+					"actionTargets",
 				]),
 			}));
 			const selectedClip = readOne(sessionRoot, "selectedClip");

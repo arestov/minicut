@@ -69,19 +69,20 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	const conflictId = stringOrNull(payload.conflictId);
 	const reviewItemId = stringOrNull(payload.reviewItemId);
 	const clipId = stringOrNull(payload.clipId) ?? getNodeId(sourceClip);
+	const sourceClipId = getNodeId(sourceClip);
 	const timing = parseClipTimingVariant(payload.timing);
 	if (
 		!conflictId ||
 		!reviewItemId ||
 		!clipId ||
+		(sourceClipId !== null && sourceClipId !== clipId) ||
 		!timing ||
 		timing.start < 0 ||
 		timing.in < 0 ||
 		timing.duration <= 0 ||
 		timing.fadeIn < 0 ||
 		timing.fadeOut < 0 ||
-		timing.fadeIn + timing.fadeOut > timing.duration ||
-		getNodeId(sourceClip) !== clipId
+		timing.fadeIn + timing.fadeOut > timing.duration
 	) {
 		return noop;
 	}
@@ -95,49 +96,80 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	const effectRefs = Array.isArray(sourceEffects)
 		? sourceEffects.filter((entry) => creationRel(entry))
 		: [];
+	return reduceCreateParkedIncomingVariant({
+		clipId,
+		projectId: getNodeId(project),
+		conflictId,
+		reviewItemId,
+		reviewTrackAttrs: {
+			kind: mediaKind === "audio" ? "audio" : "video",
+			name: `Incoming Review - ${sourceName ?? clipId}`,
+			trackRole: "incomingReview",
+			enabled: false,
+			visibleInPreview: false,
+			muted: true,
+			locked: false,
+			isVisible: true,
+			height: 72,
+		},
+		project,
+		parkedClipAttrs: {
+			name: `${sourceName ?? "Clip"} incoming timing`,
+			color: stringOrNull(modelAttr(sourceClip, "color")) ?? "#f59e0b",
+			mediaKind: mediaKind ?? "video",
+			start: timing.start,
+			in: timing.in,
+			duration: timing.duration,
+			fadeIn: timing.fadeIn,
+			fadeOut: timing.fadeOut,
+			audio: objectAttr(sourceClip, "audio", { gain: 1, pan: 0 }),
+			opacity: objectAttr(sourceClip, "opacity", { value: 1 }),
+			transform: objectAttr(sourceClip, "transform", {
+				x: { value: 0 },
+				y: { value: 0 },
+				scale: { value: 1 },
+				rotation: { value: 0 },
+			}),
+		},
+		parkedClipRels: {
+			resource: sourceResource ?? null,
+			...(sourceText ? { text: sourceText } : null),
+			effects: effectRefs,
+		},
+	}, noop);
+};
+
+export const reduceCreateParkedIncomingVariant = (
+	payload: unknown,
+	noop: unknown,
+) => {
+	if (!isRecord(payload)) {
+		return noop;
+	}
+	const conflictId = stringOrNull(payload.conflictId);
+	const reviewItemId = stringOrNull(payload.reviewItemId);
+	const clipId = stringOrNull(payload.clipId);
+	if (
+		!conflictId ||
+		!reviewItemId ||
+		!clipId ||
+		!isRecord(payload.reviewTrackAttrs) ||
+		!isRecord(payload.parkedClipAttrs)
+	) {
+		return noop;
+	}
 	return {
 		reviewTrack: {
-			attrs: {
-				kind: mediaKind === "audio" ? "audio" : "video",
-				name: `Incoming Review - ${sourceName ?? clipId}`,
-				trackRole: "incomingReview",
-				enabled: false,
-				visibleInPreview: false,
-				muted: true,
-				locked: false,
-				isVisible: true,
-				height: 72,
-			},
+			attrs: payload.reviewTrackAttrs,
 			rels: {
-				project,
+				project: payload.project,
 			},
 			hold_ref_id: "incomingReviewTrack",
 		},
 		reviewTracks: { use_ref_id: "incomingReviewTrack" },
 		parkedClip: {
-			attrs: {
-				name: `${sourceName ?? "Clip"} incoming timing`,
-				color: stringOrNull(modelAttr(sourceClip, "color")) ?? "#f59e0b",
-				mediaKind: mediaKind ?? "video",
-				start: timing.start,
-				in: timing.in,
-				duration: timing.duration,
-				fadeIn: timing.fadeIn,
-				fadeOut: timing.fadeOut,
-				audio: objectAttr(sourceClip, "audio", { gain: 1, pan: 0 }),
-				opacity: objectAttr(sourceClip, "opacity", { value: 1 }),
-				transform: objectAttr(sourceClip, "transform", {
-					x: { value: 0 },
-					y: { value: 0 },
-					scale: { value: 1 },
-					rotation: { value: 0 },
-				}),
-			},
-			rels: {
-				resource: sourceResource ?? null,
-				...(sourceText ? { text: sourceText } : null),
-				effects: effectRefs,
-			},
+			attrs: payload.parkedClipAttrs,
+			rels: isRecord(payload.parkedClipRels) ? payload.parkedClipRels : {},
 			hold_ref_id: "parkedIncomingClip",
 		},
 		crdtResolve: makeCrdtResolvePayload({
@@ -152,9 +184,9 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 				variant: "incoming",
 			},
 		}),
-		$output: {
+		next: {
 			clipId,
-			projectId: getNodeId(project),
+			projectId: payload.projectId,
 			clip: { use_ref_id: "parkedIncomingClip" },
 			targetTrack: { use_ref_id: "incomingReviewTrack" },
 			targetTrackRole: "incomingReview",

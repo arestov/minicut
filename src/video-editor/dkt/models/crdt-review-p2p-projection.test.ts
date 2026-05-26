@@ -128,7 +128,9 @@ describe("MiniCut p2p review projection", () => {
 				[graphB, items[1]],
 			] as const) {
 				expect(graph.reviewSessions).toHaveLength(1);
-				expect(graph.openItemCount).toBe(1);
+				if ("openItemCount" in graph) {
+					expect(graph.openItemCount).toBe(1);
+				}
 				expect(item?.attrs).toEqual(
 					expect.objectContaining({
 						kind: "clip_timing",

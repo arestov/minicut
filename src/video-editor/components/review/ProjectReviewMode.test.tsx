@@ -16,6 +16,7 @@ import type { MiniCutReviewItem } from "../../dkt/review/types";
 import { ProjectReviewMode } from "./ProjectReviewMode";
 
 const attrsFromReviewItem = (item: MiniCutReviewItem) => ({
+	reviewItemSnapshot: item,
 	reviewItemId: item.id,
 	conflictId: item.conflictId,
 	projectId: item.projectId,
@@ -120,6 +121,57 @@ describe("ProjectReviewMode review actions", () => {
 					clipId: "clip:1",
 					variant: "incoming",
 				}),
+			}),
+		]);
+	});
+
+	it("uses review item snapshot as the review action view-model", async () => {
+		const item = materializeClipTimingReviewItem({
+			conflict: clipTimingConflictFixture,
+			projectId: "project:1",
+		});
+		const runtime = createTestReactScopeRuntime({
+			rootNodeId: "root",
+			relsByNodeId: {
+				root: { activeProject: "project:1" },
+				"project:1": {
+					reviewItems: [item.id],
+					reviewSessions: ["review-session:project:1"],
+				},
+				"review-session:project:1": { activitySummaries: [] },
+			},
+			attrsByNodeId: {
+				[item.id]: {
+					reviewItemSnapshot: item,
+					reviewItemId: item.id,
+					actionTargets: {},
+				},
+				"review-session:project:1": {
+					reviewSessionId: "review-session:project:1",
+					projectId: "project:1",
+					selectedReviewItemId: item.id,
+					openItemCount: 1,
+				},
+			},
+		});
+
+		render(
+			<ReactScopeRuntimeContext.Provider value={runtime}>
+				<ScopeContext.Provider value={runtime.getRootScope()}>
+					<ProjectReviewMode />
+				</ScopeContext.Provider>
+			</ReactScopeRuntimeContext.Provider>,
+		);
+		await screen.findByRole("region", { name: "Project review" });
+
+		await userEvent.click(
+			screen.getByRole("button", { name: "Park incoming on review track" }),
+		);
+
+		expect(runtime.dispatchCalls).toEqual([
+			expect.objectContaining({
+				actionName: "parkIncomingVariantOnReviewTrack",
+				scopeNodeId: "project:1",
 			}),
 		]);
 	});

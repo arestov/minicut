@@ -21,6 +21,7 @@ import {
 	reduceParkEditedVariantOnReviewTrack,
 	reducePreserveDeleteAndArchiveIncomingEdit,
 	reduceCommitDeleteVsEditRestoreVariant,
+	reduceCommitParkEditedVariantOnReviewTrack,
 	reduceRenameProject,
 	reduceResolveDeleteVsEditByRestoreVariant,
 	reduceRequestImportFiles,
@@ -909,7 +910,7 @@ export const Project = model({
 						},
 					],
 					crdtResolve: [crdtReviewResolveTarget],
-					$output: ["$output", { can_use_refs: true }],
+					next: ["$output", { can_use_refs: true }],
 				},
 				output_base_rel_shape: {
 					clip: {
@@ -980,7 +981,7 @@ export const Project = model({
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
-					$output: ["$output", { can_use_refs: true }],
+					next: ["$output", { can_use_refs: true }],
 				},
 				output_base_rel_shape: {
 					clip: {
@@ -1046,8 +1047,7 @@ export const Project = model({
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
-					crdtResolve: [crdtReviewResolveTarget],
-					$output: ["$output", { can_use_refs: true }],
+					next: ["$output", { can_use_refs: true }],
 				},
 				output_base_rel_shape: {
 					clip: {
@@ -1075,11 +1075,14 @@ export const Project = model({
 						many: false,
 					},
 				},
-				to: [
-					"<<<< $input:targetTrack",
-					{ action: "acceptClipIfTarget", sub_flow: true },
-				],
-				fn: reduceAcceptParkedClipOnReviewTrack,
+				to: {
+					targetTracks: [
+						"<<<< $input:targetTrack",
+						{ action: "acceptClipIfTarget", sub_flow: true },
+					],
+					crdtResolve: [crdtReviewResolveTarget],
+				},
+				fn: reduceCommitParkEditedVariantOnReviewTrack,
 			},
 		],
 		preserveDeleteAndArchiveIncomingEdit: {

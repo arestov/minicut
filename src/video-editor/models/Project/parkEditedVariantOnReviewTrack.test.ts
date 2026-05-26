@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { reduceParkEditedVariantOnReviewTrack } from "./actions";
+import {
+	reduceCommitParkEditedVariantOnReviewTrack,
+	reduceParkEditedVariantOnReviewTrack,
+} from "./actions";
 
 const payload = {
 	conflictId: "conflict:delete-vs-edit",
@@ -49,17 +52,12 @@ describe("parkEditedVariantOnReviewTrack", () => {
 				},
 				hold_ref_id: "parkedDeleteVsEditClip",
 			},
-			crdtResolve: {
-				conflict_id: "conflict:delete-vs-edit",
-				decision: {
-					action: "parkEditedVariantOnReviewTrack",
-					domain_result: {
-						type: "edited_variant_parked",
-						parkedClipId: { use_ref_id: "parkedDeleteVsEditClip" },
-						reviewTrackId: { use_ref_id: "deleteVsEditReviewTrack" },
-						sourceConflictClipId: "clip:deleted",
-					},
-				},
+			next: {
+				clip: { use_ref_id: "parkedDeleteVsEditClip" },
+				targetTrack: { use_ref_id: "deleteVsEditReviewTrack" },
+				conflictId: "conflict:delete-vs-edit",
+				reviewItemId: "review:conflict:delete-vs-edit",
+				sourceConflictClipId: "clip:deleted",
 			},
 		});
 	});
@@ -78,14 +76,43 @@ describe("parkEditedVariantOnReviewTrack", () => {
 					resource: null,
 				},
 			},
+			next: {
+				targetTrack: { _node_id: "track:review", states: { trackRole: "incomingReview" } },
+			},
+		});
+		expect(result).not.toHaveProperty("reviewTrack");
+	});
+
+	it("links the parked clip before forwarding CRDT resolve", () => {
+		expect(
+			reduceCommitParkEditedVariantOnReviewTrack({
+				clip: { _node_id: "clip:parked" },
+				targetTrack: { _node_id: "track:review" },
+				conflictId: "conflict:delete-vs-edit",
+				reviewItemId: "review:conflict:delete-vs-edit",
+				sourceConflictClipId: "clip:deleted",
+			}),
+		).toEqual({
+			targetTracks: {
+				clip: { _node_id: "clip:parked" },
+				targetTrack: { _node_id: "track:review" },
+			},
 			crdtResolve: {
+				conflict_id: "conflict:delete-vs-edit",
 				decision: {
+					app: "minicut",
+					decision_id:
+						"parkEditedVariantOnReviewTrack:review:conflict:delete-vs-edit:conflict:delete-vs-edit",
+					action: "parkEditedVariantOnReviewTrack",
+					review_item_id: "review:conflict:delete-vs-edit",
 					domain_result: {
+						type: "edited_variant_parked",
+						parkedClipId: "clip:parked",
 						reviewTrackId: "track:review",
+						sourceConflictClipId: "clip:deleted",
 					},
 				},
 			},
 		});
-		expect(result).not.toHaveProperty("reviewTrack");
 	});
 });

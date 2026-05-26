@@ -864,23 +864,32 @@ export const createMiniCutDktRuntime = (
 							scopeNodeId: message.scopeNodeId ?? null,
 						});
 					}
-					await enqueueScopedAction(
+					void enqueueScopedAction(
 						message.actionName,
 						message.payload,
 						message.scopeNodeId,
 						activeSessionKey,
 						activeSessionId,
 						message.meta,
-					);
-					if (message.requestId) {
-						transport.send({
-							type: DKT_MSG.ACTION_ACCEPTED,
-							requestId: message.requestId,
-							actionName: message.actionName,
-							sessionId: activeSessionId,
-							sessionKey: activeSessionKey,
-						});
-					}
+					)
+						.then(() => {
+							if (!message.requestId) {
+								return;
+							}
+							transport.send({
+								type: DKT_MSG.ACTION_ACCEPTED,
+								requestId: message.requestId,
+								actionName: message.actionName,
+								sessionId: activeSessionId,
+								sessionKey: activeSessionKey,
+							});
+						})
+						.catch((error) =>
+							sendError(
+								error,
+								"requestId" in message ? message.requestId : undefined,
+							),
+						);
 					return;
 				case DKT_MSG.SYNC_UPDATE_STRUCTURE_USAGE: {
 					const app = await bootstrapApp();

@@ -15,6 +15,7 @@ import { reviewActionScopeForItem } from "./reviewActionRouting";
 import { ReviewPanel } from "./ReviewPanel";
 
 const REVIEW_ITEM_ATTRS = [
+	"reviewItemSnapshot",
 	"reviewItemId",
 	"conflictId",
 	"projectId",
@@ -87,24 +88,27 @@ const asStatus = (value: unknown): CrdtConflictStatus =>
 	value === "acknowledged" || value === "resolved" ? value : "open";
 
 const toReviewItem = ({ scope, attrs }: AttrSnapshot): MiniCutReviewItem => {
-	const id = asString(attrs.reviewItemId, scope._nodeId);
-	const conflictId = asString(attrs.conflictId, id);
+	const snapshot = isRecord(attrs.reviewItemSnapshot)
+		? attrs.reviewItemSnapshot
+		: attrs;
+	const id = asString(snapshot.reviewItemId, asString(snapshot.id, scope._nodeId));
+	const conflictId = asString(snapshot.conflictId, id);
 	return {
 		id,
 		conflictId,
-		projectId: asString(attrs.projectId),
-		kind: asKind(attrs.kind),
-		status: asStatus(attrs.status),
-		title: asString(attrs.title, "CRDT conflict"),
-		affectedObjects: asArray<MiniCutReviewObject>(attrs.affectedObjects),
-		preview: attrs.preview ?? null,
-		availableActions: asArray<string>(attrs.availableActions),
-		actionTargets: isRecord(attrs.actionTargets)
-			? (attrs.actionTargets as MiniCutReviewItem["actionTargets"])
+		projectId: asString(snapshot.projectId),
+		kind: asKind(snapshot.kind),
+		status: asStatus(snapshot.status),
+		title: asString(snapshot.title, "CRDT conflict"),
+		affectedObjects: asArray<MiniCutReviewObject>(snapshot.affectedObjects),
+		preview: snapshot.preview ?? null,
+		availableActions: asArray<string>(snapshot.availableActions),
+		actionTargets: isRecord(snapshot.actionTargets)
+			? (snapshot.actionTargets as MiniCutReviewItem["actionTargets"])
 			: {},
 		source:
-			attrs.source && typeof attrs.source === "object"
-				? (attrs.source as MiniCutReviewItem["source"])
+			snapshot.source && typeof snapshot.source === "object"
+				? (snapshot.source as MiniCutReviewItem["source"])
 				: { conflictId },
 	};
 };
