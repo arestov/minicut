@@ -46,21 +46,13 @@ describe("resolveDeleteVsEditByRestoreVariant", () => {
 				},
 				hold_ref_id: "restoredDeleteVsEditClip",
 			},
-			$output: {
+			next: {
 				clip: { use_ref_id: "restoredDeleteVsEditClip" },
 				targetTrack: { _node_id: "track:main" },
-				crdtResolve: {
-					conflict_id: "conflict:delete-vs-edit",
-					decision: {
-						action: "resolveDeleteVsEditByRestoreVariant",
-						domain_result: {
-							type: "deleted_variant_restored",
-							restoredClipId: { use_ref_id: "restoredDeleteVsEditClip" },
-							targetTrackId: "track:main",
-							sourceConflictClipId: "clip:deleted",
-						},
-					},
-				},
+				conflictId: "conflict:delete-vs-edit",
+				reviewItemId: "review:conflict:delete-vs-edit",
+				sourceConflictClipId: "clip:deleted",
+				targetTrackId: "track:main",
 			},
 		});
 	});
@@ -83,14 +75,28 @@ describe("resolveDeleteVsEditByRestoreVariant", () => {
 			reduceCommitDeleteVsEditRestoreVariant({
 				clip: { _node_id: "clip:restored" },
 				targetTrack: { _node_id: "track:main" },
-				crdtResolve: { conflict_id: "conflict:delete-vs-edit" },
+				conflictId: "conflict:delete-vs-edit",
+				reviewItemId: "review:conflict:delete-vs-edit",
+				sourceConflictClipId: "clip:deleted",
+				targetTrackId: "track:main",
 			}),
-		).toEqual({
+		).toMatchObject({
 			targetTracks: {
 				clip: { _node_id: "clip:restored" },
 				targetTrack: { _node_id: "track:main" },
 			},
-			crdtResolve: { conflict_id: "conflict:delete-vs-edit" },
+			crdtResolve: {
+				conflict_id: "conflict:delete-vs-edit",
+				decision: {
+					action: "resolveDeleteVsEditByRestoreVariant",
+					domain_result: {
+						type: "deleted_variant_restored",
+						restoredClipId: "clip:restored",
+						targetTrackId: "track:main",
+						sourceConflictClipId: "clip:deleted",
+					},
+				},
+			},
 		});
 	});
 });

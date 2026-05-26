@@ -245,6 +245,25 @@ const getNodeId = (value: unknown): string | null =>
 		? (value as { _node_id: string })._node_id
 		: null;
 
+const plainReviewValue = (value: unknown): unknown => {
+	const nodeId = getNodeId(value);
+	if (nodeId) {
+		return nodeId;
+	}
+	if (Array.isArray(value)) {
+		return value.map(plainReviewValue);
+	}
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+				key,
+				plainReviewValue(entry),
+			]),
+		);
+	}
+	return value;
+};
+
 const trackIdsFromModels = (tracks: unknown): string[] =>
 	Array.isArray(tracks)
 		? tracks.flatMap((track) => {
@@ -333,7 +352,7 @@ const projectOwnsConflictPayload = (
 ): boolean => {
 	const hint = reviewProjectIdHint(payload);
 	if (!hint) {
-		throw new Error("Project CRDT review materialization requires projectId hint");
+		return false;
 	}
 	return hint === projectId;
 };
@@ -696,21 +715,14 @@ export const reduceResolveDeleteVsEditByRestoreVariant = (
 			},
 			hold_ref_id: "restoredDeleteVsEditClip",
 		},
-		$output: {
+		next: {
 			clip: { use_ref_id: "restoredDeleteVsEditClip" },
 			targetTrack,
-			crdtResolve: makeCrdtResolvePayload({
-				conflictId,
-				reviewItemId,
-				action: "resolveDeleteVsEditByRestoreVariant",
-				domainResult: {
-					type: "deleted_variant_restored",
-					restoredClipId: { use_ref_id: "restoredDeleteVsEditClip" },
-					targetTrackId,
-					sourceConflictClipId,
-					restoredAttrs,
-				},
-			}),
+			conflictId,
+			reviewItemId,
+			sourceConflictClipId,
+			targetTrackId,
+			restoredAttrs,
 		},
 	};
 };
@@ -720,14 +732,44 @@ export const reduceCommitDeleteVsEditRestoreVariant = (payload: unknown) => {
 		clip?: unknown;
 		rels?: { clip?: unknown; targetTrack?: unknown };
 		targetTrack?: unknown;
-		crdtResolve?: unknown;
+		conflictId?: unknown;
+		reviewItemId?: unknown;
+		sourceConflictClipId?: unknown;
+		targetTrackId?: unknown;
+		restoredAttrs?: unknown;
 	}>(payload);
+	const clip = value?.clip ?? value?.rels?.clip;
+	const targetTrack = value?.targetTrack ?? value?.rels?.targetTrack;
+	const restoredClipId = getNodeId(clip);
+	const targetTrackId =
+		nonEmptyString(value?.targetTrackId) ?? getNodeId(targetTrack);
+	const conflictId = nonEmptyString(value?.conflictId);
+	const reviewItemId = nonEmptyString(value?.reviewItemId);
+	const sourceConflictClipId = nonEmptyString(value?.sourceConflictClipId);
 	return {
 		targetTracks: {
-			clip: value?.clip ?? value?.rels?.clip,
-			targetTrack: value?.targetTrack ?? value?.rels?.targetTrack,
+			clip,
+			targetTrack,
 		},
-		crdtResolve: value?.crdtResolve,
+		crdtResolve:
+			restoredClipId &&
+			targetTrackId &&
+			conflictId &&
+			reviewItemId &&
+			sourceConflictClipId
+				? makeCrdtResolvePayload({
+						conflictId,
+						reviewItemId,
+						action: "resolveDeleteVsEditByRestoreVariant",
+						domainResult: {
+							type: "deleted_variant_restored",
+							restoredClipId,
+							targetTrackId,
+							sourceConflictClipId,
+							restoredAttrs: plainReviewValue(value?.restoredAttrs),
+						},
+					})
+				: null,
 	};
 };
 
@@ -752,9 +794,6 @@ export const reduceParkEditedVariantOnReviewTrack = (
 	const restoredAttrs = normalizeRestoredClipAttrs(clipAttrs);
 	const reviewTrack = existingReviewTrack(tracks, REVIEW_TRACK_ROLES.incoming);
 	const trackRef = reviewTrack || { use_ref_id: "deleteVsEditReviewTrack" };
-	const trackId = reviewTrack
-		? getNodeId(reviewTrack)
-		: { use_ref_id: "deleteVsEditReviewTrack" };
 	const resourceRef = asObject(value?.editedVariant)?.resource;
 	return {
 		...(reviewTrack
@@ -771,7 +810,6 @@ export const reduceParkEditedVariantOnReviewTrack = (
 						},
 						rels: {
 							project,
-							clips: [{ use_ref_id: "parkedDeleteVsEditClip" }],
 						},
 						hold_ref_id: "deleteVsEditReviewTrack",
 					},
@@ -787,22 +825,56 @@ export const reduceParkEditedVariantOnReviewTrack = (
 			},
 			hold_ref_id: "parkedDeleteVsEditClip",
 		},
-		crdtResolve: makeCrdtResolvePayload({
-			conflictId,
-			reviewItemId,
-			action: "parkEditedVariantOnReviewTrack",
-			domainResult: {
-				type: "edited_variant_parked",
-				parkedClipId: { use_ref_id: "parkedDeleteVsEditClip" },
-				reviewTrackId: trackId,
-				sourceConflictClipId,
-			},
-		}),
-		$output: {
+		next: {
 			clip: { use_ref_id: "parkedDeleteVsEditClip" },
 			targetTrack: trackRef,
 			targetTrackRole: REVIEW_TRACK_ROLES.incoming,
+			conflictId,
+			reviewItemId,
+			sourceConflictClipId,
 		},
+	};
+};
+
+export const reduceCommitParkEditedVariantOnReviewTrack = (payload: unknown) => {
+	const value = asObject<{
+		clip?: unknown;
+		rels?: { clip?: unknown; targetTrack?: unknown };
+		targetTrack?: unknown;
+		conflictId?: unknown;
+		reviewItemId?: unknown;
+		sourceConflictClipId?: unknown;
+	}>(payload);
+	const clip = value?.clip ?? value?.rels?.clip;
+	const targetTrack = value?.targetTrack ?? value?.rels?.targetTrack;
+	const parkedClipId = getNodeId(clip);
+	const reviewTrackId = getNodeId(targetTrack);
+	const conflictId = nonEmptyString(value?.conflictId);
+	const reviewItemId = nonEmptyString(value?.reviewItemId);
+	const sourceConflictClipId = nonEmptyString(value?.sourceConflictClipId);
+	return {
+		targetTracks: {
+			clip,
+			targetTrack,
+		},
+		crdtResolve:
+			parkedClipId &&
+			reviewTrackId &&
+			conflictId &&
+			reviewItemId &&
+			sourceConflictClipId
+				? makeCrdtResolvePayload({
+						conflictId,
+						reviewItemId,
+						action: "parkEditedVariantOnReviewTrack",
+						domainResult: {
+							type: "edited_variant_parked",
+							parkedClipId,
+							reviewTrackId,
+							sourceConflictClipId,
+						},
+					})
+				: null,
 	};
 };
 

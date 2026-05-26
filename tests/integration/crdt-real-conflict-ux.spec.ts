@@ -19,8 +19,56 @@ type DebugProjectDetails = {
 	resources?: Array<{ resourceId?: unknown; nodeId?: unknown; name?: unknown; kind?: unknown }>
 	tracks?: Array<{
 		kind?: unknown
-		clips?: Array<{ clipId?: unknown; nodeId?: unknown; id?: unknown; name?: unknown; resourceName?: unknown; mediaKind?: unknown; duration?: unknown }>
+		trackRole?: unknown
+		clips?: Array<{
+			clipId?: unknown
+			nodeId?: unknown
+			id?: unknown
+			name?: unknown
+			resourceName?: unknown
+			mediaKind?: unknown
+			start?: unknown
+			in?: unknown
+			duration?: unknown
+			fadeIn?: unknown
+			fadeOut?: unknown
+		}>
 	}>
+}
+
+type DebugReviewState = {
+	activeProject?: {
+		attrs?: Record<string, unknown>
+	}
+	activeProjectReviewItems?: Array<{ nodeId?: unknown; attrs?: Record<string, unknown> }>
+	activeProjectReviewSessions?: Array<{ nodeId?: unknown; attrs?: Record<string, unknown> }>
+}
+
+type ClipTimingPreview = {
+	current?: ClipTimingSnapshot
+	incoming?: ClipTimingSnapshot
+}
+
+type ClipTimingSnapshot = {
+	start?: unknown
+	in?: unknown
+	duration?: unknown
+	fadeIn?: unknown
+	fadeOut?: unknown
+}
+
+const timingFieldNames = ['start', 'in', 'duration', 'fadeIn', 'fadeOut'] as const
+
+type TimingFieldName = typeof timingFieldNames[number]
+
+const asExpectedTiming = (value: ClipTimingSnapshot | undefined, label: string): Record<TimingFieldName, number> => {
+	const result = Object.fromEntries(timingFieldNames.map((field) => [field, value?.[field]])) as Record<TimingFieldName, unknown>
+	for (const field of timingFieldNames) {
+		if (typeof result[field] !== 'number' || !Number.isFinite(result[field])) {
+			throw new Error(`Expected numeric ${label}.${field}, got ${JSON.stringify(value)}`)
+		}
+	}
+	return result as Record<TimingFieldName, number>
 }
 
 const importFixtureVideoToTimeline = async (page: Page) => {
@@ -33,6 +81,21 @@ const importFixtureVideoToTimeline = async (page: Page) => {
 
 const readActiveProjectDetails = async (page: Page): Promise<DebugProjectDetails | null> =>
 	page.evaluate(() => (window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() ?? null) as DebugProjectDetails | null)
+
+const readReviewDebugState = async (page: Page): Promise<DebugReviewState | null> =>
+	page.evaluate(() => (window.__MINICUT_P2P_DEBUG__?.getReviewDebugState?.() ?? null) as DebugReviewState | null)
+
+const readRuntimeMessages = async (page: Page): Promise<Array<Record<string, unknown>>> =>
+	page.evaluate(() => (window.__MINICUT_P2P_DEBUG__?.getRuntimeMessages?.() ?? []) as Array<Record<string, unknown>>)
+
+const countDispatchMessages = (
+	messages: Array<Record<string, unknown>>,
+	actionName: string,
+): number =>
+	messages.filter((entry) => {
+		const message = entry.message as Record<string, unknown> | undefined
+		return message?.type === 'dkt:dispatch-action' && message.actionName === actionName
+	}).length
 
 const waitForActiveProject = async (page: Page, title: string): Promise<DebugProjectDetails> => {
 	let latest: DebugProjectDetails | null = null
@@ -151,6 +214,87 @@ const waitForClipOnActiveProject = async (page: Page, clipId: string) => {
 	}, { timeout: 30_000 }).toBe(true)
 }
 
+const readReviewOpenCount = async (page: Page): Promise<number | null> => {
+	const state = await readReviewDebugState(page)
+	const count =
+		state?.activeProjectReviewSessions?.find((session) => typeof session.attrs?.openItemCount === 'number')
+			?.attrs?.openItemCount ?? state?.activeProject?.attrs?.reviewOpenItemCount
+	return typeof count === 'number' && Number.isFinite(count) ? count : null
+}
+
+const waitForReviewOpenCount = async (page: Page, expected: number) => {
+	await expect.poll(() => readReviewOpenCount(page), { timeout: 30_000 }).toBe(expected)
+}
+
+const readReviewItemByConflict = async (page: Page, conflictId: string) => {
+	const state = await readReviewDebugState(page)
+	return state?.activeProjectReviewItems?.find((item) => item.attrs?.conflictId === conflictId) ?? null
+}
+
+const readFirstClipTimingReviewItem = async (page: Page) => {
+	const state = await readReviewDebugState(page)
+	const item = state?.activeProjectReviewItems?.find((entry) => entry.attrs?.kind === 'clip_timing') ?? null
+	if (!item) {
+		throw new Error(`Expected clip timing review item, got ${JSON.stringify(state?.activeProjectReviewItems ?? [])}`)
+	}
+	return item
+}
+
+const waitForReviewItemStatus = async (page: Page, conflictId: string, status: string) => {
+	await expect.poll(async () => {
+		const item = await readReviewItemByConflict(page, conflictId)
+		return item?.attrs?.status ?? null
+	}, { timeout: 30_000 }).toBe(status)
+}
+
+const waitForReviewResolvedOnBoth = async (firstPage: Page, secondPage: Page, conflictId: string) => {
+	await Promise.all([
+		waitForReviewItemStatus(firstPage, conflictId, 'resolved'),
+		waitForReviewItemStatus(secondPage, conflictId, 'resolved'),
+	])
+}
+
+const waitForReviewOpenCountOnBoth = async (firstPage: Page, secondPage: Page, expected: number) => {
+	await Promise.all([
+		waitForReviewOpenCount(firstPage, expected),
+		waitForReviewOpenCount(secondPage, expected),
+	])
+}
+
+const waitForIncomingReviewTrackWithClip = async (page: Page, expectedTiming?: Record<TimingFieldName, number>) => {
+	const expected = expectedTiming
+		? { hasTrack: true, clipCount: 1, timing: expectedTiming }
+		: { hasTrack: true, clipCount: 1 }
+	await expect.poll(async () => {
+		const details = await readActiveProjectDetails(page)
+		const reviewTrack = details?.tracks?.find((track) => track.trackRole === 'incomingReview')
+		const clip = reviewTrack?.clips?.[0]
+		const result: { hasTrack: boolean; clipCount: number; timing?: Record<TimingFieldName, unknown> } = {
+			hasTrack: Boolean(reviewTrack),
+			clipCount: reviewTrack?.clips?.length ?? 0,
+		}
+		if (expectedTiming) {
+			result.timing = {
+				start: clip?.start ?? null,
+				in: clip?.in ?? null,
+				duration: clip?.duration ?? null,
+				fadeIn: clip?.fadeIn ?? null,
+				fadeOut: clip?.fadeOut ?? null,
+			}
+		}
+		return result
+	}, { timeout: 30_000 }).toEqual(expected)
+}
+
+const readFirstClipTimingPreview = async (page: Page): Promise<ClipTimingPreview> => {
+	const item = await readFirstClipTimingReviewItem(page)
+	const preview = item.attrs?.preview
+	if (!preview || typeof preview !== 'object') {
+		throw new Error(`Expected clip timing preview, got ${JSON.stringify(item)}`)
+	}
+	return preview as ClipTimingPreview
+}
+
 const readClipDuration = async (page: Page, clipId: string): Promise<number | null> => {
 	const details = await readActiveProjectDetails(page)
 	const clip = details?.tracks
@@ -158,6 +302,37 @@ const readClipDuration = async (page: Page, clipId: string): Promise<number | nu
 		.find((candidate) => candidate.clipId === clipId || candidate.nodeId === clipId || candidate.id === clipId)
 	const duration = clip?.duration
 	return typeof duration === 'number' && Number.isFinite(duration) ? duration : null
+}
+
+const readClipTiming = async (page: Page, clipId: string): Promise<Record<TimingFieldName, unknown> | null> => {
+	const details = await readActiveProjectDetails(page)
+	const clip = details?.tracks
+		?.flatMap((track) => track.clips ?? [])
+		.find((candidate) => candidate.clipId === clipId || candidate.nodeId === clipId || candidate.id === clipId)
+	return clip
+		? {
+			start: clip.start ?? null,
+			in: clip.in ?? null,
+			duration: clip.duration ?? null,
+			fadeIn: clip.fadeIn ?? null,
+			fadeOut: clip.fadeOut ?? null,
+		}
+		: null
+}
+
+const waitForClipTimingOnBoth = async (
+	firstPage: Page,
+	secondPage: Page,
+	clipId: string,
+	expectedTiming: Record<TimingFieldName, number>,
+) => {
+	await expect.poll(async () => ({
+		first: await readClipTiming(firstPage, clipId),
+		second: await readClipTiming(secondPage, clipId),
+	}), { timeout: 30_000 }).toEqual({
+		first: expectedTiming,
+		second: expectedTiming,
+	})
 }
 
 const waitForWorkerDumpContainsProjectResourceAndClip = async (page: Page, projectId: string, clipId: string) => {
@@ -302,12 +477,369 @@ test('p2p real CRDT timing conflict renders conflict UX without fake injection',
 		await first.page.getByRole('button', { name: reviewButtonName }).click()
 		const projectReview = first.page.getByRole('region', { name: 'Project review' })
 		await expect(projectReview).toBeVisible({ timeout: 10_000 })
-		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible()
+		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
 		await expect(first.page.locator('.ve-clip-conflict-popover')).toHaveCount(0)
 		await expectRealConflictTrace(first.page, second.page)
+		await waitForRuntimeSettled(first.page)
+
+		const openCountBefore = await readReviewOpenCount(first.page)
+		expect(openCountBefore).toEqual(expect.any(Number))
+		const dispatchCountBefore = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'parkIncomingVariantOnReviewTrack',
+		)
+		const parkPreview = await readFirstClipTimingPreview(first.page)
+		const expectedParkedTiming = asExpectedTiming(parkPreview.incoming, 'incoming')
+		const conflictId = stringId((await readFirstClipTimingReviewItem(first.page)).attrs?.conflictId, 'conflict id')
+		const actionSendBatchIdsBefore = await readTraceBatchIds(first.page, /crdt-send/)
+		await projectReview.getByRole('button', { name: 'Park incoming on review track' }).click()
+		await waitForRuntimeSettled(first.page)
+		const dispatchCountAfter = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'parkIncomingVariantOnReviewTrack',
+		)
+		if (dispatchCountAfter <= dispatchCountBefore) {
+			const buttonDiagnostics = await first.page.evaluate(() => {
+				const buttons = [...document.querySelectorAll('button')]
+				const button = buttons.find((candidate) => candidate.textContent?.includes('Park incoming on review track')) as HTMLButtonElement | undefined
+				if (!button) return { found: false }
+				const box = button.getBoundingClientRect()
+				const reactPropsKey = Object.keys(button).find((key) => key.startsWith('__reactProps$'))
+				const props = reactPropsKey ? (button as unknown as Record<string, Record<string, unknown>>)[reactPropsKey] : null
+				const eventLog: string[] = []
+				const log = (event: Event) => eventLog.push(`${event.type}:${event.eventPhase}:${event.currentTarget === button ? 'button' : 'document'}`)
+				document.addEventListener('click', log, true)
+				button.addEventListener('click', log, true)
+				button.addEventListener('click', log)
+				document.addEventListener('click', log)
+				button.click()
+				if (typeof props?.onClick === 'function') {
+					;(props.onClick as (event: unknown) => void)({
+						currentTarget: button,
+						target: button,
+						preventDefault() {},
+						stopPropagation() {},
+					})
+				}
+				document.removeEventListener('click', log, true)
+				button.removeEventListener('click', log, true)
+				button.removeEventListener('click', log)
+				document.removeEventListener('click', log)
+				const centerX = box.left + box.width / 2
+				const centerY = box.top + box.height / 2
+				const topElement = document.elementFromPoint(centerX, centerY)
+				const style = getComputedStyle(button)
+				return {
+					found: true,
+					disabled: button.disabled,
+					pointerEvents: style.pointerEvents,
+					visibility: style.visibility,
+					display: style.display,
+					topTag: topElement?.tagName ?? null,
+					topText: topElement?.textContent ?? null,
+					reactPropsKey,
+					reactOnClickType: typeof props?.onClick,
+					eventLog,
+				}
+			})
+			await waitForRuntimeSettled(first.page)
+			const dispatchCountAfterDirect = countDispatchMessages(
+				await readRuntimeMessages(first.page),
+				'parkIncomingVariantOnReviewTrack',
+			)
+			throw new Error(`Park incoming did not dispatch. Diagnostics: ${JSON.stringify({
+				buttonDiagnostics,
+				dispatchCountBefore,
+				dispatchCountAfter,
+				dispatchCountAfterDirect,
+				reviewState: await readReviewDebugState(first.page),
+			})}`)
+		}
+		const actionSendBatchIds = await waitForNewCrdtSendBatchIds(first.page, actionSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(second.page, actionSendBatchIds)
+		await waitForIncomingReviewTrackWithClip(first.page, expectedParkedTiming)
+		await waitForIncomingReviewTrackWithClip(second.page, expectedParkedTiming)
+		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
+		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
 	} catch (error) {
 		const artifactPath = await writeP2PDebugArtifacts('real-crdt-conflict-timeout', first.page, second.page)
 		throw new Error(`Timed out waiting for real CRDT conflict proof. Debug artifact: ${artifactPath}`, { cause: error })
+	} finally {
+		await Promise.allSettled([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+		await closePeerHandles(first, second)
+	}
+})
+
+test('p2p real CRDT timing conflict accepts incoming from review UI on both peers', async ({ browser }, testInfo) => {
+	test.setTimeout(180_000)
+	const roomId = createP2PRoomId('real-crdt-accept-incoming', testInfo)
+	const roomUrl = buildRoomUrl(roomId)
+	const first = await openP2PPeer(browser, roomUrl)
+	const second = await openP2PPeer(browser, roomUrl)
+
+	try {
+		await Promise.all([waitForP2PDebugState(first.page), waitForP2PDebugState(second.page)])
+		await waitForRolePair(first.page, second.page)
+		const [firstRole] = await Promise.all([getRole(first.page), getRole(second.page)])
+		const sourcePage = firstRole === 'client' ? first.page : second.page
+		const replicaPage = sourcePage === first.page ? second.page : first.page
+		const sourceSendBatchIdsBefore = await readTraceBatchIds(sourcePage, /crdt-send/)
+
+		await sourcePage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.dispatchCreateProject?.('Real CRDT accept incoming'))
+		await waitForRuntimeSettled(sourcePage)
+		const sourceProject = await waitForActiveProject(sourcePage, 'Real CRDT accept incoming')
+		const sourceProjectId = stringId(sourceProject.projectId, 'source project id')
+		await importFixtureVideoToTimeline(sourcePage)
+		await waitForRuntimeSettled(sourcePage)
+
+		const firstClipId = await waitForFirstVideoClipId(sourcePage)
+		await expectSourceProjectHasVideoClip(sourcePage, firstClipId)
+		const sourceSendBatchIds = await waitForNewCrdtSendBatchIds(sourcePage, sourceSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(replicaPage, sourceSendBatchIds)
+		await waitForWorkerDumpContainsProjectResourceAndClip(replicaPage, sourceProjectId, firstClipId)
+		await waitForReplicaProject(replicaPage, sourceProjectId)
+		await waitForClipOnActiveProject(replicaPage, firstClipId)
+
+		await Promise.all([
+			setCrdtPartition(first.page, true),
+			setCrdtPartition(second.page, true),
+		])
+		await Promise.all([
+			dragClipEdgeByUi(first.page, firstClipId, 'end', -28),
+			dragClipEdgeByUi(second.page, firstClipId, 'start', 28),
+		])
+		await Promise.all([waitForRuntimeSettled(first.page), waitForRuntimeSettled(second.page)])
+		await Promise.all([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+
+		const reviewButtonName = /Review\s+[1-9]\d*/
+		await expect(first.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await expect(second.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await first.page.getByRole('button', { name: reviewButtonName }).click()
+		const projectReview = first.page.getByRole('region', { name: 'Project review' })
+		await expect(projectReview).toBeVisible({ timeout: 10_000 })
+		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
+		await expectRealConflictTrace(first.page, second.page)
+		await waitForRuntimeSettled(first.page)
+
+		const openCountBefore = await readReviewOpenCount(first.page)
+		expect(openCountBefore).toEqual(expect.any(Number))
+		const dispatchCountBefore = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'resolveClipTimingConflict',
+		)
+		const actionSendBatchIdsBefore = await readTraceBatchIds(first.page, /crdt-send/)
+		const preview = await readFirstClipTimingPreview(first.page)
+		const expectedTiming = asExpectedTiming(preview.incoming, 'incoming')
+		const conflictId = stringId((await readFirstClipTimingReviewItem(first.page)).attrs?.conflictId, 'conflict id')
+
+		await projectReview.getByRole('button', { name: 'Choose incoming' }).click()
+		await waitForRuntimeSettled(first.page)
+		const dispatchCountAfter = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'resolveClipTimingConflict',
+		)
+		expect(dispatchCountAfter).toBeGreaterThan(dispatchCountBefore)
+		const actionSendBatchIds = await waitForNewCrdtSendBatchIds(first.page, actionSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(second.page, actionSendBatchIds)
+		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
+		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
+		await waitForClipTimingOnBoth(first.page, second.page, firstClipId, expectedTiming)
+		await expect.poll(async () => ({
+			first: await readReviewOpenCount(first.page),
+			second: await readReviewOpenCount(second.page),
+		}), { timeout: 30_000 }).toEqual({
+			first: Math.max(0, (openCountBefore ?? 1) - 1),
+			second: Math.max(0, (openCountBefore ?? 1) - 1),
+		})
+	} catch (error) {
+		const artifactPath = await writeP2PDebugArtifacts('real-crdt-accept-incoming-timeout', first.page, second.page)
+		throw new Error(`Timed out waiting for real CRDT accept incoming proof. Debug artifact: ${artifactPath}`, { cause: error })
+	} finally {
+		await Promise.allSettled([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+		await closePeerHandles(first, second)
+	}
+})
+
+test('p2p real CRDT timing conflict keeps current from review UI on both peers', async ({ browser }, testInfo) => {
+	test.setTimeout(180_000)
+	const roomId = createP2PRoomId('real-crdt-choose-current', testInfo)
+	const roomUrl = buildRoomUrl(roomId)
+	const first = await openP2PPeer(browser, roomUrl)
+	const second = await openP2PPeer(browser, roomUrl)
+
+	try {
+		await Promise.all([waitForP2PDebugState(first.page), waitForP2PDebugState(second.page)])
+		await waitForRolePair(first.page, second.page)
+		const [firstRole] = await Promise.all([getRole(first.page), getRole(second.page)])
+		const sourcePage = firstRole === 'client' ? first.page : second.page
+		const replicaPage = sourcePage === first.page ? second.page : first.page
+		const sourceSendBatchIdsBefore = await readTraceBatchIds(sourcePage, /crdt-send/)
+
+		await sourcePage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.dispatchCreateProject?.('Real CRDT choose current'))
+		await waitForRuntimeSettled(sourcePage)
+		const sourceProject = await waitForActiveProject(sourcePage, 'Real CRDT choose current')
+		const sourceProjectId = stringId(sourceProject.projectId, 'source project id')
+		await importFixtureVideoToTimeline(sourcePage)
+		await waitForRuntimeSettled(sourcePage)
+
+		const firstClipId = await waitForFirstVideoClipId(sourcePage)
+		await expectSourceProjectHasVideoClip(sourcePage, firstClipId)
+		const sourceSendBatchIds = await waitForNewCrdtSendBatchIds(sourcePage, sourceSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(replicaPage, sourceSendBatchIds)
+		await waitForWorkerDumpContainsProjectResourceAndClip(replicaPage, sourceProjectId, firstClipId)
+		await waitForReplicaProject(replicaPage, sourceProjectId)
+		await waitForClipOnActiveProject(replicaPage, firstClipId)
+
+		await Promise.all([
+			setCrdtPartition(first.page, true),
+			setCrdtPartition(second.page, true),
+		])
+		await Promise.all([
+			dragClipEdgeByUi(first.page, firstClipId, 'end', -28),
+			dragClipEdgeByUi(second.page, firstClipId, 'start', 28),
+		])
+		await Promise.all([waitForRuntimeSettled(first.page), waitForRuntimeSettled(second.page)])
+		await Promise.all([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+
+		const reviewButtonName = /Review\s+[1-9]\d*/
+		await expect(first.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await expect(second.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await first.page.getByRole('button', { name: reviewButtonName }).click()
+		const projectReview = first.page.getByRole('region', { name: 'Project review' })
+		await expect(projectReview).toBeVisible({ timeout: 10_000 })
+		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
+		await waitForRuntimeSettled(first.page)
+
+		const openCountBefore = await readReviewOpenCount(first.page)
+		expect(openCountBefore).toEqual(expect.any(Number))
+		const dispatchCountBefore = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'resolveClipTimingConflict',
+		)
+		const actionSendBatchIdsBefore = await readTraceBatchIds(first.page, /crdt-send/)
+		const preview = await readFirstClipTimingPreview(first.page)
+		const expectedTiming = asExpectedTiming(preview.current, 'current')
+		const conflictId = stringId((await readFirstClipTimingReviewItem(first.page)).attrs?.conflictId, 'conflict id')
+
+		await projectReview.getByRole('button', { name: 'Choose current' }).click()
+		await waitForRuntimeSettled(first.page)
+		const dispatchCountAfter = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'resolveClipTimingConflict',
+		)
+		expect(dispatchCountAfter).toBeGreaterThan(dispatchCountBefore)
+		const actionSendBatchIds = await waitForNewCrdtSendBatchIds(first.page, actionSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(second.page, actionSendBatchIds)
+		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
+		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
+		await waitForClipTimingOnBoth(first.page, second.page, firstClipId, expectedTiming)
+	} catch (error) {
+		const artifactPath = await writeP2PDebugArtifacts('real-crdt-choose-current-timeout', first.page, second.page)
+		throw new Error(`Timed out waiting for real CRDT choose current proof. Debug artifact: ${artifactPath}`, { cause: error })
+	} finally {
+		await Promise.allSettled([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+		await closePeerHandles(first, second)
+	}
+})
+
+test('p2p real CRDT timing conflict applies final timing from review UI on both peers', async ({ browser }, testInfo) => {
+	test.setTimeout(180_000)
+	const roomId = createP2PRoomId('real-crdt-apply-final', testInfo)
+	const roomUrl = buildRoomUrl(roomId)
+	const first = await openP2PPeer(browser, roomUrl)
+	const second = await openP2PPeer(browser, roomUrl)
+
+	try {
+		await Promise.all([waitForP2PDebugState(first.page), waitForP2PDebugState(second.page)])
+		await waitForRolePair(first.page, second.page)
+		const [firstRole] = await Promise.all([getRole(first.page), getRole(second.page)])
+		const sourcePage = firstRole === 'client' ? first.page : second.page
+		const replicaPage = sourcePage === first.page ? second.page : first.page
+		const sourceSendBatchIdsBefore = await readTraceBatchIds(sourcePage, /crdt-send/)
+
+		await sourcePage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.dispatchCreateProject?.('Real CRDT apply final'))
+		await waitForRuntimeSettled(sourcePage)
+		const sourceProject = await waitForActiveProject(sourcePage, 'Real CRDT apply final')
+		const sourceProjectId = stringId(sourceProject.projectId, 'source project id')
+		await importFixtureVideoToTimeline(sourcePage)
+		await waitForRuntimeSettled(sourcePage)
+
+		const firstClipId = await waitForFirstVideoClipId(sourcePage)
+		await expectSourceProjectHasVideoClip(sourcePage, firstClipId)
+		const sourceSendBatchIds = await waitForNewCrdtSendBatchIds(sourcePage, sourceSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(replicaPage, sourceSendBatchIds)
+		await waitForWorkerDumpContainsProjectResourceAndClip(replicaPage, sourceProjectId, firstClipId)
+		await waitForReplicaProject(replicaPage, sourceProjectId)
+		await waitForClipOnActiveProject(replicaPage, firstClipId)
+
+		await Promise.all([
+			setCrdtPartition(first.page, true),
+			setCrdtPartition(second.page, true),
+		])
+		await Promise.all([
+			dragClipEdgeByUi(first.page, firstClipId, 'end', -28),
+			dragClipEdgeByUi(second.page, firstClipId, 'start', 28),
+		])
+		await Promise.all([waitForRuntimeSettled(first.page), waitForRuntimeSettled(second.page)])
+		await Promise.all([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+
+		const reviewButtonName = /Review\s+[1-9]\d*/
+		await expect(first.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await expect(second.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await first.page.getByRole('button', { name: reviewButtonName }).click()
+		const projectReview = first.page.getByRole('region', { name: 'Project review' })
+		await expect(projectReview).toBeVisible({ timeout: 10_000 })
+		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
+		await waitForRuntimeSettled(first.page)
+
+		const openCountBefore = await readReviewOpenCount(first.page)
+		expect(openCountBefore).toEqual(expect.any(Number))
+		const dispatchCountBefore = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'resolveClipTimingConflict',
+		)
+		const actionSendBatchIdsBefore = await readTraceBatchIds(first.page, /crdt-send/)
+		const preview = await readFirstClipTimingPreview(first.page)
+		const expectedTiming = {
+			...asExpectedTiming(preview.current, 'current'),
+			start: 0.25,
+		}
+		const conflictId = stringId((await readFirstClipTimingReviewItem(first.page)).attrs?.conflictId, 'conflict id')
+
+		await projectReview.getByLabel('Final start').fill('0.25')
+		await projectReview.getByRole('button', { name: 'Apply final timing' }).click()
+		await waitForRuntimeSettled(first.page)
+		const dispatchCountAfter = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'resolveClipTimingConflict',
+		)
+		expect(dispatchCountAfter).toBeGreaterThan(dispatchCountBefore)
+		const actionSendBatchIds = await waitForNewCrdtSendBatchIds(first.page, actionSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(second.page, actionSendBatchIds)
+		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
+		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
+		await waitForClipTimingOnBoth(first.page, second.page, firstClipId, expectedTiming)
+	} catch (error) {
+		const artifactPath = await writeP2PDebugArtifacts('real-crdt-apply-final-timeout', first.page, second.page)
+		throw new Error(`Timed out waiting for real CRDT apply final proof. Debug artifact: ${artifactPath}`, { cause: error })
 	} finally {
 		await Promise.allSettled([
 			setCrdtPartition(first.page, false),

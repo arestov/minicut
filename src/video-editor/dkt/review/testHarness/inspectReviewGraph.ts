@@ -46,6 +46,7 @@ const REVIEW_ITEM_ATTRS = [
 	"status",
 	"title",
 	"affectedObjects",
+	"preview",
 	"availableActions",
 	"actionTargets",
 	"source",

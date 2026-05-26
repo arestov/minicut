@@ -47,6 +47,9 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 					muted: true,
 					isVisible: true,
 				},
+				rels: {
+					project: { _node_id: "project:1" },
+				},
 				hold_ref_id: "incomingReviewTrack",
 			},
 			parkedClip: {
@@ -112,6 +115,22 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 				"$noop",
 				{ _node_id: "project:1" },
 				{ _node_id: "clip:1" },
+			),
+		).toBe("$noop");
+	});
+
+	it("does not park when the routed source clip does not match the payload clip", () => {
+		expect(
+			reduceParkIncomingVariantOnReviewTrack(
+				{
+					conflictId: "conflict:clip",
+					reviewItemId: "review:clip",
+					clipId: "clip:1",
+					timing: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
+				},
+				"$noop",
+				{ _node_id: "project:1" },
+				{ _node_id: "clip:other" },
 			),
 		).toBe("$noop");
 	});
