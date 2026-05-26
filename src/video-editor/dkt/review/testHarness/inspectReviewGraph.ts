@@ -39,6 +39,7 @@ const REVIEW_SESSION_ATTRS = [
 ] as const;
 
 const REVIEW_ITEM_ATTRS = [
+	"reviewItemSnapshot",
 	"reviewItemId",
 	"conflictId",
 	"projectId",
@@ -139,16 +140,6 @@ export const inspectReviewGraph = async (
 		),
 	};
 };
-
-const flattenSessionItems = (
-	sessions: ReviewGraphSessionSnapshot[],
-): ReviewGraphNodeSnapshot[] =>
-	sessions.flatMap((session) => session.items);
-
-const flattenSessionActivitySummaries = (
-	sessions: ReviewGraphSessionSnapshot[],
-): ReviewGraphNodeSnapshot[] =>
-	sessions.flatMap((session) => session.activitySummaries);
 
 export const inspectProjectReviewGraph = async (
 	ctx: DktTestContext,
