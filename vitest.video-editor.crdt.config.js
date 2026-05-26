@@ -7,22 +7,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dktRoot = path.resolve(__dirname, 'tmp/dkt/js')
 const dktProvodaRoot = path.resolve(__dirname, 'tmp/dkt/js/libs/provoda/provoda')
 
-export default defineConfig({
-	plugins: [react()],
+const resolve = {
+	alias: {
+		'@video-editor': path.resolve(__dirname, 'src/video-editor'),
+		dkt: dktProvodaRoot,
+		'dkt-all': dktRoot,
+	},
+}
+
+const crdtNodeProject = defineConfig({
 	resolve: {
-		alias: {
-			'@video-editor': path.resolve(__dirname, 'src/video-editor'),
-			dkt: dktProvodaRoot,
-			'dkt-all': dktRoot,
-		},
+		alias: resolve.alias,
 	},
 	test: {
+		name: 'crdt-node',
 		globals: true,
-		environment: 'jsdom',
-		threads: true,
-		minWorkers: 1,
-		maxWorkers: 2,
-		fileParallelism: false,
+		environment: 'node',
+		fileParallelism: true,
+		maxWorkers: 4,
 		hookTimeout: 30_000,
 		testTimeout: 30_000,
 		include: [
@@ -38,9 +40,32 @@ export default defineConfig({
 			'src/video-editor/dkt/storage/**/*.test.ts',
 			'src/video-editor/dkt/maelstrom/**/*.test.ts',
 			'src/video-editor/dkt/maelstrom/**/*.maelstrom.test.ts',
-			'src/video-editor/components/ClipConflictBadge.test.tsx',
 		],
 		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**'],
+	},
+})
+
+const crdtDomProject = defineConfig({
+	plugins: [react()],
+	resolve: {
+		alias: resolve.alias,
+	},
+	test: {
+		name: 'crdt-dom',
+		globals: true,
+		environment: 'jsdom',
+		fileParallelism: false,
+		maxWorkers: 1,
+		hookTimeout: 30_000,
+		testTimeout: 30_000,
+		include: ['src/video-editor/components/ClipConflictBadge.test.tsx'],
+		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**'],
 		setupFiles: ['./src/video-editor/tests/setup.ts'],
+	},
+})
+
+export default defineConfig({
+	test: {
+		projects: [crdtNodeProject, crdtDomProject],
 	},
 })

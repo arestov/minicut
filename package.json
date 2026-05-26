@@ -11,7 +11,7 @@
     "dev:full": "node ./scripts/dev-full.mjs",
     "start": "node ./scripts/start.mjs",
     "test": "npm run test:video-editor",
-    "test:video-editor": "npm run test:video-editor:shared && npm run test:video-editor:isolated",
+    "test:video-editor": "npm run test:video-editor:node && npm run test:video-editor:shared && npm run test:video-editor:isolated",
     "test:video-editor:shared": "vitest run --config vitest.video-editor.config.js",
     "test:video-editor:isolated": "vitest run --config vitest.video-editor.isolated.config.js",
     "test:video-editor:node": "vitest run --config vitest.video-editor.node.config.js",
