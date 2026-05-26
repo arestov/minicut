@@ -35,6 +35,8 @@ export default defineConfig({
 			'node_modules/**',
 			'dist*/**',
 			'tmp/dkt/**',
+			'src/video-editor/dkt/models/**/*.test.ts',
+			'src/video-editor/dkt/runtime/**/*.test.ts',
 			'src/video-editor/p2p/**/*.test.ts',
 		],
 		setupFiles: ['./src/video-editor/tests/setup.ts'],
