@@ -293,6 +293,7 @@ export const reduceSetTrackProject = (payload: unknown) => ({
 
 export const reduceAcceptClipIfTarget = (
 	payload: unknown,
+	noop: unknown,
 	self: unknown,
 	clips: unknown[],
 ) => {
@@ -300,27 +301,43 @@ export const reduceAcceptClipIfTarget = (
 		clip?: unknown;
 		targetTrack?: unknown;
 		targetTrackId?: unknown;
+		targetTrackRole?: unknown;
 	} | null;
 	const targetTrackId =
 		getNodeId(value?.targetTrack) ??
 		(typeof value?.targetTrackId === "string" ? value.targetTrackId : null);
+	const targetTrackRole =
+		typeof value?.targetTrackRole === "string" ? value.targetTrackRole : null;
 	const selfId = getNodeId(self);
+	const selfRole = getModelAttr(self, "trackRole");
 	const clip = value?.clip;
-	const clipId = getNodeId(clip);
+	const clipId =
+		getNodeId(clip) ??
+		(clip &&
+		typeof clip === "object" &&
+		typeof (clip as { use_ref_id?: unknown }).use_ref_id === "string"
+			? (clip as { use_ref_id: string }).use_ref_id
+			: null);
 	const currentClips = Array.isArray(clips) ? clips : [];
 	if (
-		!targetTrackId ||
 		!selfId ||
-		selfId !== targetTrackId ||
+		(targetTrackId
+			? selfId !== targetTrackId
+			: !targetTrackRole || selfRole !== targetTrackRole) ||
 		!clip ||
 		!clipId
 	) {
-		return { clips: currentClips };
+		return noop;
 	}
 	if (currentClips.some((candidate) => getNodeId(candidate) === clipId)) {
-		return { clips: currentClips };
+		return noop;
 	}
-	return { clips: [...currentClips, clip] };
+	return {
+		clip: {
+			[clipId]: { rels: { track: self } },
+		},
+		clips: clip,
+	};
 };
 
 export const reduceRemoveClip = (payload: unknown, clips: unknown[]) => {

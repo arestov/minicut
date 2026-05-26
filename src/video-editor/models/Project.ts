@@ -337,6 +337,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: TRACK_CREATION_SHAPE,
 						},
 					],
@@ -346,6 +347,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: TRACK_CREATION_SHAPE,
 						},
 					],
@@ -676,7 +678,7 @@ export const Project = model({
 			to: {
 				tracks: [
 					"<< tracks",
-					{ method: "set_many" },
+					{ method: "insert_after_id" },
 				],
 				crdtResolve: [crdtReviewResolveTarget],
 			},
@@ -690,7 +692,7 @@ export const Project = model({
 			to: {
 				tracks: [
 					"<< tracks",
-					{ method: "set_many" },
+					{ method: "insert_after_id" },
 				],
 				crdtResolve: [crdtReviewResolveTarget],
 			},
@@ -903,31 +905,60 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
-							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
 					crdtResolve: [crdtReviewResolveTarget],
-					$output: ["$output"],
+					$output: ["$output", { can_use_refs: true }],
+				},
+				output_base_rel_shape: {
+					clip: {
+						linking: "<< clip << #",
+						many: false,
+					},
+					targetTrack: {
+						linking: "<< track << #",
+						many: false,
+					},
 				},
 				fn: [
-					["$noop", "<<<<", "<<<< $input_id:clipId"] as const,
+					[
+						"$noop",
+						"<<<<",
+						"<<<< $input_id:clipId",
+						"<< @one:resource <<<< $input_id:clipId",
+					] as const,
 					(
 						payload: unknown,
 						noop: unknown,
 						project: unknown,
 						sourceClip: unknown,
+						sourceResource: unknown,
 					) =>
 						reduceParkIncomingVariantOnReviewTrack(
 							payload,
 							noop,
 							project,
 							sourceClip,
+							sourceResource,
 						),
 				],
 			},
 			{
-				to: ["<< tracks", { action: "acceptClipIfTarget", sub_flow: true }],
+				input_base_rel_shape: {
+					clip: {
+						linking: "<< clip << #",
+						many: false,
+					},
+					targetTrack: {
+						linking: "<< track << #",
+						many: false,
+					},
+				},
+				to: [
+					"<<<< $input:targetTrack",
+					{ action: "acceptClipIfTarget", sub_flow: true },
+				],
 				fn: reduceAcceptParkedClipOnReviewTrack,
 			},
 		],
@@ -946,11 +977,20 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
-							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
-					$output: ["$output"],
+					$output: ["$output", { can_use_refs: true }],
+				},
+				output_base_rel_shape: {
+					clip: {
+						linking: "<< clip << #",
+						many: false,
+					},
+					targetTrack: {
+						linking: "<< track << #",
+						many: false,
+					},
 				},
 				fn: [
 					["$noop", "<<<<", "<<<< $input_id:targetTrackId"] as const,
@@ -958,9 +998,19 @@ export const Project = model({
 				],
 			},
 			{
+				input_base_rel_shape: {
+					clip: {
+						linking: "<< clip << #",
+						many: false,
+					},
+					targetTrack: {
+						linking: "<< track << #",
+						many: false,
+					},
+				},
 				to: {
 					targetTracks: [
-						"<< tracks",
+						"<<<< $input:targetTrack",
 						{ action: "acceptClipIfTarget", sub_flow: true },
 					],
 					crdtResolve: [crdtReviewResolveTarget],
@@ -997,7 +1047,17 @@ export const Project = model({
 						},
 					],
 					crdtResolve: [crdtReviewResolveTarget],
-					$output: ["$output"],
+					$output: ["$output", { can_use_refs: true }],
+				},
+				output_base_rel_shape: {
+					clip: {
+						linking: "<< clip << #",
+						many: false,
+					},
+					targetTrack: {
+						linking: "<< track << #",
+						many: false,
+					},
 				},
 				fn: [
 					["$noop", "<<<<", "<< @all:tracks"] as const,
@@ -1005,7 +1065,20 @@ export const Project = model({
 				],
 			},
 			{
-				to: ["<< tracks", { action: "acceptClipIfTarget", sub_flow: true }],
+				input_base_rel_shape: {
+					clip: {
+						linking: "<< clip << #",
+						many: false,
+					},
+					targetTrack: {
+						linking: "<< track << #",
+						many: false,
+					},
+				},
+				to: [
+					"<<<< $input:targetTrack",
+					{ action: "acceptClipIfTarget", sub_flow: true },
+				],
 				fn: reduceAcceptParkedClipOnReviewTrack,
 			},
 		],

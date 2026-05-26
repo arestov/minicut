@@ -692,8 +692,6 @@ export const reduceResolveDeleteVsEditByRestoreVariant = (
 		clip: {
 			attrs: restoredAttrs,
 			rels: {
-				project,
-				track: targetTrack,
 				resource: asObject(value?.editedVariant)?.resource ?? null,
 			},
 			hold_ref_id: "restoredDeleteVsEditClip",
@@ -757,6 +755,7 @@ export const reduceParkEditedVariantOnReviewTrack = (
 	const trackId = reviewTrack
 		? getNodeId(reviewTrack)
 		: { use_ref_id: "deleteVsEditReviewTrack" };
+	const resourceRef = asObject(value?.editedVariant)?.resource;
 	return {
 		...(reviewTrack
 			? null
@@ -770,7 +769,10 @@ export const reduceParkEditedVariantOnReviewTrack = (
 							}),
 							name: `Incoming Review - ${restoredAttrs.name}`,
 						},
-						rels: { project },
+						rels: {
+							project,
+							clips: [{ use_ref_id: "parkedDeleteVsEditClip" }],
+						},
 						hold_ref_id: "deleteVsEditReviewTrack",
 					},
 					reviewTracks: { use_ref_id: "deleteVsEditReviewTrack" },
@@ -781,9 +783,7 @@ export const reduceParkEditedVariantOnReviewTrack = (
 				name: `${restoredAttrs.name} edited variant`,
 			},
 			rels: {
-				project,
-				track: trackRef,
-				resource: asObject(value?.editedVariant)?.resource ?? null,
+				resource: resourceRef ?? null,
 			},
 			hold_ref_id: "parkedDeleteVsEditClip",
 		},
@@ -801,6 +801,7 @@ export const reduceParkEditedVariantOnReviewTrack = (
 		$output: {
 			clip: { use_ref_id: "parkedDeleteVsEditClip" },
 			targetTrack: trackRef,
+			targetTrackRole: REVIEW_TRACK_ROLES.incoming,
 		},
 	};
 };
@@ -1296,7 +1297,10 @@ export const reduceResolveTrackOrderConflict = (
 		return noop;
 	}
 	return {
-		tracks: orderedTracks,
+		tracks: {
+			id: null,
+			value: orderedTracks,
+		},
 		crdtResolve: {
 			conflict_id: conflictId,
 			decision: {

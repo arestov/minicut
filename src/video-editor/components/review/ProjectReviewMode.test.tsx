@@ -227,7 +227,7 @@ describe("ProjectReviewMode review actions", () => {
 		expect(runtime.dispatchCalls).toEqual([
 			expect.objectContaining({
 				actionName: "resolveDanglingResourceByRelink",
-				scopeNodeId: "clip:1",
+				scopeNodeId: "resource:1",
 				payload: expect.objectContaining({
 					resourceId: "resource:1",
 					replacementUrl: "https://media.example/interview.mov",
@@ -235,7 +235,7 @@ describe("ProjectReviewMode review actions", () => {
 			}),
 			expect.objectContaining({
 				actionName: "keepOfflinePlaceholder",
-				scopeNodeId: "clip:1",
+				scopeNodeId: "resource:1",
 				payload: expect.objectContaining({ resourceId: "resource:1" }),
 			}),
 		]);

@@ -61,6 +61,7 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	noop: unknown,
 	project: unknown,
 	sourceClip?: unknown,
+	sourceResourceInput?: unknown,
 ) => {
 	if (!isRecord(payload)) {
 		return noop;
@@ -86,7 +87,9 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	}
 	const sourceName = stringOrNull(modelAttr(sourceClip, "name"));
 	const mediaKind = stringOrNull(modelAttr(sourceClip, "mediaKind"));
-	const sourceResource = creationRel(modelOneRel(sourceClip, "resource"));
+	const sourceResource = creationRel(
+		sourceResourceInput ?? modelOneRel(sourceClip, "resource"),
+	);
 	const sourceText = creationRel(modelOneRel(sourceClip, "text"));
 	const sourceEffects = modelRel(sourceClip, "effects");
 	const effectRefs = Array.isArray(sourceEffects)
@@ -97,13 +100,17 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 			attrs: {
 				kind: mediaKind === "audio" ? "audio" : "video",
 				name: `Incoming Review - ${sourceName ?? clipId}`,
+				trackRole: "incomingReview",
 				enabled: false,
+				visibleInPreview: false,
 				muted: true,
 				locked: false,
 				isVisible: true,
 				height: 72,
 			},
-			rels: { project },
+			rels: {
+				project,
+			},
 			hold_ref_id: "incomingReviewTrack",
 		},
 		reviewTracks: { use_ref_id: "incomingReviewTrack" },
@@ -127,8 +134,7 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 				}),
 			},
 			rels: {
-				track: { use_ref_id: "incomingReviewTrack" },
-				...(sourceResource ? { resource: sourceResource } : null),
+				resource: sourceResource ?? null,
 				...(sourceText ? { text: sourceText } : null),
 				effects: effectRefs,
 			},
@@ -151,6 +157,7 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 			projectId: getNodeId(project),
 			clip: { use_ref_id: "parkedIncomingClip" },
 			targetTrack: { use_ref_id: "incomingReviewTrack" },
+			targetTrackRole: "incomingReview",
 		},
 	};
 };

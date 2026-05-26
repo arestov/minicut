@@ -66,6 +66,33 @@ const expectConflictResolvedOnBothPeers = async (
 	);
 };
 
+const waitForIncomingReviewTrackWithParkedClip = async (peer: Peer) => {
+	const deadline = Date.now() + 5_000;
+	let lastTrackSummary: unknown[] = [];
+	while (Date.now() <= deadline) {
+		await peer.ctx.computed();
+		const tracks = await peer.ctx.queryRel(peer.project, "tracks");
+		lastTrackSummary = [];
+		for (const track of tracks) {
+			const trackRole = await peer.ctx.queryAttr(track, "trackRole");
+			const clips = await peer.ctx.queryRel(track, "clips");
+			lastTrackSummary.push({
+				id: track._node_id,
+				role: trackRole,
+				name: await peer.ctx.queryAttr(track, "name"),
+				clipCount: clips.length,
+			});
+			if (trackRole === "incomingReview" && clips.length > 0) {
+				return { track, clips };
+			}
+		}
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+	throw new Error(
+		`Expected incoming review track with parked clip on peer ${peer.id}; saw ${JSON.stringify(lastTrackSummary)}`,
+	);
+};
+
 describe("MiniCut p2p review projection", () => {
 	it("materializes a project review session from a natural two-peer timing conflict", async () => {
 		const { pair, clipA, clipB } = await createPairWithClip(
@@ -323,6 +350,62 @@ describe("MiniCut p2p review projection", () => {
 				);
 				expect(await pair.b.ctx.queryAttr(clipB, "duration")).toBe(
 					expected.duration,
+				);
+			}
+		} finally {
+			pair.close();
+		}
+	});
+
+	it("parks an incoming timing variant into review tracks on both peers", async () => {
+		const { pair, clipA, clipB } = await createPairWithClip(
+			"room-review-p2p-button-park-incoming",
+		);
+		try {
+			pair.partition();
+			await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
+			await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -2 });
+			pair.heal();
+			await pair.waitForConvergence();
+
+			const graph = await waitForProjectReviewGraph(
+				pair.a.ctx,
+				pair.a.project,
+				(snapshot) =>
+					snapshot.items.some((item) => item.attrs.kind === "clip_timing"),
+			);
+			const item = graph.items.find(
+				(entry) => entry.attrs.kind === "clip_timing",
+			);
+			const conflictId = item?.attrs.conflictId;
+			if (typeof conflictId !== "string") {
+				throw new Error("Expected materialized timing conflict id");
+			}
+
+			await pair.a.dispatch(pair.a.project, "parkIncomingVariantOnReviewTrack", {
+				conflictId,
+				reviewItemId: `review:${conflictId}`,
+				clipId: clipA._node_id,
+				variant: "incoming",
+				timing: {
+					start: 0,
+					in: 0,
+					duration: 2,
+					fadeIn: 0,
+					fadeOut: 0,
+				},
+			});
+
+			await expectConflictResolvedOnBothPeers(pair, conflictId);
+			for (const peer of [pair.a, pair.b]) {
+				const { track, clips: parkedClips } =
+					await waitForIncomingReviewTrackWithParkedClip(peer);
+				expect(parkedClips).toHaveLength(1);
+				expect(await peer.ctx.queryAttr(parkedClips[0], "start")).toBe(0);
+				expect(await peer.ctx.queryAttr(parkedClips[0], "in")).toBe(0);
+				expect(await peer.ctx.queryAttr(parkedClips[0], "duration")).toBe(2);
+				expect((await peer.ctx.queryRel(parkedClips[0], "track"))[0]?._node_id).toBe(
+					track._node_id,
 				);
 			}
 		} finally {
