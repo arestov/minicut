@@ -10,6 +10,7 @@ import { createNaturalTrackOrderConflict } from "./naturalConflictGenerators";
 import {
 	captureReviewOpenCounts,
 	expectReviewResolvedOnBoth,
+	type ReviewOpenCountsByPeer,
 } from "./reviewAssertions";
 import type { HeadlessReviewPeer } from "./createHeadlessReviewPair";
 
@@ -32,6 +33,39 @@ const expectTrackOrderOnBoth = async (
 	for (const peer of peers) {
 		expect(await readProjectTrackIds(peer)).toEqual(trackIds);
 	}
+};
+
+const readTrackOrderOnBoth = async (
+	pair: Awaited<ReturnType<typeof createNaturalTrackOrderConflict>>["pair"],
+) => ({
+	a: await readProjectTrackIds(pair.a),
+	b: await readProjectTrackIds(pair.b),
+});
+
+const expectTrackOrderUnchangedOnBoth = async (
+	pair: Awaited<ReturnType<typeof createNaturalTrackOrderConflict>>["pair"],
+	before: { a: string[]; b: string[] },
+) => {
+	expect(await readProjectTrackIds(pair.a)).toEqual(before.a);
+	expect(await readProjectTrackIds(pair.b)).toEqual(before.b);
+};
+
+const expectReviewOpenCountsUnchanged = (
+	after: ReviewOpenCountsByPeer,
+	before: ReviewOpenCountsByPeer,
+) => {
+	expect(after.a).toMatchObject({
+		status: "open",
+		targetIsOpen: true,
+		openItemCount: before.a.openItemCount,
+		sessionOpenItemCount: before.a.sessionOpenItemCount,
+	});
+	expect(after.b).toMatchObject({
+		status: "open",
+		targetIsOpen: true,
+		openItemCount: before.b.openItemCount,
+		sessionOpenItemCount: before.b.sessionOpenItemCount,
+	});
 };
 
 const expandOrder = (orderedSubset: string[], currentOrder: string[]) => [
@@ -118,6 +152,8 @@ describe("headless track order review actions", () => {
 		try {
 			const preview = trackOrderPreview(item);
 			const manualOrder = [...trackOrderIds(preview.currentOrder)].reverse();
+			const before = await captureReviewOpenCounts(pair, item.conflictId);
+			const originalOrder = await readTrackOrderOnBoth(pair);
 
 			await dispatchReviewActionLikeUi(
 				pair.a,
@@ -128,8 +164,11 @@ describe("headless track order review actions", () => {
 
 			const updatedItem = await waitForReviewItemByConflict(pair, item.conflictId);
 			const updatedPreview = trackOrderPreview(updatedItem);
+			const after = await captureReviewOpenCounts(pair, item.conflictId);
 			expect(updatedItem.status).toBe("open");
 			expect(trackOrderIds(updatedPreview.manualOrder ?? [])).toEqual(manualOrder);
+			expectReviewOpenCountsUnchanged(after, before);
+			await expectTrackOrderUnchangedOnBoth(pair, originalOrder);
 		} finally {
 			pair.close();
 		}
