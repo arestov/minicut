@@ -40,6 +40,34 @@ const child = shouldRunFullStack
 	? spawnProcess('node', ['./scripts/dev-full.mjs'])
 	: spawnProcess('vite', ['--config', 'vite.video-editor.config.js', '--host', '127.0.0.1', '--port', '4174'])
 
+let shuttingDown = false
+
+const terminateProcessTree = (signal) => {
+	if (shuttingDown) {
+		return
+	}
+	shuttingDown = true
+
+	if (!child.pid) {
+		process.exit(0)
+		return
+	}
+
+	if (process.platform === 'win32') {
+		const killer = spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+			stdio: 'ignore',
+		})
+		killer.on('exit', () => process.exit(0))
+		killer.on('error', () => process.exit(0))
+		return
+	}
+
+	child.kill(signal)
+}
+
+process.on('SIGTERM', () => terminateProcessTree('SIGTERM'))
+process.on('SIGINT', () => terminateProcessTree('SIGINT'))
+
 child.on('exit', (code, signal) => {
 	if (signal) {
 		process.exit(1)

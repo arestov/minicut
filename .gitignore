@@ -4,3 +4,7 @@
 /.vite
 /playwright-report
 /test-results
+/tmp
+/.tmp
+/debug.log
+/app-structure.snapshot

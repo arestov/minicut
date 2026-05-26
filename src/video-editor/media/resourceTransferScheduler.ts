@@ -1,71 +1,88 @@
-import { DEFAULT_RESOURCE_CHUNK_SIZE, RESOURCE_HEAD_PLAYABLE_BYTES, mergeByteRanges } from '../domain/resourceData'
-import type { ResourceByteRange } from '../domain/types'
+import {
+	DEFAULT_RESOURCE_CHUNK_SIZE,
+	mergeByteRanges,
+	RESOURCE_HEAD_PLAYABLE_BYTES,
+} from "../domain/resourceData";
+import type { ResourceByteRange } from "../domain/types";
 
-export const DEFAULT_RESOURCE_TAIL_FALLBACK_BYTES = 256 * 1024
-export const DEFAULT_PLAYHEAD_WINDOW_SECONDS = 4
+export const DEFAULT_RESOURCE_TAIL_FALLBACK_BYTES = 256 * 1024;
+export const DEFAULT_PLAYHEAD_WINDOW_SECONDS = 4;
 
-const normalizeByte = (value: number): number => Math.max(0, Math.floor(value))
+const normalizeByte = (value: number): number => Math.max(0, Math.floor(value));
 
 export const clampRangeToSize = (
 	range: ResourceByteRange,
 	totalSize?: number,
 ): ResourceByteRange | null => {
-	const start = normalizeByte(range[0])
-	const end = normalizeByte(range[1])
+	const start = normalizeByte(range[0]);
+	const end = normalizeByte(range[1]);
 	if (end <= start) {
-		return null
+		return null;
 	}
 
-	if (typeof totalSize !== 'number' || !Number.isFinite(totalSize) || totalSize <= 0) {
-		return [start, end]
+	if (
+		typeof totalSize !== "number" ||
+		!Number.isFinite(totalSize) ||
+		totalSize <= 0
+	) {
+		return [start, end];
 	}
 
-	const clampedStart = Math.min(start, totalSize)
-	const clampedEnd = Math.min(Math.max(clampedStart, end), totalSize)
-	return clampedEnd > clampedStart ? [clampedStart, clampedEnd] : null
-}
+	const clampedStart = Math.min(start, totalSize);
+	const clampedEnd = Math.min(Math.max(clampedStart, end), totalSize);
+	return clampedEnd > clampedStart ? [clampedStart, clampedEnd] : null;
+};
 
 export const alignRangeToChunkSize = (
 	range: ResourceByteRange,
 	chunkSize = DEFAULT_RESOURCE_CHUNK_SIZE,
 	totalSize?: number,
 ): ResourceByteRange | null => {
-	const normalized = clampRangeToSize(range, totalSize)
+	const normalized = clampRangeToSize(range, totalSize);
 	if (!normalized) {
-		return null
+		return null;
 	}
 
-	const start = Math.floor(normalized[0] / chunkSize) * chunkSize
-	const end = Math.ceil(normalized[1] / chunkSize) * chunkSize
-	return clampRangeToSize([start, end], totalSize)
-}
+	const start = Math.floor(normalized[0] / chunkSize) * chunkSize;
+	const end = Math.ceil(normalized[1] / chunkSize) * chunkSize;
+	return clampRangeToSize([start, end], totalSize);
+};
 
 export const getHeadPreviewRange = (
 	totalSize?: number,
 	chunkSize = DEFAULT_RESOURCE_CHUNK_SIZE,
 	headBytes = RESOURCE_HEAD_PLAYABLE_BYTES,
 ): ResourceByteRange | null => {
-	if (typeof totalSize === 'number' && totalSize <= 0) {
-		return null
+	if (typeof totalSize === "number" && totalSize <= 0) {
+		return null;
 	}
 
-	const targetEnd = typeof totalSize === 'number' && Number.isFinite(totalSize)
-		? Math.min(totalSize, headBytes)
-		: headBytes
-	return alignRangeToChunkSize([0, targetEnd], chunkSize, totalSize)
-}
+	const targetEnd =
+		typeof totalSize === "number" && Number.isFinite(totalSize)
+			? Math.min(totalSize, headBytes)
+			: headBytes;
+	return alignRangeToChunkSize([0, targetEnd], chunkSize, totalSize);
+};
 
 export const getTailFallbackRange = (
 	totalSize?: number,
 	chunkSize = DEFAULT_RESOURCE_CHUNK_SIZE,
 	tailBytes = DEFAULT_RESOURCE_TAIL_FALLBACK_BYTES,
 ): ResourceByteRange | null => {
-	if (typeof totalSize !== 'number' || !Number.isFinite(totalSize) || totalSize <= 0) {
-		return null
+	if (
+		typeof totalSize !== "number" ||
+		!Number.isFinite(totalSize) ||
+		totalSize <= 0
+	) {
+		return null;
 	}
 
-	return alignRangeToChunkSize([Math.max(0, totalSize - tailBytes), totalSize], chunkSize, totalSize)
-}
+	return alignRangeToChunkSize(
+		[Math.max(0, totalSize - tailBytes), totalSize],
+		chunkSize,
+		totalSize,
+	);
+};
 
 export const getPlayheadWindowRange = ({
 	totalSize,
@@ -74,117 +91,134 @@ export const getPlayheadWindowRange = ({
 	chunkSize = DEFAULT_RESOURCE_CHUNK_SIZE,
 	windowSeconds = DEFAULT_PLAYHEAD_WINDOW_SECONDS,
 }: {
-	totalSize?: number
-	duration?: number
-	time: number
-	chunkSize?: number
-	windowSeconds?: number
+	totalSize?: number;
+	duration?: number;
+	time: number;
+	chunkSize?: number;
+	windowSeconds?: number;
 }): ResourceByteRange | null => {
 	if (
-		typeof totalSize !== 'number'
-		|| !Number.isFinite(totalSize)
-		|| totalSize <= 0
-		|| typeof duration !== 'number'
-		|| !Number.isFinite(duration)
-		|| duration <= 0
+		typeof totalSize !== "number" ||
+		!Number.isFinite(totalSize) ||
+		totalSize <= 0 ||
+		typeof duration !== "number" ||
+		!Number.isFinite(duration) ||
+		duration <= 0
 	) {
-		return null
+		return null;
 	}
 
-	const bytesPerSecond = totalSize / duration
-	const halfWindowBytes = Math.max(chunkSize, bytesPerSecond * windowSeconds * 0.5)
-	const center = Math.max(0, Math.min(totalSize, Math.floor((time / duration) * totalSize)))
-	return alignRangeToChunkSize([center - halfWindowBytes, center + halfWindowBytes], chunkSize, totalSize)
-}
+	const bytesPerSecond = totalSize / duration;
+	const halfWindowBytes = Math.max(
+		chunkSize,
+		bytesPerSecond * windowSeconds * 0.5,
+	);
+	const center = Math.max(
+		0,
+		Math.min(totalSize, Math.floor((time / duration) * totalSize)),
+	);
+	return alignRangeToChunkSize(
+		[center - halfWindowBytes, center + halfWindowBytes],
+		chunkSize,
+		totalSize,
+	);
+};
 
 export const getContiguousRangeEnd = (ranges: ResourceByteRange[]): number => {
-	const merged = mergeByteRanges(ranges)
-	const head = merged.find(([start]) => start === 0)
-	return head ? head[1] : 0
-}
+	const merged = mergeByteRanges(ranges);
+	const head = merged.find(([start]) => start === 0);
+	return head ? head[1] : 0;
+};
 
 export const subtractByteRanges = (
 	ranges: ResourceByteRange[],
 	coveredRanges: ResourceByteRange[],
 ): ResourceByteRange[] => {
-	const pending = mergeByteRanges(ranges)
-	const covered = mergeByteRanges(coveredRanges)
+	const pending = mergeByteRanges(ranges);
+	const covered = mergeByteRanges(coveredRanges);
 	if (covered.length === 0) {
-		return pending
+		return pending;
 	}
 
-	const next: ResourceByteRange[] = []
+	const next: ResourceByteRange[] = [];
 	for (const [start, end] of pending) {
-		let cursor = start
+		let cursor = start;
 		for (const [coveredStart, coveredEnd] of covered) {
 			if (coveredEnd <= cursor) {
-				continue
+				continue;
 			}
 			if (coveredStart >= end) {
-				break
+				break;
 			}
 			if (coveredStart > cursor) {
-				next.push([cursor, Math.min(coveredStart, end)])
+				next.push([cursor, Math.min(coveredStart, end)]);
 			}
-			cursor = Math.max(cursor, coveredEnd)
+			cursor = Math.max(cursor, coveredEnd);
 			if (cursor >= end) {
-				break
+				break;
 			}
 		}
 
 		if (cursor < end) {
-			next.push([cursor, end])
+			next.push([cursor, end]);
 		}
 	}
 
-	return mergeByteRanges(next)
-}
+	return mergeByteRanges(next);
+};
 
 export const intersectByteRanges = (
 	ranges: ResourceByteRange[],
 	targetRange: ResourceByteRange | null,
 ): ResourceByteRange[] => {
 	if (!targetRange) {
-		return []
+		return [];
 	}
 
-	const [targetStart, targetEnd] = targetRange
+	const [targetStart, targetEnd] = targetRange;
 	if (targetEnd <= targetStart) {
-		return []
+		return [];
 	}
 
-	const intersections: ResourceByteRange[] = []
+	const intersections: ResourceByteRange[] = [];
 	for (const [start, end] of mergeByteRanges(ranges)) {
-		const nextStart = Math.max(start, targetStart)
-		const nextEnd = Math.min(end, targetEnd)
+		const nextStart = Math.max(start, targetStart);
+		const nextEnd = Math.min(end, targetEnd);
 		if (nextEnd > nextStart) {
-			intersections.push([nextStart, nextEnd])
+			intersections.push([nextStart, nextEnd]);
 		}
 	}
 
-	return intersections
-}
+	return intersections;
+};
 
 export const getNextSequentialRange = ({
 	totalSize,
 	loadedRanges,
 	chunkSize = DEFAULT_RESOURCE_CHUNK_SIZE,
 }: {
-	totalSize?: number
-	loadedRanges: ResourceByteRange[]
-	chunkSize?: number
+	totalSize?: number;
+	loadedRanges: ResourceByteRange[];
+	chunkSize?: number;
 }): ResourceByteRange | null => {
-	if (typeof totalSize !== 'number' || !Number.isFinite(totalSize) || totalSize <= 0) {
-		return null
+	if (
+		typeof totalSize !== "number" ||
+		!Number.isFinite(totalSize) ||
+		totalSize <= 0
+	) {
+		return null;
 	}
 
-	const contiguousEnd = getContiguousRangeEnd(loadedRanges)
+	const contiguousEnd = getContiguousRangeEnd(loadedRanges);
 	if (contiguousEnd <= 0 || contiguousEnd >= totalSize) {
-		return null
+		return null;
 	}
 
-	return clampRangeToSize([contiguousEnd, contiguousEnd + chunkSize], totalSize)
-}
+	return clampRangeToSize(
+		[contiguousEnd, contiguousEnd + chunkSize],
+		totalSize,
+	);
+};
 
 export const buildRangeKey = (range: ResourceByteRange | null): string =>
-	range ? `${range[0]}:${range[1]}` : ''
+	range ? `${range[0]}:${range[1]}` : "";

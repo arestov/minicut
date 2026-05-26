@@ -1,0 +1,562 @@
+import { describe, expect, it } from "vitest";
+import { waitForProjectReviewGraph } from "../review/testHarness/inspectReviewGraph";
+import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
+
+const createPairWithClip = async (roomId: string) => {
+	const pair = await createCrdtWorkerPair({
+		roomId,
+		profileId: "minicut-crdt-v1",
+		profileVersion: 1,
+	});
+	await pair.a.dispatch(pair.a.videoTrack, "addClip", {
+		name: "conflict-fixture.webm",
+		mediaKind: "video",
+		start: 0,
+		in: 0,
+		duration: 4,
+	});
+	await pair.waitForConvergence();
+	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
+	if (!clipA || !clipB) {
+		throw new Error("Expected matching clips");
+	}
+	expect(clipA._node_id).toBe(clipB._node_id);
+	return { pair, clipA, clipB };
+};
+
+const createPairWithClips = async (roomId: string, clipCount: number) => {
+	const pair = await createCrdtWorkerPair({
+		roomId,
+		profileId: "minicut-crdt-v1",
+		profileVersion: 1,
+	});
+	for (let index = 0; index < clipCount; index += 1) {
+		await pair.a.dispatch(pair.a.videoTrack, "addClip", {
+			name: `conflict-fixture-${index}.webm`,
+			mediaKind: "video",
+			start: index * 4,
+			in: 0,
+			duration: 4,
+		});
+	}
+	await pair.waitForConvergence();
+	const clipsA = await pair.a.ctx.queryRel(pair.a.videoTrack, "clips");
+	const clipsB = await pair.b.ctx.queryRel(pair.b.videoTrack, "clips");
+	expect(clipsA).toHaveLength(clipCount);
+	expect(clipsB).toHaveLength(clipCount);
+	expect(clipsA.map((clip) => clip._node_id)).toEqual(
+		clipsB.map((clip) => clip._node_id),
+	);
+	return { pair, clipsA, clipsB };
+};
+
+const findTrackByKind = async (
+	peer: Awaited<ReturnType<typeof createCrdtWorkerPair>>["a"],
+	kind: string,
+) => {
+	const tracks = await peer.ctx.queryRel(peer.project, "tracks");
+	const trackKinds = await Promise.all(
+		tracks.map(async (track) => ({
+			track,
+			kind: await peer.ctx.queryAttr(track, "kind"),
+		})),
+	);
+	const track = trackKinds.find((item) => item.kind === kind)?.track;
+	if (!track) {
+		throw new Error(`Expected ${kind} track`);
+	}
+	return track;
+};
+
+const createPairWithTextClip = async (roomId: string) => {
+	const pair = await createCrdtWorkerPair({
+		roomId,
+		profileId: "minicut-crdt-v1",
+		profileVersion: 1,
+	});
+	await pair.a.dispatch(pair.a.videoTrack, "addTextClip", {
+		name: "Text conflict",
+		mediaKind: "text",
+		start: 0,
+		in: 0,
+		duration: 4,
+		text: { content: "Original title" },
+	});
+	await pair.waitForConvergence();
+	let clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+	if (!clipA) {
+		throw new Error("Expected source clip");
+	}
+	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -0.1 });
+	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: 0.1 });
+	await pair.waitForConvergence();
+	clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
+	if (!clipA || !clipB) {
+		throw new Error("Expected matching text clips");
+	}
+	const textA = (await pair.a.ctx.queryRel(clipA, "text"))[0];
+	if (!textA) {
+		throw new Error("Expected source text node");
+	}
+	expect(clipA._node_id).toBe(clipB._node_id);
+	return { pair, clipA, clipB, textA };
+};
+
+const createPairWithResourceClip = async (roomId: string) => {
+	const pair = await createCrdtWorkerPair({
+		roomId,
+		profileId: "minicut-crdt-v1",
+		profileVersion: 1,
+	});
+	await pair.a.dispatch(pair.a.project, "importResource", {
+		name: "dangling-resource.webm",
+		kind: "video",
+		url: "memory://dangling-resource.webm",
+		mime: "video/webm",
+		duration: 4,
+		status: "ready",
+	});
+	const resource = (await pair.a.ctx.queryRel(pair.a.project, "resources"))[0];
+	if (!resource) {
+		throw new Error("Expected resource fixture");
+	}
+	await pair.a.dispatch(pair.a.videoTrack, "addClip", {
+		name: "dangling-resource-clip.webm",
+		mediaKind: "video",
+		start: 0,
+		in: 0,
+		duration: 4,
+	});
+	const clip = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+	if (!clip) {
+		throw new Error("Expected clip fixture");
+	}
+	await pair.a.dispatch(clip, "setResource", { resource });
+	await pair.waitForConvergence();
+	const resourceA = (await pair.a.ctx.queryRel(pair.a.project, "resources"))[0];
+	const resourceB = (await pair.b.ctx.queryRel(pair.b.project, "resources"))[0];
+	const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
+	const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
+	if (!resourceA || !resourceB || !clipA || !clipB) {
+		throw new Error("Expected matching resource clip fixtures");
+	}
+	expect(resourceA._node_id).toBe(resourceB._node_id);
+	expect(clipA._node_id).toBe(clipB._node_id);
+	return { pair, resourceA, resourceB, clipA, clipB };
+};
+
+const openConflictCount = (
+	model: { getAttr?: (name: string) => unknown } | null | undefined,
+	attrs: string[],
+) =>
+	Math.max(
+		0,
+		...attrs.map((attr) => {
+			const value = model?.getAttr?.(attr);
+			return typeof value === "number" ? value : Number(value ?? 0);
+		}),
+	);
+
+const readOpenConflicts = (
+	pair: Awaited<ReturnType<typeof createCrdtWorkerPair>>,
+	filter: Record<string, unknown>,
+) =>
+	pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.({
+		...filter,
+		status: "open",
+	}) ?? [];
+
+const createTimingConflict = async (roomId: string) => {
+	const { pair, clipA, clipB } = await createPairWithClip(roomId);
+
+	pair.partition();
+	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
+	await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -2 });
+	pair.heal();
+	await pair.waitForConvergence();
+	const conflictId =
+		(await pair.a.ctx.queryAttr(
+			clipA,
+			"$meta$aggregates$crdt$clipTiming$last_conflict_id",
+		)) ??
+		(await pair.a.ctx.queryAttr(
+			clipA,
+			"$meta$attrs$crdt$duration$last_conflict_id",
+		)) ??
+		(await pair.a.ctx.queryAttr(clipA, "$meta$model$crdt$last_conflict_id")) ??
+		"conflict:duration";
+
+	return {
+		pair,
+		clipA,
+		clipB,
+		conflictId,
+	};
+};
+
+describe("MiniCut CRDT conflict scenarios", () => {
+	it("records generated meta for concurrent timing edits", async () => {
+		const { pair, clipA, clipB } = await createTimingConflict(
+			"room-conflict-timing",
+		);
+
+		expect(
+			Number(
+				pair.a.ctx.getAttr(
+					clipA,
+					"$meta$attrs$crdt$duration$open_conflicts_count",
+				) ?? 0,
+			),
+		).toBeGreaterThan(0);
+		expect(
+			pair.b.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.({
+				aggregate: "clipTiming",
+			}) ?? [],
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					node_id: clipB._node_id,
+					field_name: "duration",
+					aggregate_anchor: {
+						model_name: "clip",
+						field_kind: "attr",
+						field_name: "start",
+					},
+					source_frame_id: expect.any(Number),
+					source_root_frame_id: expect.any(Number),
+					status: "open",
+				}),
+			]),
+		);
+		pair.close();
+	});
+
+	it("materializes app review graph through the CRDT conflict hook", async () => {
+		const { pair } = await createTimingConflict("room-conflict-review-hook");
+		await pair.waitForConvergence();
+
+		const [graphA, graphB] = await Promise.all([
+			waitForProjectReviewGraph(
+				pair.a.ctx,
+				pair.a.project,
+				(snapshot) => snapshot.items.length > 0,
+			),
+			waitForProjectReviewGraph(
+				pair.b.ctx,
+				pair.b.project,
+				(snapshot) => snapshot.items.length > 0,
+			),
+		]);
+		const conflictIds = [graphA, graphB].map(
+			(graph) => graph.rootReviewItems[0]?.attrs.conflictId,
+		);
+
+		for (const graph of [graphA, graphB]) {
+			expect(graph.rootReviewItems).toHaveLength(1);
+			expect(graph.reviewSessions).toHaveLength(1);
+			expect(graph.rootReviewItems[0]?.attrs).toEqual(
+				expect.objectContaining({
+					kind: "clip_timing",
+					status: "open",
+					source: expect.objectContaining({
+						conflictId: expect.any(String),
+					}),
+				}),
+			);
+			expect(graph.reviewSessions[0]?.attrs).toEqual(
+				expect.objectContaining({
+					status: "open",
+					selectedReviewItemId: graph.rootReviewItems[0]?.attrs.reviewItemId,
+				}),
+			);
+			expect(graph.reviewSessions[0]?.items).toHaveLength(1);
+		}
+		expect(conflictIds[0]).toBe(conflictIds[1]);
+		pair.close();
+	});
+
+	it("keeps timing conflict open and records failed attempt meta on invalid resolution", async () => {
+		const { pair, clipA, conflictId } = await createTimingConflict(
+			"room-conflict-timing-invalid-resolution",
+		);
+		const previousDuration = pair.a.ctx.getAttr(clipA, "duration");
+
+		await pair.a.ctx.lockToRead(async () => {
+			await clipA.dispatch(
+				"resolveClipTimingConflict",
+				{
+					conflictId,
+					reviewItemId: `review:${conflictId}`,
+					selectedVariant: "incoming",
+					start: 0,
+					in: 0,
+					duration: 0,
+				},
+				null,
+				{
+					crdt_resolution_attempt: {
+						conflict_id: conflictId,
+						aggregate: "clipTiming",
+						model_id: clipA._node_id,
+						model_name: "clip",
+					},
+				},
+			);
+		});
+
+		expect(pair.a.ctx.getAttr(clipA, "duration")).toBe(previousDuration);
+		expect(
+			Number(
+				pair.a.ctx.getAttr(
+					clipA,
+					"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+				) ?? 0,
+			),
+		).toBeGreaterThan(0);
+		expect(
+			pair.a.ctx.getAttr(
+				clipA,
+				"$meta$aggregates$crdt$clipTiming$last_resolution_error",
+			) ?? null,
+		).toBeNull();
+		pair.close();
+	});
+
+	it("resolves timing conflict through the domain action and clears generated meta", async () => {
+		const { pair, clipA, conflictId } = await createTimingConflict(
+			"room-conflict-timing-valid-resolution",
+		);
+
+		await pair.a.ctx.lockToRead(async () => {
+			await clipA.dispatch(
+				"resolveClipTimingConflict",
+				{
+					conflictId,
+					reviewItemId: `review:${conflictId}`,
+					selectedVariant: "incoming",
+					start: 0,
+					in: 0,
+					duration: 3,
+				},
+				null,
+				{
+					crdt_resolution_attempt: {
+						conflict_id: conflictId,
+						aggregate: "clipTiming",
+						model_id: clipA._node_id,
+						model_name: "clip",
+					},
+				},
+			);
+		});
+
+		expect(pair.a.ctx.getAttr(clipA, "duration")).toBe(3);
+		expect(
+			Number(
+				pair.a.ctx.getAttr(
+					clipA,
+					"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
+				) ?? 0,
+			),
+		).toBe(0);
+		expect(
+			pair.a.ctx.getAttr(
+				clipA,
+				"$meta$aggregates$crdt$clipTiming$last_resolution_error",
+			) ?? null,
+		).toBeNull();
+		pair.close();
+	});
+
+	it("records relation conflict meta for concurrent semantic clip moves", async () => {
+		const { pair, clipsA, clipsB } = await createPairWithClips(
+			"room-conflict-move-vs-move",
+			3,
+		);
+
+		pair.partition();
+		await pair.a.dispatch(pair.a.videoTrack, "moveClipWithinTrack", {
+			clipId: clipsA[1]?._node_id,
+			afterClipId: null,
+		});
+		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
+			clipId: clipsB[1]?._node_id,
+			afterClipId: clipsB[2]?._node_id,
+		});
+		pair.heal();
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(readOpenConflicts(pair, { aggregate: "timelineMembership" }))
+			.toEqual(expect.arrayContaining([
+				expect.objectContaining({
+					aggregate: "timelineMembership",
+					aggregate_anchor: {
+						model_name: "track",
+						field_kind: "rel",
+						field_name: "clips",
+					},
+					source_frame_id: expect.any(Number),
+				}),
+			]));
+		pair.close();
+	});
+
+	it("records structural conflict meta for delete vs effect edit", async () => {
+		const { pair, clipA } = await createPairWithClip(
+			"room-conflict-delete-vs-effect-edit",
+		);
+		await pair.a.dispatch(clipA, "addEffect", {
+			kind: "blur",
+			name: "Blur",
+			params: { radius: 2 },
+		});
+		await pair.waitForConvergence();
+		const clipB = (await pair.b.ctx.queryRel(pair.b.videoTrack, "clips"))[0];
+		if (!clipB) {
+			throw new Error("Expected synced clip on peer B");
+		}
+		const effectA = (await pair.a.ctx.queryRel(clipA, "effects"))[0];
+		if (!effectA) {
+			throw new Error("Expected effect fixture");
+		}
+
+		pair.partition();
+		await pair.a.dispatch(effectA, "setEffectParams", { params: { radius: 8 } });
+		await pair.b.dispatch(clipB, "removeSelf");
+		pair.heal();
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
+			.toEqual(expect.arrayContaining([expect.objectContaining({ status: "open" })]));
+		pair.close();
+	});
+
+	it("records structural conflict meta for text edit vs delete", async () => {
+		const { pair, clipA, clipB } = await createPairWithTextClip(
+			"room-conflict-delete-vs-text-edit",
+		);
+		const textA = (await pair.a.ctx.queryRel(clipA, "text"))[0];
+		if (!textA) {
+			throw new Error("Expected source text node");
+		}
+
+		pair.partition();
+		await pair.a.dispatch(textA, "setTextContent", "Remote title edit");
+		await pair.b.dispatch(clipB, "removeSelf");
+		pair.heal();
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
+			.toEqual(expect.arrayContaining([expect.objectContaining({ status: "open" })]));
+		expect((await pair.a.ctx.queryRel(clipA, "text"))[0]?._node_id).toBe(
+			textA._node_id,
+		);
+		pair.close();
+	});
+
+	it("records structural conflict meta for split vs delete", async () => {
+		const { pair, clipA, clipB } = await createPairWithClip(
+			"room-conflict-split-vs-delete",
+		);
+
+		pair.partition();
+		await pair.a.dispatch(clipA, "splitSelfAt", { time: 2 });
+		await pair.b.dispatch(clipB, "removeSelf");
+		pair.heal();
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(pair.a.videoTrack, [
+				"$meta$rels$crdt$clips$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(pair.a.ctx.runtime.crdt_runtime?.conflict_store?.readConflicts?.() ?? [])
+			.toEqual(expect.arrayContaining([expect.objectContaining({ status: "open" })]));
+		pair.close();
+	});
+
+	it("records owner-slot conflict meta for concurrent moves to different tracks", async () => {
+		const { pair, clipsA, clipsB } = await createPairWithClips(
+			"room-conflict-owner-slot-cross-track",
+			2,
+		);
+		const audioTrackA = await findTrackByKind(pair.a, "audio");
+		const clipId = clipsA[0]?._node_id;
+		if (!clipId) {
+			throw new Error("Expected clip fixture");
+		}
+
+		pair.partition();
+		await pair.a.dispatch(pair.a.project, "moveClipToTrack", {
+			clipId,
+			targetTrackId: audioTrackA._node_id,
+		});
+
+		await pair.b.dispatch(pair.b.videoTrack, "moveClipWithinTrack", {
+			clipId: clipsB[0]?._node_id,
+			afterClipId: clipsB[1]?._node_id,
+		});
+		pair.heal();
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(clipsB[0], [
+				"$meta$rels$crdt$track$open_conflicts_count",
+				"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(await pair.a.ctx.queryRel(pair.a.videoTrack, "clips")).not.toContain(
+			clipsA[0],
+		);
+		expect(await pair.a.ctx.queryRel(audioTrackA, "clips")).toContain(clipsA[0]);
+		pair.close();
+	});
+
+	it("records dangling resource ref conflict meta for resource tombstone", async () => {
+		const { pair, resourceA, resourceB, clipA } =
+			await createPairWithResourceClip("room-conflict-dangling-resource-ref");
+
+		expect((await pair.a.ctx.queryRel(clipA, "resource"))[0]?._node_id).toBe(
+			resourceA._node_id,
+		);
+
+		await pair.b.dispatch(resourceB, "removeSelf");
+		await pair.waitForConvergence();
+
+		expect(
+			openConflictCount(resourceA, [
+				"$meta$aggregates$crdt$resourceLifecycle$open_conflicts_count",
+				"$meta$model$crdt$open_conflicts_count",
+			]),
+		).toBeGreaterThan(0);
+		expect(pair.a.ctx.getAttr(resourceA, "$meta$removed") ?? false).toBe(false);
+		expect((await pair.a.ctx.queryRel(clipA, "resource"))[0]?._node_id).toBe(
+			resourceA._node_id,
+		);
+		pair.close();
+	});
+});

@@ -1,73 +1,79 @@
 import {
 	createBrowserVideoExportRenderer,
 	type ExportRenderer,
-} from '../../render/exportRenderer'
+} from "../../render/exportRenderer";
 import {
-	createAuthorityClient,
 	type CreateAuthorityClientOptions,
-} from '../../worker/createAuthorityClient'
-import type { VideoEditorHarnessPlatform } from './types'
+	createAuthorityClient,
+} from "../../worker/createAuthorityClient";
+import type { VideoEditorHarnessPlatform } from "./types";
 
-const fallbackMediaDuration = 6
-const imageDuration = 1
-const mediaMetadataTimeoutMs = 3000
+const fallbackMediaDuration = 6;
+const imageDuration = 1;
+const mediaMetadataTimeoutMs = 3000;
 
 export interface CreateBrowserHarnessPlatformOptions {
-	authorityOptions?: CreateAuthorityClientOptions
-	exportRenderer?: ExportRenderer
+	authorityOptions?: CreateAuthorityClientOptions;
+	exportRenderer?: ExportRenderer;
 }
 
 const getMediaDuration = (
 	url: string,
-	kind: 'video' | 'audio',
+	kind: "video" | "audio",
 	fallbackDuration = fallbackMediaDuration,
-): Promise<number> => new Promise((resolve) => {
-	if (typeof document === 'undefined') {
-		resolve(fallbackDuration)
-		return
-	}
-
-	const element = document.createElement(kind)
-	let settled = false
-	const timeoutId = setTimeout(() => finish(fallbackDuration), mediaMetadataTimeoutMs)
-
-	const finish = (duration: number): void => {
-		if (settled) {
-			return
+): Promise<number> =>
+	new Promise((resolve) => {
+		if (typeof document === "undefined") {
+			resolve(fallbackDuration);
+			return;
 		}
 
-		settled = true
-		clearTimeout(timeoutId)
-		element.removeAttribute('src')
-		element.load()
-		resolve(Number.isFinite(duration) && duration > 0 ? duration : fallbackDuration)
-	}
+		const element = document.createElement(kind);
+		let settled = false;
+		const timeoutId = setTimeout(
+			() => finish(fallbackDuration),
+			mediaMetadataTimeoutMs,
+		);
 
-	element.preload = 'metadata'
-	element.onloadedmetadata = () => finish(element.duration)
-	element.onerror = () => finish(fallbackDuration)
-	element.src = url
-	element.load()
-})
+		const finish = (duration: number): void => {
+			if (settled) {
+				return;
+			}
+
+			settled = true;
+			clearTimeout(timeoutId);
+			element.removeAttribute("src");
+			element.load();
+			resolve(
+				Number.isFinite(duration) && duration > 0 ? duration : fallbackDuration,
+			);
+		};
+
+		element.preload = "metadata";
+		element.onloadedmetadata = () => finish(element.duration);
+		element.onerror = () => finish(fallbackDuration);
+		element.src = url;
+		element.load();
+	});
 
 const getImportedResourceDuration = async (
 	url: string,
-	kind: 'video' | 'audio' | 'image',
+	kind: "video" | "audio" | "image",
 ): Promise<number> => {
-	if (kind === 'image') {
-		return imageDuration
+	if (kind === "image") {
+		return imageDuration;
 	}
 
-	return getMediaDuration(url, kind)
-}
+	return getMediaDuration(url, kind);
+};
 
 export const createBrowserHarnessPlatform = (
 	options: CreateBrowserHarnessPlatformOptions = {},
 ): VideoEditorHarnessPlatform => ({
 	createAuthorityClient(bindings) {
-		const p2p = options.authorityOptions?.p2p
+		const p2p = options.authorityOptions?.p2p;
 		if (!p2p) {
-			return createAuthorityClient(options.authorityOptions)
+			return createAuthorityClient(options.authorityOptions);
 		}
 
 		return createAuthorityClient({
@@ -75,38 +81,39 @@ export const createBrowserHarnessPlatform = (
 			p2p: {
 				...p2p,
 				onClientResourceTransport: (transport) => {
-					bindings?.onClientResourceTransport?.(transport)
-					p2p.onClientResourceTransport?.(transport)
+					bindings?.onClientResourceTransport?.(transport);
+					p2p.onClientResourceTransport?.(transport);
 				},
 				onServerResourceTransport: (remotePeerId, transport) => {
-					bindings?.onServerResourceTransport?.(remotePeerId, transport)
-					p2p.onServerResourceTransport?.(remotePeerId, transport)
+					bindings?.onServerResourceTransport?.(remotePeerId, transport);
+					p2p.onServerResourceTransport?.(remotePeerId, transport);
 				},
 				onResourcePeerDisconnected: (remotePeerId) => {
-					bindings?.onResourcePeerDisconnected?.(remotePeerId)
-					p2p.onResourcePeerDisconnected?.(remotePeerId)
+					bindings?.onResourcePeerDisconnected?.(remotePeerId);
+					p2p.onResourcePeerDisconnected?.(remotePeerId);
 				},
 			},
-		})
+		});
 	},
-	createExportRenderer: () => options.exportRenderer ?? createBrowserVideoExportRenderer(),
+	createExportRenderer: () =>
+		options.exportRenderer ?? createBrowserVideoExportRenderer(),
 	getImportedResourceDuration,
 	createObjectUrl(source) {
-		if (typeof URL.createObjectURL !== 'function') {
-			return null
+		if (typeof URL.createObjectURL !== "function") {
+			return null;
 		}
 
-		return URL.createObjectURL(source)
+		return URL.createObjectURL(source);
 	},
 	revokeObjectUrl(url) {
-		if (typeof URL.revokeObjectURL === 'function') {
-			URL.revokeObjectURL(url)
+		if (typeof URL.revokeObjectURL === "function") {
+			URL.revokeObjectURL(url);
 		}
 	},
 	setTimeout(handler, timeoutMs) {
-		return setTimeout(handler, timeoutMs)
+		return setTimeout(handler, timeoutMs);
 	},
 	clearTimeout(timerId) {
-		clearTimeout(timerId)
+		clearTimeout(timerId);
 	},
-})
+});

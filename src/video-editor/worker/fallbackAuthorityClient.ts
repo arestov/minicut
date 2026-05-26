@@ -1,111 +1,71 @@
-import type { EditorAuthorityClient } from './authorityClient'
-import type { ProjectRegistry } from '../domain/types'
-import { MemoryWorkerAuthority } from './memoryWorker'
-import { canUseSharedWorkerAuthority, SharedWorkerAuthorityClient } from './sharedWorkerClient'
+import type { EditorAuthorityClient } from "./authorityClient";
+import {
+	canUseDktSharedWorkerAuthority,
+	DktSharedWorkerAuthorityClient,
+} from "./dktSharedWorkerClient";
+import { MemoryWorkerAuthority } from "./memoryWorker";
 
-type RestorableAuthorityClient = EditorAuthorityClient & {
-	replaceSnapshot(snapshot: ProjectRegistry): void | Promise<void>
-}
-
-const canReplaceSnapshot = (client: EditorAuthorityClient): client is RestorableAuthorityClient =>
-	typeof client.replaceSnapshot === 'function'
-
-export const createFallbackAuthorityClient = (options: {
-	workerUrl?: string | URL
-	name?: string
-} = {}): EditorAuthorityClient => {
-	const listeners = new Set<Parameters<EditorAuthorityClient['subscribe']>[0]>()
-	let active!: EditorAuthorityClient
-	let unsubscribe: (() => void) | null = null
-	let usingFallback = false
-
-	const attach = (client: EditorAuthorityClient): void => {
-		unsubscribe?.()
-		active = client
-		unsubscribe = active.subscribe((envelope) => {
-			for (const listener of listeners) {
-				listener(envelope)
-			}
-		})
-	}
+/**
+ * Phase 1 hard rewrite: DKT-only fallback authority client.
+ * Attempts SharedWorker, falls back to in-process MemoryWorkerAuthority.
+ * No registry snapshot, no command dispatch, no patch listeners.
+ */
+export const createFallbackAuthorityClient = (
+	options: { workerUrl?: string | URL; name?: string } = {},
+): EditorAuthorityClient => {
+	let active!: EditorAuthorityClient;
+	let usingFallback = false;
 
 	const switchToMemory = (reason: unknown): void => {
 		if (usingFallback) {
-			return
+			return;
 		}
 
-		usingFallback = true
-		console.warn('[minicut:worker] Falling back to in-memory authority', reason)
+		usingFallback = true;
+		console.warn(
+			"[minicut:worker] Falling back to in-memory authority",
+			reason,
+		);
 		try {
-			active.destroy?.()
+			active.destroy?.();
 		} catch {
 			// noop
 		}
-		attach(new MemoryWorkerAuthority())
-	}
+		active = new MemoryWorkerAuthority();
+	};
 
-	if (canUseSharedWorkerAuthority()) {
+	if (canUseDktSharedWorkerAuthority()) {
 		try {
-			attach(new SharedWorkerAuthorityClient({
+			active = new DktSharedWorkerAuthorityClient({
 				workerUrl: options.workerUrl,
 				name: options.name,
 				onError: switchToMemory,
-			}))
+			});
 		} catch (error) {
-			console.warn('[minicut:worker] SharedWorker construction failed', error)
-			attach(new MemoryWorkerAuthority())
-			usingFallback = true
+			console.warn(
+				"[minicut:worker] DKT SharedWorker construction failed",
+				error,
+			);
+			active = new MemoryWorkerAuthority();
+			usingFallback = true;
 		}
 	} else {
-		attach(new MemoryWorkerAuthority())
-		usingFallback = true
+		active = new MemoryWorkerAuthority();
+		usingFallback = true;
 	}
-
-	const invoke = <T>(operation: (client: EditorAuthorityClient) => T | Promise<T>): Promise<T> =>
-		Promise.resolve(operation(active)).catch((error) => {
-			if (!usingFallback) {
-				switchToMemory(error)
-				return Promise.resolve(operation(active))
-			}
-
-			throw error
-		})
 
 	return {
-		getSnapshot() {
-			return invoke((client) => client.getSnapshot())
+		openDktTransport() {
+			return active.openDktTransport();
 		},
-		getHistoryState() {
-			return invoke((client) => client.getHistoryState())
+		subscribeDktSync(listener) {
+			return active.subscribeDktSync?.(listener) ?? (() => {});
 		},
-		subscribe(listener) {
-			listeners.add(listener)
-			return () => {
-				listeners.delete(listener)
-			}
-		},
-		dispatch(command) {
-			return invoke((client) => client.dispatch(command))
-		},
-		undo() {
-			return invoke((client) => client.undo())
-		},
-		redo() {
-			return invoke((client) => client.redo())
-		},
-		replaceSnapshot(snapshot) {
-			return invoke((client) => {
-				if (!canReplaceSnapshot(client)) {
-					throw new Error('Active authority cannot replace snapshots')
-				}
-
-				return client.replaceSnapshot(snapshot)
-			})
+		flushDktSync() {
+			return active.flushDktSync?.() ?? Promise.resolve();
 		},
 		destroy() {
-			unsubscribe?.()
-			listeners.clear()
-			active.destroy?.()
+			active.destroy?.();
 		},
-	}
-}
+	};
+};

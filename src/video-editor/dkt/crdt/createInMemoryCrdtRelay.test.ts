@@ -1,0 +1,396 @@
+import { describe, expect, it } from "vitest";
+import { createInMemoryCrdtRelay } from "./createInMemoryCrdtRelay";
+import { createMiniCutRoomCrdtTransport } from "./createMiniCutRoomCrdtTransport";
+import { createTestWorkerCrdtTransport } from "./createTestWorkerCrdtTransport";
+
+const makeWireMessage = (from: string) => ({
+	type: "dkt-crdt-batches" as const,
+	protocol: "dkt-crdt-graph-v1" as const,
+	from,
+	profile_id: "minicut-crdt-v1",
+	profile_version: 1,
+	future_field: { keep: true },
+	batches: [
+		{
+			schema_version: 1,
+			batch_id: `${from}:batch:1`,
+			origin_peer_id: from,
+			runtime_transaction_id: "tx:1",
+			intent: null,
+			clock: { wall_time: 1, counter: 1, peer_id: from },
+			created_models: [{ node_id: "crdt:child", model_name: "clip", tombstone: false }],
+			tombstones: [],
+			action_trace: {
+				trace_version: 2,
+				frames: [
+					{
+						frame_id: 1,
+						parent_frame_id: null,
+						scheduled_by_frame_id: null,
+						target_node_id: "crdt:project",
+						target_model_name: "project",
+					},
+				],
+				produced_ops: [
+					{
+						frame_id: 1,
+						op_id: `${from}:op:1`,
+					},
+				],
+				produced_creates: [{ frame_id: 1, node_id: "crdt:child" }],
+			},
+			ops: [
+				{
+					op_id: `${from}:op:1`,
+					origin: from,
+					peer_id: from,
+					seq: 1,
+					node_id: "crdt:child",
+					model_name: "clip",
+					field_id: "clip:name",
+					kind: "attr",
+					name: "name",
+					operation: "set",
+					clock: { wall_time: 1, counter: 1, peer_id: from },
+					value: "Clip",
+				},
+			],
+		},
+	],
+});
+
+describe("createInMemoryCrdtRelay", () => {
+	it("broadcasts packets to other peers in the room without echoing sender", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-basic",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const b = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-basic",
+			peerId: "B",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+
+		a.send(makeWireMessage("A"));
+
+		expect(a.received).toEqual([]);
+		expect(b.received).toEqual([
+			expect.objectContaining({
+				type: "crdt-ops",
+				from: "A",
+				packet: expect.objectContaining({ peerId: "A" }),
+			}),
+		]);
+	});
+
+	it("rejects spoofed senders and profile mismatches", () => {
+		const relay = createInMemoryCrdtRelay();
+		createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-guard",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+
+		expect(() =>
+			relay.dispatch({
+				type: "crdt-ops",
+				roomId: "room-guard",
+				from: "A",
+				packet: {
+					profileId: "minicut-crdt-v1",
+					profileVersion: 1,
+					peerId: "B",
+					payload: makeWireMessage("B"),
+				},
+			}),
+		).toThrow("spoofed");
+
+		expect(() =>
+			createTestWorkerCrdtTransport({
+				relay,
+				roomId: "room-guard",
+				peerId: "B",
+				profileId: "minicut-crdt-v2",
+				profileVersion: 1,
+			}),
+		).toThrow("profile mismatch");
+	});
+
+	it("dedupes repeated packet ids and keeps a bounded sync log", () => {
+		const relay = createInMemoryCrdtRelay({ maxLogPackets: 2 });
+		const a = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-log",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const b = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-log",
+			peerId: "B",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+
+		a.send(makeWireMessage("A"));
+		a.send(makeWireMessage("A"));
+		a.send({
+			...makeWireMessage("A"),
+			batches: [{ ...makeWireMessage("A").batches[0], batch_id: "A:batch:2" }],
+		});
+		a.send({
+			...makeWireMessage("A"),
+			batches: [{ ...makeWireMessage("A").batches[0], batch_id: "A:batch:3" }],
+		});
+
+		expect(b.received.filter((message) => message.type === "crdt-ops"))
+			.toHaveLength(3);
+		expect(relay.getRoomSnapshot("room-log").log).toHaveLength(2);
+
+		b.requestSync("sync:1", {});
+		const sync = b.received.find(
+			(message) => message.type === "crdt-sync-response",
+		);
+		expect(sync).toMatchObject({
+			type: "crdt-sync-response",
+			to: "B",
+			requestId: "sync:1",
+			packet: {
+				payload: expect.objectContaining({
+					batches: [
+						expect.objectContaining({ batch_id: "A:batch:2" }),
+						expect.objectContaining({ batch_id: "A:batch:3" }),
+					],
+				}),
+			},
+		});
+	});
+
+	it("serves late sync activity without conflict resolution commands", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-sync-activity-negative",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const b = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-sync-activity-negative",
+			peerId: "B",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+
+		a.send(makeWireMessage("A"));
+		b.requestSync("sync:activity:negative", {});
+
+		const sync = b.received.find(
+			(message) =>
+				message.type === "crdt-sync-response" &&
+				message.requestId === "sync:activity:negative",
+		);
+		expect(sync).toMatchObject({
+			type: "crdt-sync-response",
+			to: "B",
+			packet: {
+				payload: expect.objectContaining({
+					batches: [
+						expect.objectContaining({
+							batch_id: "A:batch:1",
+							created_models: [{ node_id: "crdt:child", model_name: "clip", tombstone: false }],
+							ops: expect.arrayContaining([
+								expect.objectContaining({ op_id: "A:op:1", name: "name" }),
+							]),
+						}),
+					],
+				}),
+			},
+		});
+		expect(JSON.stringify(sync)).not.toMatch(
+			/\$crdt:(resolve|acknowledge)|resolve[A-Z]|acknowledgeReviewItem/,
+		);
+	});
+
+	it("removes peers on close", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createTestWorkerCrdtTransport({
+			relay,
+			roomId: "room-close",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		expect(relay.getRoomSnapshot("room-close").peers).toEqual(["A"]);
+
+		a.close();
+
+		expect(relay.getRoomSnapshot("room-close").peers).toEqual([]);
+	});
+
+	it("implements DKT send/subscribe/close and preserves opaque wire payloads", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-wire",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const b = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-wire",
+			peerId: "B",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const received: unknown[] = [];
+		const unsubscribe = b.subscribe((message) => received.push(message));
+
+		a.send(makeWireMessage("A"));
+
+		expect(received).toEqual([makeWireMessage("A")]);
+		expect(JSON.parse(JSON.stringify(received[0]))).toEqual(received[0]);
+		expect(a.received).toEqual([]);
+		expect(relay.getRoomSnapshot("room-dkt-wire").log[0]?.payload).toEqual(
+			makeWireMessage("A"),
+		);
+
+		unsubscribe();
+		a.send({ ...makeWireMessage("A"), batches: [{ ...makeWireMessage("A").batches[0], batch_id: "A:batch:2" }] });
+		expect(received).toHaveLength(1);
+		b.close();
+		expect(relay.getRoomSnapshot("room-dkt-wire").peers).toEqual(["A"]);
+		a.close();
+	});
+
+	it("rejects spoofed DKT senders and transport profile mismatches", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-guard",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+
+		expect(() => a.send({ ...makeWireMessage("B"), from: "B" })).toThrow(
+			"spoofed",
+		);
+		expect(() =>
+			a.send({ ...makeWireMessage("A"), profile_id: "other-profile" }),
+		).toThrow("profile mismatch");
+		a.close();
+	});
+
+	it("rejects legacy or malformed action trace payloads", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-trace-guard",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const sendTrace = (actionTrace: unknown) =>
+			a.send({
+				...makeWireMessage("A"),
+				batches: [
+					{
+						...makeWireMessage("A").batches[0],
+						action_trace: actionTrace,
+					},
+				],
+			});
+
+		expect(() =>
+			sendTrace({
+				trace_version: 1,
+				frames: [],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("non-v2 action_trace");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1, action_name: "addClip" }],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("legacy action_trace frame field");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1 }],
+				produced_ops: [{ frame_id: 1, op_id: "missing:op" }],
+				produced_creates: [],
+			}),
+		).toThrow("produced op missing from batch");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1 }],
+				produced_ops: [],
+				produced_creates: [{ frame_id: 1, node_id: "missing:node" }],
+			}),
+		).toThrow("produced create missing from batch");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1, parent_frame_id: 1 }],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("cyclic action_trace frame tree");
+		expect(() =>
+			sendTrace({
+				trace_version: 2,
+				frames: [{ frame_id: 1, scheduled_by_frame_id: 2 }],
+				produced_ops: [],
+				produced_creates: [],
+			}),
+		).toThrow("unknown action_trace scheduler frame");
+		a.close();
+	});
+
+	it("can pause and heal delivery without inspecting DKT payloads", () => {
+		const relay = createInMemoryCrdtRelay();
+		const a = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-partition",
+			peerId: "A",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const b = createMiniCutRoomCrdtTransport({
+			relay,
+			roomId: "room-dkt-partition",
+			peerId: "B",
+			profileId: "minicut-crdt-v1",
+			profileVersion: 1,
+		});
+		const received: unknown[] = [];
+		b.subscribe((message) => received.push(message));
+
+		b.setDeliveryPaused(true);
+		a.send(makeWireMessage("A"));
+		expect(received).toEqual([]);
+
+		b.setDeliveryPaused(false);
+		b.flushBufferedMessages();
+		expect(received).toEqual([makeWireMessage("A")]);
+		a.close();
+		b.close();
+	});
+});

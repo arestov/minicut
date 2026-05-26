@@ -1,7 +1,7 @@
-declare module '*?worker' {
+declare module "*?worker" {
 	const WorkerFactory: {
-		new (): Worker
-	}
+		new (): Worker;
+	};
 
-	export default WorkerFactory
+	export default WorkerFactory;
 }

@@ -1,13 +1,43 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
+const createProjectFromToolbar = async (page: import('@playwright/test').Page) => {
+	const beforeCount = await page.evaluate(() => {
+		const debug = (window as Window & {
+			__MINICUT_P2P_DEBUG__?: {
+				getProjectCount?: () => number
+			}
+		}).__MINICUT_P2P_DEBUG__
+		return debug?.getProjectCount?.() ?? 0
+	})
+	await page.getByRole('banner').getByRole('button', { name: 'New project' }).click()
+	await expect.poll(async () => {
+		return page.evaluate(() => {
+			const debug = (window as Window & {
+				__MINICUT_P2P_DEBUG__?: {
+					getProjectCount?: () => number
+				}
+			}).__MINICUT_P2P_DEBUG__
+			return debug?.getProjectCount?.() ?? 0
+		})
+	}, { timeout: 20_000 }).toBeGreaterThan(beforeCount)
+}
+
 const prepareEditor = async (page: import('@playwright/test').Page) => {
 	await page.goto('/')
-	const projectsRegion = page.getByLabel('Projects')
-	await projectsRegion.getByRole('button').click()
-	await projectsRegion.getByRole('button', { name: 'New project' }).click()
+	await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
+	await createProjectFromToolbar(page)
 	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
-	await page.getByRole('button', { name: /fixture-video.webm/i }).first().click()
+	const mediaBin = page.getByLabel('Media bin')
+	await expect(mediaBin.locator('strong').filter({ hasText: 'fixture-video.webm' })).toBeVisible({ timeout: 20_000 })
+	const mediaRow = mediaBin.locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' }).first()
+	const timelineClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video.webm/i }).first()
+	if (await timelineClip.count() === 0) {
+		await expect(mediaRow).toBeVisible({ timeout: 20_000 })
+		await mediaRow.getByRole('button', { name: 'Add to timeline' }).click()
+	}
+	await expect(timelineClip).toBeVisible({ timeout: 20_000 })
+	await timelineClip.click()
 }
 
 for (const viewport of [
@@ -19,7 +49,7 @@ for (const viewport of [
 		await prepareEditor(page)
 
 		await expect(page.getByRole('heading', { name: 'minicut' })).toBeVisible()
-		await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible()
+		await expect(page.getByRole('region', { name: 'Timeline', exact: true })).toBeVisible()
 		await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible()
 		await expect(page.getByLabel('Transform controls')).toBeVisible()
 		await expect(page.getByLabel('Effects editor')).toBeVisible()

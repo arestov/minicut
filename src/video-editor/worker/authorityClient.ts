@@ -1,14 +1,23 @@
-import type { Command, DispatchResult, HistoryState, PatchEnvelope, ProjectRegistry } from '../domain/types'
+import type { DomSyncTransportLike } from "dkt/dom-sync/transport.js";
+import type {
+	DKT_MSG,
+	MiniCutDktTransportMessage,
+} from "../dkt/shared/messageTypes";
 
-export type PatchListener = (envelope: PatchEnvelope) => void
+export type DktSyncListener = (
+	message: Extract<
+		MiniCutDktTransportMessage,
+		{ type: typeof DKT_MSG.SYNC_HANDLE }
+	>,
+) => void;
 
+/**
+ * Phase 1 hard rewrite: DKT-only authority client.
+ * No registry snapshot, no command dispatch, no patch listeners.
+ */
 export interface EditorAuthorityClient {
-	getSnapshot(): ProjectRegistry | Promise<ProjectRegistry>
-	getHistoryState(): HistoryState | Promise<HistoryState>
-	subscribe(listener: PatchListener): () => void
-	dispatch(command: Command): DispatchResult | Promise<DispatchResult>
-	undo(): PatchEnvelope | null | Promise<PatchEnvelope | null>
-	redo(): PatchEnvelope | null | Promise<PatchEnvelope | null>
-	replaceSnapshot?(snapshot: ProjectRegistry): void | Promise<void>
-	destroy?(): void
+	openDktTransport(): DomSyncTransportLike<MiniCutDktTransportMessage>;
+	subscribeDktSync?(listener: DktSyncListener): () => void;
+	flushDktSync?(): Promise<void>;
+	destroy?(): void;
 }

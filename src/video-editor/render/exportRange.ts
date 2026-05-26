@@ -1,122 +1,122 @@
-import { getProjectEntity, getTrackEnd, getTracks } from '../domain/selectors'
-import type { ClipAttrs, Entity, ProjectRegistry } from '../domain/types'
-import type { ExportBackend, ExportDiagnostics, ExportRange } from './exportTypes'
-import { compileEditframeClips, type ClipFrameOperation, type EditframeClip } from './renderPlan'
+import type {
+	ExportBackend,
+	ExportDiagnostics,
+	ExportRange,
+} from "./exportTypes";
+import {
+	type ClipFrameOperation,
+	compileEditframeClipsFromPlan,
+	type EditframeClip,
+	type ExportPlan,
+} from "./renderPlan";
 
 export interface ResolvedExportRange {
-	start: number
-	duration: number
-	clipIds: Set<string> | null
+	start: number;
+	duration: number;
+	clipIds: Set<string> | null;
 }
 
-const getProjectDuration = (registry: ProjectRegistry, projectId: string): number => {
-	const project = registry.projects[projectId]
-	if (!project) {
-		throw new Error(`Unknown project ${projectId}`)
+const getExportBoundsFromPlan = (
+	plan: ExportPlan,
+	range: ExportRange,
+): { start: number; duration: number } => {
+	if (range.type === "project") {
+		return { start: 0, duration: plan.duration };
 	}
 
-	return getTracks(registry, project).reduce((duration, track) => Math.max(duration, getTrackEnd(registry, track.id)), 0)
-}
+	const source = plan.clipSources.find((s) => s.id === range.clipId);
+	if (!source) {
+		throw new Error(`Unknown clip ${range.clipId}`);
+	}
+	return { start: source.start, duration: source.duration };
+};
 
-export const getClipEntity = (registry: ProjectRegistry, clipId: string): Entity => {
-	const clip = registry.entitiesById[clipId]
-	if (!clip || clip.type !== 'clip') {
-		throw new Error(`Unknown clip ${clipId}`)
+const resolveClipIdsForClipExport = (
+	plan: ExportPlan,
+	clipId: string,
+): Set<string> => {
+	const selectedSource = plan.clipSources.find(
+		(source) => source.id === clipId,
+	);
+	if (!selectedSource) {
+		return new Set([clipId]);
 	}
 
-	return clip
-}
-
-const getExportBounds = (registry: ProjectRegistry, projectId: string, range: ExportRange): { start: number; duration: number } => {
-	if (range.type === 'project') {
-		return { start: 0, duration: getProjectDuration(registry, projectId) }
-	}
-
-	const attrs = getClipEntity(registry, range.clipId).attrs as unknown as ClipAttrs
-	return { start: attrs.start, duration: attrs.duration }
-}
-
-const getLinkedClipIds = (registry: ProjectRegistry, clipId: string): string[] => {
-	const clip = getClipEntity(registry, clipId)
-	const linked = new Set<string>()
-	for (const value of [clip.rels.linkedAudioClip, clip.rels.linkedVideoClip]) {
-		if (typeof value === 'string') {
-			linked.add(value)
+	const clipIds = new Set<string>([clipId]);
+	if (selectedSource.resourceKind === "video" && selectedSource.resourceId) {
+		for (const source of plan.clipSources) {
+			if (source.id === clipId) {
+				continue;
+			}
+			if (
+				source.resourceKind === "audio" &&
+				source.resourceId === selectedSource.resourceId
+			) {
+				clipIds.add(source.id);
+			}
 		}
 	}
 
-	for (const entity of Object.values(registry.entitiesById)) {
-		if (entity?.type !== 'clip') {
-			continue
-		}
-		if (entity.rels.linkedAudioClip === clipId || entity.rels.linkedVideoClip === clipId) {
-			linked.add(entity.id)
-		}
-	}
-
-	return Array.from(linked).filter((id) => id !== clipId && registry.entitiesById[id]?.type === 'clip')
-}
+	return clipIds;
+};
 
 export const resolveExportRange = (
-	registry: ProjectRegistry,
-	projectId: string,
+	plan: ExportPlan,
 	range: ExportRange,
 ): ResolvedExportRange => {
-	const bounds = getExportBounds(registry, projectId, range)
-	if (range.type === 'project') {
-		return { ...bounds, clipIds: null }
+	const bounds = getExportBoundsFromPlan(plan, range);
+	if (range.type === "project") {
+		return { ...bounds, clipIds: null };
 	}
 
 	return {
 		...bounds,
-		clipIds: new Set([range.clipId, ...getLinkedClipIds(registry, range.clipId)]),
-	}
-}
+		clipIds: resolveClipIdsForClipExport(plan, range.clipId),
+	};
+};
 
 export const filterClipsForRange = (
 	operations: ClipFrameOperation[],
 	resolvedRange: ResolvedExportRange,
-): ClipFrameOperation[] => resolvedRange.clipIds
-	? operations.filter((operation) => resolvedRange.clipIds?.has(operation.clipId))
-	: operations
+): ClipFrameOperation[] =>
+	resolvedRange.clipIds
+		? operations.filter((operation) =>
+				resolvedRange.clipIds?.has(operation.clipId),
+			)
+		: operations;
 
-export const getRangeClips = (registry: ProjectRegistry, projectId: string, resolvedRange: ResolvedExportRange): EditframeClip[] => {
-	const clips = compileEditframeClips(registry, projectId)
+export const getRangeClips = (
+	plan: ExportPlan,
+	resolvedRange: ResolvedExportRange,
+): EditframeClip[] => {
+	const clips = compileEditframeClipsFromPlan(plan);
 	if (!resolvedRange.clipIds) {
-		return clips
+		return clips;
 	}
 
-	return clips.filter((clip) => resolvedRange.clipIds?.has(clip.id))
-}
-
-const getResolvedClipIds = (
-	registry: ProjectRegistry,
-	projectId: string,
-	resolvedRange: ResolvedExportRange,
-): string[] => getRangeClips(registry, projectId, resolvedRange).map((clip) => clip.id)
+	return clips.filter((clip) => resolvedRange.clipIds?.has(clip.id));
+};
 
 export const createExportDiagnostics = (
 	backend: ExportBackend,
-	registry: ProjectRegistry,
-	projectId: string,
+	plan: ExportPlan,
 	resolvedRange: ResolvedExportRange,
 	fallbackReason?: string,
-): ExportDiagnostics => ({
-	backend,
-	...(fallbackReason ? { fallbackReason } : {}),
-	resolvedClipIds: getResolvedClipIds(registry, projectId, resolvedRange),
-})
+): ExportDiagnostics => {
+	const resolvedClips = getRangeClips(plan, resolvedRange);
+	return {
+		backend,
+		...(fallbackReason ? { fallbackReason } : {}),
+		resolvedClipIds: resolvedClips.map((clip) => clip.id),
+		resolvedClipTypes: resolvedClips.map((clip) => clip.type),
+		audioClipCount: resolvedClips.filter((clip) => clip.type === "ef-audio")
+			.length,
+	};
+};
 
-const getProjectTitle = (registry: ProjectRegistry, projectId: string): string => {
-	const project = registry.projects[projectId]
-	if (!project) {
-		return 'project'
+export const getRangeName = (plan: ExportPlan, range: ExportRange): string => {
+	if (range.type === "clip") {
+		return plan.clipSources.find((s) => s.id === range.clipId)?.name ?? "clip";
 	}
-
-	return String(getProjectEntity(registry, project).attrs.title ?? 'project')
-}
-
-export const getRangeName = (registry: ProjectRegistry, projectId: string, range: ExportRange): string =>
-	range.type === 'clip'
-		? String(getClipEntity(registry, range.clipId).attrs.name ?? 'clip')
-		: getProjectTitle(registry, projectId)
+	return "project";
+};

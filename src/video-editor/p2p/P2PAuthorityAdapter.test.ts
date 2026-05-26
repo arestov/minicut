@@ -1,358 +1,667 @@
-import { describe, expect, test, vi } from 'vitest'
-import { buildDispatchResult } from '../domain/applyCommand'
-import { applyPatchEnvelopeToRegistry } from '../domain/applyPatch'
-import { createEmptyRegistry } from '../domain/createProject'
-import { CMD, MSG, PATCH, type Command, type DispatchResult, type HistoryState, type PatchEnvelope, type ProjectRegistry, type WireMessage } from '../domain/types'
-import type { EditorAuthorityClient, PatchListener } from '../worker/authorityClient'
-import { createP2PAuthorityAdapter } from './P2PAuthorityAdapter'
-import type { P2PTransportLike, PageP2PManager, PageP2PManagerConfig, PageP2PManagerEvents } from './PageP2PManager'
+import type { DomSyncTransportLike } from "dkt/dom-sync/transport.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+	DKT_MSG,
+	type MiniCutDktTransportMessage,
+} from "../dkt/shared/messageTypes";
+import {
+	PRODUCT_ROOM_MSG,
+	WEBRTC_OWNER_STATUS,
+	type ProductRoomProtocolMessage,
+} from "../worker/productRoomProtocol";
+import type { EditorAuthorityClient } from "../worker/authorityClient";
+import { createP2PAuthorityAdapter } from "./P2PAuthorityAdapter";
+import type {
+	P2PCrdtTransportLike,
+	P2PTransportLike,
+	PageP2PManager,
+	PageP2PManagerConfig,
+	PageP2PManagerEvents,
+} from "./PageP2PManager";
 
-const createRegistryEnvelope = (snapshot: ProjectRegistry): PatchEnvelope => ({
-	projectId: snapshot.activeProjectId ?? '__workspace__',
-	version: 1,
-	patches: [{ c: PATCH.REGISTRY_SET, p: { registry: snapshot } }],
-})
-
-const createProjectSnapshot = (title: string): ProjectRegistry => {
-	let registry = createEmptyRegistry()
-	const result = buildDispatchResult(registry, { c: CMD.PROJECT_CREATE, p: { title } })
-	registry = applyPatchEnvelopeToRegistry(registry, result.envelope)
-	return registry
-}
-
-const resolveLastTransportSnapshotRequest = (transport: ReturnType<typeof createTransportHarness>, snapshot = createEmptyRegistry()): void => {
-	const request = [...transport.sent].reverse().find((message) => message.m === MSG.SNAPSHOT_REQUEST)
-	expect(request).toBeDefined()
-	transport.emit({
-		m: MSG.SNAPSHOT,
-		requestId: String(request?.requestId),
-		p: snapshot,
-	})
-}
-
-class FakeAuthorityClient implements EditorAuthorityClient {
-	snapshot: ProjectRegistry
-	readonly history: HistoryState = { canUndo: false, canRedo: false }
-	readonly listeners = new Set<PatchListener>()
-
-	constructor(snapshot: ProjectRegistry = createEmptyRegistry()) {
-		this.snapshot = snapshot
-	}
-
-	getSnapshot = vi.fn(() => this.snapshot)
-	getHistoryState = vi.fn(() => this.history)
-	dispatch = vi.fn((command: Command): DispatchResult => ({
-		envelope: createRegistryEnvelope(this.snapshot),
-		createdIds: command.c === CMD.PROJECT_CREATE ? { projectId: 'project:1' } : undefined,
-	}))
-	undo = vi.fn(() => null)
-	redo = vi.fn(() => null)
-	destroy = vi.fn(() => {
-		this.listeners.clear()
-	})
-
-	subscribe(listener: PatchListener): () => void {
-		this.listeners.add(listener)
-		return () => {
-			this.listeners.delete(listener)
-		}
-	}
-
-	emitPatch(envelope: PatchEnvelope): void {
-		for (const listener of this.listeners) {
-			listener(envelope)
-		}
-	}
-}
-
-class FakeRestorableAuthorityClient extends FakeAuthorityClient {
-	replaceSnapshot = vi.fn(async (snapshot: ProjectRegistry) => {
-		this.snapshot = structuredClone(snapshot)
-	})
-}
-
-const createTransportHarness = () => {
-	const listeners = new Set<(message: WireMessage) => void>()
-	const sent: WireMessage[] = []
-	const destroy = vi.fn(() => {
-		listeners.clear()
-	})
-
-	const transport: P2PTransportLike = {
+const createMemoryDktTransport = () => {
+	const listeners = new Set<(message: MiniCutDktTransportMessage) => void>();
+	const sent: MiniCutDktTransportMessage[] = [];
+	const transport: DomSyncTransportLike<MiniCutDktTransportMessage> = {
 		send(message) {
-			sent.push(message)
+			sent.push(message);
 		},
 		listen(listener) {
-			listeners.add(listener)
-			return () => {
-				listeners.delete(listener)
-			}
+			listeners.add(listener);
+			return () => listeners.delete(listener);
 		},
-		destroy,
-	}
-
+		destroy() {
+			listeners.clear();
+		},
+	};
 	return {
 		transport,
 		sent,
-		destroy,
-		emit(message: WireMessage) {
-			for (const listener of listeners) {
-				listener(message)
+		emit(message: MiniCutDktTransportMessage) {
+			for (const listener of [...listeners]) {
+				listener(message);
 			}
 		},
-	}
-}
+	};
+};
+
+const createLocalAuthorityHarness = (): EditorAuthorityClient & {
+	opened: ReturnType<typeof createMemoryDktTransport>[];
+} => {
+	const opened: ReturnType<typeof createMemoryDktTransport>[] = [];
+	return {
+		opened,
+		openDktTransport() {
+			const next = createMemoryDktTransport();
+			opened.push(next);
+			return next.transport;
+		},
+		destroy: vi.fn(),
+	};
+};
+
+const createCrdtTransportHarness = (): P2PCrdtTransportLike & {
+	sent: unknown[];
+	destroyed: boolean;
+	failSends: boolean;
+	emit(packet: unknown, remotePeerId?: string): void;
+} => {
+	const listeners = new Set<(packet: unknown, remotePeerId: string) => void>();
+	return {
+		sent: [],
+		destroyed: false,
+		failSends: false,
+		send(packet) {
+			if (this.failSends) {
+				throw new Error("transport_not_ready");
+			}
+			this.sent.push(packet);
+		},
+		listen(listener) {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		destroy() {
+			this.destroyed = true;
+			listeners.clear();
+		},
+		emit(packet, remotePeerId = "peer-b") {
+			for (const listener of [...listeners]) {
+				listener(packet, remotePeerId);
+			}
+		},
+	};
+};
 
 const createManagerHarness = () => {
-	let events: PageP2PManagerEvents | null = null
-	let role: 'server' | 'client' | 'undecided' = 'undecided'
-	const destroy = vi.fn()
-
+	let eventsRef: PageP2PManagerEvents | null = null;
+	const authorityTransport: P2PTransportLike = {
+		send: vi.fn(),
+		listen: vi.fn(() => () => undefined),
+		destroy: vi.fn(),
+	};
 	const manager: PageP2PManager = {
-		get role() {
-			return role
-		},
-		get peerId() {
-			return 'peer-local'
-		},
-		destroy,
-	}
-
-	const factory = vi.fn((_config: PageP2PManagerConfig, managerEvents: PageP2PManagerEvents) => {
-		events = managerEvents
-		return manager
-	})
-
+		role: "undecided",
+		peerId: "tab-a",
+		destroy: vi.fn(),
+	};
 	return {
-		factory,
-		destroy,
-		emitBecomeServer() {
-			role = 'server'
-			events?.onBecomeServer()
+		authorityTransport,
+		manager,
+		createManager(_config: PageP2PManagerConfig, events: PageP2PManagerEvents) {
+			eventsRef = events;
+			return manager;
 		},
-		emitBecomeClient(transport: P2PTransportLike) {
-			role = 'client'
-			events?.onBecomeClient(transport)
+		becomeClient() {
+			eventsRef?.onBecomeClient(authorityTransport);
 		},
-		emitSessionLost(reason = 'server-gone') {
-			role = 'undecided'
-			events?.onSessionLost(reason)
+		becomeServer() {
+			eventsRef?.onBecomeServer();
 		},
-	}
-}
+		openClientCrdt(transport: P2PCrdtTransportLike) {
+			eventsRef?.onClientCrdtTransport?.(transport);
+		},
+		openServerCrdt(remotePeerId: string, transport: P2PCrdtTransportLike) {
+			eventsRef?.onServerCrdtTransport?.(remotePeerId, transport);
+		},
+	};
+};
 
-describe('P2PAuthorityAdapter', () => {
-	test('queues requests while role is undecided and flushes after server activation', async () => {
-		const manager = createManagerHarness()
-		const local = new FakeAuthorityClient()
-		const createLocalAuthority = vi.fn(() => local)
+const productRoomMessage = (
+	message: ProductRoomProtocolMessage,
+): MiniCutDktTransportMessage => ({
+	type: DKT_MSG.PRODUCT_ROOM_MESSAGE,
+	message,
+});
+
+describe("P2PAuthorityAdapter CRDT worker bridge", () => {
+	it("keeps client tabs on a local authority and uses WebRTC only for CRDT packets", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
 		const adapter = createP2PAuthorityAdapter({
-			roomId: 'room-1',
-			signalUrl: 'http://localhost:8787',
-			workerUrl: 'http://localhost/sharedWorker.js',
-			createManager: manager.factory,
-			createLocalAuthority,
-		})
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
 
-		const snapshotPromise = adapter.getSnapshot()
-		expect(local.getSnapshot).not.toHaveBeenCalled()
+		manager.becomeClient();
 
-		manager.emitBecomeServer()
-		await expect(snapshotPromise).resolves.toEqual(local.snapshot)
-		expect(createLocalAuthority).toHaveBeenCalledTimes(1)
+		expect(manager.authorityTransport.destroy).not.toHaveBeenCalled();
+		expect(localAuthority.opened).toHaveLength(1);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.TAB_HELLO,
+				tabId: "tab-a",
+				roomId: "room-1",
+				canHostWebRtc: true,
+			}),
+		);
 
-		const patchListener = vi.fn()
-		adapter.subscribe(patchListener)
-		local.emitPatch(createRegistryEnvelope(local.snapshot))
-		expect(patchListener).toHaveBeenCalledTimes(1)
+		dktTransport.destroy();
+		adapter.destroy();
+		expect(manager.authorityTransport.destroy).toHaveBeenCalledTimes(1);
+	});
 
-		adapter.destroy?.()
-		expect(manager.destroy).toHaveBeenCalledTimes(1)
-	})
-
-	test('routes authority requests over DataChannel transport in client mode', async () => {
-		const manager = createManagerHarness()
-		const transport = createTransportHarness()
+	it("sends worker CRDT packets over the active WebRTC CRDT transport", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const crdtTransport = createCrdtTransportHarness();
 		const adapter = createP2PAuthorityAdapter({
-			roomId: 'room-1',
-			signalUrl: 'http://localhost:8787',
-			workerUrl: 'http://localhost/sharedWorker.js',
-			createManager: manager.factory,
-		})
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+		manager.openClientCrdt(crdtTransport);
 
-		const snapshotPromise = adapter.getSnapshot()
-		manager.emitBecomeClient(transport.transport)
-		resolveLastTransportSnapshotRequest(transport)
-		await Promise.resolve()
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 7,
+			}),
+		);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 7,
+				peerId: "server",
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 7,
+				packet: { batch: [1] },
+			}),
+		);
 
-		expect(transport.sent).toHaveLength(2)
-		expect(transport.sent[1].m).toBe(MSG.SNAPSHOT_REQUEST)
-		expect(transport.sent[1].requestId).toBeTypeOf('string')
+		expect(crdtTransport.sent).toEqual([{ batch: [1] }]);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.WEBRTC_STATUS,
+				tabId: "tab-a",
+				roomId: "room-1",
+				transportGeneration: 7,
+				status: WEBRTC_OWNER_STATUS.ATTACHED,
+			}),
+		);
 
-		const requestId = String(transport.sent[1].requestId)
-		const snapshot = createEmptyRegistry()
-		transport.emit({
-			m: MSG.SNAPSHOT,
-			requestId,
-			p: snapshot,
-		})
+		dktTransport.destroy();
+		adapter.destroy();
+	});
 
-		await expect(snapshotPromise).resolves.toEqual(snapshot)
-		adapter.destroy?.()
-		expect(transport.destroy).toHaveBeenCalledTimes(1)
-	})
-
-	test('rejects in-flight client requests on session loss and recovers on server role', async () => {
-		const manager = createManagerHarness()
-		const transport = createTransportHarness()
-		const local = new FakeAuthorityClient()
-		const createLocalAuthority = vi.fn(() => local)
-		const onSessionLost = vi.fn()
-
+	it("delivers remote CRDT packets to the worker after a late CRDT channel open", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const crdtTransport = createCrdtTransportHarness();
 		const adapter = createP2PAuthorityAdapter({
-			roomId: 'room-1',
-			signalUrl: 'http://localhost:8787',
-			workerUrl: 'http://localhost/sharedWorker.js',
-			createManager: manager.factory,
-			createLocalAuthority,
-			onSessionLost,
-		})
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
 
-		manager.emitBecomeClient(transport.transport)
-		resolveLastTransportSnapshotRequest(transport)
-		await Promise.resolve()
-		const dispatchPromise = adapter.dispatch({ c: CMD.PROJECT_CREATE, p: {} })
-		expect(transport.sent).toHaveLength(2)
-		expect(transport.sent[1].m).toBe(MSG.COMMAND)
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 3,
+			}),
+		);
+		manager.openClientCrdt(crdtTransport);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 3,
+				peerId: "server",
+			}),
+		);
+		crdtTransport.emit({ batch: [2] }, "peer-b");
 
-		manager.emitSessionLost('server-gone')
-		await expect(dispatchPromise).rejects.toThrow(/P2P (session lost|authority request cancelled)/)
-		expect(onSessionLost).toHaveBeenCalledWith('server-gone')
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				roomId: "room-1",
+				transportGeneration: 3,
+				packet: { batch: [2] },
+				sourcePeerId: "peer-b",
+			}),
+		);
 
-		manager.emitBecomeServer()
-		await expect(adapter.getSnapshot()).resolves.toEqual(local.snapshot)
-		expect(createLocalAuthority).toHaveBeenCalledTimes(1)
-	})
+		dktTransport.destroy();
+		adapter.destroy();
+	});
 
-	test('hydrates local authority snapshot when client fails over to server', async () => {
-		const manager = createManagerHarness()
-		const transport = createTransportHarness()
-		const local = new FakeRestorableAuthorityClient()
-		const createLocalAuthority = vi.fn(() => local)
-
+	it("queues worker CRDT sends until a late CRDT channel opens", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const crdtTransport = createCrdtTransportHarness();
 		const adapter = createP2PAuthorityAdapter({
-			roomId: 'room-1',
-			signalUrl: 'http://localhost:8787',
-			workerUrl: 'http://localhost/sharedWorker.js',
-			createManager: manager.factory,
-			createLocalAuthority,
-		})
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
 
-		manager.emitBecomeClient(transport.transport)
-		const remoteSnapshot = createEmptyRegistry()
-		const requestId = String(transport.sent[0].requestId)
-		transport.emit({
-			m: MSG.SNAPSHOT,
-			requestId,
-			p: remoteSnapshot,
-		})
-		await Promise.resolve()
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 9,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 9,
+				packet: { queued: true },
+			}),
+		);
 
-		manager.emitSessionLost('server-gone')
-		manager.emitBecomeServer()
-		await Promise.resolve()
+		expect(crdtTransport.sent).toEqual([]);
+		manager.openClientCrdt(crdtTransport);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 9,
+				peerId: "server",
+			}),
+		);
+		expect(crdtTransport.sent).toEqual([{ queued: true }]);
 
-		expect(local.replaceSnapshot).toHaveBeenCalledWith(remoteSnapshot)
-		await expect(adapter.getSnapshot()).resolves.toEqual(remoteSnapshot)
-	})
+		dktTransport.destroy();
+		adapter.destroy();
+	});
 
-	test('queues authority calls until the restored server snapshot is ready', async () => {
-		const manager = createManagerHarness()
-		const transport = createTransportHarness()
-		let resolveRestore: () => void = () => {
-			throw new Error('restore promise was not created')
-		}
-		const local = new FakeRestorableAuthorityClient()
-		local.replaceSnapshot = vi.fn(() => new Promise<void>((resolve) => {
-			resolveRestore = resolve
-		}).then(async () => {
-			local.snapshot = createEmptyRegistry()
-		}))
-		const createLocalAuthority = vi.fn(() => local)
-
+	it("queues CRDT sends while the test partition is enabled and flushes on heal", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
 		const adapter = createP2PAuthorityAdapter({
-			roomId: 'room-1',
-			signalUrl: 'http://localhost:8787',
-			workerUrl: 'http://localhost/sharedWorker.js',
-			createManager: manager.factory,
-			createLocalAuthority,
-		})
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
 
-		manager.emitBecomeClient(transport.transport)
-		const remoteSnapshot = createEmptyRegistry()
-		const requestId = String(transport.sent[0].requestId)
-		transport.emit({
-			m: MSG.SNAPSHOT,
-			requestId,
-			p: remoteSnapshot,
-		})
-		await Promise.resolve()
+		manager.becomeClient();
+		const localTransport = localAuthority.opened[0];
+		expect(localTransport).toBeTruthy();
 
-		manager.emitSessionLost('server-gone')
-		manager.emitBecomeServer()
+		const crdtTransport = createCrdtTransportHarness();
+		manager.openClientCrdt(crdtTransport);
+		localTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 12,
+			}),
+		);
 
-		const queuedSnapshot = adapter.getSnapshot()
-		await Promise.resolve()
-		expect(local.replaceSnapshot).toHaveBeenCalledTimes(1)
-		expect(local.getSnapshot).not.toHaveBeenCalled()
+		expect(adapter.setCrdtNetworkPartitionTesting?.(true)).toEqual({
+			enabled: true,
+		});
+		localTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 12,
+				packet: { partitioned: true },
+			}),
+		);
+		expect(crdtTransport.sent).toEqual([]);
 
-		resolveRestore()
-		await expect(queuedSnapshot).resolves.toEqual(remoteSnapshot)
-		expect(local.getSnapshot).toHaveBeenCalledTimes(1)
-	})
+		expect(adapter.setCrdtNetworkPartitionTesting?.(false)).toEqual({
+			enabled: false,
+		});
+		expect(crdtTransport.sent).toEqual([{ partitioned: true }]);
 
-	test('restores cached snapshots through the default fallback authority after failover', async () => {
-		const manager = createManagerHarness()
-		const transport = createTransportHarness()
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
+	it("ignores stale generation CRDT sends after detach", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const crdtTransport = createCrdtTransportHarness();
 		const adapter = createP2PAuthorityAdapter({
-			roomId: 'room-default-restore',
-			signalUrl: 'http://localhost:8787',
-			workerUrl: 'http://localhost/sharedWorker.js',
-			createManager: manager.factory,
-		})
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+		manager.openClientCrdt(crdtTransport);
 
-		manager.emitBecomeClient(transport.transport)
-		const remoteSnapshot = createProjectSnapshot('Remote authority state')
-		transport.emit({
-			m: MSG.SNAPSHOT,
-			requestId: String(transport.sent[0].requestId),
-			p: remoteSnapshot,
-		})
-		await Promise.resolve()
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 4,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.DETACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 4,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 4,
+				packet: { stale: true },
+			}),
+		);
 
-		manager.emitSessionLost('server-gone')
-		manager.emitBecomeServer()
+		expect(crdtTransport.sent).toEqual([]);
 
-		await expect(adapter.getSnapshot()).resolves.toEqual(remoteSnapshot)
-		adapter.destroy?.()
-	})
+		dktTransport.destroy();
+		adapter.destroy();
+	});
 
-	test('rejects queued calls when role resolution timeout is exceeded', async () => {
-		vi.useFakeTimers()
-		const manager = createManagerHarness()
+	it("broadcasts and targets CRDT packets across multiple remote peers", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const peerB = createCrdtTransportHarness();
+		const peerC = createCrdtTransportHarness();
 		const adapter = createP2PAuthorityAdapter({
-			roomId: 'room-timeout',
-			signalUrl: 'http://localhost:8787',
-			workerUrl: 'http://localhost/sharedWorker.js',
-			createManager: manager.factory,
-			pendingCallTimeoutMs: 100,
-		})
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+		manager.openServerCrdt("peer-b", peerB);
+		manager.openServerCrdt("peer-c", peerC);
 
-		const pendingSnapshot = adapter.getSnapshot()
-			const rejection = expect(pendingSnapshot).rejects.toThrow('P2P authority role resolution timed out')
-		await vi.advanceTimersByTimeAsync(120)
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 8,
+			}),
+		);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 8,
+				peerId: "peer-b",
+			}),
+		);
+		expect(localAuthority.opened[0].sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 8,
+				peerId: "peer-c",
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 8,
+				packet: { broadcast: true },
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 8,
+				packet: { targeted: true },
+				targetPeerId: "peer-c",
+			}),
+		);
 
-			await rejection
-		adapter.destroy?.()
-	})
-})
+		expect(peerB.sent).toEqual([{ broadcast: true }]);
+		expect(peerC.sent).toEqual([{ broadcast: true }, { targeted: true }]);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
+	it("drops failed CRDT transports without blocking broadcast to live peers", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const stalePeer = createCrdtTransportHarness();
+		const livePeer = createCrdtTransportHarness();
+		stalePeer.failSends = true;
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+		manager.openServerCrdt("stale-peer", stalePeer);
+		manager.openServerCrdt("live-peer", livePeer);
+
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 10,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 10,
+				packet: { broadcastAfterFailure: true },
+			}),
+		);
+
+		expect(stalePeer.destroyed).toBe(true);
+		expect(livePeer.sent).toEqual([{ broadcastAfterFailure: true }]);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
+	it("replaces client CRDT listeners when failover opens a new server channel", () => {
+		const manager = createManagerHarness();
+		const localAuthorities: ReturnType<typeof createLocalAuthorityHarness>[] = [];
+		const oldServer = createCrdtTransportHarness();
+		const newServer = createCrdtTransportHarness();
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => {
+				const next = createLocalAuthorityHarness();
+				localAuthorities.push(next);
+				return next;
+			},
+		});
+		const dktTransport = adapter.openDktTransport();
+
+		manager.becomeClient();
+		manager.openClientCrdt(oldServer);
+		expect(localAuthorities).toHaveLength(1);
+		const firstTransport = localAuthorities[0].opened[0];
+		firstTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 1,
+			}),
+		);
+		oldServer.emit({ fromOldServer: true }, "server");
+		expect(firstTransport.sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				roomId: "room-1",
+				transportGeneration: 1,
+				packet: { fromOldServer: true },
+				sourcePeerId: "server",
+			}),
+		);
+
+		manager.becomeClient();
+		expect(localAuthorities).toHaveLength(2);
+		expect(oldServer.destroyed).toBe(true);
+		manager.openClientCrdt(newServer);
+		const secondTransport = localAuthorities[1].opened[0];
+		secondTransport.emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 2,
+			}),
+		);
+		expect(secondTransport.sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_PEER_ATTACHED,
+				roomId: "room-1",
+				transportGeneration: 2,
+				peerId: "server",
+			}),
+		);
+		newServer.emit({ fromNewServer: true }, "server");
+		oldServer.emit({ staleOldServer: true }, "server");
+
+		expect(secondTransport.sent).toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				roomId: "room-1",
+				transportGeneration: 2,
+				packet: { fromNewServer: true },
+				sourcePeerId: "server",
+			}),
+		);
+		expect(secondTransport.sent).not.toContainEqual(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+				roomId: "room-1",
+				transportGeneration: 2,
+				packet: { staleOldServer: true },
+				sourcePeerId: "server",
+			}),
+		);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+
+	it("handles opaque CRDT packet faults without inspecting payloads", () => {
+		const manager = createManagerHarness();
+		const localAuthority = createLocalAuthorityHarness();
+		const peerB = createCrdtTransportHarness();
+		const peerC = createCrdtTransportHarness();
+		const adapter = createP2PAuthorityAdapter({
+			roomId: "room-1",
+			signalUrl: "ws://127.0.0.1:8790",
+			createManager: manager.createManager,
+			createLocalAuthority: () => localAuthority,
+		});
+		const dktTransport = adapter.openDktTransport();
+		manager.becomeClient();
+
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.ATTACH_WEBRTC,
+				roomId: "room-1",
+				transportGeneration: 11,
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 10,
+				packet: { staleGeneration: true },
+			}),
+		);
+		localAuthority.opened[0].emit(
+			productRoomMessage({
+				type: PRODUCT_ROOM_MSG.CRDT_SEND,
+				roomId: "room-1",
+				transportGeneration: 11,
+				packet: { targetedLate: true },
+				targetPeerId: "peer-c",
+			}),
+		);
+		expect(peerC.sent).toEqual([]);
+
+		manager.openServerCrdt("peer-b", peerB);
+		peerB.emit({ seq: 2, payload: { nested: ["opaque"] } }, "peer-b");
+		peerB.emit({ seq: 1, payload: { nested: ["opaque"] } }, "peer-b");
+		peerB.emit({ seq: 1, payload: { nested: ["opaque"] } }, "peer-b");
+		manager.openServerCrdt("peer-c", peerC);
+
+		expect(peerB.sent).toEqual([]);
+		expect(peerC.sent).toEqual([{ targetedLate: true }]);
+		expect(localAuthority.opened[0].sent).toEqual(
+			expect.arrayContaining([
+				productRoomMessage({
+					type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+					roomId: "room-1",
+					transportGeneration: 11,
+					packet: { seq: 2, payload: { nested: ["opaque"] } },
+					sourcePeerId: "peer-b",
+				}),
+				productRoomMessage({
+					type: PRODUCT_ROOM_MSG.CRDT_RECEIVE,
+					roomId: "room-1",
+					transportGeneration: 11,
+					packet: { seq: 1, payload: { nested: ["opaque"] } },
+					sourcePeerId: "peer-b",
+				}),
+			]),
+		);
+		expect(
+			localAuthority.opened[0].sent.filter(
+				(message) =>
+					message.type === DKT_MSG.PRODUCT_ROOM_MESSAGE &&
+					message.message.type === PRODUCT_ROOM_MSG.CRDT_RECEIVE &&
+					(message.message.packet as { seq?: number }).seq === 1,
+			),
+		).toHaveLength(2);
+
+		dktTransport.destroy();
+		adapter.destroy();
+	});
+});

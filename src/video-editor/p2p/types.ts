@@ -1,46 +1,50 @@
-export type P2PRole = 'server' | 'client' | 'undecided'
+export type P2PRole = "server" | "client" | "undecided";
 
-export const SIGNAL_PROTOCOL_VERSION = 1 as const
+export const SIGNAL_PROTOCOL_VERSION = 1 as const;
 
 export interface SignalProtocolMeta {
-	protocolVersion?: number
-	capabilities?: string[]
+	protocolVersion?: number;
+	capabilities?: string[];
 }
 
 export interface BaseSignalMessage {
-	kind: string
-	roomId: string
-	fromPeerId: string
-	toPeerId?: string
-	ts: number
-	meta?: SignalProtocolMeta
+	kind: string;
+	roomId: string;
+	fromPeerId: string;
+	toPeerId?: string;
+	ts: number;
+	meta?: SignalProtocolMeta;
 }
 
 export interface OfferSignal extends BaseSignalMessage {
-	kind: 'offer'
-	toPeerId: string
-	sdp: RTCSessionDescriptionInit
+	kind: "offer";
+	toPeerId: string;
+	sdp: RTCSessionDescriptionInit;
 }
 
 export interface AnswerSignal extends BaseSignalMessage {
-	kind: 'answer'
-	toPeerId: string
-	sdp: RTCSessionDescriptionInit
+	kind: "answer";
+	toPeerId: string;
+	sdp: RTCSessionDescriptionInit;
 }
 
 export interface IceCandidateSignal extends BaseSignalMessage {
-	kind: 'ice-candidate'
-	toPeerId: string
-	candidate: RTCIceCandidateInit
+	kind: "ice-candidate";
+	toPeerId: string;
+	candidate: RTCIceCandidateInit;
 }
 
 export interface ServerLeavingSignal extends BaseSignalMessage {
-	kind: 'server-leaving'
+	kind: "server-leaving";
 }
 
-export type SignalMessage = OfferSignal | AnswerSignal | IceCandidateSignal | ServerLeavingSignal
+export type SignalMessage =
+	| OfferSignal
+	| AnswerSignal
+	| IceCandidateSignal
+	| ServerLeavingSignal;
 
 export interface RelayEnvelope {
-	relay: true
-	payload: unknown
+	relay: true;
+	payload: unknown;
 }
