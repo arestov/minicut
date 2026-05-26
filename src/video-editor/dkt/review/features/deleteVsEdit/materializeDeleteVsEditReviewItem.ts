@@ -74,6 +74,14 @@ export const materializeDeleteVsEditReviewItem = ({
 			"parkEditedVariantOnReviewTrack",
 			"preserveDeleteAndArchiveIncomingEdit",
 		],
+		actionTargets: {
+			resolveDeleteVsEditByRestoreVariant: { type: "project", id: projectId },
+			parkEditedVariantOnReviewTrack: { type: "project", id: projectId },
+			preserveDeleteAndArchiveIncomingEdit: {
+				type: "project",
+				id: projectId,
+			},
+		},
 		source: sourceFromConflict(conflict),
 	};
 };

@@ -31,6 +31,11 @@ export const materializeTrackOrderReviewItem = ({
 			"preserveCurrentTrackOrder",
 			"createManualTrackOrderSuggestion",
 		],
+		actionTargets: {
+			resolveTrackOrderConflict: { type: "project", id: projectId },
+			preserveCurrentTrackOrder: { type: "project", id: projectId },
+			createManualTrackOrderSuggestion: { type: "project", id: projectId },
+		},
 		source: sourceFromConflict(conflict),
 	};
 };

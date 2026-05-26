@@ -26,6 +26,20 @@ describe("materializeDeleteVsEditReviewItem", () => {
 				"parkEditedVariantOnReviewTrack",
 				"preserveDeleteAndArchiveIncomingEdit",
 			],
+			actionTargets: {
+				resolveDeleteVsEditByRestoreVariant: {
+					type: "project",
+					id: "project:1",
+				},
+				parkEditedVariantOnReviewTrack: {
+					type: "project",
+					id: "project:1",
+				},
+				preserveDeleteAndArchiveIncomingEdit: {
+					type: "project",
+					id: "project:1",
+				},
+			},
 			source: {
 				conflictGroupId: "group:delete-vs-edit",
 				frameId: 31,

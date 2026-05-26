@@ -93,6 +93,11 @@ export type MiniCutReviewObject = {
 	status?: "applied" | "rejected";
 };
 
+export type MiniCutReviewActionTarget = {
+	type: "project" | "clip" | "resource";
+	id: string;
+};
+
 export type MiniCutReviewItem = {
 	id: string;
 	conflictId: string;
@@ -103,6 +108,7 @@ export type MiniCutReviewItem = {
 	affectedObjects: MiniCutReviewObject[];
 	preview: unknown;
 	availableActions: string[];
+	actionTargets: Record<string, MiniCutReviewActionTarget>;
 	source: {
 		conflictId: string;
 		conflictGroupId?: string;

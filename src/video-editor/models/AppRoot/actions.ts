@@ -349,6 +349,7 @@ export const reduceHandleCRDTConflictGraph = (
 		affectedObjects: item.attrs.affectedObjects,
 		preview: item.attrs.preview,
 		availableActions: item.attrs.availableActions,
+		actionTargets: item.attrs.actionTargets,
 		source: item.attrs.source,
 	}));
 	return {

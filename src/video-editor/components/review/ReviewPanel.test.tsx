@@ -22,6 +22,10 @@ const item: MiniCutReviewItem = {
 		"resolveClipTimingConflict",
 		"parkIncomingVariantOnReviewTrack",
 	],
+	actionTargets: {
+		resolveClipTimingConflict: { type: "clip", id: "clip:1" },
+		parkIncomingVariantOnReviewTrack: { type: "project", id: "project:1" },
+	},
 	source: { conflictId: "conflict:1", frameId: 2, rootFrameId: 1 },
 };
 

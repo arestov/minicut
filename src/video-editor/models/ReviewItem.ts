@@ -4,6 +4,7 @@ import type {
 	MiniCutReviewItem,
 	MiniCutReviewKind,
 	MiniCutReviewObject,
+	MiniCutReviewActionTarget,
 } from "../dkt/review/types";
 import { reduceSetReviewItem } from "./ReviewItem/actions";
 
@@ -12,6 +13,11 @@ const asString = (value: unknown, fallback = ""): string =>
 
 const asArray = <Value,>(value: unknown): Value[] =>
 	Array.isArray(value) ? (value as Value[]) : [];
+
+const asObject = <Value extends object>(value: unknown): Value | null =>
+	value && typeof value === "object" && !Array.isArray(value)
+		? (value as Value)
+		: null;
 
 const asKind = (value: unknown): MiniCutReviewKind =>
 	value === "clip_timing" ||
@@ -36,6 +42,7 @@ const reduceReviewItemSnapshot = (
 	affectedObjects: unknown,
 	preview: unknown,
 	availableActions: unknown,
+	actionTargets: unknown,
 	source: unknown,
 ): MiniCutReviewItem => {
 	const id = asString(reviewItemId, asString(nodeId, ""));
@@ -50,6 +57,8 @@ const reduceReviewItemSnapshot = (
 		affectedObjects: asArray<MiniCutReviewObject>(affectedObjects),
 		preview: preview ?? null,
 		availableActions: asArray<string>(availableActions),
+		actionTargets:
+			asObject<Record<string, MiniCutReviewActionTarget>>(actionTargets) ?? {},
 		source:
 			source && typeof source === "object"
 				? (source as MiniCutReviewItem["source"])
@@ -68,6 +77,7 @@ export const REVIEW_ITEM_CREATION_SHAPE = {
 		"affectedObjects",
 		"preview",
 		"availableActions",
+		"actionTargets",
 		"source",
 		"createdAt",
 		"updatedAt",
@@ -86,6 +96,7 @@ export const ReviewItem = model({
 		affectedObjects: ["input", []],
 		preview: ["input", null],
 		availableActions: ["input", []],
+		actionTargets: ["input", {}],
 		source: ["input", null],
 		createdAt: ["input", 0],
 		updatedAt: ["input", 0],
@@ -102,6 +113,7 @@ export const ReviewItem = model({
 				"affectedObjects",
 				"preview",
 				"availableActions",
+				"actionTargets",
 				"source",
 			] as const,
 			reduceReviewItemSnapshot,
@@ -119,6 +131,7 @@ export const ReviewItem = model({
 				affectedObjects: ["affectedObjects"],
 				preview: ["preview"],
 				availableActions: ["availableActions"],
+				actionTargets: ["actionTargets"],
 				source: ["source"],
 				updatedAt: ["updatedAt"],
 			},

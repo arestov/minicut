@@ -11,6 +11,7 @@ import type {
 	MiniCutReviewKind,
 	MiniCutReviewObject,
 } from "../../dkt/review/types";
+import { reviewActionScopeForItem } from "./reviewActionRouting";
 import { ReviewPanel } from "./ReviewPanel";
 
 const REVIEW_ITEM_ATTRS = [
@@ -23,6 +24,7 @@ const REVIEW_ITEM_ATTRS = [
 	"affectedObjects",
 	"preview",
 	"availableActions",
+	"actionTargets",
 	"source",
 ] as const;
 
@@ -97,6 +99,9 @@ const toReviewItem = ({ scope, attrs }: AttrSnapshot): MiniCutReviewItem => {
 		affectedObjects: asArray<MiniCutReviewObject>(attrs.affectedObjects),
 		preview: attrs.preview ?? null,
 		availableActions: asArray<string>(attrs.availableActions),
+		actionTargets: isRecord(attrs.actionTargets)
+			? (attrs.actionTargets as MiniCutReviewItem["actionTargets"])
+			: {},
 		source:
 			attrs.source && typeof attrs.source === "object"
 				? (attrs.source as MiniCutReviewItem["source"])
@@ -321,17 +326,8 @@ const ProjectReviewContent = ({
 							})
 						}
 						onReviewAction={(actionId, item, payload) => {
-							const affectedClip = item.affectedObjects.find(
-								(object) => object.type === "clip",
-							);
-							const actionScope =
-								actionId === "resolveDeleteVsEditByRestoreVariant" ||
-								actionId === "parkEditedVariantOnReviewTrack" ||
-								actionId === "preserveDeleteAndArchiveIncomingEdit"
-									? null
-									: affectedClip
-										? { kind: "scope" as const, _nodeId: affectedClip.id }
-										: null;
+							const actionScope = reviewActionScopeForItem(item, actionId);
+							if (!actionScope) return;
 							runtime.dispatchAction(
 								actionId,
 								{

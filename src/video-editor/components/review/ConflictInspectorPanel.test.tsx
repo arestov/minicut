@@ -16,6 +16,7 @@ describe("review ConflictInspectorPanel", () => {
 			affectedObjects: [],
 			preview: { type: "unknown_conflict" },
 			availableActions: [],
+			actionTargets: {},
 			source: { conflictId: "conflict:unknown" },
 		};
 
@@ -45,6 +46,13 @@ describe("review ConflictInspectorPanel", () => {
 				"resolveClipTimingConflict",
 				"parkIncomingVariantOnReviewTrack",
 			],
+			actionTargets: {
+				resolveClipTimingConflict: { type: "clip", id: "clip:1" },
+				parkIncomingVariantOnReviewTrack: {
+					type: "project",
+					id: "project:1",
+				},
+			},
 			source: { conflictId: "conflict:clip" },
 		};
 		const onReviewAction = vi.fn();
@@ -136,6 +144,20 @@ describe("review ConflictInspectorPanel", () => {
 				"parkEditedVariantOnReviewTrack",
 				"preserveDeleteAndArchiveIncomingEdit",
 			],
+			actionTargets: {
+				resolveDeleteVsEditByRestoreVariant: {
+					type: "project",
+					id: "project:1",
+				},
+				parkEditedVariantOnReviewTrack: {
+					type: "project",
+					id: "project:1",
+				},
+				preserveDeleteAndArchiveIncomingEdit: {
+					type: "project",
+					id: "project:1",
+				},
+			},
 			source: { conflictId: "conflict:delete" },
 		};
 		const onReviewAction = vi.fn();

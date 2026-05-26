@@ -24,6 +24,14 @@ describe("materializeTrackOrderReviewItem", () => {
 				"preserveCurrentTrackOrder",
 				"createManualTrackOrderSuggestion",
 			],
+			actionTargets: {
+				resolveTrackOrderConflict: { type: "project", id: "project:1" },
+				preserveCurrentTrackOrder: { type: "project", id: "project:1" },
+				createManualTrackOrderSuggestion: {
+					type: "project",
+					id: "project:1",
+				},
+			},
 			preview: {
 				type: "track_order",
 				currentOrder: [

@@ -36,7 +36,7 @@ export const materializeCRDTConflictReviewItem = ({
 			impactSummary: conflict.impact_summary ?? null,
 		},
 		availableActions: ["acknowledgeReviewItem"],
+		actionTargets: {},
 		source: sourceFromConflict(conflict),
 	};
 };
-

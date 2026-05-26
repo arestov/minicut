@@ -47,6 +47,7 @@ const REVIEW_ITEM_ATTRS = [
 	"title",
 	"affectedObjects",
 	"availableActions",
+	"actionTargets",
 	"source",
 ] as const;
 

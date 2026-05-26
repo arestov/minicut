@@ -18,6 +18,7 @@ describe("ReviewItem actions", () => {
 				affectedObjects: [],
 				preview: { type: "unknown_conflict" },
 				availableActions: [],
+				actionTargets: {},
 				source: { conflictId: "conflict:1" },
 			}),
 		).toMatchObject({
@@ -51,4 +52,3 @@ describe("ReviewItem actions", () => {
 		expect(result?.attrs.preview).not.toBe(clipTimingConflictFixture);
 	});
 });
-

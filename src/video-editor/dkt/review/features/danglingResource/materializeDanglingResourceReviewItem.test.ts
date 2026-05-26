@@ -32,6 +32,10 @@ describe("materializeDanglingResourceReviewItem", () => {
 				"resolveDanglingResourceByRelink",
 				"keepOfflinePlaceholder",
 			],
+			actionTargets: {
+				resolveDanglingResourceByRelink: { type: "clip", id: "clip:1" },
+				keepOfflinePlaceholder: { type: "clip", id: "clip:1" },
+			},
 		});
 		expect(item.preview).toMatchObject({
 			type: "dangling_resource",
@@ -70,6 +74,27 @@ describe("materializeDanglingResourceReviewItem", () => {
 			type: "dangling_resource",
 			resourceId: "resource:1",
 			clipIds: ["clip:1"],
+		});
+	});
+
+	it("targets resource actions directly when no clip anchor exists", () => {
+		const item = materializeDanglingResourceReviewItem({
+			conflict: {
+				...danglingResourceConflictFixture,
+				payload: {
+					resourceId: "resource:1",
+					resourceName: "Interview missing.mov",
+				},
+			},
+			projectId: "project:1",
+		});
+
+		expect(item.actionTargets).toEqual({
+			resolveDanglingResourceByRelink: {
+				type: "resource",
+				id: "resource:1",
+			},
+			keepOfflinePlaceholder: { type: "resource", id: "resource:1" },
 		});
 	});
 
