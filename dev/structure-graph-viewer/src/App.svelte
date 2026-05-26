@@ -33,6 +33,7 @@
     routed: RoutedEdge,
   }
   const FOCUS_HOPS = 1
+  const snapshotBaseUrl = `${import.meta.env.BASE_URL}snapshot/`
 
   let snapshots = $state({
     core: null,
@@ -588,11 +589,11 @@
 
   async function loadDefaultSnapshots() {
     try {
-      const core = normalizeSnapshot(await readJson('/snapshot/core.json'))
+      const core = normalizeSnapshot(await readJson(`${snapshotBaseUrl}core.json`))
       let derived = null
 
       try {
-        derived = normalizeSnapshot(await readJson('/snapshot/derived.json'))
+        derived = normalizeSnapshot(await readJson(`${snapshotBaseUrl}derived.json`))
       } catch (error) {
         console.warn('Derived snapshot is not available', error)
       }

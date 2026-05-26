@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { copyFile, mkdir } from 'node:fs/promises'
+import path from 'node:path'
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx'
@@ -76,6 +78,22 @@ const run = (command, args, env = {}) => new Promise((resolve, reject) => {
 	})
 })
 
+const copyStructureSnapshot = async () => {
+	const snapshotOutDir = path.resolve('dist-video-editor/structure-graph-viewer/snapshot')
+	await mkdir(snapshotOutDir, { recursive: true })
+	await copyFile(
+		path.resolve('app-structure.snapshot/core.json'),
+		path.join(snapshotOutDir, 'core.json'),
+	)
+	await copyFile(
+		path.resolve('app-structure.snapshot/derived.json'),
+		path.join(snapshotOutDir, 'derived.json'),
+	)
+}
+
 console.log(`Building frontend with signalUrl=${signalUrl}`)
 await run(npmCommand, ['run', 'video-editor:build'])
+await run(npmCommand, ['run', 'structure:snapshot'])
+await run(npmCommand, ['--prefix', './dev/structure-graph-viewer', 'run', 'build'])
+await copyStructureSnapshot()
 await run(npxCommand, ['--yes', 'wrangler@4', 'pages', 'deploy', 'dist-video-editor', '--project-name', 'minicut-video-editor'])

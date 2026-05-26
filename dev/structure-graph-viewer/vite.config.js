@@ -44,7 +44,12 @@ function snapshotRoute() {
 }
 
 export default defineConfig({
+  base: '/structure-graph-viewer/',
   plugins: [svelte(), snapshotRoute()],
+  build: {
+    outDir: path.join(repoRoot, 'dist-video-editor/structure-graph-viewer'),
+    emptyOutDir: false,
+  },
   server: {
     fs: {
       allow: [viewerRoot, repoRoot],
