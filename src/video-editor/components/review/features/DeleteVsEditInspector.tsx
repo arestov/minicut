@@ -1,6 +1,11 @@
 import { Archive, CopyPlus, RotateCcw } from "lucide-react";
 import type { MiniCutReviewItem } from "../../../dkt/review/types";
 import type { DeleteVsEditPreview } from "../../../dkt/review/features/deleteVsEdit";
+import {
+	buildDeleteVsEditArchivePayload,
+	buildDeleteVsEditParkPayload,
+	buildDeleteVsEditRestorePayload,
+} from "../reviewActionPayloads";
 
 type Props = {
 	item: MiniCutReviewItem;
@@ -22,18 +27,6 @@ const numberValue = (value: unknown): string =>
 		? `${Number(value.toFixed(3))}s`
 		: "Unset";
 
-const actionPayload = (item: MiniCutReviewItem, preview: DeleteVsEditPreview) => ({
-	conflictId: item.conflictId,
-	reviewItemId: item.id,
-	clipId: preview.deletedVariant.clipId,
-	targetTrackId: textValue(
-		preview.editedVariant.clipAttrs.targetTrackId,
-		"",
-	),
-	deletedVariant: preview.deletedVariant,
-	editedVariant: preview.editedVariant,
-});
-
 export const DeleteVsEditInspector = ({
 	item,
 	onRestoreVariant,
@@ -46,7 +39,6 @@ export const DeleteVsEditInspector = ({
 	const preview = item.preview;
 	const clipAttrs = preview.editedVariant.clipAttrs;
 	const resourceAttrs = preview.editedVariant.resourceAttrs;
-	const payload = actionPayload(item, preview);
 
 	return (
 		<div className="ve-review-inspector__delete-vs-edit">
@@ -91,15 +83,24 @@ export const DeleteVsEditInspector = ({
 				</section>
 			</div>
 			<div className="ve-review-inspector__actions">
-				<button type="button" onClick={() => onRestoreVariant(payload)}>
+				<button
+					type="button"
+					onClick={() => onRestoreVariant(buildDeleteVsEditRestorePayload(item))}
+				>
 					<RotateCcw aria-hidden="true" size={16} />
 					Restore edited variant
 				</button>
-				<button type="button" onClick={() => onParkVariant(payload)}>
+				<button
+					type="button"
+					onClick={() => onParkVariant(buildDeleteVsEditParkPayload(item))}
+				>
 					<CopyPlus aria-hidden="true" size={16} />
 					Park edited on review track
 				</button>
-				<button type="button" onClick={() => onPreserveDelete(payload)}>
+				<button
+					type="button"
+					onClick={() => onPreserveDelete(buildDeleteVsEditArchivePayload(item))}
+				>
 					<Archive aria-hidden="true" size={16} />
 					Preserve delete and archive edit
 				</button>

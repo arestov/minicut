@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { MiniCutReviewItem } from "../../../dkt/review/types";
+import { buildTrackOrderPayload } from "../reviewActionPayloads";
 import { TrackOrderInspector } from "./TrackOrderInspector";
 
 const item: MiniCutReviewItem = {
@@ -59,12 +60,7 @@ describe("TrackOrderInspector", () => {
 		await userEvent.click(screen.getByRole("button", { name: "Apply incoming order" }));
 
 		expect(onApplyOrder).toHaveBeenCalledWith(
-			expect.objectContaining({
-				conflictId: "conflict:track-order",
-				reviewItemId: "review:conflict:track-order",
-				selectedOrder: "incoming",
-				trackIds: ["track:audio", "track:video"],
-			}),
+			buildTrackOrderPayload(item, "incoming"),
 		);
 	});
 
@@ -86,10 +82,7 @@ describe("TrackOrderInspector", () => {
 		);
 
 		expect(onCreateManualSuggestion).toHaveBeenCalledWith(
-			expect.objectContaining({
-				selectedOrder: "manual",
-				trackIds: ["track:audio", "track:video"],
-			}),
+			buildTrackOrderPayload(item, "manual", ["track:audio", "track:video"]),
 		);
 		expect(onApplyOrder).not.toHaveBeenCalled();
 	});

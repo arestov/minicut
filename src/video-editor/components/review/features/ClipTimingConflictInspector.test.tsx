@@ -2,6 +2,10 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { MiniCutReviewItem } from "../../../dkt/review/types";
+import {
+	buildClipTimingParkPayload,
+	buildClipTimingResolvePayload,
+} from "../reviewActionPayloads";
 import { ClipTimingConflictInspector } from "./ClipTimingConflictInspector";
 
 const item: MiniCutReviewItem = {
@@ -50,32 +54,16 @@ describe("ClipTimingConflictInspector", () => {
 			screen.getByRole("button", { name: "Park incoming on review track" }),
 		);
 
-		expect(onResolve).toHaveBeenNthCalledWith(1, {
-			conflictId: "conflict:clip",
-			reviewItemId: "review:clip",
-			selectedVariant: "current",
-			start: 0,
-			in: 0,
-			duration: 4,
-			fadeIn: 0,
-			fadeOut: 0,
-		});
-		expect(onResolve).toHaveBeenNthCalledWith(2, {
-			conflictId: "conflict:clip",
-			reviewItemId: "review:clip",
-			selectedVariant: "incoming",
-			start: 2,
-			in: 1,
-			duration: 3,
-			fadeIn: 0,
-			fadeOut: 0,
-		});
-		expect(onParkVariant).toHaveBeenCalledWith({
-			conflictId: "conflict:clip",
-			reviewItemId: "review:clip",
-			clipId: "clip:1",
-			variant: "incoming",
-			timing: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
-		});
+		expect(onResolve).toHaveBeenNthCalledWith(
+			1,
+			buildClipTimingResolvePayload(item, "current"),
+		);
+		expect(onResolve).toHaveBeenNthCalledWith(
+			2,
+			buildClipTimingResolvePayload(item, "incoming"),
+		);
+		expect(onParkVariant).toHaveBeenCalledWith(
+			buildClipTimingParkPayload(item),
+		);
 	});
 });

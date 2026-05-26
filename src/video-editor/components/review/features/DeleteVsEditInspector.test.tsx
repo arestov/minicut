@@ -3,6 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { materializeDeleteVsEditReviewItem } from "../../../dkt/review/features/deleteVsEdit";
 import { deleteVsEditConflictFixture } from "../../../dkt/review/features/deleteVsEdit/fixtures";
+import {
+	buildDeleteVsEditArchivePayload,
+	buildDeleteVsEditParkPayload,
+	buildDeleteVsEditRestorePayload,
+} from "../reviewActionPayloads";
 import { DeleteVsEditInspector } from "./DeleteVsEditInspector";
 
 const item = materializeDeleteVsEditReviewItem({
@@ -45,22 +50,15 @@ describe("DeleteVsEditInspector", () => {
 			}),
 		);
 
-		const expectedPayload = {
-			conflictId: "conflict:delete-vs-edit",
-			reviewItemId: "review:conflict:delete-vs-edit",
-			clipId: "clip:2",
-			targetTrackId: "track:main",
-			deletedVariant: expect.objectContaining({ clipId: "clip:2" }),
-			editedVariant: expect.objectContaining({
-				clipAttrs: expect.objectContaining({
-					name: "Edited remote clip",
-					duration: 2,
-				}),
-			}),
-		};
-		expect(onRestoreVariant).toHaveBeenCalledWith(expectedPayload);
-		expect(onParkVariant).toHaveBeenCalledWith(expectedPayload);
-		expect(onPreserveDelete).toHaveBeenCalledWith(expectedPayload);
+		expect(onRestoreVariant).toHaveBeenCalledWith(
+			buildDeleteVsEditRestorePayload(item),
+		);
+		expect(onParkVariant).toHaveBeenCalledWith(
+			buildDeleteVsEditParkPayload(item),
+		);
+		expect(onPreserveDelete).toHaveBeenCalledWith(
+			buildDeleteVsEditArchivePayload(item),
+		);
 		expect(screen.queryByText(/accept incoming/i)).not.toBeInTheDocument();
 		expect(screen.queryByText(/keep local/i)).not.toBeInTheDocument();
 	});

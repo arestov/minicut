@@ -2,6 +2,10 @@ import { Check, FileVideo, Link, WifiOff } from "lucide-react";
 import { useState } from "react";
 import type { DanglingResourcePreview } from "../../../dkt/review/features/danglingResource";
 import type { MiniCutReviewItem } from "../../../dkt/review/types";
+import {
+	buildDanglingOfflinePayload,
+	buildDanglingRelinkPayload,
+} from "../reviewActionPayloads";
 
 type Props = {
 	item: MiniCutReviewItem;
@@ -16,13 +20,6 @@ const isDanglingResourcePreview = (
 	typeof value === "object" &&
 	(value as { type?: unknown }).type === "dangling_resource" &&
 	typeof (value as { resourceId?: unknown }).resourceId === "string";
-
-const actionBase = (item: MiniCutReviewItem, preview: DanglingResourcePreview) => ({
-	conflictId: item.conflictId,
-	reviewItemId: item.id,
-	resourceId: preview.resourceId,
-	affectedClipIds: preview.clipIds,
-});
 
 export const DanglingResourceInspector = ({
 	item,
@@ -83,16 +80,12 @@ export const DanglingResourceInspector = ({
 					type="button"
 					disabled={!canRelink}
 					onClick={() =>
-						onRelink({
-							...actionBase(item, preview),
-							replacementUrl: replacementUrl.trim(),
-							source: {
-								...(preview.lastKnownSource ?? {}),
-								kind: sourceKind,
-								url: replacementUrl.trim(),
-							},
-							data: { relinkedFromReview: true },
-						})
+						onRelink(
+							buildDanglingRelinkPayload(item, {
+								replacementUrl,
+								sourceKind,
+							}),
+						)
 					}
 				>
 					<Link aria-hidden="true" size={16} />
@@ -100,7 +93,7 @@ export const DanglingResourceInspector = ({
 				</button>
 				<button
 					type="button"
-					onClick={() => onKeepPlaceholder(actionBase(item, preview))}
+					onClick={() => onKeepPlaceholder(buildDanglingOfflinePayload(item))}
 				>
 					<WifiOff aria-hidden="true" size={16} />
 					Keep offline placeholder

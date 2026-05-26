@@ -5,6 +5,10 @@ import type {
 	TrackOrderEntry,
 	TrackOrderPreview,
 } from "../../../dkt/review/features/trackOrder";
+import {
+	buildTrackOrderPayload,
+	trackOrderIds,
+} from "../reviewActionPayloads";
 
 type Props = {
 	item: MiniCutReviewItem;
@@ -19,21 +23,6 @@ const isTrackOrderPreview = (value: unknown): value is TrackOrderPreview =>
 	(value as { type?: unknown }).type === "track_order" &&
 	Array.isArray((value as { currentOrder?: unknown }).currentOrder) &&
 	Array.isArray((value as { incomingOrder?: unknown }).incomingOrder);
-
-const orderIds = (order: TrackOrderEntry[]) => order.map((track) => track.trackId);
-
-const actionPayload = (
-	item: MiniCutReviewItem,
-	selectedOrder: "current" | "incoming" | "manual",
-	trackIds: string[],
-	preview: TrackOrderPreview,
-) => ({
-	conflictId: item.conflictId,
-	reviewItemId: item.id,
-	selectedOrder,
-	trackIds,
-	preview,
-});
 
 const TrackOrderList = ({
 	title,
@@ -71,7 +60,7 @@ export const TrackOrderInspector = ({
 	}
 	const preview = item.preview;
 	const initialManualOrder = preview.manualOrder ?? preview.currentOrder;
-	const [manualIds, setManualIds] = useState(() => orderIds(initialManualOrder));
+	const [manualIds, setManualIds] = useState(() => trackOrderIds(initialManualOrder));
 	const entryById = useMemo(
 		() =>
 			new Map(
@@ -155,12 +144,7 @@ export const TrackOrderInspector = ({
 					type="button"
 					onClick={() =>
 						onPreserveCurrentOrder(
-							actionPayload(
-								item,
-								"current",
-								orderIds(preview.currentOrder),
-								preview,
-							),
+							buildTrackOrderPayload(item, "current"),
 						)
 					}
 				>
@@ -171,12 +155,7 @@ export const TrackOrderInspector = ({
 					type="button"
 					onClick={() =>
 						onApplyOrder(
-							actionPayload(
-								item,
-								"incoming",
-								orderIds(preview.incomingOrder),
-								preview,
-							),
+							buildTrackOrderPayload(item, "incoming"),
 						)
 					}
 				>
@@ -187,7 +166,7 @@ export const TrackOrderInspector = ({
 					type="button"
 					onClick={() =>
 						onCreateManualSuggestion(
-							actionPayload(item, "manual", manualIds, preview),
+							buildTrackOrderPayload(item, "manual", manualIds),
 						)
 					}
 				>
@@ -197,7 +176,7 @@ export const TrackOrderInspector = ({
 				<button
 					type="button"
 					onClick={() =>
-						onApplyOrder(actionPayload(item, "manual", manualIds, preview))
+						onApplyOrder(buildTrackOrderPayload(item, "manual", manualIds))
 					}
 				>
 					<Check aria-hidden="true" size={16} />

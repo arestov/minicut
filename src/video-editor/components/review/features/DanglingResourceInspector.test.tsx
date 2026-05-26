@@ -2,6 +2,10 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { MiniCutReviewItem } from "../../../dkt/review/types";
+import {
+	buildDanglingOfflinePayload,
+	buildDanglingRelinkPayload,
+} from "../reviewActionPayloads";
 import { DanglingResourceInspector } from "./DanglingResourceInspector";
 
 const item: MiniCutReviewItem = {
@@ -66,24 +70,14 @@ describe("DanglingResourceInspector", () => {
 			screen.getByRole("button", { name: "Keep offline placeholder" }),
 		);
 
-		expect(onRelink).toHaveBeenCalledWith({
-			conflictId: "conflict:resource",
-			reviewItemId: "review:resource",
-			resourceId: "resource:1",
-			affectedClipIds: ["clip:1"],
-			replacementUrl: "https://media.example/interview.mov",
-			source: {
-				kind: "url",
-				name: "interview.mov",
-				url: "https://media.example/interview.mov",
-			},
-			data: { relinkedFromReview: true },
-		});
-		expect(onKeepPlaceholder).toHaveBeenCalledWith({
-			conflictId: "conflict:resource",
-			reviewItemId: "review:resource",
-			resourceId: "resource:1",
-			affectedClipIds: ["clip:1"],
-		});
+		expect(onRelink).toHaveBeenCalledWith(
+			buildDanglingRelinkPayload(item, {
+				replacementUrl: "https://media.example/interview.mov",
+				sourceKind: "url",
+			}),
+		);
+		expect(onKeepPlaceholder).toHaveBeenCalledWith(
+			buildDanglingOfflinePayload(item),
+		);
 	});
 });

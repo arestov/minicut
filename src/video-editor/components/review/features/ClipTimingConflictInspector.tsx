@@ -6,6 +6,10 @@ import type {
 	ClipTimingPreview,
 	ClipTimingVariant,
 } from "../../../dkt/review/features/clipTiming";
+import {
+	buildClipTimingParkPayload,
+	buildClipTimingResolvePayload,
+} from "../reviewActionPayloads";
 
 type Props = {
 	item: MiniCutReviewItem;
@@ -31,21 +35,6 @@ const isClipTimingPreview = (value: unknown): value is ClipTimingPreview =>
 		"number";
 
 const formatTimingValue = (value: number): string => `${Number(value.toFixed(3))}s`;
-
-const resolvePayload = (
-	item: MiniCutReviewItem,
-	selectedVariant: "current" | "incoming" | "custom",
-	timing: ClipTimingVariant,
-) => ({
-	conflictId: item.conflictId,
-	reviewItemId: item.id,
-	selectedVariant,
-	start: timing.start,
-	in: timing.in,
-	duration: timing.duration,
-	fadeIn: timing.fadeIn,
-	fadeOut: timing.fadeOut,
-});
 
 export const ClipTimingConflictInspector = ({
 	item,
@@ -111,7 +100,7 @@ export const ClipTimingConflictInspector = ({
 				<button
 					type="button"
 					onClick={() =>
-						onResolve(resolvePayload(item, "current", preview.current))
+						onResolve(buildClipTimingResolvePayload(item, "current"))
 					}
 				>
 					<Check aria-hidden="true" size={16} />
@@ -120,7 +109,7 @@ export const ClipTimingConflictInspector = ({
 				<button
 					type="button"
 					onClick={() =>
-						onResolve(resolvePayload(item, "incoming", preview.incoming))
+						onResolve(buildClipTimingResolvePayload(item, "incoming"))
 					}
 				>
 					<Check aria-hidden="true" size={16} />
@@ -128,24 +117,16 @@ export const ClipTimingConflictInspector = ({
 				</button>
 				<button
 					type="button"
-					onClick={() => onResolve(resolvePayload(item, "custom", draft))}
+					onClick={() =>
+						onResolve(buildClipTimingResolvePayload(item, "custom", draft))
+					}
 				>
 					<Check aria-hidden="true" size={16} />
 					Apply final timing
 				</button>
 				<button
 					type="button"
-					onClick={() =>
-						onParkVariant({
-							conflictId: item.conflictId,
-							reviewItemId: item.id,
-							clipId: item.affectedObjects.find(
-								(object) => object.type === "clip",
-							)?.id,
-							variant: "incoming",
-							timing: preview.incoming,
-						})
-					}
+					onClick={() => onParkVariant(buildClipTimingParkPayload(item))}
 				>
 					<CopyPlus aria-hidden="true" size={16} />
 					Park incoming on review track
