@@ -299,6 +299,23 @@ const isUniqueStringList = (value: unknown): value is string[] =>
 const sameStringSet = (left: readonly string[], right: readonly string[]) =>
 	left.length === right.length && left.every((entry) => right.includes(entry));
 
+const stringSubset = (subset: readonly string[], fullSet: readonly string[]) =>
+	subset.every((entry) => fullSet.includes(entry));
+
+const expandTrackOrderIds = (
+	trackIds: readonly string[],
+	currentTracks: unknown,
+) => {
+	const knownTrackIds = trackIdsFromModels(currentTracks);
+	if (!stringSubset(trackIds, knownTrackIds)) {
+		return null;
+	}
+	return [
+		...trackIds,
+		...knownTrackIds.filter((trackId) => !trackIds.includes(trackId)),
+	];
+};
+
 const asTrackOrderPreview = (value: unknown): TrackOrderPreview | null => {
 	const preview = asObject<TrackOrderPreview>(value);
 	if (
@@ -1389,18 +1406,21 @@ export const reduceResolveTrackOrderConflict = (
 	const selectedOrder = value?.selectedOrder;
 	const trackIds = value?.trackIds;
 	const knownTrackIds = trackIdsFromModels(currentTracks);
+	const resolvedTrackIds = isUniqueStringList(trackIds)
+		? expandTrackOrderIds(trackIds, currentTracks)
+		: null;
 	if (
 		!conflictId ||
 		!reviewItemId ||
 		(selectedOrder !== "current" &&
 			selectedOrder !== "incoming" &&
 			selectedOrder !== "manual") ||
-		!isUniqueStringList(trackIds) ||
-		!sameStringSet(trackIds, knownTrackIds)
+		!resolvedTrackIds ||
+		!sameStringSet(resolvedTrackIds, knownTrackIds)
 	) {
 		return noop;
 	}
-	const orderedTracks = trackModelsForIds(currentTracks, trackIds);
+	const orderedTracks = trackModelsForIds(currentTracks, resolvedTrackIds);
 	if (!orderedTracks) {
 		return noop;
 	}
@@ -1417,7 +1437,7 @@ export const reduceResolveTrackOrderConflict = (
 				domain_result: {
 					type: "track_order_applied",
 					selectedOrder,
-					trackIds,
+					trackIds: resolvedTrackIds,
 				},
 			},
 		},
@@ -1451,7 +1471,7 @@ export const reduceCreateManualTrackOrderSuggestion = (
 		return noop;
 	}
 	const knownTrackIds = preview.currentOrder.map((entry) => entry.trackId);
-	if (!sameStringSet(trackIds, knownTrackIds)) {
+	if (!stringSubset(trackIds, knownTrackIds)) {
 		return noop;
 	}
 	return {

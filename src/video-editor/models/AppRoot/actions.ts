@@ -83,17 +83,21 @@ const findProjectIdForConflictPayload = (
 		return null;
 	}
 	for (const project of projects) {
+		const projectId = getNodeId(project);
+		if (projectId && conflictNodeIds.has(projectId)) {
+			return projectId;
+		}
 		for (const resource of relList(project, "resources")) {
 			const resourceId = getNodeId(resource);
 			if (resourceId && conflictNodeIds.has(resourceId)) {
-				return getNodeId(project);
+				return projectId;
 			}
 		}
 		for (const track of relList(project, "tracks")) {
 			for (const clip of relList(track, "clips")) {
 				const clipId = getNodeId(clip);
 				if (clipId && conflictNodeIds.has(clipId)) {
-					return getNodeId(project);
+					return projectId;
 				}
 			}
 		}
@@ -313,17 +317,97 @@ export const reduceCreateActivitySummaryModel = (payload: unknown) =>
 export const reduceHandleCRDTConflict = (
 	payload: unknown,
 	projectIdHint?: unknown,
+	projects?: unknown,
 ) =>
-	reduceCreateReviewSessionWithLifecycleItems(payload, projectIdHint);
+	reduceCreateReviewSessionWithLifecycleItems(
+		augmentTrackOrderConflict(payload, projects),
+		projectIdHint,
+	);
 
 export const reduceHandleCRDTSync = (
 	payload: unknown,
 	projectIdHint?: unknown,
 ) => reduceCreateReviewSessionWithActivitySummary(payload, projectIdHint);
 
+const trackOrderMove = (value: unknown) => {
+	const record = asRecord(value);
+	const itemId = stringOr(record?.item_id ?? record?.itemId, "");
+	return itemId
+		? {
+				itemId,
+				afterId: stringOr(record?.after_id ?? record?.afterId, "") || null,
+			}
+		: null;
+};
+
+const trackOrderEntryFromModel = (track: unknown) => {
+	const trackId = getNodeId(track);
+	if (!trackId) return null;
+	const states = asRecord((track as { states?: unknown } | null)?.states) ?? {};
+	const name = stringOr(states.name, trackId);
+	const kind = stringOr(states.kind, "video") === "audio" ? "audio" : "video";
+	return { trackId, name, kind };
+};
+
+const applyTrackOrderMove = <Track extends { trackId: string }>(
+	baseOrder: Track[],
+	itemId: string,
+	afterId: string | null,
+) => {
+	const movingTrack = baseOrder.find((track) => track.trackId === itemId);
+	if (!movingTrack) return baseOrder;
+	const nextOrder = baseOrder.filter((track) => track.trackId !== itemId);
+	if (afterId === null) return [movingTrack, ...nextOrder];
+	const anchorIndex = nextOrder.findIndex((track) => track.trackId === afterId);
+	nextOrder.splice(anchorIndex >= 0 ? anchorIndex + 1 : nextOrder.length, 0, movingTrack);
+	return nextOrder;
+};
+
+const augmentTrackOrderConflict = (payload: unknown, projects: unknown) => {
+	const conflict = asRecord(payload);
+	const conflictPayload = asRecord(conflict?.payload);
+	if (
+		!conflict ||
+		conflict.kind !== "sequence_move_vs_move" ||
+		conflict.field_name !== "tracks" ||
+		conflict.aggregate !== "projectTracks"
+	) {
+		return payload;
+	}
+	const current = trackOrderMove(conflictPayload?.current);
+	const incoming = trackOrderMove(conflictPayload?.incoming);
+	const itemId = incoming?.itemId ?? current?.itemId;
+	if (!current || !incoming || !itemId || current.itemId !== itemId) {
+		return payload;
+	}
+	const project = Array.isArray(projects)
+		? projects.find((candidate) => getNodeId(candidate) === conflict.node_id)
+		: null;
+	const trackOrder = relList(project, "tracks")
+		.map(trackOrderEntryFromModel)
+		.filter((track): track is NonNullable<typeof track> => Boolean(track));
+	if (trackOrder.length === 0) {
+		return payload;
+	}
+	return {
+		...conflict,
+		details: {
+			...(asRecord(conflict.details) ?? {}),
+			tracks: trackOrder,
+			currentOrder: applyTrackOrderMove(trackOrder, itemId, current.afterId).map(
+				(track) => track.trackId,
+			),
+			incomingOrder: applyTrackOrderMove(trackOrder, itemId, incoming.afterId).map(
+				(track) => track.trackId,
+			),
+		},
+	};
+};
+
 export const reduceHandleCRDTConflictGraph = (
 	payload: unknown,
 	projectIdHint?: unknown,
+	projects?: unknown,
 	existingReviewItemIds?: unknown,
 ) => {
 	const resolvedProjectIdHint =
@@ -331,7 +415,7 @@ export const reduceHandleCRDTConflictGraph = (
 			? projectIdHint
 			: null;
 	const session = reduceCreateReviewSessionWithLifecycleItems(
-		payload,
+			augmentTrackOrderConflict(payload, projects),
 		projectIdHint,
 	);
 	const items = session?.rels?.items;
