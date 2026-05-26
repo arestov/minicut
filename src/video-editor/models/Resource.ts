@@ -286,6 +286,12 @@ export const Resource = model({
 			fn: reduceSetClipsRef,
 		},
 		resolveDanglingResourceByRelink: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "resolveDanglingResourceByRelink",
+				permission: "entry",
+			},
 			to: {
 				url: ["url"],
 				status: ["status"],
@@ -301,6 +307,12 @@ export const Resource = model({
 			],
 		},
 		keepOfflinePlaceholder: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "keepOfflinePlaceholder",
+				permission: "entry",
+			},
 			to: {
 				status: ["status"],
 				source: ["source"],

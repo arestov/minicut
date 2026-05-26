@@ -1,6 +1,6 @@
 import { model } from "dkt/model.js";
-import { ACTIVITY_SUMMARY_CREATION_SHAPE, ActivitySummary } from "./ActivitySummary";
-import { REVIEW_ITEM_CREATION_SHAPE, ReviewItem } from "./ReviewItem";
+import { ACTIVITY_SUMMARY_CREATION_SHAPE } from "./ActivitySummary";
+import { REVIEW_ITEM_CREATION_SHAPE } from "./ReviewItem";
 import type {
 	MiniCutActivitySummary,
 	MiniCutReviewItem,
@@ -69,7 +69,7 @@ export const ReviewSession = model({
 			["< @all:status < items"] as const,
 			(statuses: unknown) =>
 				Array.isArray(statuses)
-					? statuses.filter((status) => status !== "resolved").length
+					? statuses.filter((status) => status === "open").length
 					: 0,
 		],
 		reviewSessionSnapshot: [

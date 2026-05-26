@@ -156,7 +156,7 @@ export const inspectProjectReviewGraph = async (
 		project: await inspectNode(ctx, project, ["reviewOpenItemCount"]),
 		items,
 		activitySummaries,
-		openItemCount: items.filter((item) => item.attrs.status !== "resolved").length,
+		openItemCount: items.filter((item) => item.attrs.status === "open").length,
 	};
 };
 

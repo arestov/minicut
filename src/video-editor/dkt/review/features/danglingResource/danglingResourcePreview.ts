@@ -21,6 +21,18 @@ const stringArray = (value: unknown): string[] =>
 		? value.filter((entry): entry is string => typeof entry === "string")
 		: [];
 
+const danglingRefResourceId = (record: Record<string, unknown>): string | null =>
+	stringValue(record.ref) === "resource" ||
+	stringValue(record.field_name) === "resource"
+		? stringValue(record.target_id) ?? stringValue(record.targetId)
+		: null;
+
+const danglingRefClipId = (record: Record<string, unknown>): string | null =>
+	stringValue(record.ref) === "resource" ||
+	stringValue(record.field_name) === "resource"
+		? stringValue(record.source_id) ?? stringValue(record.sourceId)
+		: null;
+
 const firstString = (
 	source: Record<string, unknown>,
 	keys: readonly string[],
@@ -63,6 +75,7 @@ export const extractDanglingResourcePreview = (
 	const resourceId =
 		records
 			.map((record) =>
+				danglingRefResourceId(record) ??
 				firstString(record, [
 					"resourceId",
 					"resource_id",
@@ -82,13 +95,18 @@ export const extractDanglingResourcePreview = (
 
 	const clipIds = [
 		...new Set(
-			records.flatMap((record) => [
-				...stringArray(record.clipIds),
-				...stringArray(record.clip_ids),
-				...stringArray(record.affectedClipIds),
-				...stringArray(record.affected_clip_ids),
-				...(stringValue(record.clipId) ? [stringValue(record.clipId)!] : []),
-			]),
+			records.flatMap((record) => {
+				const danglingClipId = danglingRefClipId(record);
+				const directClipId = stringValue(record.clipId);
+				return [
+					...stringArray(record.clipIds),
+					...stringArray(record.clip_ids),
+					...stringArray(record.affectedClipIds),
+					...stringArray(record.affected_clip_ids),
+					...(danglingClipId ? [danglingClipId] : []),
+					...(directClipId ? [directClipId] : []),
+				];
+			}),
 		),
 	];
 

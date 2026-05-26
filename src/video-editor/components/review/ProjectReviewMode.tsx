@@ -265,7 +265,7 @@ const ProjectReviewContent = ({
 		[sessionSnapshots],
 	);
 	const openCount = useMemo(
-		() => items.filter((item) => item.status !== "resolved").length,
+		() => items.filter((item) => item.status === "open").length,
 		[items],
 	);
 	const session =

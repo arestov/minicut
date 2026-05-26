@@ -1,7 +1,7 @@
 import { makeCrdtAcknowledgePayload } from "../../dkt/review/crdtReviewCommands";
 import { defaultClipTransform } from "../Clip/actions";
-import { reduceCreateActivitySummary, reduceMaterializeSyncActivitySummary } from "../ActivitySummary/actions";
-import { reduceCreateReviewItem, reduceMaterializeReviewItemFromConflict } from "../ReviewItem/actions";
+import { reduceCreateActivitySummary } from "../ActivitySummary/actions";
+import { reduceCreateReviewItem } from "../ReviewItem/actions";
 import {
 	reduceCreateReviewSession,
 	reduceCreateReviewSessionWithActivitySummary,
@@ -34,6 +34,21 @@ const relList = (model: unknown, relName: string): unknown[] => {
 
 const collectConflictNodeIds = (payload: unknown): Set<string> => {
 	const ids = new Set<string>();
+	const collectRecordIds = (value: unknown) => {
+		if (!value || typeof value !== "object") {
+			return;
+		}
+		const record = value as Record<string, unknown>;
+		for (const key of ["node_id", "source_id", "sourceId", "target_id", "targetId"]) {
+			const id = record[key];
+			if (typeof id === "string" && id.length > 0) {
+				ids.add(id);
+			}
+		}
+		for (const key of ["payload", "details", "variants"]) {
+			collectRecordIds(record[key]);
+		}
+	};
 	if (!payload || typeof payload !== "object") {
 		return ids;
 	}
@@ -53,13 +68,7 @@ const collectConflictNodeIds = (payload: unknown): Set<string> => {
 			continue;
 		}
 		for (const item of list) {
-			const nodeId =
-				item && typeof item === "object"
-					? (item as { node_id?: unknown }).node_id
-					: null;
-			if (typeof nodeId === "string" && nodeId) {
-				ids.add(nodeId);
-			}
+			collectRecordIds(item);
 		}
 	}
 	return ids;
@@ -74,6 +83,12 @@ const findProjectIdForConflictPayload = (
 		return null;
 	}
 	for (const project of projects) {
+		for (const resource of relList(project, "resources")) {
+			const resourceId = getNodeId(resource);
+			if (resourceId && conflictNodeIds.has(resourceId)) {
+				return getNodeId(project);
+			}
+		}
 		for (const track of relList(project, "tracks")) {
 			for (const clip of relList(track, "clips")) {
 				const clipId = getNodeId(clip);

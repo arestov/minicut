@@ -1,0 +1,85 @@
+import { describe, expect, it } from "vitest";
+import {
+	buildDanglingOfflinePayload,
+	buildDanglingRelinkPayload,
+} from "../../../components/review/reviewActionPayloads";
+import { dispatchReviewActionLikeUi } from "./dispatchReviewActionLikeUi";
+import {
+	readClip,
+	readResourceState,
+} from "./domainReaders";
+import { createNaturalDanglingResourceConflict } from "./naturalConflictGenerators";
+import { expectReviewResolvedOnBoth } from "./reviewAssertions";
+
+describe.skip("headless dangling resource review actions (blocked: natural dangling_ref materializes, but actionTargets route to a tombstoned resource scope and the current action contract cannot update both peers' resource state honestly)", () => {
+	it("relinks missing media from a natural dangling-resource conflict", async () => {
+		const { pair, item, resourceId, clipId } =
+			await createNaturalDanglingResourceConflict(
+				"room-headless-dangling-relink",
+			);
+		try {
+			await dispatchReviewActionLikeUi(
+				pair.a,
+				item,
+				"resolveDanglingResourceByRelink",
+				buildDanglingRelinkPayload(item, {
+					replacementUrl: "memory://review/relinked-resource.webm",
+					sourceKind: "file",
+				}),
+			);
+
+			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			for (const peer of [pair.a, pair.b]) {
+				const resource = await readResourceState(peer, resourceId);
+				expect(resource.status).toBe("ready");
+				expect(resource.url).toBe("memory://review/relinked-resource.webm");
+				expect(resource.source).toEqual(
+					expect.objectContaining({
+						kind: "file",
+						url: "memory://review/relinked-resource.webm",
+					}),
+				);
+				expect(resource.data).toEqual({ relinkedFromReview: true });
+				const clip = await readClip(peer, clipId);
+				expect((await peer.ctx.queryRel(clip, "resource"))[0]?._node_id).toBe(
+					resourceId,
+				);
+			}
+		} finally {
+			pair.close();
+		}
+	});
+
+	it("keeps an offline placeholder from a natural dangling-resource conflict", async () => {
+		const { pair, item, resourceId, clipId } =
+			await createNaturalDanglingResourceConflict(
+				"room-headless-dangling-offline",
+			);
+		try {
+			await dispatchReviewActionLikeUi(
+				pair.a,
+				item,
+				"keepOfflinePlaceholder",
+				buildDanglingOfflinePayload(item),
+			);
+
+			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			for (const peer of [pair.a, pair.b]) {
+				const resource = await readResourceState(peer, resourceId);
+				expect(resource.status).toBe("offline");
+				expect(resource.source).toEqual(
+					expect.objectContaining({
+						kind: "offline_placeholder",
+						keptFromConflictId: item.conflictId,
+					}),
+				);
+				const clip = await readClip(peer, clipId);
+				expect((await peer.ctx.queryRel(clip, "resource"))[0]?._node_id).toBe(
+					resourceId,
+				);
+			}
+		} finally {
+			pair.close();
+		}
+	});
+});
