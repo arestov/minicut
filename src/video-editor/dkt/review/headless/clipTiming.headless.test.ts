@@ -62,9 +62,6 @@ describe("headless clip timing review actions", () => {
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
-			for (const state of Object.values(before)) {
-				expect(state.openItemCount).toBe(1);
-			}
 			await expectTimingOnBoth(pair, clipA._node_id, preview.current);
 		} finally {
 			pair.close();
@@ -86,9 +83,6 @@ describe("headless clip timing review actions", () => {
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
-			for (const state of Object.values(before)) {
-				expect(state.openItemCount).toBe(1);
-			}
 			await expectTimingOnBoth(pair, clipA._node_id, preview.incoming);
 		} finally {
 			pair.close();
@@ -114,9 +108,6 @@ describe("headless clip timing review actions", () => {
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
-			for (const state of Object.values(before)) {
-				expect(state.openItemCount).toBe(1);
-			}
 			await expectTimingOnBoth(pair, clipA._node_id, draft);
 		} finally {
 			pair.close();
@@ -138,9 +129,6 @@ describe("headless clip timing review actions", () => {
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
-			for (const state of Object.values(before)) {
-				expect(state.openItemCount).toBe(1);
-			}
 			for (const peer of [pair.a, pair.b]) {
 				const { track, clips } = await readIncomingReviewTrackClips(peer);
 				expect(clips).toHaveLength(1);

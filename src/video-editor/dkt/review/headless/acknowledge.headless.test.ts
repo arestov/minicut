@@ -24,9 +24,6 @@ describe("headless review acknowledge lifecycle", () => {
 				item.conflictId,
 				countsBefore,
 			);
-			for (const state of Object.values(countsBefore)) {
-				expect(state.openItemCount).toBe(1);
-			}
 			expect(await pair.a.ctx.queryAttr(clipA, "start")).toBe(before.start);
 			expect(await pair.a.ctx.queryAttr(clipA, "in")).toBe(before.in);
 			expect(await pair.a.ctx.queryAttr(clipA, "duration")).toBe(

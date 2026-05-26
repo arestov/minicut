@@ -93,6 +93,7 @@ const expectOpenCountDecreased = (
 	before: ReviewOpenState | undefined,
 ) => {
 	if (!before) return;
+	expect(before.targetIsOpen).toBe(true);
 	expect(after.openItemCount).toBeLessThan(before.openItemCount);
 	if (before.sessionOpenItemCount !== null && after.sessionOpenItemCount !== null) {
 		expect(after.sessionOpenItemCount).toBeLessThan(
