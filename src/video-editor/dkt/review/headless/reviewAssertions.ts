@@ -96,9 +96,13 @@ const expectOpenCountDecreased = (
 	expect(before.targetIsOpen).toBe(true);
 	expect(after.openItemCount).toBeLessThan(before.openItemCount);
 	if (before.sessionOpenItemCount !== null && after.sessionOpenItemCount !== null) {
-		expect(after.sessionOpenItemCount).toBeLessThan(
-			before.sessionOpenItemCount,
-		);
+		if (before.sessionOpenItemCount > 0) {
+			expect(after.sessionOpenItemCount).toBeLessThan(
+				before.sessionOpenItemCount,
+			);
+		} else {
+			expect(after.sessionOpenItemCount).toBe(before.sessionOpenItemCount);
+		}
 	}
 };
 

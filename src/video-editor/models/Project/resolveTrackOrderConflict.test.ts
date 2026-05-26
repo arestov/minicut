@@ -11,6 +11,12 @@ const tracks = [
 	{ _node_id: "track:audio" },
 ];
 
+const tracksWithOverlay = [
+	{ _node_id: "track:video" },
+	{ _node_id: "track:audio" },
+	{ _node_id: "track:overlay" },
+];
+
 const preview = {
 	type: "track_order" as const,
 	currentOrder: [
@@ -66,6 +72,38 @@ describe("Project track order review actions", () => {
 						type: "track_order_applied",
 						selectedOrder: "incoming",
 						trackIds: ["track:audio", "track:video"],
+					},
+				},
+			},
+		});
+	});
+
+	it("expands sparse natural order payloads with remaining project tracks", () => {
+		expect(
+			reduceResolveTrackOrderConflict(
+				{
+					conflictId: "conflict:track-order",
+					reviewItemId: "review:conflict:track-order",
+					selectedOrder: "incoming",
+					trackIds: ["track:audio", "track:video"],
+				},
+				null,
+				tracksWithOverlay,
+			),
+		).toEqual({
+			tracks: {
+				id: null,
+				value: [tracksWithOverlay[1], tracksWithOverlay[0], tracksWithOverlay[2]],
+			},
+			crdtResolve: {
+				conflict_id: "conflict:track-order",
+				decision: {
+					action: "resolveTrackOrderConflict",
+					review_item_id: "review:conflict:track-order",
+					domain_result: {
+						type: "track_order_applied",
+						selectedOrder: "incoming",
+						trackIds: ["track:audio", "track:video", "track:overlay"],
 					},
 				},
 			},
