@@ -67,7 +67,6 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 					},
 				},
 				rels: {
-					track: { use_ref_id: "incomingReviewTrack" },
 					resource: { _node_id: "resource:1" },
 					text: { _node_id: "text:1" },
 					effects: [{ _node_id: "effect:1" }],

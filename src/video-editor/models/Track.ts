@@ -317,9 +317,10 @@ export const Track = model({
 		},
 		acceptClipIfTarget: {
 			to: {
-				clips: ["<< clips", { method: "set_many" }],
+				clip: ["*"],
+				clips: ["<< clips", { method: "at_end", can_use_refs: true }],
 			},
-			fn: [["<<<<", "<< @all:clips"] as const, reduceAcceptClipIfTarget],
+			fn: [["$noop", "<<<<", "<< @all:clips"] as const, reduceAcceptClipIfTarget],
 		},
 		removeClip: {
 			to: {

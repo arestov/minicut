@@ -45,7 +45,7 @@ describe("parkEditedVariantOnReviewTrack", () => {
 					duration: 3,
 				},
 				rels: {
-					track: { use_ref_id: "deleteVsEditReviewTrack" },
+					resource: null,
 				},
 				hold_ref_id: "parkedDeleteVsEditClip",
 			},
@@ -75,10 +75,7 @@ describe("parkEditedVariantOnReviewTrack", () => {
 		expect(result).toMatchObject({
 			parkedClip: {
 				rels: {
-					track: {
-						_node_id: "track:review",
-						states: { trackRole: "incomingReview" },
-					},
+					resource: null,
 				},
 			},
 			crdtResolve: {

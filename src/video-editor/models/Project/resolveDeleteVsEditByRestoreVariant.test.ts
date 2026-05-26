@@ -42,8 +42,7 @@ describe("resolveDeleteVsEditByRestoreVariant", () => {
 					duration: 3,
 				},
 				rels: {
-					project: { _node_id: "project:1" },
-					track: { _node_id: "track:main" },
+					resource: null,
 				},
 				hold_ref_id: "restoredDeleteVsEditClip",
 			},

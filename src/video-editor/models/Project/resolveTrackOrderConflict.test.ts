@@ -82,6 +82,38 @@ describe("Project track order review actions", () => {
 		});
 	});
 
+	it("applies manual order and emits a CRDT resolve command", () => {
+		expect(
+			reduceResolveTrackOrderConflict(
+				{
+					conflictId: "conflict:track-order",
+					reviewItemId: "review:conflict:track-order",
+					selectedOrder: "manual",
+					trackIds: ["track:audio", "track:video"],
+				},
+				null,
+				tracks,
+			),
+		).toMatchObject({
+			tracks: {
+				id: null,
+				value: [tracks[1], tracks[0]],
+			},
+			crdtResolve: {
+				conflict_id: "conflict:track-order",
+				decision: {
+					action: "resolveTrackOrderConflict",
+					review_item_id: "review:conflict:track-order",
+					domain_result: {
+						type: "track_order_applied",
+						selectedOrder: "manual",
+						trackIds: ["track:audio", "track:video"],
+					},
+				},
+			},
+		});
+	});
+
 	it("updates manual suggestion preview without resolving the conflict", () => {
 		expect(
 			reduceCreateManualTrackOrderSuggestion(

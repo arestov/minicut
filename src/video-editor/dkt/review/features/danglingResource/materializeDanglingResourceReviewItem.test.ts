@@ -33,8 +33,8 @@ describe("materializeDanglingResourceReviewItem", () => {
 				"keepOfflinePlaceholder",
 			],
 			actionTargets: {
-				resolveDanglingResourceByRelink: { type: "clip", id: "clip:1" },
-				keepOfflinePlaceholder: { type: "clip", id: "clip:1" },
+				resolveDanglingResourceByRelink: { type: "resource", id: "resource:1" },
+				keepOfflinePlaceholder: { type: "resource", id: "resource:1" },
 			},
 		});
 		expect(item.preview).toMatchObject({

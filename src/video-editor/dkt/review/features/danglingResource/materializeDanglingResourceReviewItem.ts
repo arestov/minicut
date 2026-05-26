@@ -13,8 +13,6 @@ export const materializeDanglingResourceReviewItem = ({
 	projectId: string;
 }): MiniCutReviewItem => {
 	const preview = extractDanglingResourcePreview(conflict);
-	const targetId = preview.clipIds[0] ?? preview.resourceId;
-	const targetType = preview.clipIds[0] ? "clip" : "resource";
 	return {
 		id: reviewItemIdForConflict(conflict.conflict_id),
 		conflictId: conflict.conflict_id,
@@ -41,12 +39,12 @@ export const materializeDanglingResourceReviewItem = ({
 		],
 		actionTargets: {
 			resolveDanglingResourceByRelink: {
-				type: targetType,
-				id: targetId,
+				type: "resource",
+				id: preview.resourceId,
 			},
 			keepOfflinePlaceholder: {
-				type: targetType,
-				id: targetId,
+				type: "resource",
+				id: preview.resourceId,
 			},
 		},
 		source: sourceFromConflict(conflict),

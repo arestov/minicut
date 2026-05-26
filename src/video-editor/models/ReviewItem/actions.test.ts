@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	reduceCreateReviewItem,
+	reduceCreateManualTrackOrderSuggestionOnReviewItem,
 	reduceMaterializeReviewItemFromConflict,
 } from "./actions";
 import { clipTimingConflictFixture } from "../../dkt/review/testHarness/fixtures/clipTimingConflict";
@@ -50,5 +51,50 @@ describe("ReviewItem actions", () => {
 			},
 		});
 		expect(result?.attrs.preview).not.toBe(clipTimingConflictFixture);
+	});
+
+	it("updates track order manual suggestion on the targeted review item", () => {
+		const preview = {
+			type: "track_order" as const,
+			currentOrder: [
+				{ trackId: "track:video", name: "Video", kind: "video" },
+				{ trackId: "track:audio", name: "Audio", kind: "audio" },
+			],
+			incomingOrder: [
+				{ trackId: "track:audio", name: "Audio", kind: "audio" },
+				{ trackId: "track:video", name: "Video", kind: "video" },
+			],
+			movedTrackIds: ["track:video", "track:audio"],
+		};
+
+		expect(
+			reduceCreateManualTrackOrderSuggestionOnReviewItem(
+				{
+					reviewItemId: "review:track-order",
+					preview,
+					trackIds: ["track:audio", "track:video"],
+				},
+				null,
+				"review:track-order",
+			),
+		).toMatchObject({
+			preview: {
+				manualOrder: [
+					{ trackId: "track:audio", name: "Audio", kind: "audio" },
+					{ trackId: "track:video", name: "Video", kind: "video" },
+				],
+			},
+		});
+		expect(
+			reduceCreateManualTrackOrderSuggestionOnReviewItem(
+				{
+					reviewItemId: "review:other",
+					preview,
+					trackIds: ["track:audio", "track:video"],
+				},
+				"noop",
+				"review:track-order",
+			),
+		).toBe("noop");
 	});
 });

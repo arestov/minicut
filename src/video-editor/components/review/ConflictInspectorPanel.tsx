@@ -51,6 +51,9 @@ const ActionButtons = ({
 				actionId === "resolveTrackOrderConflict" ||
 				actionId === "preserveCurrentTrackOrder" ||
 				actionId === "createManualTrackOrderSuggestion" ||
+				actionId === "resolveDeleteVsEditByRestoreVariant" ||
+				actionId === "parkEditedVariantOnReviewTrack" ||
+				actionId === "preserveDeleteAndArchiveIncomingEdit" ||
 				actionId === "resolveDanglingResourceByRelink" ||
 				actionId === "keepOfflinePlaceholder"
 			) {

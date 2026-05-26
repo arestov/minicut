@@ -36,10 +36,16 @@ const modelRel = (model: unknown, key: string): unknown => {
 	return model[key] ?? null;
 };
 
-const numberAttr = (model: unknown, key: string, fallback: number): number => {
-	const value = modelAttr(model, key);
-	return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+const modelOneRel = (model: unknown, key: string): unknown => {
+	const value = modelRel(model, key);
+	return Array.isArray(value) ? value[0] ?? null : value;
 };
+
+const creationRel = (value: unknown): unknown =>
+	isRecord(value) &&
+	(typeof value._node_id === "string" || "use_ref_id" in value)
+		? value
+		: null;
 
 const objectAttr = <Value extends object>(
 	model: unknown,
@@ -55,6 +61,7 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	noop: unknown,
 	project: unknown,
 	sourceClip?: unknown,
+	sourceResourceInput?: unknown,
 ) => {
 	if (!isRecord(payload)) {
 		return noop;
@@ -80,18 +87,30 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	}
 	const sourceName = stringOrNull(modelAttr(sourceClip, "name"));
 	const mediaKind = stringOrNull(modelAttr(sourceClip, "mediaKind"));
+	const sourceResource = creationRel(
+		sourceResourceInput ?? modelOneRel(sourceClip, "resource"),
+	);
+	const sourceText = creationRel(modelOneRel(sourceClip, "text"));
+	const sourceEffects = modelRel(sourceClip, "effects");
+	const effectRefs = Array.isArray(sourceEffects)
+		? sourceEffects.filter((entry) => creationRel(entry))
+		: [];
 	return {
 		reviewTrack: {
 			attrs: {
 				kind: mediaKind === "audio" ? "audio" : "video",
 				name: `Incoming Review - ${sourceName ?? clipId}`,
+				trackRole: "incomingReview",
 				enabled: false,
+				visibleInPreview: false,
 				muted: true,
 				locked: false,
 				isVisible: true,
 				height: 72,
 			},
-			rels: { project },
+			rels: {
+				project,
+			},
 			hold_ref_id: "incomingReviewTrack",
 		},
 		reviewTracks: { use_ref_id: "incomingReviewTrack" },
@@ -113,19 +132,11 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 					scale: { value: 1 },
 					rotation: { value: 0 },
 				}),
-				trimStart: numberAttr(sourceClip, "trimStart", 0),
-				splitOriginalDuration: modelAttr(sourceClip, "splitOriginalDuration") ?? null,
-				crop: modelAttr(sourceClip, "crop") ?? null,
-				colorAdjustments: modelAttr(sourceClip, "colorAdjustments") ?? null,
 			},
 			rels: {
-				track: { use_ref_id: "incomingReviewTrack" },
-				project,
-				resource: modelRel(sourceClip, "resource"),
-				text: modelRel(sourceClip, "text"),
-				effects: Array.isArray(modelRel(sourceClip, "effects"))
-					? modelRel(sourceClip, "effects")
-					: [],
+				resource: sourceResource ?? null,
+				...(sourceText ? { text: sourceText } : null),
+				effects: effectRefs,
 			},
 			hold_ref_id: "parkedIncomingClip",
 		},
@@ -146,6 +157,7 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 			projectId: getNodeId(project),
 			clip: { use_ref_id: "parkedIncomingClip" },
 			targetTrack: { use_ref_id: "incomingReviewTrack" },
+			targetTrackRole: "incomingReview",
 		},
 	};
 };
