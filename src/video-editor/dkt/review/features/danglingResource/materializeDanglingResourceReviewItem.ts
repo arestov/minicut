@@ -39,12 +39,12 @@ export const materializeDanglingResourceReviewItem = ({
 		],
 		actionTargets: {
 			resolveDanglingResourceByRelink: {
-				type: "resource",
-				id: preview.resourceId,
+				type: "project",
+				id: projectId,
 			},
 			keepOfflinePlaceholder: {
-				type: "resource",
-				id: preview.resourceId,
+				type: "project",
+				id: projectId,
 			},
 		},
 		source: sourceFromConflict(conflict),

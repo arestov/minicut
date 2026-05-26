@@ -33,8 +33,8 @@ const item: MiniCutReviewItem = {
 		"keepOfflinePlaceholder",
 	],
 	actionTargets: {
-		resolveDanglingResourceByRelink: { type: "clip", id: "clip:1" },
-		keepOfflinePlaceholder: { type: "clip", id: "clip:1" },
+		resolveDanglingResourceByRelink: { type: "project", id: "project:1" },
+		keepOfflinePlaceholder: { type: "project", id: "project:1" },
 	},
 	source: { conflictId: "conflict:resource" },
 };

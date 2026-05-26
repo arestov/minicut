@@ -34,11 +34,21 @@ const relList = (model: unknown, relName: string): unknown[] => {
 
 const collectConflictNodeIds = (payload: unknown): Set<string> => {
 	const ids = new Set<string>();
+	const collectStructuralDeleteIds = (conflictId: unknown) => {
+		if (typeof conflictId !== "string") return;
+		const match = conflictId.match(
+			/^structural-delete:(crdt:[^:]+):([^:]+):(crdt:[^:]+):[^:]+:\d+$/,
+		);
+		if (!match) return;
+		ids.add(match[1]);
+		ids.add(match[3]);
+	};
 	const collectRecordIds = (value: unknown) => {
 		if (!value || typeof value !== "object") {
 			return;
 		}
 		const record = value as Record<string, unknown>;
+		collectStructuralDeleteIds(record.conflict_id ?? record.conflictId);
 		for (const key of ["node_id", "source_id", "sourceId", "target_id", "targetId"]) {
 			const id = record[key];
 			if (typeof id === "string" && id.length > 0) {
@@ -318,9 +328,10 @@ export const reduceHandleCRDTConflict = (
 	payload: unknown,
 	projectIdHint?: unknown,
 	projects?: unknown,
+	clips?: unknown,
 ) =>
 	reduceCreateReviewSessionWithLifecycleItems(
-		augmentTrackOrderConflict(payload, projects),
+		augmentReviewConflict(payload, projects, clips),
 		projectIdHint,
 	);
 
@@ -404,10 +415,111 @@ const augmentTrackOrderConflict = (payload: unknown, projects: unknown) => {
 	};
 };
 
+const structuralDeleteParts = (conflictId: unknown) => {
+	if (typeof conflictId !== "string") return null;
+	const match = conflictId.match(
+		/^structural-delete:(crdt:[^:]+):([^:]+):(crdt:[^:]+):[^:]+:\d+$/,
+	);
+	if (!match) return null;
+	return {
+		ownerId: match[1],
+		relName: match[2],
+		itemId: match[3],
+	};
+};
+
+const modelStates = (model: unknown): Record<string, unknown> =>
+	asRecord((model as { states?: unknown } | null)?.states) ?? {};
+
+const clipSnapshotAttrs = (clip: unknown): Record<string, unknown> => {
+	const states = modelStates(clip);
+	return {
+		name: stringOr(states.name, "Restored clip"),
+		color: stringOr(states.color, "#2563eb"),
+		mediaKind: stringOr(states.mediaKind, "video"),
+		start: numberOr(states.start, 0),
+		in: numberOr(states.in, 0),
+		duration: numberOr(states.duration, 0),
+		fadeIn: numberOr(states.fadeIn, 0),
+		fadeOut: numberOr(states.fadeOut, 0),
+		audio: objectOr(states.audio, { gain: 1, pan: 0 }),
+		opacity: objectOr(states.opacity, { value: 1 }),
+		transform: objectOr(states.transform, defaultClipTransform),
+	};
+};
+
+const findTrackProjectId = (projects: unknown, trackId: string): string | null => {
+	if (!Array.isArray(projects)) return null;
+	for (const project of projects) {
+		if (relList(project, "tracks").some((track) => getNodeId(track) === trackId)) {
+			return getNodeId(project);
+		}
+	}
+	return null;
+};
+
+const augmentDeleteVsEditConflict = (
+	payload: unknown,
+	projects: unknown,
+	clips: unknown,
+) => {
+	const conflict = asRecord(payload);
+	if (
+		!conflict ||
+		!(
+			conflict.kind === "structural_delete_vs_edit" ||
+			conflict.kind === "structural_delete_with_concurrent_activity"
+		)
+	) {
+		return payload;
+	}
+	const parts = structuralDeleteParts(conflict.conflict_id ?? conflict.conflictId);
+	if (!parts || parts.relName !== "clips") {
+		return payload;
+	}
+	const clip = Array.isArray(clips)
+		? clips.find((candidate) => getNodeId(candidate) === parts.itemId)
+		: null;
+	const projectId = findTrackProjectId(projects, parts.ownerId);
+	const details = asRecord(conflict.details) ?? {};
+	return {
+		...conflict,
+		...(projectId ? { project_id: projectId } : null),
+		details: {
+			...details,
+			deleted: {
+				...(asRecord(details.deleted) ?? {}),
+				clipId: parts.itemId,
+				trackId: parts.ownerId,
+			},
+			edited: {
+				...(asRecord(details.edited) ?? {}),
+				clipAttrs: {
+					...(clip ? clipSnapshotAttrs(clip) : {}),
+					clipId: parts.itemId,
+					targetTrackId: parts.ownerId,
+				},
+			},
+		},
+	};
+};
+
+const augmentReviewConflict = (
+	payload: unknown,
+	projects: unknown,
+	clips?: unknown,
+) =>
+	augmentDeleteVsEditConflict(
+		augmentTrackOrderConflict(payload, projects),
+		projects,
+		clips,
+	);
+
 export const reduceHandleCRDTConflictGraph = (
 	payload: unknown,
 	projectIdHint?: unknown,
 	projects?: unknown,
+	clips?: unknown,
 	existingReviewItemIds?: unknown,
 ) => {
 	const resolvedProjectIdHint =
@@ -415,7 +527,7 @@ export const reduceHandleCRDTConflictGraph = (
 			? projectIdHint
 			: null;
 	const session = reduceCreateReviewSessionWithLifecycleItems(
-			augmentTrackOrderConflict(payload, projects),
+			augmentReviewConflict(payload, projects, clips),
 		projectIdHint,
 	);
 	const items = session?.rels?.items;

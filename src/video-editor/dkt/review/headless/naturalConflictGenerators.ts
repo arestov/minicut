@@ -174,13 +174,8 @@ export const createNaturalDeleteVsEditConflict = async (
 	if (!clipA || !clipB) {
 		throw new Error("Expected matching text clip for delete-vs-edit conflict");
 	}
-	const textA = (await pair.a.ctx.queryRel(clipA, "text"))[0];
-	if (!textA) {
-		throw new Error("Expected text node for delete-vs-edit conflict");
-	}
-
 	pair.partition();
-	await pair.a.dispatch(textA, "setTextContent", "Edited title from peer A");
+	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
 	await pair.b.dispatch(clipB, "removeSelf");
 	pair.heal();
 	await pair.waitForConvergence();

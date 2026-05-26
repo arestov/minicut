@@ -732,6 +732,52 @@ export const Project = model({
 				fn: [[], (payload: unknown) => payload ?? {}],
 			},
 		],
+		resolveDanglingResourceByRelink: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "resolveDanglingResourceByRelink",
+				permission: "entry",
+			},
+			steps: [
+				{
+					input_base_rel_shape: {
+						resourceId: {
+							any: true,
+							many: false,
+						},
+					},
+					to: [
+						"<<<< $input_id:resourceId",
+						{ action: "resolveDanglingResourceByRelink", sub_flow: true },
+					],
+					fn: [[], (payload: unknown) => payload ?? {}],
+				},
+			],
+		},
+		keepOfflinePlaceholder: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "keepOfflinePlaceholder",
+				permission: "entry",
+			},
+			steps: [
+				{
+					input_base_rel_shape: {
+						resourceId: {
+							any: true,
+							many: false,
+						},
+					},
+					to: [
+						"<<<< $input_id:resourceId",
+						{ action: "keepOfflinePlaceholder", sub_flow: true },
+					],
+					fn: [[], (payload: unknown) => payload ?? {}],
+				},
+			],
+		},
 		setResources: {
 			to: {
 				resources: ["<< resources", { method: "set_many" }],
@@ -770,7 +816,6 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
-							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
@@ -780,7 +825,6 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
-							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
@@ -995,6 +1039,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
@@ -1061,6 +1106,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],

@@ -23,12 +23,14 @@ describe("dangling resource review actions", () => {
 		);
 
 		expect(result).toMatchObject({
+			"$meta$removed": false,
 			url: "https://media.example/fixed.mov",
 			status: "ready",
 			source: {
 				kind: "url",
 				label: "Fixed media",
 				url: "https://media.example/fixed.mov",
+				relinkedFromConflictId: "conflict:resource",
 			},
 			data: { width: 1920 },
 			crdtResolve: {
@@ -40,12 +42,46 @@ describe("dangling resource review actions", () => {
 						type: "resource_relinked",
 						resourceId: "resource:1",
 						replacementUrl: "https://media.example/fixed.mov",
+						localOnlyUrl: false,
 						sourceKind: "url",
 						affectedClipIds: ["clip:1", "clip:2"],
 					},
 				},
 			},
 		});
+	});
+
+	it("keeps local-only replacement URLs out of synced source and CRDT result", () => {
+		const result = reduceResolveDanglingResourceByRelink(
+			{
+				conflictId: "conflict:resource",
+				reviewItemId: "review:conflict:resource",
+				resourceId: "resource:1",
+				replacementUrl: "blob://local/fixed.mov",
+				source: { kind: "file", url: "blob://local/fixed.mov" },
+			},
+			resource,
+			clips,
+		);
+
+		expect(result).toMatchObject({
+			url: "blob://local/fixed.mov",
+			status: "ready",
+			source: {
+				kind: "file",
+				localOnlyUrl: true,
+				relinkedFromConflictId: "conflict:resource",
+			},
+			crdtResolve: {
+				decision: {
+					domain_result: {
+						replacementUrl: null,
+						localOnlyUrl: true,
+					},
+				},
+			},
+		});
+		expect((result as { source?: Record<string, unknown> } | null)?.source).not.toHaveProperty("url");
 	});
 
 	it("rejects invalid relink payloads without writing resource attrs or CRDT resolve", () => {
@@ -76,6 +112,7 @@ describe("dangling resource review actions", () => {
 		);
 
 		expect(result).toMatchObject({
+			"$meta$removed": false,
 			status: "offline",
 			source: {
 				kind: "offline_placeholder",

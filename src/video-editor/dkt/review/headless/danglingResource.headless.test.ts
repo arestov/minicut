@@ -11,7 +11,7 @@ import {
 import { createNaturalDanglingResourceConflict } from "./naturalConflictGenerators";
 import { expectReviewResolvedOnBoth } from "./reviewAssertions";
 
-describe.skip("headless dangling resource review actions (blocked: natural dangling_ref materializes, but actionTargets route to a tombstoned resource scope and the current action contract cannot update both peers' resource state honestly)", () => {
+describe("headless dangling resource review actions", () => {
 	it("relinks missing media from a natural dangling-resource conflict", async () => {
 		const { pair, item, resourceId, clipId } =
 			await createNaturalDanglingResourceConflict(
@@ -29,17 +29,21 @@ describe.skip("headless dangling resource review actions (blocked: natural dangl
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			const localResource = await readResourceState(pair.a, resourceId);
+			expect(localResource.status).toBe("ready");
+			expect(localResource.url).toBe("memory://review/relinked-resource.webm");
+			expect(localResource.data).toEqual({ relinkedFromReview: true });
+
 			for (const peer of [pair.a, pair.b]) {
 				const resource = await readResourceState(peer, resourceId);
-				expect(resource.status).toBe("ready");
-				expect(resource.url).toBe("memory://review/relinked-resource.webm");
 				expect(resource.source).toEqual(
 					expect.objectContaining({
 						kind: "file",
-						url: "memory://review/relinked-resource.webm",
+						localOnlyUrl: true,
+						relinkedFromConflictId: item.conflictId,
 					}),
 				);
-				expect(resource.data).toEqual({ relinkedFromReview: true });
+				expect(resource.source).not.toHaveProperty("url");
 				const clip = await readClip(peer, clipId);
 				expect((await peer.ctx.queryRel(clip, "resource"))[0]?._node_id).toBe(
 					resourceId,
@@ -64,9 +68,11 @@ describe.skip("headless dangling resource review actions (blocked: natural dangl
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			const localResource = await readResourceState(pair.a, resourceId);
+			expect(localResource.status).toBe("offline");
+
 			for (const peer of [pair.a, pair.b]) {
 				const resource = await readResourceState(peer, resourceId);
-				expect(resource.status).toBe("offline");
 				expect(resource.source).toEqual(
 					expect.objectContaining({
 						kind: "offline_placeholder",

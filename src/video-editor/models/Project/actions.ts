@@ -728,11 +728,13 @@ export const reduceResolveDeleteVsEditByRestoreVariant = (
 		return noop;
 	}
 	const restoredAttrs = normalizeRestoredClipAttrs(clipAttrs);
+	const resourceRef = asObject(value?.editedVariant)?.resource;
 	return {
 		clip: {
 			attrs: restoredAttrs,
 			rels: {
-				resource: asObject(value?.editedVariant)?.resource ?? null,
+				track: targetTrack,
+				resource: resourceRef ?? null,
 			},
 			hold_ref_id: "restoredDeleteVsEditClip",
 		},
@@ -816,6 +818,10 @@ export const reduceParkEditedVariantOnReviewTrack = (
 	const reviewTrack = existingReviewTrack(tracks, REVIEW_TRACK_ROLES.incoming);
 	const trackRef = reviewTrack || { use_ref_id: "deleteVsEditReviewTrack" };
 	const resourceRef = asObject(value?.editedVariant)?.resource;
+	const parkedClipRels = {
+		...(reviewTrack ? { track: reviewTrack } : null),
+		resource: resourceRef ?? null,
+	};
 	return {
 		...(reviewTrack
 			? null
@@ -841,9 +847,7 @@ export const reduceParkEditedVariantOnReviewTrack = (
 				...restoredAttrs,
 				name: `${restoredAttrs.name} edited variant`,
 			},
-			rels: {
-				resource: resourceRef ?? null,
-			},
+			rels: parkedClipRels,
 			hold_ref_id: "parkedDeleteVsEditClip",
 		},
 		next: {

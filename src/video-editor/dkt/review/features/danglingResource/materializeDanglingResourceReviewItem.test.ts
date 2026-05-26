@@ -33,8 +33,8 @@ describe("materializeDanglingResourceReviewItem", () => {
 				"keepOfflinePlaceholder",
 			],
 			actionTargets: {
-				resolveDanglingResourceByRelink: { type: "resource", id: "resource:1" },
-				keepOfflinePlaceholder: { type: "resource", id: "resource:1" },
+				resolveDanglingResourceByRelink: { type: "project", id: "project:1" },
+				keepOfflinePlaceholder: { type: "project", id: "project:1" },
 			},
 		});
 		expect(item.preview).toMatchObject({
@@ -77,7 +77,7 @@ describe("materializeDanglingResourceReviewItem", () => {
 		});
 	});
 
-	it("targets resource actions directly when no clip anchor exists", () => {
+	it("targets project actions so tombstoned resources can be restored", () => {
 		const item = materializeDanglingResourceReviewItem({
 			conflict: {
 				...danglingResourceConflictFixture,
@@ -91,10 +91,10 @@ describe("materializeDanglingResourceReviewItem", () => {
 
 		expect(item.actionTargets).toEqual({
 			resolveDanglingResourceByRelink: {
-				type: "resource",
-				id: "resource:1",
+				type: "project",
+				id: "project:1",
 			},
-			keepOfflinePlaceholder: { type: "resource", id: "resource:1" },
+			keepOfflinePlaceholder: { type: "project", id: "project:1" },
 		});
 	});
 

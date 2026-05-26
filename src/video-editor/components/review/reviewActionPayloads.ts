@@ -144,7 +144,9 @@ const buildDeleteVsEditPayload = (item: MiniCutReviewItem) => {
 		conflictId: item.conflictId,
 		reviewItemId: item.id,
 		clipId: preview.deletedVariant.clipId,
-		targetTrackId: textValue(preview.editedVariant.clipAttrs.targetTrackId),
+		targetTrackId:
+			preview.restoreTarget?.trackId ??
+			textValue(preview.editedVariant.clipAttrs.targetTrackId),
 		deletedVariant: preview.deletedVariant,
 		editedVariant: preview.editedVariant,
 	};

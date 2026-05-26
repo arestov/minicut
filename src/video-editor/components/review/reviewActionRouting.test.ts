@@ -33,13 +33,13 @@ describe("reviewActionScopeForItem", () => {
 		});
 	});
 
-	it("routes dangling resource actions through clip scope when clip target is materialized", () => {
+	it("routes dangling resource actions through project scope", () => {
 		const item: MiniCutReviewItem = {
 			...baseItem,
 			kind: "dangling_resource",
 			availableActions: ["resolveDanglingResourceByRelink"],
 			actionTargets: {
-				resolveDanglingResourceByRelink: { type: "clip", id: "clip:1" },
+				resolveDanglingResourceByRelink: { type: "project", id: "project:1" },
 			},
 		};
 
@@ -47,23 +47,23 @@ describe("reviewActionScopeForItem", () => {
 			reviewActionScopeForItem(item, "resolveDanglingResourceByRelink"),
 		).toEqual({
 			kind: "scope",
-			_nodeId: "clip:1",
+			_nodeId: "project:1",
 		});
 	});
 
-	it("routes dangling resource actions through resource scope when only resource target is materialized", () => {
+	it("routes project dangling resource placeholders through project scope", () => {
 		const item: MiniCutReviewItem = {
 			...baseItem,
 			kind: "dangling_resource",
 			availableActions: ["keepOfflinePlaceholder"],
 			actionTargets: {
-				keepOfflinePlaceholder: { type: "resource", id: "resource:1" },
+				keepOfflinePlaceholder: { type: "project", id: "project:1" },
 			},
 		};
 
 		expect(reviewActionScopeForItem(item, "keepOfflinePlaceholder")).toEqual({
 			kind: "scope",
-			_nodeId: "resource:1",
+			_nodeId: "project:1",
 		});
 	});
 

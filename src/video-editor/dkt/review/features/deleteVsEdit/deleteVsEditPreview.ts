@@ -1,5 +1,6 @@
 export type DeleteVsEditDeletedVariant = {
 	clipId: string;
+	trackId?: string;
 	resourceId?: string;
 	deletedAt?: number;
 	peerId?: string;
@@ -16,6 +17,10 @@ export type DeleteVsEditPreview = {
 	type: "delete_vs_edit";
 	deletedVariant: DeleteVsEditDeletedVariant;
 	editedVariant: DeleteVsEditEditedVariant;
+	restoreTarget?: {
+		trackId: string;
+		reason: "original_track" | "fallback_track";
+	};
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -39,7 +44,20 @@ const recordArrayOrUndefined = (
 const firstRecord = (...values: unknown[]): Record<string, unknown> | undefined =>
 	values.find(isRecord) as Record<string, unknown> | undefined;
 
+const structuralDeleteParts = (conflictId: unknown) => {
+	if (typeof conflictId !== "string") return null;
+	const match = conflictId.match(
+		/^structural-delete:(crdt:[^:]+):([^:]+):(crdt:[^:]+):[^:]+:\d+$/,
+	);
+	if (!match || match[2] !== "clips") return null;
+	return {
+		trackId: match[1],
+		clipId: match[3],
+	};
+};
+
 export const extractDeleteVsEditPreview = (input: {
+	conflictId?: string | null;
 	payload?: unknown;
 	details?: unknown;
 	variants?: unknown;
@@ -65,12 +83,39 @@ export const extractDeleteVsEditPreview = (input: {
 		variants?.incoming,
 		details?.edited,
 	);
-	const clipAttrs =
+	const structuralParts = structuralDeleteParts(input.conflictId);
+	const rawClipAttrs =
 		recordOrUndefined(edited?.clipAttrs) ??
 		recordOrUndefined(edited?.clip_attrs) ??
 		recordOrUndefined(edited?.attrs) ??
 		recordOrUndefined(edited) ??
 		{};
+	const clipId =
+		structuralParts?.clipId ??
+		stringOrUndefined(deleted?.clipId) ??
+		stringOrUndefined(deleted?.clip_id) ??
+		stringOrUndefined(rawClipAttrs.clipId) ??
+		stringOrUndefined(rawClipAttrs.clip_id) ??
+		stringOrUndefined(input.nodeId) ??
+		"";
+	const trackId =
+		structuralParts?.trackId ??
+		stringOrUndefined(deleted?.trackId) ??
+		stringOrUndefined(deleted?.track_id) ??
+		stringOrUndefined(rawClipAttrs.targetTrackId) ??
+		stringOrUndefined(rawClipAttrs.target_track_id);
+	const clipAttrs =
+		Object.keys(rawClipAttrs).length > 0 || !trackId
+			? rawClipAttrs
+			: {
+					name: "Restored clip",
+					mediaKind: "text",
+					start: 0,
+					in: 0,
+					duration: 1,
+					clipId,
+					targetTrackId: trackId,
+				};
 	const resourceAttrs =
 		recordOrUndefined(edited?.resourceAttrs) ??
 		recordOrUndefined(edited?.resource_attrs);
@@ -87,17 +132,11 @@ export const extractDeleteVsEditPreview = (input: {
 					fadeOut: clipAttrs.fadeOut,
 				}
 			: undefined);
-	const clipId =
-		stringOrUndefined(deleted?.clipId) ??
-		stringOrUndefined(deleted?.clip_id) ??
-		stringOrUndefined(clipAttrs.clipId) ??
-		stringOrUndefined(clipAttrs.clip_id) ??
-		stringOrUndefined(input.nodeId) ??
-		"";
 	return {
 		type: "delete_vs_edit",
 		deletedVariant: {
 			clipId,
+			...(trackId ? { trackId } : null),
 			resourceId:
 				stringOrUndefined(deleted?.resourceId) ??
 				stringOrUndefined(deleted?.resource_id) ??
@@ -125,5 +164,13 @@ export const extractDeleteVsEditPreview = (input: {
 				: null),
 			...(timing ? { timing } : null),
 		},
+		...(trackId
+			? {
+					restoreTarget: {
+						trackId,
+						reason: "original_track" as const,
+					},
+				}
+			: null),
 	};
 };

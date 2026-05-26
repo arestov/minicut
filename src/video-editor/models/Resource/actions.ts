@@ -100,6 +100,27 @@ const resourcePayloadIds = (value: Record<string, unknown>) => ({
 	resourceId: asString(value.resourceId) ?? asString(value.resource_id),
 });
 
+const isPortableSourceUrl = (url: string): boolean =>
+	url.startsWith("http://") ||
+	url.startsWith("https://") ||
+	url.startsWith("data:");
+
+const portableSourceFromRelink = (
+	source: Record<string, unknown>,
+	replacementUrl: string,
+	conflictId: string,
+) => {
+	const nextSource = { ...source };
+	if (isPortableSourceUrl(replacementUrl)) {
+		nextSource.url = replacementUrl;
+	} else {
+		delete nextSource.url;
+		nextSource.localOnlyUrl = true;
+	}
+	nextSource.relinkedFromConflictId = conflictId;
+	return nextSource;
+};
+
 export const reduceResolveDanglingResourceByRelink = (
 	payload: unknown,
 	resource: unknown,
@@ -138,22 +159,31 @@ export const reduceResolveDanglingResourceByRelink = (
 	];
 	const data = objectOr(value.data, {});
 	const sourceKind = asString(source.kind) ?? "external";
+	const portableSource = portableSourceFromRelink(
+		source,
+		replacementUrl,
+		ids.conflictId,
+	);
 	return {
+		"$meta$removed": false,
 		url: replacementUrl,
 		status: "ready",
-		source: { ...source, url: replacementUrl },
+		source: portableSource,
 		data,
 		crdtResolve: makeCrdtResolvePayload({
 			conflictId: ids.conflictId,
 			reviewItemId: ids.reviewItemId,
 			action: "resolveDanglingResourceByRelink",
 			domainResult: {
-				type: "resource_relinked",
-				resourceId,
-				replacementUrl,
-				sourceKind,
-				affectedClipIds,
-			},
+					type: "resource_relinked",
+					resourceId,
+					replacementUrl: isPortableSourceUrl(replacementUrl)
+						? replacementUrl
+						: null,
+					localOnlyUrl: !isPortableSourceUrl(replacementUrl),
+					sourceKind,
+					affectedClipIds,
+				},
 		}),
 	};
 };
@@ -185,6 +215,7 @@ export const reduceKeepOfflinePlaceholder = (
 		]),
 	];
 	return {
+		"$meta$removed": false,
 		status: "offline",
 		source: {
 			...objectOr(source, {}),

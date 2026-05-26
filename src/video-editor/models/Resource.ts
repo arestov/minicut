@@ -293,6 +293,7 @@ export const Resource = model({
 				permission: "entry",
 			},
 			to: {
+				"$meta$removed": ["$meta$removed"],
 				url: ["url"],
 				status: ["status"],
 				source: ["source"],
@@ -314,6 +315,7 @@ export const Resource = model({
 				permission: "entry",
 			},
 			to: {
+				"$meta$removed": ["$meta$removed"],
 				status: ["status"],
 				source: ["source"],
 				crdtResolve: [crdtReviewResolveTarget],
