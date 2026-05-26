@@ -1357,11 +1357,19 @@ export const reduceMoveTrackWithinProject = (
 	if (!track) {
 		return noop;
 	}
+	const baseTracks = currentTracks.filter((item) => getNodeId(item) !== trackId);
+	const anchorIndex =
+		typeof afterTrackId === "string"
+			? baseTracks.findIndex((item) => getNodeId(item) === afterTrackId)
+			: -1;
+	const targetIndex =
+		typeof afterTrackId === "string"
+			? anchorIndex >= 0
+				? anchorIndex + 1
+				: baseTracks.length
+			: 0;
 	return {
-		tracks: {
-			id: typeof afterTrackId === "string" ? afterTrackId : null,
-			value: track,
-		},
+		tracks: [targetIndex, track],
 	};
 };
 

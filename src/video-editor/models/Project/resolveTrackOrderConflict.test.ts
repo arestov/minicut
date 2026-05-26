@@ -36,10 +36,7 @@ describe("Project track order review actions", () => {
 				tracks,
 			),
 		).toEqual({
-			tracks: {
-				id: null,
-				value: tracks[1],
-			},
+			tracks: [0, tracks[1]],
 		});
 	});
 

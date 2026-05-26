@@ -131,7 +131,7 @@ export const Project = model({
 			previewFrame: { sync: false, reason: "projection" },
 		},
 		rels: {
-			tracks: "sequence",
+			tracks: ["sequence", { conflictMeta: true }],
 			resources: "or-set",
 			primaryVideoTrack: "lww",
 			primaryAudioTrack: "lww",
@@ -263,9 +263,15 @@ export const Project = model({
 				many: true,
 				linking: "<< track << #",
 				role: "owner",
-				ownership: "multi",
+				ownership: "slot-single",
 				inverseRel: "project",
-				aggregate: { name: "projectTracks", role: "primary", as: "tracks", conflictAnchor: true },
+				aggregate: {
+					name: "projectTracks",
+					role: "primary",
+					as: "tracks",
+					traversal: "owned-subtree",
+					conflictAnchor: true,
+				},
 			},
 		],
 		resources: [
@@ -678,7 +684,7 @@ export const Project = model({
 		},
 		moveTrackWithinProject: {
 			to: {
-				tracks: ["<< tracks", { method: "insert_after_id" }],
+				tracks: ["<< tracks", { method: "at_index" }],
 			},
 			fn: [
 				["$noop", "<< @all:tracks"] as const,

@@ -62,7 +62,11 @@ const normalizeOrder = (
 			return null;
 		}
 		seen.add(trackId);
-		entries.push(trackMeta.get(trackId) ?? readTrackMeta(rawEntry, trackId)!);
+		const meta = trackMeta.get(trackId) ?? readTrackMeta(rawEntry, trackId);
+		if (!meta) {
+			return null;
+		}
+		entries.push(meta);
 	}
 	return entries;
 };
@@ -123,6 +127,60 @@ const orderFromSource = (
 	return currentOrder && incomingOrder ? { currentOrder, incomingOrder } : null;
 };
 
+const asMoveOp = (value: unknown): { itemId: string | null; afterId: string | null } | null => {
+	if (!isRecord(value)) {
+		return null;
+	}
+	const itemId = asTrackId(value.item_id ?? value.itemId);
+	const afterId = asTrackId(value.after_id ?? value.afterId);
+	return { itemId, afterId };
+};
+
+const entryForId = (
+	trackId: string,
+	trackMeta: Map<string, TrackOrderEntry>,
+): TrackOrderEntry =>
+	trackMeta.get(trackId) ?? { trackId, name: trackId, kind: "video" };
+
+const orderFromMove = (
+	itemId: string,
+	afterId: string | null,
+	otherAfterId: string | null,
+	trackMeta: Map<string, TrackOrderEntry>,
+): TrackOrderEntry[] => {
+	const ids = [otherAfterId, afterId, itemId].filter(
+		(id): id is string => typeof id === "string" && id.length > 0,
+	);
+	const base = Array.from(new Set(ids)).filter((id) => id !== itemId);
+	const next = [...base];
+	if (afterId === null) {
+		next.unshift(itemId);
+	} else {
+		const anchorIndex = next.indexOf(afterId);
+		next.splice(anchorIndex >= 0 ? anchorIndex + 1 : next.length, 0, itemId);
+	}
+	return next.map((trackId) => entryForId(trackId, trackMeta));
+};
+
+const orderFromKernelMovePayload = (
+	source: unknown,
+	trackMeta: Map<string, TrackOrderEntry>,
+): Pick<TrackOrderPreview, "currentOrder" | "incomingOrder"> | null => {
+	if (!isRecord(source)) {
+		return null;
+	}
+	const current = asMoveOp(source.current);
+	const incoming = asMoveOp(source.incoming);
+	const itemId = incoming?.itemId ?? current?.itemId;
+	if (!current || !incoming || !itemId) {
+		return null;
+	}
+	return {
+		currentOrder: orderFromMove(itemId, current.afterId, incoming.afterId, trackMeta),
+		incomingOrder: orderFromMove(itemId, incoming.afterId, current.afterId, trackMeta),
+	};
+};
+
 const movedTrackIds = (
 	currentOrder: TrackOrderEntry[],
 	incomingOrder: TrackOrderEntry[],
@@ -145,7 +203,8 @@ export const extractTrackOrderPreview = (
 	const orders =
 		orderFromSource(conflict.payload, trackMeta) ??
 		orderFromSource(conflict.details, trackMeta) ??
-		orderFromSource(conflict.variants, trackMeta);
+		orderFromSource(conflict.variants, trackMeta) ??
+		orderFromKernelMovePayload(conflict.payload, trackMeta);
 	if (!orders) {
 		throw new Error("Unsupported track order conflict payload");
 	}

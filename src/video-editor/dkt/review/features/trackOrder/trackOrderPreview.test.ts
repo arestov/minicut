@@ -31,6 +31,34 @@ describe("extractTrackOrderPreview", () => {
 		).toEqual([{ trackId: "track:a", name: "A", kind: "audio" }]);
 	});
 
+	it("derives orders from kernel move-vs-move payloads", () => {
+		expect(
+			extractTrackOrderPreview({
+				payload: {
+					current: { after_id: null, op_id: "A:2" },
+					incoming: {
+						item_id: "track:overlay",
+						after_id: "track:video",
+						op_id: "B:1",
+					},
+				},
+				details: null,
+				variants: null,
+			}),
+		).toEqual({
+			type: "track_order",
+			currentOrder: [
+				{ trackId: "track:overlay", name: "track:overlay", kind: "video" },
+				{ trackId: "track:video", name: "track:video", kind: "video" },
+			],
+			incomingOrder: [
+				{ trackId: "track:video", name: "track:video", kind: "video" },
+				{ trackId: "track:overlay", name: "track:overlay", kind: "video" },
+			],
+			movedTrackIds: ["track:video", "track:overlay"],
+		});
+	});
+
 	it("throws when order information is incomplete", () => {
 		expect(() =>
 			extractTrackOrderPreview({

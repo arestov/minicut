@@ -4,6 +4,7 @@ import {
 	createHeadlessReviewPair,
 	type HeadlessDktModel,
 	type HeadlessReviewPair,
+	type HeadlessReviewPeer,
 } from "./createHeadlessReviewPair";
 
 export type NaturalClipTimingConflict = {
@@ -29,6 +30,47 @@ export type NaturalDeleteVsEditConflict = {
 export type NaturalTrackOrderConflict = {
 	pair: HeadlessReviewPair;
 	item: MiniCutReviewItem;
+};
+
+const projectByTitle = async (
+	peer: HeadlessReviewPeer,
+	title: string,
+): Promise<HeadlessDktModel> => {
+	const projects = await peer.ctx.queryRel(peer.ctx.appModel, "project");
+	for (const project of projects) {
+		if ((await peer.ctx.queryAttr(project, "title")) === title) {
+			return project;
+		}
+	}
+	throw new Error(`Expected project ${title}`);
+};
+
+const bindActiveProject = async (
+	peer: HeadlessReviewPeer,
+	project: HeadlessDktModel,
+) => {
+	await peer.dispatch(peer.ctx.sessionRoot, "syncActiveProjectRel", { project });
+	peer.project = project;
+};
+
+const createSharedTrackOrderProject = async (
+	pair: HeadlessReviewPair,
+	roomId: string,
+) => {
+	const title = `Headless track order ${roomId}`;
+	await pair.a.dispatch(pair.a.ctx.sessionRoot, "createProject", { title });
+	pair.a.flushOutbound();
+	await pair.waitForConvergence();
+	const projectA = await projectByTitle(pair.a, title);
+	const projectB = await projectByTitle(pair.b, title);
+	await bindActiveProject(pair.a, projectA);
+	await bindActiveProject(pair.b, projectB);
+	await pair.a.dispatch(projectA, "addTrack", {
+		kind: "video",
+		name: "Overlay",
+	});
+	pair.a.flushOutbound();
+	await pair.waitForConvergence();
 };
 
 export const createNaturalClipTimingConflict = async (
@@ -154,25 +196,36 @@ export const createNaturalTrackOrderConflict = async (
 	roomId: string,
 ): Promise<NaturalTrackOrderConflict> => {
 	const pair = await createHeadlessReviewPair(roomId);
-	await pair.a.dispatch(pair.a.project, "addTrack", {
-		kind: "video",
-		name: "Overlay",
-	});
-	await pair.waitForConvergence();
+	await createSharedTrackOrderProject(pair, roomId);
 	const tracksA = await pair.a.ctx.queryRel(pair.a.project, "tracks");
 	const tracksB = await pair.b.ctx.queryRel(pair.b.project, "tracks");
-	if (tracksA.length < 3 || tracksB.length < 3) {
+	const trackIdsB = new Set(tracksB.map((track) => String(track._node_id)));
+	const commonTracksA = tracksA.filter((track) =>
+		trackIdsB.has(String(track._node_id)),
+	);
+	const commonTrackIdsA = new Set(
+		commonTracksA.map((track) => String(track._node_id)),
+	);
+	const commonTracksB = tracksB.filter((track) =>
+		commonTrackIdsA.has(String(track._node_id)),
+	);
+	if (commonTracksA.length < 3 || commonTracksB.length < 3) {
 		throw new Error("Expected at least three tracks for track-order conflict");
+	}
+	const movedTrackId = String(commonTracksA[2]?._node_id ?? "");
+	const afterTrackId = String(commonTracksB[0]?._node_id ?? "");
+	if (!movedTrackId || !afterTrackId) {
+		throw new Error("Expected shared track anchors for track-order conflict");
 	}
 
 	pair.partition();
 	await pair.a.dispatch(pair.a.project, "moveTrackWithinProject", {
-		trackId: tracksA[2]?._node_id,
+		trackId: movedTrackId,
 		afterTrackId: null,
 	});
 	await pair.b.dispatch(pair.b.project, "moveTrackWithinProject", {
-		trackId: tracksB[1]?._node_id,
-		afterTrackId: tracksB[2]?._node_id,
+		trackId: movedTrackId,
+		afterTrackId,
 	});
 	pair.heal();
 	await pair.waitForConvergence();
