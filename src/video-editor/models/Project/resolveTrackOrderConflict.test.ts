@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	reduceCreateManualTrackOrderSuggestion,
+	reduceMoveTrackWithinProject,
 	reducePreserveCurrentTrackOrder,
 	reduceResolveTrackOrderConflict,
 } from "./actions";
@@ -24,6 +25,24 @@ const preview = {
 };
 
 describe("Project track order review actions", () => {
+	it("moves a track through the user reorder relation method", () => {
+		expect(
+			reduceMoveTrackWithinProject(
+				{
+					trackId: "track:audio",
+					afterTrackId: null,
+				},
+				null,
+				tracks,
+			),
+		).toEqual({
+			tracks: {
+				id: null,
+				value: tracks[1],
+			},
+		});
+	});
+
 	it("applies incoming order and emits a CRDT resolve command", () => {
 		expect(
 			reduceResolveTrackOrderConflict(

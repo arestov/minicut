@@ -31,6 +31,7 @@ import {
 	reduceSetProjectTrackPreviewEnabled,
 	reduceSetResources,
 	reduceSetTracks,
+	reduceMoveTrackWithinProject,
 	reduceResolveTrackOrderConflict,
 	reducePreserveCurrentTrackOrder,
 } from "./Project/actions";
@@ -674,6 +675,16 @@ export const Project = model({
 				tracks: ["<< tracks", { method: "set_many" }],
 			},
 			fn: reduceSetTracks,
+		},
+		moveTrackWithinProject: {
+			to: {
+				tracks: ["<< tracks", { method: "insert_after_id" }],
+			},
+			fn: [
+				["$noop", "<< @all:tracks"] as const,
+				(payload: unknown, noop: unknown, tracks: unknown) =>
+					reduceMoveTrackWithinProject(payload, noop, tracks),
+			],
 		},
 		resolveTrackOrderConflict: {
 			to: {

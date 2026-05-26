@@ -166,11 +166,13 @@ export const createNaturalTrackOrderConflict = async (
 	}
 
 	pair.partition();
-	await pair.a.dispatch(pair.a.project, "setTracks", {
-		tracks: [tracksA[2], tracksA[0], tracksA[1]],
+	await pair.a.dispatch(pair.a.project, "moveTrackWithinProject", {
+		trackId: tracksA[2]?._node_id,
+		afterTrackId: null,
 	});
-	await pair.b.dispatch(pair.b.project, "setTracks", {
-		tracks: [tracksB[1], tracksB[2], tracksB[0]],
+	await pair.b.dispatch(pair.b.project, "moveTrackWithinProject", {
+		trackId: tracksB[1]?._node_id,
+		afterTrackId: tracksB[2]?._node_id,
 	});
 	pair.heal();
 	await pair.waitForConvergence();

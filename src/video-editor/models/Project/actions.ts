@@ -53,6 +53,10 @@ export type ProjectMoveClipToTrackPayload = {
 	clip?: unknown;
 	targetTrack?: unknown;
 };
+export type ProjectMoveTrackWithinProjectPayload = {
+	trackId?: unknown;
+	afterTrackId?: unknown;
+};
 export type ProjectCreateReviewTrackPayload = {
 	role?: unknown;
 	kind?: unknown;
@@ -682,7 +686,7 @@ const existingReviewTrack = (
 export const reduceResolveDeleteVsEditByRestoreVariant = (
 	payload: unknown,
 	noop: unknown,
-	project: unknown,
+	_project: unknown,
 	targetTrack: unknown,
 ) => {
 	const value = asObject<DeleteVsEditVariantActionPayload>(payload);
@@ -1335,6 +1339,30 @@ export const reduceSetImportProgress = (payload: unknown) => {
 export const reduceSetTracks = (payload: unknown) => {
 	const tracks = (payload as { tracks?: unknown } | null)?.tracks;
 	return { tracks: Array.isArray(tracks) ? tracks : [] };
+};
+
+export const reduceMoveTrackWithinProject = (
+	payload: unknown,
+	noop: unknown,
+	tracks: unknown,
+) => {
+	const value = payload as ProjectMoveTrackWithinProjectPayload | null;
+	const currentTracks = Array.isArray(tracks) ? tracks : [];
+	const trackId = value?.trackId;
+	const afterTrackId = value?.afterTrackId ?? null;
+	const track =
+		typeof trackId === "string"
+			? currentTracks.find((item) => getNodeId(item) === trackId)
+			: null;
+	if (!track) {
+		return noop;
+	}
+	return {
+		tracks: {
+			id: typeof afterTrackId === "string" ? afterTrackId : null,
+			value: track,
+		},
+	};
 };
 
 export const reduceSetResources = (payload: unknown) => {
