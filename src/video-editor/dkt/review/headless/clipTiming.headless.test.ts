@@ -14,7 +14,10 @@ import {
 	type ClipTimingSnapshot,
 } from "./domainReaders";
 import { createNaturalClipTimingConflict } from "./naturalConflictGenerators";
-import { expectReviewResolvedOnBoth } from "./reviewAssertions";
+import {
+	captureReviewOpenCounts,
+	expectReviewResolvedOnBoth,
+} from "./reviewAssertions";
 
 const clipTimingPreview = (preview: unknown): ClipTimingPreview => {
 	if (
@@ -50,6 +53,7 @@ describe("headless clip timing review actions", () => {
 		);
 		try {
 			const preview = clipTimingPreview(item.preview);
+			const before = await captureReviewOpenCounts(pair, item.conflictId);
 			await dispatchReviewActionLikeUi(
 				pair.a,
 				item,
@@ -57,7 +61,10 @@ describe("headless clip timing review actions", () => {
 				buildClipTimingResolvePayload(item, "current"),
 			);
 
-			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+			for (const state of Object.values(before)) {
+				expect(state.openItemCount).toBe(1);
+			}
 			await expectTimingOnBoth(pair, clipA._node_id, preview.current);
 		} finally {
 			pair.close();
@@ -70,6 +77,7 @@ describe("headless clip timing review actions", () => {
 		);
 		try {
 			const preview = clipTimingPreview(item.preview);
+			const before = await captureReviewOpenCounts(pair, item.conflictId);
 			await dispatchReviewActionLikeUi(
 				pair.a,
 				item,
@@ -77,7 +85,10 @@ describe("headless clip timing review actions", () => {
 				buildClipTimingResolvePayload(item, "incoming"),
 			);
 
-			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+			for (const state of Object.values(before)) {
+				expect(state.openItemCount).toBe(1);
+			}
 			await expectTimingOnBoth(pair, clipA._node_id, preview.incoming);
 		} finally {
 			pair.close();
@@ -90,6 +101,7 @@ describe("headless clip timing review actions", () => {
 		);
 		try {
 			const preview = clipTimingPreview(item.preview);
+			const before = await captureReviewOpenCounts(pair, item.conflictId);
 			const draft = {
 				...preview.current,
 				duration: Number(Math.max(0.5, preview.current.duration - 0.25).toFixed(3)),
@@ -101,7 +113,10 @@ describe("headless clip timing review actions", () => {
 				buildClipTimingResolvePayload(item, "custom", draft),
 			);
 
-			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+			for (const state of Object.values(before)) {
+				expect(state.openItemCount).toBe(1);
+			}
 			await expectTimingOnBoth(pair, clipA._node_id, draft);
 		} finally {
 			pair.close();
@@ -114,6 +129,7 @@ describe("headless clip timing review actions", () => {
 		);
 		try {
 			const preview = clipTimingPreview(item.preview);
+			const before = await captureReviewOpenCounts(pair, item.conflictId);
 			await dispatchReviewActionLikeUi(
 				pair.a,
 				item,
@@ -121,7 +137,10 @@ describe("headless clip timing review actions", () => {
 				buildClipTimingParkPayload(item),
 			);
 
-			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+			for (const state of Object.values(before)) {
+				expect(state.openItemCount).toBe(1);
+			}
 			for (const peer of [pair.a, pair.b]) {
 				const { track, clips } = await readIncomingReviewTrackClips(peer);
 				expect(clips).toHaveLength(1);
