@@ -32,7 +32,6 @@ import {
 	reduceSetTracks,
 	reduceResolveTrackOrderConflict,
 	reducePreserveCurrentTrackOrder,
-	reduceCreateManualTrackOrderSuggestion,
 } from "./Project/actions";
 import { REVIEW_TRACK_ROLES } from "../dkt/review/reviewTrackPrimitives";
 import {
@@ -677,7 +676,7 @@ export const Project = model({
 			to: {
 				tracks: [
 					"<< tracks",
-					{ method: "insert_after_id" },
+					{ method: "set_many" },
 				],
 				crdtResolve: [crdtReviewResolveTarget],
 			},
@@ -691,7 +690,7 @@ export const Project = model({
 			to: {
 				tracks: [
 					"<< tracks",
-					{ method: "insert_after_id" },
+					{ method: "set_many" },
 				],
 				crdtResolve: [crdtReviewResolveTarget],
 			},
@@ -701,16 +700,18 @@ export const Project = model({
 					reducePreserveCurrentTrackOrder(payload, noop, tracks),
 			],
 		},
-		createManualTrackOrderSuggestion: {
-			to: {
-				preview: ["preview"],
+		createManualTrackOrderSuggestion: [
+			{
+				to: [
+					"<< reviewItems",
+					{
+						action: "createManualTrackOrderSuggestion",
+						sub_flow: true,
+					},
+				],
+				fn: [[], (payload: unknown) => payload ?? {}],
 			},
-			fn: [
-				["$noop"] as const,
-				(payload: unknown, noop: unknown) =>
-					reduceCreateManualTrackOrderSuggestion(payload, noop),
-			],
-		},
+		],
 		setResources: {
 			to: {
 				resources: ["<< resources", { method: "set_many" }],
@@ -749,6 +750,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
@@ -758,6 +760,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
@@ -900,6 +903,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
@@ -942,6 +946,7 @@ export const Project = model({
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
+							can_use_refs: true,
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],

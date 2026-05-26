@@ -1,11 +1,52 @@
 import { materializeCRDTConflictReviewItem } from "../../dkt/review/materializeCRDTConflictReviewItem";
 import type { CrdtConflictRecord, MiniCutReviewItem } from "../../dkt/review/types";
+import type {
+	TrackOrderEntry,
+	TrackOrderPreview,
+} from "../../dkt/review/features/trackOrder";
 
 const asObject = <Value extends object>(value: unknown): Value | null =>
 	value && typeof value === "object" ? (value as Value) : null;
 
 const asString = (value: unknown): string | null =>
 	typeof value === "string" && value.length > 0 ? value : null;
+
+const isUniqueStringList = (value: unknown): value is string[] =>
+	Array.isArray(value) &&
+	value.every((entry): entry is string => typeof entry === "string") &&
+	new Set(value).size === value.length;
+
+const sameStringSet = (left: readonly string[], right: readonly string[]) =>
+	left.length === right.length && left.every((entry) => right.includes(entry));
+
+const asTrackOrderPreview = (value: unknown): TrackOrderPreview | null => {
+	const preview = asObject<TrackOrderPreview>(value);
+	if (
+		!preview ||
+		preview.type !== "track_order" ||
+		!Array.isArray(preview.currentOrder) ||
+		!Array.isArray(preview.incomingOrder)
+	) {
+		return null;
+	}
+	return preview;
+};
+
+const trackEntriesForIds = (
+	trackIds: readonly string[],
+	preview: TrackOrderPreview,
+): TrackOrderEntry[] => {
+	const entries = new Map(
+		[...preview.currentOrder, ...preview.incomingOrder].map((entry) => [
+			entry.trackId,
+			entry,
+		]),
+	);
+	return trackIds.flatMap((trackId) => {
+		const entry = entries.get(trackId);
+		return entry ? [entry] : [];
+	});
+};
 
 export const reviewItemAttrsFromItem = (item: MiniCutReviewItem) => ({
 	reviewItemId: item.id,
@@ -72,4 +113,42 @@ export const reduceMaterializeReviewItemFromConflict = (
 	return reduceCreateReviewItem(
 		materializeCRDTConflictReviewItem({ conflict, projectId }),
 	);
+};
+
+export const reduceCreateManualTrackOrderSuggestionOnReviewItem = (
+	payload: unknown,
+	noop: unknown,
+	currentReviewItemId: unknown,
+) => {
+	const value = asObject<{
+		reviewItemId?: unknown;
+		review_item_id?: unknown;
+		preview?: unknown;
+		trackIds?: unknown;
+	}>(payload);
+	const targetReviewItemId =
+		asString(value?.reviewItemId) ?? asString(value?.review_item_id);
+	if (
+		typeof currentReviewItemId === "string" &&
+		targetReviewItemId &&
+		targetReviewItemId !== currentReviewItemId
+	) {
+		return noop;
+	}
+	const preview = asTrackOrderPreview(value?.preview);
+	const trackIds = value?.trackIds;
+	if (!preview || !isUniqueStringList(trackIds)) {
+		return noop;
+	}
+	const knownTrackIds = preview.currentOrder.map((entry) => entry.trackId);
+	if (!sameStringSet(trackIds, knownTrackIds)) {
+		return noop;
+	}
+	return {
+		preview: {
+			...preview,
+			manualOrder: trackEntriesForIds(trackIds, preview),
+		},
+		updatedAt: Date.now(),
+	};
 };

@@ -6,7 +6,10 @@ import type {
 	MiniCutReviewObject,
 	MiniCutReviewActionTarget,
 } from "../dkt/review/types";
-import { reduceSetReviewItem } from "./ReviewItem/actions";
+import {
+	reduceCreateManualTrackOrderSuggestionOnReviewItem,
+	reduceSetReviewItem,
+} from "./ReviewItem/actions";
 
 const asString = (value: unknown, fallback = ""): string =>
 	typeof value === "string" && value.length > 0 ? value : fallback;
@@ -139,6 +142,21 @@ export const ReviewItem = model({
 				["$noop", "reviewItemId"] as const,
 				(payload: unknown, noop: unknown, reviewItemId: unknown) =>
 					reduceSetReviewItem(payload, reviewItemId) ?? noop,
+			],
+		},
+		createManualTrackOrderSuggestion: {
+			to: {
+				preview: ["preview"],
+				updatedAt: ["updatedAt"],
+			},
+			fn: [
+				["$noop", "reviewItemId"] as const,
+				(payload: unknown, noop: unknown, reviewItemId: unknown) =>
+					reduceCreateManualTrackOrderSuggestionOnReviewItem(
+						payload,
+						noop,
+						reviewItemId,
+					),
 			],
 		},
 	},

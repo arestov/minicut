@@ -73,6 +73,11 @@ describe("ProjectReviewMode review actions", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "Choose current" }));
 		await userEvent.click(screen.getByRole("button", { name: "Choose incoming" }));
+		await userEvent.clear(screen.getByLabelText("Final duration"));
+		await userEvent.type(screen.getByLabelText("Final duration"), "2.5");
+		await userEvent.click(
+			screen.getByRole("button", { name: "Apply final timing" }),
+		);
 		await userEvent.click(
 			screen.getByRole("button", { name: "Park incoming on review track" }),
 		);
@@ -94,6 +99,16 @@ describe("ProjectReviewMode review actions", () => {
 					conflictId: "conflict:clip-timing",
 					reviewItemId: "review:conflict:clip-timing",
 					selectedVariant: "incoming",
+				}),
+			}),
+			expect.objectContaining({
+				actionName: "resolveClipTimingConflict",
+				scopeNodeId: "clip:1",
+				payload: expect.objectContaining({
+					conflictId: "conflict:clip-timing",
+					reviewItemId: "review:conflict:clip-timing",
+					selectedVariant: "custom",
+					duration: 2.5,
 				}),
 			}),
 			expect.objectContaining({
@@ -153,6 +168,22 @@ describe("ProjectReviewMode review actions", () => {
 		});
 		const runtime = renderProjectReviewMode(item);
 		await screen.findByRole("region", { name: "Project review" });
+
+		expect(
+			screen.queryByRole("button", {
+				name: "resolve Delete Vs Edit By Restore Variant",
+			}),
+		).toBeNull();
+		expect(
+			screen.queryByRole("button", {
+				name: "park Edited Variant On Review Track",
+			}),
+		).toBeNull();
+		expect(
+			screen.queryByRole("button", {
+				name: "preserve Delete And Archive Incoming Edit",
+			}),
+		).toBeNull();
 
 		await userEvent.click(
 			screen.getByRole("button", { name: "Restore edited variant" }),

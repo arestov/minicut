@@ -1296,10 +1296,7 @@ export const reduceResolveTrackOrderConflict = (
 		return noop;
 	}
 	return {
-		tracks: {
-			id: null,
-			value: orderedTracks,
-		},
+		tracks: orderedTracks,
 		crdtResolve: {
 			conflict_id: conflictId,
 			decision: {
