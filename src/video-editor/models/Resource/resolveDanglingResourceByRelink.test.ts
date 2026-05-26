@@ -96,4 +96,37 @@ describe("dangling resource review actions", () => {
 			},
 		});
 	});
+
+	it("rejects invalid offline placeholder payloads without CRDT resolve", () => {
+		const validPayload = {
+			conflict_id: "conflict:resource",
+			review_item_id: "review:conflict:resource",
+			resourceId: "resource:1",
+		};
+
+		expect(
+			reduceKeepOfflinePlaceholder(
+				{ ...validPayload, conflict_id: "" },
+				resource,
+				clips,
+				{ kind: "file", name: "missing.mov" },
+			),
+		).toBeNull();
+		expect(
+			reduceKeepOfflinePlaceholder(
+				{ ...validPayload, review_item_id: "" },
+				resource,
+				clips,
+				{ kind: "file", name: "missing.mov" },
+			),
+		).toBeNull();
+		expect(
+			reduceKeepOfflinePlaceholder(
+				{ ...validPayload, resourceId: "resource:other" },
+				resource,
+				clips,
+				{ kind: "file", name: "missing.mov" },
+			),
+		).toBeNull();
+	});
 });
