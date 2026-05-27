@@ -100,6 +100,41 @@ export const reduceSetReviewItem = (
 	return reviewItemAttrsFromItem(item);
 };
 
+export const reduceMarkReviewItemResolvedFromConflict = (
+	payload: unknown,
+	noop: unknown,
+	currentReviewItemId?: unknown,
+) => {
+	const value = asObject<{
+		conflictId?: unknown;
+		conflict_id?: unknown;
+		reviewItemId?: unknown;
+		review_item_id?: unknown;
+		reviewItemIds?: unknown;
+	}>(payload);
+	const targetReviewItemId =
+		asString(value?.reviewItemId) ?? asString(value?.review_item_id);
+	const targetReviewItemIds = Array.isArray(value?.reviewItemIds)
+		? value.reviewItemIds.filter(
+				(item): item is string => typeof item === "string" && item.length > 0,
+			)
+		: targetReviewItemId
+			? [targetReviewItemId]
+			: [];
+	if (
+		typeof currentReviewItemId !== "string" ||
+		!targetReviewItemIds.includes(currentReviewItemId)
+	) {
+		return noop;
+	}
+	const conflictId = asString(value?.conflictId) ?? asString(value?.conflict_id);
+	return {
+		conflictId: conflictId ?? undefined,
+		status: "resolved",
+		updatedAt: Date.now(),
+	};
+};
+
 export const reduceMaterializeReviewItemFromConflict = (
 	payload: unknown,
 	projectIdHint: unknown,

@@ -143,4 +143,27 @@ describe("headless clip timing review actions", () => {
 			pair.close();
 		}
 	});
+
+	it("parks from peer B and resolves the same review item on both peers", async () => {
+		const { pair, item } = await createNaturalClipTimingConflict(
+			"room-headless-clip-timing-park-from-b",
+		);
+		try {
+			const itemB = await pair.waitForReviewItem("clip_timing", {
+				peer: pair.b,
+			});
+			expect(itemB.conflictId).toBe(item.conflictId);
+			const before = await captureReviewOpenCounts(pair, item.conflictId);
+			await dispatchReviewActionLikeUi(
+				pair.b,
+				itemB,
+				"parkIncomingVariantOnReviewTrack",
+				buildClipTimingParkPayload(itemB),
+			);
+
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+		} finally {
+			pair.close();
+		}
+	});
 });

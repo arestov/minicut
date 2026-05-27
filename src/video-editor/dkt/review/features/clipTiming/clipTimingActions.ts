@@ -1,4 +1,6 @@
-import { makeCrdtResolvePayload } from "../../crdtReviewCommands";
+import {
+	makeCrdtResolveBatchPayload,
+} from "../../crdtReviewCommands";
 import { parseClipTimingVariant } from "./clipTimingPreview";
 
 const getNodeId = (value: unknown): string | null =>
@@ -56,12 +58,87 @@ const objectAttr = <Value extends object>(
 	return isRecord(value) ? (value as Value) : fallback;
 };
 
+const readReviewItemAttr = (item: unknown, key: string): unknown => {
+	if (!isRecord(item)) {
+		return undefined;
+	}
+	const states = item.states;
+	if (isRecord(states) && states[key] !== undefined) {
+		return states[key];
+	}
+	return item[key];
+};
+
+const reviewItemConflictGroupId = (item: unknown): string | null => {
+	const source = readReviewItemAttr(item, "source");
+	return isRecord(source) ? stringOrNull(source.conflictGroupId) : null;
+};
+
+const reviewItemAffectsClip = (item: unknown, clipId: string): boolean => {
+	const affectedObjects = readReviewItemAttr(item, "affectedObjects");
+	return Array.isArray(affectedObjects) &&
+		affectedObjects.some(
+			(object) =>
+				isRecord(object) &&
+				object.type === "clip" &&
+				object.id === clipId,
+		);
+};
+
+const matchingReviewDecisionInputs = ({
+	conflictId,
+	reviewItemId,
+	conflictGroupId,
+	clipId,
+	action,
+	domainResult,
+	reviewItems,
+}: {
+	conflictId: string;
+	reviewItemId: string;
+	conflictGroupId: string | null;
+	clipId: string;
+	action: string;
+	domainResult: unknown;
+	reviewItems?: unknown;
+}) => {
+	const items = Array.isArray(reviewItems) ? reviewItems : [];
+	const matches = items.filter((item) => {
+		if (
+			readReviewItemAttr(item, "status") !== "open" ||
+			readReviewItemAttr(item, "kind") !== "clip_timing"
+		) {
+			return false;
+		}
+		if (conflictGroupId) {
+			return reviewItemConflictGroupId(item) === conflictGroupId;
+		}
+		return reviewItemAffectsClip(item, clipId);
+	});
+	const inputs = matches.flatMap((item) => {
+		const itemConflictId = stringOrNull(readReviewItemAttr(item, "conflictId"));
+		const itemReviewItemId = stringOrNull(readReviewItemAttr(item, "reviewItemId"));
+		return itemConflictId && itemReviewItemId
+			? [{
+					conflictId: itemConflictId,
+					reviewItemId: itemReviewItemId,
+					action,
+					domainResult,
+				}]
+			: [];
+	});
+	return inputs.length > 0
+		? inputs
+		: [{ conflictId, reviewItemId, action, domainResult }];
+};
+
 export const reduceParkIncomingVariantOnReviewTrack = (
 	payload: unknown,
 	noop: unknown,
 	project: unknown,
 	sourceClip?: unknown,
 	sourceResourceInput?: unknown,
+	reviewItems?: unknown,
 ) => {
 	if (!isRecord(payload)) {
 		return noop;
@@ -136,6 +213,7 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 			...(sourceText ? { text: sourceText } : null),
 			effects: effectRefs,
 		},
+		reviewItems,
 	}, noop);
 };
 
@@ -148,6 +226,7 @@ export const reduceCreateParkedIncomingVariant = (
 	}
 	const conflictId = stringOrNull(payload.conflictId);
 	const reviewItemId = stringOrNull(payload.reviewItemId);
+	const conflictGroupId = stringOrNull(payload.conflictGroupId);
 	const clipId = stringOrNull(payload.clipId);
 	if (
 		!conflictId ||
@@ -158,6 +237,22 @@ export const reduceCreateParkedIncomingVariant = (
 	) {
 		return noop;
 	}
+	const domainResult = {
+		type: "parked_variant",
+		parkedClipId: { use_ref_id: "parkedIncomingClip" },
+		reviewTrackId: { use_ref_id: "incomingReviewTrack" },
+		sourceClipId: clipId,
+		variant: "incoming",
+	};
+	const decisions = matchingReviewDecisionInputs({
+		conflictId,
+		reviewItemId,
+		conflictGroupId,
+		clipId,
+		action: "parkIncomingVariantOnReviewTrack",
+		domainResult,
+		reviewItems: payload.reviewItems,
+	});
 	return {
 		reviewTrack: {
 			attrs: payload.reviewTrackAttrs,
@@ -172,18 +267,12 @@ export const reduceCreateParkedIncomingVariant = (
 			rels: isRecord(payload.parkedClipRels) ? payload.parkedClipRels : {},
 			hold_ref_id: "parkedIncomingClip",
 		},
-		crdtResolve: makeCrdtResolvePayload({
+		crdtResolve: makeCrdtResolveBatchPayload(decisions),
+		markReviewItemResolved: {
 			conflictId,
 			reviewItemId,
-			action: "parkIncomingVariantOnReviewTrack",
-			domainResult: {
-				type: "parked_variant",
-				parkedClipId: { use_ref_id: "parkedIncomingClip" },
-				reviewTrackId: { use_ref_id: "incomingReviewTrack" },
-				sourceClipId: clipId,
-				variant: "incoming",
-			},
-		}),
+			reviewItemIds: decisions.map((decision) => decision.reviewItemId),
+		},
 		next: {
 			clipId,
 			projectId: payload.projectId,

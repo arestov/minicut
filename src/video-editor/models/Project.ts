@@ -1,5 +1,8 @@
 import { model } from "dkt/model.js";
-import { crdtReviewResolveTarget } from "../dkt/review/crdtReviewCommands";
+import {
+	crdtReviewResolveBatchTarget,
+	crdtReviewResolveTarget,
+} from "../dkt/review/crdtReviewCommands";
 import {
 	reduceAcceptParkedClipOnReviewTrack,
 	reduceParkIncomingVariantOnReviewTrack,
@@ -943,7 +946,6 @@ export const Project = model({
 		],
 		parkIncomingVariantOnReviewTrack: [
 			{
-				input_base_rel_shape: CLIP_INPUT_BASE_REL_SHAPE,
 				to: {
 					reviewTrack: [
 						"<< track << #",
@@ -970,7 +972,14 @@ export const Project = model({
 							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
-					crdtResolve: [crdtReviewResolveTarget],
+					crdtResolve: [crdtReviewResolveBatchTarget],
+					markReviewItemResolved: [
+						"<< reviewItems",
+						{
+							action: "markResolvedFromConflict",
+							sub_flow: true,
+						},
+					],
 					next: ["$output", { can_use_refs: true }],
 				},
 				output_base_rel_shape: {
@@ -984,25 +993,20 @@ export const Project = model({
 					},
 				},
 				fn: [
-					[
-						"$noop",
-						"<<<<",
-						"<<<< $input_id:clipId",
-						"<< @one:resource <<<< $input_id:clipId",
-					] as const,
+					["$noop", "<<<<", "<< @all:reviewItems"] as const,
 					(
 						payload: unknown,
 						noop: unknown,
 						project: unknown,
-						sourceClip: unknown,
-						sourceResource: unknown,
+						reviewItems: unknown,
 					) =>
 						reduceParkIncomingVariantOnReviewTrack(
 							payload,
 							noop,
 							project,
-							sourceClip,
-							sourceResource,
+							undefined,
+							undefined,
+							reviewItems,
 						),
 				],
 			},

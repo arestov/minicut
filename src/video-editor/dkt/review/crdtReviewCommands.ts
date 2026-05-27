@@ -1,4 +1,5 @@
 export const crdtReviewResolveTarget = "$crdt:resolve" as const;
+export const crdtReviewResolveBatchTarget = "$crdt:resolve_batch" as const;
 export const crdtReviewAcknowledgeTarget = "$crdt:acknowledge" as const;
 export const crdtReviewClearResolutionAttemptTarget =
 	"$crdt:clear_resolution_attempt" as const;
@@ -35,6 +36,16 @@ export const makeCrdtResolvePayload = (input: MiniCutCrdtDecisionInput) => {
 	};
 };
 
+export const makeCrdtResolveBatchPayload = (
+	inputs: MiniCutCrdtDecisionInput[],
+) => ({
+	atomic: true,
+	decisions: inputs.map((input) => ({
+		conflict_id: requireNonEmptyString(input.conflictId, "conflictId"),
+		decision: makeCrdtResolvePayload(input).decision,
+	})),
+});
+
 export const makeCrdtAcknowledgePayload = (input: {
 	conflictId: string;
 	reviewItemId: string;
@@ -45,4 +56,3 @@ export const makeCrdtAcknowledgePayload = (input: {
 	review_item_id: requireNonEmptyString(input.reviewItemId, "reviewItemId"),
 	action: requireNonEmptyString(input.action, "action"),
 });
-

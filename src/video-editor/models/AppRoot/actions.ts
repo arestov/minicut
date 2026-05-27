@@ -40,6 +40,16 @@ const relList = (model: unknown, relName: string): unknown[] => {
 	return Array.isArray(value) ? value : value ? [value] : [];
 };
 
+const modelList = (value: unknown): unknown[] => {
+	if (Array.isArray(value)) {
+		return value;
+	}
+	if (value && typeof value === "object") {
+		return Object.values(value);
+	}
+	return [];
+};
+
 const collectConflictNodeIds = (payload: unknown): Set<string> => {
 	const ids = new Set<string>();
 	const collectRecordIds = (value: unknown) => {
@@ -99,27 +109,48 @@ const collectConflictNodeIds = (payload: unknown): Set<string> => {
 const findProjectIdForConflictPayload = (
 	payload: unknown,
 	projects: unknown,
+	clips?: unknown,
 ): string | null => {
 	const conflictNodeIds = collectConflictNodeIds(payload);
-	if (conflictNodeIds.size === 0 || !Array.isArray(projects)) {
+	if (conflictNodeIds.size === 0) {
 		return null;
 	}
-	for (const project of projects) {
-		const projectId = getNodeId(project);
-		if (projectId && conflictNodeIds.has(projectId)) {
-			return projectId;
-		}
-		for (const resource of relList(project, "resources")) {
-			const resourceId = getNodeId(resource);
-			if (resourceId && conflictNodeIds.has(resourceId)) {
+	const projectList = modelList(projects);
+	if (projectList.length > 0) {
+		for (const project of projectList) {
+			const projectId = getNodeId(project);
+			if (projectId && conflictNodeIds.has(projectId)) {
 				return projectId;
 			}
-		}
-		for (const track of relList(project, "tracks")) {
-			for (const clip of relList(track, "clips")) {
-				const clipId = getNodeId(clip);
-				if (clipId && conflictNodeIds.has(clipId)) {
+			for (const resource of relList(project, "resources")) {
+				const resourceId = getNodeId(resource);
+				if (resourceId && conflictNodeIds.has(resourceId)) {
 					return projectId;
+				}
+			}
+			for (const track of relList(project, "tracks")) {
+				for (const clip of relList(track, "clips")) {
+					const clipId = getNodeId(clip);
+					if (clipId && conflictNodeIds.has(clipId)) {
+						return projectId;
+					}
+				}
+			}
+		}
+	}
+	const clipList = modelList(clips);
+	if (clipList.length > 0) {
+		for (const clip of clipList) {
+			const clipId = getNodeId(clip);
+			if (!clipId || !conflictNodeIds.has(clipId)) {
+				continue;
+			}
+			for (const track of relList(clip, "track")) {
+				for (const project of relList(track, "project")) {
+					const projectId = getNodeId(project);
+					if (projectId) {
+						return projectId;
+					}
 				}
 			}
 		}
@@ -131,8 +162,9 @@ export const resolveReviewProjectIdHint = (
 	payload: unknown,
 	rootProjectId: unknown,
 	projects?: unknown,
+	clips?: unknown,
 ): unknown =>
-	findProjectIdForConflictPayload(payload, projects) ??
+	findProjectIdForConflictPayload(payload, projects, clips) ??
 	rootProjectId;
 
 const resolveOutputRelModel = (payload: unknown, relName: string): unknown => {

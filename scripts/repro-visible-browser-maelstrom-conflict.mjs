@@ -11,9 +11,18 @@ const ROOM_ID = process.env.MINICUT_REPRO_ROOM ?? `browser-maelstrom-${Date.now(
 const KEEP_OPEN = process.env.MINICUT_REPRO_KEEP_OPEN === '1'
 const OPEN_CONFLICT = process.env.MINICUT_REPRO_OPEN_CONFLICT !== '0'
 const HEADLESS = process.env.MINICUT_REPRO_HEADLESS !== '0'
+const REVIEW_ACTION = (process.env.MINICUT_REPRO_REVIEW_ACTION ?? '').trim().toLowerCase()
+const ACTION_PEER = (process.env.MINICUT_REPRO_ACTION_PEER ?? 'B').trim().toUpperCase() === 'A' ? 'A' : 'B'
 const OVERALL_TIMEOUT_MS = Number(process.env.MINICUT_REPRO_TIMEOUT_MS ?? 90_000)
 const REPORT_PATH = process.env.MINICUT_REPRO_REPORT_PATH ?? path.join(os.tmpdir(), `minicut-browser-maelstrom-report-${Date.now()}.json`)
 const TRACE_PATH = process.env.MINICUT_REPRO_TRACE_PATH ?? REPORT_PATH.replace(/\.json$/, '.trace.json')
+const REVIEW_ACTION_BUTTONS = {
+	park: 'Park incoming on review track',
+	incoming: 'Choose incoming',
+	current: 'Choose current',
+	local: 'Choose current',
+	final: 'Apply final timing',
+}
 
 const trace = []
 const requestFailures = []
@@ -290,6 +299,7 @@ const projectSummary = async (page) =>
 	debugEval(page, () => {
 		const state = window.__MINICUT_P2P_DEBUG__?.dumpProjectState?.()
 		const worker = window.__MINICUT_P2P_DEBUG__?.dumpWorkerState?.()
+		const review = window.__MINICUT_P2P_DEBUG__?.getReviewDebugState?.()
 		return Promise.resolve(worker).then((workerState) => {
 			const clips = (state?.tracks ?? []).flatMap((track) =>
 				(track?.clips ?? []).map((clip) => ({
@@ -335,6 +345,16 @@ const projectSummary = async (page) =>
 							}))
 						: [],
 				},
+				review: {
+					openItemCount: (review?.activeProjectReviewItems ?? []).filter((item) => item?.attrs?.status === 'open').length,
+					items: (review?.activeProjectReviewItems ?? []).map((item) => ({
+						nodeId: item?.nodeId ?? null,
+						reviewItemId: item?.attrs?.reviewItemId ?? null,
+						conflictId: item?.attrs?.conflictId ?? null,
+						kind: item?.attrs?.kind ?? null,
+						status: item?.attrs?.status ?? null,
+					})),
+				},
 				clips,
 				badgeCount: document.querySelectorAll('.clip-conflict-badge').length,
 				reviewButtonText: Array.from(document.querySelectorAll('button'))
@@ -349,6 +369,159 @@ const projectSummary = async (page) =>
 			}
 		})
 	})
+
+const readReviewState = async (page) =>
+	debugEval(page, () => window.__MINICUT_P2P_DEBUG__?.getReviewDebugState?.() ?? null)
+
+const reviewOpenCount = (state) => {
+	const itemCount = reviewItems(state).filter((item) => item.attrs?.status === 'open').length
+	if (reviewItems(state).length > 0) {
+		return itemCount
+	}
+	const count =
+		state?.activeProjectReviewSessions?.find((session) => typeof session?.attrs?.openItemCount === 'number')?.attrs?.openItemCount ??
+		state?.activeProject?.attrs?.reviewOpenItemCount
+	return typeof count === 'number' && Number.isFinite(count) ? count : null
+}
+
+const reviewItems = (state) =>
+	(state?.activeProjectReviewItems ?? []).map((item) => ({
+		nodeId: item?.nodeId ?? null,
+		attrs: item?.attrs ?? {},
+	}))
+
+const firstOpenClipTimingItem = (state) =>
+	reviewItems(state).find((item) => item.attrs?.kind === 'clip_timing' && item.attrs?.status === 'open') ??
+	reviewItems(state).find((item) => item.attrs?.kind === 'clip_timing') ??
+	null
+
+const reviewItemConflictGroupId = (item) => {
+	const source = item?.attrs?.source
+	return source && typeof source === 'object' && typeof source.conflictGroupId === 'string'
+		? source.conflictGroupId
+		: null
+}
+
+const reviewItemAffectedClipIds = (item) =>
+	Array.isArray(item?.attrs?.affectedObjects)
+		? item.attrs.affectedObjects.flatMap((object) =>
+				object && typeof object === 'object' && object.type === 'clip' && typeof object.id === 'string'
+					? [object.id]
+					: [],
+			)
+		: []
+
+const sameClipTimingReviewGroup = (candidate, selected) => {
+	if (candidate?.attrs?.kind !== 'clip_timing' || selected?.attrs?.kind !== 'clip_timing') {
+		return false
+	}
+	const candidateGroupId = reviewItemConflictGroupId(candidate)
+	const selectedGroupId = reviewItemConflictGroupId(selected)
+	if (candidateGroupId && selectedGroupId) {
+		return candidateGroupId === selectedGroupId
+	}
+	const selectedClipIds = new Set(reviewItemAffectedClipIds(selected))
+	return reviewItemAffectedClipIds(candidate).some((clipId) => selectedClipIds.has(clipId))
+}
+
+const waitForReviewItemStatus = async (page, conflictId, status) =>
+	waitFor(`review item ${conflictId} status ${status}`, async () => {
+		const state = await readReviewState(page)
+		const item = reviewItems(state).find((entry) => entry.attrs?.conflictId === conflictId)
+		return item?.attrs?.status === status ? item : null
+	}, { timeoutMs: 30_000, intervalMs: 250 })
+
+const waitForReviewOpenCount = async (page, expected) =>
+	waitFor(`review open count ${expected}`, async () => {
+		const state = await readReviewState(page)
+		return reviewOpenCount(state) === expected ? state : null
+	}, { timeoutMs: 30_000, intervalMs: 250 })
+
+const waitForIncomingReviewTrack = async (page) =>
+	waitFor('incoming review track with parked clip', async () => {
+		const details = await debugEval(page, () => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() ?? null)
+		const track = details?.tracks?.find((candidate) => candidate?.trackRole === 'incomingReview')
+		return track?.clips?.length > 0 ? track : null
+	}, { timeoutMs: 30_000, intervalMs: 250 })
+
+const reviewActionButtonName = (action) => {
+	const label = REVIEW_ACTION_BUTTONS[action]
+	if (!label) {
+		throw new Error(`Unknown MINICUT_REPRO_REVIEW_ACTION "${REVIEW_ACTION}". Expected one of: ${Object.keys(REVIEW_ACTION_BUTTONS).join(', ')}`)
+	}
+	return label
+}
+
+const clickReviewActionAndAssert = async ({ acting, passive, broker, action }) => {
+	const actingStateBefore = await readReviewState(acting.page)
+	const passiveStateBefore = await readReviewState(passive.page)
+	const item = firstOpenClipTimingItem(actingStateBefore)
+	const conflictId = item?.attrs?.conflictId
+	if (typeof conflictId !== 'string' || conflictId.length === 0) {
+		throw new Error(`No open clip timing review item on peer ${acting.label}`)
+	}
+	const openBeforeActing = reviewOpenCount(actingStateBefore)
+	const openBeforePassive = reviewOpenCount(passiveStateBefore)
+	if (openBeforeActing === null || openBeforePassive === null) {
+		throw new Error(`Missing review open count before ${action}: ${JSON.stringify({ acting: openBeforeActing, passive: openBeforePassive })}`)
+	}
+	if (openBeforeActing !== openBeforePassive) {
+		throw new Error(`Review open count diverged before ${action}: ${openBeforeActing} vs ${openBeforePassive}`)
+	}
+	const groupItems = reviewItems(actingStateBefore).filter(
+		(candidate) => candidate.attrs?.status === 'open' && sameClipTimingReviewGroup(candidate, item),
+	)
+	const resolvedConflictIds = groupItems
+		.map((candidate) => candidate.attrs?.conflictId)
+		.filter((candidate) => typeof candidate === 'string' && candidate.length > 0)
+	const expectedResolvedCount = Math.max(1, resolvedConflictIds.length)
+
+	const panel = acting.page.getByRole('region', { name: 'Project review' })
+	if (action === 'final') {
+		await panel.getByLabel('Final start').fill('0.25')
+	}
+	await panel.getByRole('button', { name: reviewActionButtonName(action) }).click()
+	await withTimeout(`wait ${acting.label} settle after ${action}`, debugEval(acting.page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000)
+	await broker.flush()
+	await Promise.all([
+		withTimeout(`wait ${acting.label} post-action settle`, debugEval(acting.page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000),
+		withTimeout(`wait ${passive.label} post-action settle`, debugEval(passive.page, async () => window.__MINICUT_P2P_DEBUG__?.waitForRuntimeSettled?.()), 20_000),
+	])
+
+	const expectedOpenCount = Math.max(0, openBeforeActing - expectedResolvedCount)
+	await Promise.all([
+		...resolvedConflictIds.flatMap((resolvedConflictId) => [
+			waitForReviewItemStatus(acting.page, resolvedConflictId, 'resolved'),
+			waitForReviewItemStatus(passive.page, resolvedConflictId, 'resolved'),
+		]),
+		waitForReviewOpenCount(acting.page, expectedOpenCount),
+		waitForReviewOpenCount(passive.page, expectedOpenCount),
+	])
+	if (action === 'park') {
+		await Promise.all([
+			waitForIncomingReviewTrack(acting.page),
+			waitForIncomingReviewTrack(passive.page),
+		])
+	}
+	const [actingAfter, passiveAfter] = await Promise.all([
+		readReviewState(acting.page),
+		readReviewState(passive.page),
+	])
+	const result = {
+		action,
+		actingPeer: acting.label,
+		conflictId,
+		resolvedConflictIds,
+		openBefore: openBeforeActing,
+		openAfter: {
+			[acting.label]: reviewOpenCount(actingAfter),
+			[passive.label]: reviewOpenCount(passiveAfter),
+		},
+	}
+	pushTrace('review-action:asserted', result)
+	log('review action converged', result)
+	return result
+}
 
 const openProjectReview = async (page) => {
 	const reviewButton = page.getByRole('button', { name: /Review\s+[1-9]\d*/ }).first()
@@ -375,6 +548,7 @@ const compactPeerSummary = (summary) => ({
 	badgeCount: summary?.badgeCount ?? 0,
 	reviewButtonText: summary?.reviewButtonText ?? null,
 	conflictClipCount: summary?.conflictClipCount ?? 0,
+	review: summary?.review ?? null,
 	projects: summary?.worker?.projects ?? [],
 	sessionRoots: summary?.worker?.sessionRoots ?? [],
 	runtimeError: summary?.worker?.runtimeError ?? null,
@@ -461,6 +635,22 @@ const main = async () => {
 		log('opened project review panels')
 	}
 
+	let reviewActionResult = null
+	if (REVIEW_ACTION) {
+		if (!OPEN_CONFLICT) {
+			throw new Error('MINICUT_REPRO_REVIEW_ACTION requires MINICUT_REPRO_OPEN_CONFLICT=1')
+		}
+		stage = `review action ${REVIEW_ACTION} on ${ACTION_PEER}`
+		const acting = ACTION_PEER === 'A' ? { ...a, label: 'A' } : { ...b, label: 'B' }
+		const passive = ACTION_PEER === 'A' ? { ...b, label: 'B' } : { ...a, label: 'A' }
+		reviewActionResult = await clickReviewActionAndAssert({
+			acting,
+			passive,
+			broker,
+			action: REVIEW_ACTION,
+		})
+	}
+
 	const [summaryA, summaryB] = await Promise.all([projectSummary(a.page), projectSummary(b.page)])
 	const result = {
 		ok:
@@ -471,6 +661,7 @@ const main = async () => {
 		targets: { A: a.targetUrl, B: b.targetUrl },
 		profiles: { A: profileA, B: profileB },
 		summary: { A: summaryA, B: summaryB },
+		reviewAction: reviewActionResult,
 		requestFailures,
 		keepOpen: KEEP_OPEN,
 		tracePath: TRACE_PATH,
@@ -482,6 +673,7 @@ const main = async () => {
 			A: compactPeerSummary(summaryA),
 			B: compactPeerSummary(summaryB),
 		},
+		reviewAction: reviewActionResult,
 		requestFailures,
 	}, null, 2)
 	await writeFile(TRACE_PATH, `${JSON.stringify(trace, null, 2)}\n`, 'utf8')

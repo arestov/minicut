@@ -34,6 +34,8 @@ const crdtNodeProject = defineConfig({
 			'src/video-editor/dkt/models/crdt-rollback.test.ts',
 			'src/video-editor/dkt/models/crdt-resolution-attempt.test.ts',
 			'src/video-editor/dkt/models/crdt-conflict-scenarios.test.ts',
+			'src/video-editor/dkt/models/crdt-review-p2p-projection.test.ts',
+			'src/video-editor/dkt/review/headless/**/*.headless.test.ts',
 			'src/video-editor/dkt/runtime/createMiniCutDktRuntime.crdt.test.ts',
 			'src/video-editor/dkt/runtime/createMiniCutDktRuntime.crdtRelay.test.ts',
 			'src/video-editor/dkt/crdt/**/*.test.ts',
