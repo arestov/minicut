@@ -335,6 +335,13 @@ const waitForClipTimingOnBoth = async (
 	})
 }
 
+const waitForNoConflictBadgesOnBoth = async (firstPage: Page, secondPage: Page) => {
+	await expect.poll(async () => ({
+		first: await firstPage.locator('.clip-conflict-badge').count(),
+		second: await secondPage.locator('.clip-conflict-badge').count(),
+	}), { timeout: 30_000 }).toEqual({ first: 0, second: 0 })
+}
+
 const waitForWorkerDumpContainsProjectResourceAndClip = async (page: Page, projectId: string, clipId: string) => {
 	let latest: unknown = null
 	await expect.poll(async () => {
@@ -563,6 +570,7 @@ test('p2p real CRDT timing conflict renders conflict UX without fake injection',
 		await waitForIncomingReviewTrackWithClip(second.page, expectedParkedTiming)
 		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
 		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
+		await waitForNoConflictBadgesOnBoth(first.page, second.page)
 	} catch (error) {
 		const artifactPath = await writeP2PDebugArtifacts('real-crdt-conflict-timeout', first.page, second.page)
 		throw new Error(`Timed out waiting for real CRDT conflict proof. Debug artifact: ${artifactPath}`, { cause: error })
@@ -652,6 +660,7 @@ test('p2p real CRDT timing conflict accepts incoming from review UI on both peer
 		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
 		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
 		await waitForClipTimingOnBoth(first.page, second.page, firstClipId, expectedTiming)
+		await waitForNoConflictBadgesOnBoth(first.page, second.page)
 		await expect.poll(async () => ({
 			first: await readReviewOpenCount(first.page),
 			second: await readReviewOpenCount(second.page),
@@ -747,6 +756,7 @@ test('p2p real CRDT timing conflict keeps current from review UI on both peers',
 		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
 		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
 		await waitForClipTimingOnBoth(first.page, second.page, firstClipId, expectedTiming)
+		await waitForNoConflictBadgesOnBoth(first.page, second.page)
 	} catch (error) {
 		const artifactPath = await writeP2PDebugArtifacts('real-crdt-choose-current-timeout', first.page, second.page)
 		throw new Error(`Timed out waiting for real CRDT choose current proof. Debug artifact: ${artifactPath}`, { cause: error })
@@ -839,6 +849,7 @@ test('p2p real CRDT timing conflict applies final timing from review UI on both 
 		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
 		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
 		await waitForClipTimingOnBoth(first.page, second.page, firstClipId, expectedTiming)
+		await waitForNoConflictBadgesOnBoth(first.page, second.page)
 	} catch (error) {
 		const artifactPath = await writeP2PDebugArtifacts('real-crdt-apply-final-timeout', first.page, second.page)
 		throw new Error(`Timed out waiting for real CRDT apply final proof. Debug artifact: ${artifactPath}`, { cause: error })
