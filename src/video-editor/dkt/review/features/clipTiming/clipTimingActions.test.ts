@@ -77,16 +77,26 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 				hold_ref_id: "parkedIncomingClip",
 			},
 			crdtResolve: {
-				conflict_id: "conflict:clip",
-				decision: {
-					action: "parkIncomingVariantOnReviewTrack",
-					review_item_id: "review:clip",
-					domain_result: {
-						type: "parked_variant",
-						sourceClipId: "clip:1",
-						variant: "incoming",
+				atomic: true,
+				decisions: [
+					{
+						conflict_id: "conflict:clip",
+						decision: {
+							app: "minicut",
+							decision_id:
+								"parkIncomingVariantOnReviewTrack:review:clip:conflict:clip",
+							action: "parkIncomingVariantOnReviewTrack",
+							review_item_id: "review:clip",
+							domain_result: {
+								type: "parked_variant",
+								sourceClipId: "clip:1",
+								variant: "incoming",
+								parkedClipId: { use_ref_id: "parkedIncomingClip" },
+								reviewTrackId: { use_ref_id: "incomingReviewTrack" },
+							},
+						},
 					},
-				},
+				],
 			},
 		});
 	});

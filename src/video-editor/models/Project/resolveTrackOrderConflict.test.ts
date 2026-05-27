@@ -66,6 +66,9 @@ describe("Project track order review actions", () => {
 			crdtResolve: {
 				conflict_id: "conflict:track-order",
 				decision: {
+					app: "minicut",
+					decision_id:
+						"resolveTrackOrderConflict:review:conflict:track-order:conflict:track-order",
 					action: "resolveTrackOrderConflict",
 					review_item_id: "review:conflict:track-order",
 					domain_result: {
@@ -98,6 +101,9 @@ describe("Project track order review actions", () => {
 			crdtResolve: {
 				conflict_id: "conflict:track-order",
 				decision: {
+					app: "minicut",
+					decision_id:
+						"resolveTrackOrderConflict:review:conflict:track-order:conflict:track-order",
 					action: "resolveTrackOrderConflict",
 					review_item_id: "review:conflict:track-order",
 					domain_result: {
