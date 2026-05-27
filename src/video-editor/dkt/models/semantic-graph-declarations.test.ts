@@ -183,7 +183,7 @@ describe("semantic graph declarations", () => {
 			getRelOptions(Project as unknown as Record<string, unknown>, "tracks"),
 		).toMatchObject({
 			role: "owner",
-			ownership: "multi",
+			ownership: "slot-single",
 			inverseRel: "project",
 			aggregate: { name: "projectTracks", role: "primary", as: "tracks", conflictAnchor: true },
 		});
@@ -325,7 +325,7 @@ describe("semantic graph declarations", () => {
 		expect(
 			getCrdtSection(Project as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
-			tracks: "sequence",
+			tracks: ["sequence", { conflictMeta: true }],
 			resources: "or-set",
 			primaryVideoTrack: "lww",
 			primaryAudioTrack: "lww",

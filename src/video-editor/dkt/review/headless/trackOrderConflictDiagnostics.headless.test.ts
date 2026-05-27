@@ -125,9 +125,13 @@ describe("headless track order conflict diagnostics", () => {
 							field_name: "tracks",
 							aggregate: "projectTracks",
 							payload: expect.objectContaining({
-								current: expect.any(Object),
-								incoming: expect.objectContaining({
-									item_id: movedTrackId,
+								sequence: expect.objectContaining({
+									current: expect.any(Object),
+									incoming: expect.objectContaining({
+										item_id: movedTrackId,
+									}),
+									item_node_id: movedTrackId,
+									operation: "move_vs_move",
 								}),
 							}),
 						}),

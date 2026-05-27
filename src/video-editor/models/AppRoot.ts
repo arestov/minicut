@@ -80,6 +80,7 @@ const appProps = mergeDcl({
 			projectMetaList: { sync: false, reason: "projection" },
 		},
 		rels: {
+			$session_root: { sync: false, reason: "framework-owned" },
 			common_session_root: { sync: false, reason: "projection" },
 			sessions: { sync: false, reason: "projection" },
 			free_sessions: { sync: false, reason: "projection" },
