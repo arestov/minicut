@@ -16,6 +16,7 @@ const ACTION_PEER = (process.env.MINICUT_REPRO_ACTION_PEER ?? 'B').trim().toUppe
 const OVERALL_TIMEOUT_MS = Number(process.env.MINICUT_REPRO_TIMEOUT_MS ?? 90_000)
 const REPORT_PATH = process.env.MINICUT_REPRO_REPORT_PATH ?? path.join(os.tmpdir(), `minicut-browser-maelstrom-report-${Date.now()}.json`)
 const TRACE_PATH = process.env.MINICUT_REPRO_TRACE_PATH ?? REPORT_PATH.replace(/\.json$/, '.trace.json')
+const SCREENSHOT_DIR = process.env.MINICUT_REPRO_SCREENSHOT_DIR ?? ''
 const REVIEW_ACTION_BUTTONS = {
 	park: 'Park incoming on review track',
 	incoming: 'Choose incoming',
@@ -717,6 +718,16 @@ const main = async () => {
 	}
 
 	const [summaryA, summaryB] = await Promise.all([projectSummary(a.page), projectSummary(b.page)])
+	const screenshots = {}
+	if (SCREENSHOT_DIR) {
+		await mkdir(SCREENSHOT_DIR, { recursive: true })
+		screenshots.A = path.join(SCREENSHOT_DIR, `${ROOM_ID}-A.png`)
+		screenshots.B = path.join(SCREENSHOT_DIR, `${ROOM_ID}-B.png`)
+		await Promise.all([
+			a.page.screenshot({ path: screenshots.A, fullPage: true }),
+			b.page.screenshot({ path: screenshots.B, fullPage: true }),
+		])
+	}
 	const result = {
 		ok:
 			summaryA.conflictClipCount > 0 &&
@@ -728,6 +739,7 @@ const main = async () => {
 		summary: { A: summaryA, B: summaryB },
 		reviewAction: reviewActionResult,
 		requestFailures,
+		screenshots,
 		keepOpen: KEEP_OPEN,
 		tracePath: TRACE_PATH,
 	}
@@ -740,6 +752,7 @@ const main = async () => {
 		},
 		reviewAction: reviewActionResult,
 		requestFailures,
+		screenshots,
 	}, null, 2)
 	await writeFile(TRACE_PATH, `${JSON.stringify(trace, null, 2)}\n`, 'utf8')
 	await writeFile(REPORT_PATH, `${report}\n`, 'utf8')
