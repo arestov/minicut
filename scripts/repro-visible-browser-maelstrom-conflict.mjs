@@ -358,6 +358,7 @@ const projectSummary = async (page) =>
 				},
 				clips,
 				badgeCount: document.querySelectorAll('.clip-conflict-badge').length,
+				visibleConflictCount: document.querySelectorAll('.clip-conflict-badge').length,
 				reviewButtonText: Array.from(document.querySelectorAll('button'))
 					.map((button) => button.textContent?.trim() ?? '')
 					.find((text) => /^Review\s+\d+/.test(text)) ?? null,
@@ -612,6 +613,7 @@ const compactPeerSummary = (summary) => ({
 	activeProjectId: summary?.activeProjectId ?? null,
 	clips: summary?.clips ?? [],
 	badgeCount: summary?.badgeCount ?? 0,
+	visibleConflictCount: summary?.visibleConflictCount ?? summary?.badgeCount ?? 0,
 	reviewButtonText: summary?.reviewButtonText ?? null,
 	conflictClipCount: summary?.conflictClipCount ?? 0,
 	review: summary?.review ?? null,
@@ -728,11 +730,18 @@ const main = async () => {
 			b.page.screenshot({ path: screenshots.B, fullPage: true }),
 		])
 	}
+	const noBlobFailures = !requestFailures.some((failure) => failure.url.startsWith('blob:'))
+	const actionOk = reviewActionResult
+		? reviewActionResult.openAfter?.A === 0 &&
+			reviewActionResult.openAfter?.B === 0 &&
+			summaryA.badgeCount === 0 &&
+			summaryB.badgeCount === 0
+		: null
 	const result = {
-		ok:
+		ok: noBlobFailures && (actionOk ?? (
 			summaryA.conflictClipCount > 0 &&
-			summaryB.conflictClipCount > 0 &&
-			!requestFailures.some((failure) => failure.url.startsWith('blob:')),
+			summaryB.conflictClipCount > 0
+		)),
 		roomId: ROOM_ID,
 		targets: { A: a.targetUrl, B: b.targetUrl },
 		profiles: { A: profileA, B: profileB },
