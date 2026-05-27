@@ -16,8 +16,11 @@ import {
 import { createNaturalClipTimingConflict } from "./naturalConflictGenerators";
 import {
 	captureReviewOpenCounts,
+	expectReviewGroupResolvedOnBoth,
 	expectReviewResolvedOnBoth,
 } from "./reviewAssertions";
+import { waitForProjectReviewGraph } from "../testHarness/inspectReviewGraph";
+import { reviewItemFromGraphNode } from "./reviewItemFromGraphNode";
 
 const clipTimingPreview = (preview: unknown): ClipTimingPreview => {
 	if (
@@ -44,6 +47,33 @@ const expectTimingOnBoth = async (
 			fadeOut: expected.fadeOut,
 		});
 	}
+};
+
+const clipTimingGroupConflictIds = async (
+	pair: Awaited<ReturnType<typeof createNaturalClipTimingConflict>>["pair"],
+	item: { source?: unknown; conflictId: string },
+): Promise<string[]> => {
+	const groupId =
+		item.source && typeof item.source === "object"
+			? (item.source as { conflictGroupId?: unknown }).conflictGroupId
+			: null;
+	const graph = await waitForProjectReviewGraph(
+		pair.a.ctx,
+		pair.a.project,
+		(snapshot) => snapshot.items.some((entry) => entry.attrs.kind === "clip_timing"),
+	);
+	return graph.items
+		.map(reviewItemFromGraphNode)
+		.filter(
+			(entry) =>
+				entry.kind === "clip_timing" &&
+				(typeof groupId === "string"
+					? (entry.source as { conflictGroupId?: unknown } | null)?.conflictGroupId ===
+						groupId
+					: entry.conflictId === item.conflictId),
+		)
+		.map((entry) => entry.conflictId)
+		.sort();
 };
 
 describe("headless clip timing review actions", () => {
@@ -162,6 +192,34 @@ describe("headless clip timing review actions", () => {
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+		} finally {
+			pair.close();
+		}
+	});
+
+	it("parks a grouped start resize conflict from peer B and resolves every group item", async () => {
+		const { pair, item } = await createNaturalClipTimingConflict(
+			"room-headless-clip-timing-grouped-park-from-b",
+			{ edge: "start" },
+		);
+		try {
+			const itemB = await pair.waitForReviewItem("clip_timing", {
+				peer: pair.b,
+			});
+			const conflictIds = await clipTimingGroupConflictIds(pair, item);
+			expect(conflictIds.length).toBeGreaterThan(1);
+			const before = await captureReviewOpenCounts(pair, conflictIds[0]);
+			expect(before.a.openItemCount).toBe(conflictIds.length);
+			expect(before.b.openItemCount).toBe(conflictIds.length);
+
+			await dispatchReviewActionLikeUi(
+				pair.b,
+				itemB,
+				"parkIncomingVariantOnReviewTrack",
+				buildClipTimingParkPayload(itemB),
+			);
+
+			await expectReviewGroupResolvedOnBoth(pair, conflictIds, before);
 		} finally {
 			pair.close();
 		}

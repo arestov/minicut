@@ -66,6 +66,26 @@ const expectConflictResolvedOnBothPeers = async (
 	);
 };
 
+const expectReviewItemResolvedOnBothPeers = async (
+	pair: Pair,
+	conflictId: string,
+) => {
+	for (const peer of [pair.a, pair.b]) {
+		const graph = await waitForProjectReviewGraph(
+			peer.ctx,
+			peer.project,
+			(snapshot) =>
+				snapshot.items.some(
+					(item) =>
+						item.attrs.conflictId === conflictId &&
+						item.attrs.status === "resolved",
+				),
+		);
+		expect(graph.openItemCount).toBe(0);
+		expect(graph.reviewSessions[0]?.attrs.openItemCount).toBe(0);
+	}
+};
+
 const waitForIncomingReviewTrackWithParkedClip = async (peer: Peer) => {
 	const deadline = Date.now() + 5_000;
 	let lastTrackSummary: unknown[] = [];
@@ -399,6 +419,7 @@ describe("MiniCut p2p review projection", () => {
 			});
 
 			await expectConflictResolvedOnBothPeers(pair, conflictId);
+			await expectReviewItemResolvedOnBothPeers(pair, conflictId);
 			for (const peer of [pair.a, pair.b]) {
 				const { track, clips: parkedClips } =
 					await waitForIncomingReviewTrackWithParkedClip(peer);

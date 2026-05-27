@@ -12,7 +12,27 @@ import {
 } from "./dispatchReviewActionLikeUi";
 import type { HeadlessDktModel, HeadlessReviewPeer } from "./createHeadlessReviewPair";
 import { createNaturalDeleteVsEditConflict } from "./naturalConflictGenerators";
-import { expectConflictStoreResolvedOnBoth } from "./reviewAssertions";
+import {
+	expectReviewResolvedOnBoth,
+	type ReviewOpenCountsByPeer,
+} from "./reviewAssertions";
+
+const singleOpenReviewBefore = (conflictId: string): ReviewOpenCountsByPeer => ({
+	a: {
+		conflictId,
+		status: "open",
+		openItemCount: 1,
+		sessionOpenItemCount: 1,
+		targetIsOpen: true,
+	},
+	b: {
+		conflictId,
+		status: "open",
+		openItemCount: 1,
+		sessionOpenItemCount: 1,
+		targetIsOpen: true,
+	},
+});
 
 const deleteVsEditPreview = (item: {
 	preview: unknown;
@@ -112,6 +132,7 @@ describe("headless delete-vs-edit review actions", () => {
 		try {
 			const preview = deleteVsEditPreview(item);
 			const trackId = preview.restoreTarget?.trackId ?? "";
+			const before = singleOpenReviewBefore(item.conflictId);
 
 			await dispatchReviewActionLikeUi(
 				pair.a,
@@ -121,7 +142,7 @@ describe("headless delete-vs-edit review actions", () => {
 			);
 
 			await flushPair(pair);
-			await expectConflictStoreResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
 			const project = await actionProject(pair.a, item);
 			const clips = await readTrackClips(pair.a, project, trackId);
 			const restored = clips.find(
@@ -140,6 +161,7 @@ describe("headless delete-vs-edit review actions", () => {
 		);
 		try {
 			const preview = deleteVsEditPreview(item);
+			const before = singleOpenReviewBefore(item.conflictId);
 
 			await dispatchReviewActionLikeUi(
 				pair.a,
@@ -149,7 +171,7 @@ describe("headless delete-vs-edit review actions", () => {
 			);
 
 			await flushPair(pair);
-			await expectConflictStoreResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
 			const clips = await readIncomingReviewClips(pair.a);
 			const parked = clips.find(
 				(clip) => clip._node_id !== preview.deletedVariant.clipId,
@@ -170,6 +192,7 @@ describe("headless delete-vs-edit review actions", () => {
 		);
 		try {
 			const preview = deleteVsEditPreview(item);
+			const before = singleOpenReviewBefore(item.conflictId);
 
 			await dispatchReviewActionLikeUi(
 				pair.a,
@@ -179,7 +202,7 @@ describe("headless delete-vs-edit review actions", () => {
 			);
 
 			await flushPair(pair);
-			await expectConflictStoreResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
 			const project = await actionProject(pair.a, item);
 			const archiveEntries = (await pair.a.ctx.queryRel(
 				project,

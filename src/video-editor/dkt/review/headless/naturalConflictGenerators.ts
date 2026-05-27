@@ -75,6 +75,7 @@ const createSharedTrackOrderProject = async (
 
 export const createNaturalClipTimingConflict = async (
 	roomId: string,
+	options: { edge?: "start" | "end" } = {},
 ): Promise<NaturalClipTimingConflict> => {
 	const pair = await createHeadlessReviewPair(roomId);
 	await pair.a.dispatch(pair.a.videoTrack, "addClip", {
@@ -95,8 +96,9 @@ export const createNaturalClipTimingConflict = async (
 	expect(clipA._node_id).toBe(clipB._node_id);
 
 	pair.partition();
-	await pair.a.dispatch(clipA, "trim", { edge: "end", delta: -1 });
-	await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -2 });
+	const edge = options.edge ?? "end";
+	await pair.a.dispatch(clipA, "trim", { edge, delta: edge === "start" ? 1 : -1 });
+	await pair.b.dispatch(clipB, "trim", { edge, delta: edge === "start" ? 2 : -2 });
 	pair.heal();
 	await pair.waitForConvergence();
 

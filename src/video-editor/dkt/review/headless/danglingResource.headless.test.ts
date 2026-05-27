@@ -9,7 +9,27 @@ import {
 	readResourceState,
 } from "./domainReaders";
 import { createNaturalDanglingResourceConflict } from "./naturalConflictGenerators";
-import { expectReviewResolvedOnBoth } from "./reviewAssertions";
+import {
+	expectReviewResolvedOnBoth,
+	type ReviewOpenCountsByPeer,
+} from "./reviewAssertions";
+
+const singleOpenReviewBefore = (conflictId: string): ReviewOpenCountsByPeer => ({
+	a: {
+		conflictId,
+		status: "open",
+		openItemCount: 1,
+		sessionOpenItemCount: 1,
+		targetIsOpen: true,
+	},
+	b: {
+		conflictId,
+		status: "open",
+		openItemCount: 1,
+		sessionOpenItemCount: 1,
+		targetIsOpen: true,
+	},
+});
 
 describe("headless dangling resource review actions", () => {
 	it("relinks missing media from a natural dangling-resource conflict", async () => {
@@ -18,6 +38,7 @@ describe("headless dangling resource review actions", () => {
 				"room-headless-dangling-relink",
 			);
 		try {
+			const before = singleOpenReviewBefore(item.conflictId);
 			await dispatchReviewActionLikeUi(
 				pair.a,
 				item,
@@ -28,7 +49,7 @@ describe("headless dangling resource review actions", () => {
 				}),
 			);
 
-			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
 			const localResource = await readResourceState(pair.a, resourceId);
 			expect(localResource.status).toBe("ready");
 			expect(localResource.url).toBe("memory://review/relinked-resource.webm");
@@ -60,6 +81,7 @@ describe("headless dangling resource review actions", () => {
 				"room-headless-dangling-offline",
 			);
 		try {
+			const before = singleOpenReviewBefore(item.conflictId);
 			await dispatchReviewActionLikeUi(
 				pair.a,
 				item,
@@ -67,7 +89,7 @@ describe("headless dangling resource review actions", () => {
 				buildDanglingOfflinePayload(item),
 			);
 
-			await expectReviewResolvedOnBoth(pair, item.conflictId);
+			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
 			const localResource = await readResourceState(pair.a, resourceId);
 			expect(localResource.status).toBe("offline");
 
