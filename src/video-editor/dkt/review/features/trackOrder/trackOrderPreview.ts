@@ -80,12 +80,7 @@ const collectTrackMeta = (
 	if (!isRecord(source)) {
 		return;
 	}
-	const candidates = [
-		source.tracks,
-		source.trackDetails,
-		source.trackMeta,
-		source.trackMetadata,
-	];
+	const candidates = [source.tracks];
 	for (const candidate of candidates) {
 		if (Array.isArray(candidate)) {
 			for (const entry of candidate) {
@@ -120,10 +115,8 @@ const orderFromSource = (
 		}
 	}
 	collectTrackMeta(source, trackMeta);
-	const currentRaw =
-		source.currentOrder ?? source.current ?? source.local ?? source.ours;
-	const incomingRaw =
-		source.incomingOrder ?? source.incoming ?? source.remote ?? source.theirs;
+	const currentRaw = source.currentOrder;
+	const incomingRaw = source.incomingOrder;
 	const currentOrder = normalizeOrder(currentRaw, trackMeta);
 	const incomingOrder = normalizeOrder(incomingRaw, trackMeta);
 	return currentOrder && incomingOrder ? { currentOrder, incomingOrder } : null;

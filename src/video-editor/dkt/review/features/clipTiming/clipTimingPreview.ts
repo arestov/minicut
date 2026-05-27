@@ -24,23 +24,6 @@ const fieldSet = new Set<string>(clipTimingFields);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-const variantKeys = {
-	current: ["current", "local", "ours", "base"],
-	incoming: ["incoming", "remote", "theirs"],
-} as const;
-
-const readVariant = (
-	source: Record<string, unknown>,
-	keys: readonly string[],
-): unknown => {
-	for (const key of keys) {
-		if (source[key] !== undefined) {
-			return source[key];
-		}
-	}
-	return null;
-};
-
 export const parseClipTimingVariant = (
 	value: unknown,
 ): ClipTimingVariant | null => {
@@ -82,12 +65,8 @@ const previewFromSource = (source: unknown): ClipTimingPreview | null => {
 			return nested;
 		}
 	}
-	const current = parseClipTimingVariant(
-		readVariant(source, variantKeys.current),
-	);
-	const incoming = parseClipTimingVariant(
-		readVariant(source, variantKeys.incoming),
-	);
+	const current = parseClipTimingVariant(source.current);
+	const incoming = parseClipTimingVariant(source.incoming);
 	if (!current || !incoming) {
 		return null;
 	}

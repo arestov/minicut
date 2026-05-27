@@ -66,9 +66,7 @@ export const extractDeleteVsEditPreview = (input: {
 	if (!deleted || !edited) {
 		throw new Error("Delete-vs-edit conflict requires MiniCut preview details");
 	}
-	const rawClipAttrs =
-		recordOrUndefined(edited?.clipAttrs) ??
-		recordOrUndefined(edited?.attrs);
+	const rawClipAttrs = recordOrUndefined(edited?.clipAttrs);
 	if (!rawClipAttrs) {
 		throw new Error("Delete-vs-edit conflict requires edited clip attrs");
 	}
