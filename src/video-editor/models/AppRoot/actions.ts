@@ -459,11 +459,27 @@ const clipSnapshotTiming = (clip: unknown): Record<string, unknown> => {
 	};
 };
 
+const mvrAlternativeValue = (value: unknown): unknown =>
+	asRecord(value)?.value ?? value;
+
 const findTrackProjectId = (projects: unknown, trackId: string): string | null => {
 	if (!Array.isArray(projects)) return null;
 	for (const project of projects) {
 		if (relList(project, "tracks").some((track) => getNodeId(track) === trackId)) {
 			return getNodeId(project);
+		}
+	}
+	return null;
+};
+
+const findClipInProjects = (projects: unknown, clipId: string): unknown => {
+	if (!Array.isArray(projects)) return null;
+	for (const project of projects) {
+		for (const track of relList(project, "tracks")) {
+			const clip = relList(track, "clips").find(
+				(candidate) => getNodeId(candidate) === clipId,
+			);
+			if (clip) return clip;
 		}
 	}
 	return null;
@@ -517,7 +533,11 @@ const augmentDeleteVsEditConflict = (
 	};
 };
 
-const augmentClipTimingConflict = (payload: unknown, clips: unknown) => {
+const augmentClipTimingConflict = (
+	payload: unknown,
+	projects: unknown,
+	clips: unknown,
+) => {
 	const conflict = asRecord(payload);
 	if (!conflict || conflict.kind !== "mvr_alternatives") {
 		return payload;
@@ -534,11 +554,18 @@ const augmentClipTimingConflict = (payload: unknown, clips: unknown) => {
 	const clip = Array.isArray(clips)
 		? clips.find((candidate) => getNodeId(candidate) === mvr.nodeId)
 		: null;
-	if (!clip) {
+	const graphClip = clip ?? findClipInProjects(projects, mvr.nodeId);
+	if (!graphClip) {
 		return payload;
 	}
-	const current = clipSnapshotTiming(clip);
-	const incoming = { ...current, [mvr.fieldName]: mvr.alternatives[1] };
+	const current = clipSnapshotTiming(graphClip);
+	const currentFieldValue = current[mvr.fieldName];
+	const incomingValue =
+		mvr.alternatives
+			.map(mvrAlternativeValue)
+			.find((value) => value !== currentFieldValue) ??
+		mvrAlternativeValue(mvr.alternatives[1]);
+	const incoming = { ...current, [mvr.fieldName]: incomingValue };
 	return {
 		...conflict,
 		details: {
@@ -560,6 +587,7 @@ const augmentReviewConflict = (
 			projects,
 			clips,
 		),
+		projects,
 		clips,
 	);
 
