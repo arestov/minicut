@@ -1,3 +1,7 @@
+import { readStructuralDeleteRelationConflict } from "../../dktConflictNormalizers";
+import { readMiniCutConflictDetails } from "../../minicutConflictEnrichment";
+import type { CrdtConflictRecord } from "../../types";
+
 export type DeleteVsEditDeletedVariant = {
 	clipId: string;
 	trackId?: string;
@@ -47,72 +51,31 @@ const firstRecord = (...values: unknown[]): Record<string, unknown> | undefined 
 export const extractDeleteVsEditPreview = (input: {
 	conflict: Pick<
 		CrdtConflictRecord,
-		"kind" | "payload" | "details" | "variants" | "node_id"
+		"kind" | "payload" | "details" | "origin_peer_id" | "happened_at"
 	>;
-	payload?: unknown;
-	details?: unknown;
-	variants?: unknown;
-	nodeId?: string | null;
-	originPeerId?: string | null;
-	happenedAt?: number | null;
 }): DeleteVsEditPreview => {
-	const payload = recordOrUndefined(input.payload);
-	const details = recordOrUndefined(input.details);
-	const variants = recordOrUndefined(input.variants);
 	const structuralParts = readStructuralDeleteRelationConflict(input.conflict);
-	const deleted = firstRecord(
-		payload?.deleted,
-		payload?.tombstone,
-		variants?.deleted,
-		variants?.tombstone,
-		details?.deleted,
+	if (!structuralParts || structuralParts.relationName !== "clips") {
+		throw new Error("Delete-vs-edit conflict requires typed clips relation payload");
+	}
+	const minicutDeleteVsEdit = recordOrUndefined(
+		readMiniCutConflictDetails(input.conflict).deleteVsEdit,
 	);
-	const edited = firstRecord(
-		payload?.edited,
-		payload?.edit,
-		payload?.concurrent,
-		variants?.edited,
-		variants?.incoming,
-		details?.edited,
-	);
+	const deleted = recordOrUndefined(minicutDeleteVsEdit?.deleted);
+	const edited = recordOrUndefined(minicutDeleteVsEdit?.edited);
+	if (!deleted || !edited) {
+		throw new Error("Delete-vs-edit conflict requires MiniCut preview details");
+	}
 	const rawClipAttrs =
 		recordOrUndefined(edited?.clipAttrs) ??
-		recordOrUndefined(edited?.clip_attrs) ??
-		recordOrUndefined(edited?.attrs) ??
-		recordOrUndefined(edited) ??
-		{};
-	const clipId =
-		(structuralParts?.relationName === "clips"
-			? structuralParts.itemNodeId
-			: undefined) ??
-		stringOrUndefined(deleted?.clipId) ??
-		stringOrUndefined(deleted?.clip_id) ??
-		stringOrUndefined(rawClipAttrs.clipId) ??
-		stringOrUndefined(rawClipAttrs.clip_id) ??
-		"";
-	const trackId =
-		(structuralParts?.relationName === "clips"
-			? structuralParts.ownerNodeId
-			: undefined) ??
-		stringOrUndefined(deleted?.trackId) ??
-		stringOrUndefined(deleted?.track_id) ??
-		stringOrUndefined(rawClipAttrs.targetTrackId) ??
-		stringOrUndefined(rawClipAttrs.target_track_id);
-	const clipAttrs =
-		Object.keys(rawClipAttrs).length > 0 || !trackId
-			? rawClipAttrs
-			: {
-					name: "Restored clip",
-					mediaKind: "text",
-					start: 0,
-					in: 0,
-					duration: 1,
-					clipId,
-					targetTrackId: trackId,
-				};
-	const resourceAttrs =
-		recordOrUndefined(edited?.resourceAttrs) ??
-		recordOrUndefined(edited?.resource_attrs);
+		recordOrUndefined(edited?.attrs);
+	if (!rawClipAttrs) {
+		throw new Error("Delete-vs-edit conflict requires edited clip attrs");
+	}
+	const clipId = structuralParts.itemNodeId;
+	const trackId = structuralParts.ownerNodeId;
+	const clipAttrs = rawClipAttrs;
+	const resourceAttrs = recordOrUndefined(edited?.resourceAttrs);
 	const timing =
 		recordOrUndefined(edited?.timing) ??
 		(["start", "in", "duration", "fadeIn", "fadeOut"].some(
@@ -133,27 +96,20 @@ export const extractDeleteVsEditPreview = (input: {
 			...(trackId ? { trackId } : null),
 			resourceId:
 				stringOrUndefined(deleted?.resourceId) ??
-				stringOrUndefined(deleted?.resource_id) ??
-				stringOrUndefined(resourceAttrs?.resourceId) ??
-				stringOrUndefined(resourceAttrs?.resource_id),
+				stringOrUndefined(resourceAttrs?.resourceId),
 			deletedAt:
 				numberOrUndefined(deleted?.deletedAt) ??
-				numberOrUndefined(deleted?.deleted_at) ??
-				numberOrUndefined(input.happenedAt),
+				numberOrUndefined(input.conflict.happened_at),
 			peerId:
 				stringOrUndefined(deleted?.peerId) ??
-				stringOrUndefined(deleted?.peer_id) ??
-				stringOrUndefined(input.originPeerId),
+				stringOrUndefined(input.conflict.origin_peer_id),
 		},
 		editedVariant: {
 			clipAttrs,
 			...(resourceAttrs ? { resourceAttrs } : null),
-			...(recordArrayOrUndefined(edited?.effectAttrs) ??
-			recordArrayOrUndefined(edited?.effect_attrs)
+			...(recordArrayOrUndefined(edited?.effectAttrs)
 				? {
-						effectAttrs:
-							recordArrayOrUndefined(edited?.effectAttrs) ??
-							recordArrayOrUndefined(edited?.effect_attrs),
+						effectAttrs: recordArrayOrUndefined(edited?.effectAttrs),
 					}
 				: null),
 			...(timing ? { timing } : null),
@@ -168,5 +124,3 @@ export const extractDeleteVsEditPreview = (input: {
 			: null),
 	};
 };
-import { readStructuralDeleteRelationConflict } from "../../dktConflictNormalizers";
-import type { CrdtConflictRecord } from "../../types";

@@ -87,7 +87,7 @@ describe("materializeDeleteVsEditReviewItem", () => {
 	});
 
 	it("does not recover clip ids from structural-delete conflict ids", () => {
-		expect(
+		expect(() =>
 			materializeDeleteVsEditReviewItem({
 				conflict: {
 					...deleteVsEditConflictFixture,
@@ -97,7 +97,7 @@ describe("materializeDeleteVsEditReviewItem", () => {
 					details: {},
 				},
 				projectId: "project:1",
-			}).affectedObjects,
-		).toEqual([]);
+			}),
+		).toThrow("Delete-vs-edit conflict requires typed clips relation payload");
 	});
 });

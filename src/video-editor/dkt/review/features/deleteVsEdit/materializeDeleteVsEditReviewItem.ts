@@ -25,12 +25,6 @@ export const materializeDeleteVsEditReviewItem = ({
 }): MiniCutReviewItem => {
 	const preview = extractDeleteVsEditPreview({
 		conflict,
-		payload: conflict.payload,
-		details: conflict.details,
-		variants: conflict.variants,
-		nodeId: conflict.node_id,
-		originPeerId: conflict.origin_peer_id,
-		happenedAt: conflict.happened_at,
 	});
 	const clipAttrs = preview.editedVariant.clipAttrs;
 	const resourceAttrs = preview.editedVariant.resourceAttrs;
@@ -38,7 +32,7 @@ export const materializeDeleteVsEditReviewItem = ({
 	const resourceId =
 		preview.deletedVariant.resourceId ??
 		stringOrUndefined(resourceAttrs?.resourceId) ??
-		stringOrUndefined(resourceAttrs?.resource_id);
+		null;
 	return {
 		id: reviewItemIdForConflict(conflict.conflict_id),
 		conflictId: conflict.conflict_id,
