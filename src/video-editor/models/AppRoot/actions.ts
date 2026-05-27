@@ -1,4 +1,10 @@
 import { makeCrdtAcknowledgePayload } from "../../dkt/review/crdtReviewCommands";
+import {
+	readDanglingRefConflict,
+	readSequenceMoveConflict,
+	readStructuralDeleteRelationConflict,
+} from "../../dkt/review/dktConflictNormalizers";
+import type { CrdtConflictRecord } from "../../dkt/review/types";
 import { defaultClipTransform } from "../Clip/actions";
 import { reduceCreateActivitySummary } from "../ActivitySummary/actions";
 import { reduceCreateReviewItem } from "../ReviewItem/actions";
@@ -34,22 +40,26 @@ const relList = (model: unknown, relName: string): unknown[] => {
 
 const collectConflictNodeIds = (payload: unknown): Set<string> => {
 	const ids = new Set<string>();
-	const collectStructuralDeleteIds = (conflictId: unknown) => {
-		if (typeof conflictId !== "string") return;
-		const match = conflictId.match(
-			/^structural-delete:(crdt:[^:]+):([^:]+):(crdt:[^:]+):[^:]+:\d+$/,
-		);
-		if (!match) return;
-		ids.add(match[1]);
-		ids.add(match[3]);
-	};
 	const collectRecordIds = (value: unknown) => {
 		if (!value || typeof value !== "object") {
 			return;
 		}
 		const record = value as Record<string, unknown>;
-		collectStructuralDeleteIds(record.conflict_id ?? record.conflictId);
-		for (const key of ["node_id", "source_id", "sourceId", "target_id", "targetId"]) {
+		const structural = readStructuralDeleteRelationConflict(
+			record as unknown as CrdtConflictRecord,
+		);
+		if (structural) {
+			ids.add(structural.ownerNodeId);
+			ids.add(structural.itemNodeId);
+		}
+		const dangling = readDanglingRefConflict(
+			record as unknown as CrdtConflictRecord,
+		);
+		if (dangling) {
+			ids.add(dangling.sourceNodeId);
+			ids.add(dangling.targetNodeId);
+		}
+		for (const key of ["node_id"]) {
 			const id = record[key];
 			if (typeof id === "string" && id.length > 0) {
 				ids.add(id);
@@ -376,7 +386,6 @@ const applyTrackOrderMove = <Track extends { trackId: string }>(
 
 const augmentTrackOrderConflict = (payload: unknown, projects: unknown) => {
 	const conflict = asRecord(payload);
-	const conflictPayload = asRecord(conflict?.payload);
 	if (
 		!conflict ||
 		conflict.kind !== "sequence_move_vs_move" ||
@@ -385,9 +394,12 @@ const augmentTrackOrderConflict = (payload: unknown, projects: unknown) => {
 	) {
 		return payload;
 	}
-	const current = trackOrderMove(conflictPayload?.current);
-	const incoming = trackOrderMove(conflictPayload?.incoming);
-	const itemId = incoming?.itemId ?? current?.itemId;
+	const sequence = readSequenceMoveConflict(
+		conflict as unknown as CrdtConflictRecord,
+	);
+	const current = trackOrderMove(sequence?.current);
+	const incoming = trackOrderMove(sequence?.incoming);
+	const itemId = incoming?.itemId ?? current?.itemId ?? sequence?.itemNodeId;
 	if (!current || !incoming || !itemId || current.itemId !== itemId) {
 		return payload;
 	}
@@ -412,19 +424,6 @@ const augmentTrackOrderConflict = (payload: unknown, projects: unknown) => {
 				(track) => track.trackId,
 			),
 		},
-	};
-};
-
-const structuralDeleteParts = (conflictId: unknown) => {
-	if (typeof conflictId !== "string") return null;
-	const match = conflictId.match(
-		/^structural-delete:(crdt:[^:]+):([^:]+):(crdt:[^:]+):[^:]+:\d+$/,
-	);
-	if (!match) return null;
-	return {
-		ownerId: match[1],
-		relName: match[2],
-		itemId: match[3],
 	};
 };
 
@@ -473,14 +472,16 @@ const augmentDeleteVsEditConflict = (
 	) {
 		return payload;
 	}
-	const parts = structuralDeleteParts(conflict.conflict_id ?? conflict.conflictId);
-	if (!parts || parts.relName !== "clips") {
+	const structural = readStructuralDeleteRelationConflict(
+		conflict as unknown as CrdtConflictRecord,
+	);
+	if (!structural || structural.relationName !== "clips") {
 		return payload;
 	}
 	const clip = Array.isArray(clips)
-		? clips.find((candidate) => getNodeId(candidate) === parts.itemId)
+		? clips.find((candidate) => getNodeId(candidate) === structural.itemNodeId)
 		: null;
-	const projectId = findTrackProjectId(projects, parts.ownerId);
+	const projectId = findTrackProjectId(projects, structural.ownerNodeId);
 	const details = asRecord(conflict.details) ?? {};
 	return {
 		...conflict,
@@ -489,15 +490,15 @@ const augmentDeleteVsEditConflict = (
 			...details,
 			deleted: {
 				...(asRecord(details.deleted) ?? {}),
-				clipId: parts.itemId,
-				trackId: parts.ownerId,
+				clipId: structural.itemNodeId,
+				trackId: structural.ownerNodeId,
 			},
 			edited: {
 				...(asRecord(details.edited) ?? {}),
 				clipAttrs: {
 					...(clip ? clipSnapshotAttrs(clip) : {}),
-					clipId: parts.itemId,
-					targetTrackId: parts.ownerId,
+					clipId: structural.itemNodeId,
+					targetTrackId: structural.ownerNodeId,
 				},
 			},
 		},

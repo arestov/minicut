@@ -1,4 +1,5 @@
 import type { CrdtConflictRecord } from "../../types";
+import { readDanglingRefConflict } from "../../dktConflictNormalizers";
 
 export type DanglingResourcePreview = {
 	type: "dangling_resource";
@@ -20,18 +21,6 @@ const stringArray = (value: unknown): string[] =>
 	Array.isArray(value)
 		? value.filter((entry): entry is string => typeof entry === "string")
 		: [];
-
-const danglingRefResourceId = (record: Record<string, unknown>): string | null =>
-	stringValue(record.ref) === "resource" ||
-	stringValue(record.field_name) === "resource"
-		? stringValue(record.target_id) ?? stringValue(record.targetId)
-		: null;
-
-const danglingRefClipId = (record: Record<string, unknown>): string | null =>
-	stringValue(record.ref) === "resource" ||
-	stringValue(record.field_name) === "resource"
-		? stringValue(record.source_id) ?? stringValue(record.sourceId)
-		: null;
 
 const firstString = (
 	source: Record<string, unknown>,
@@ -71,11 +60,12 @@ const collectPayloadRecords = (
 export const extractDanglingResourcePreview = (
 	conflict: CrdtConflictRecord,
 ): DanglingResourcePreview => {
+	const danglingRef = readDanglingRefConflict(conflict);
 	const records = collectPayloadRecords(conflict);
 	const resourceId =
+		(danglingRef?.fieldName === "resource" ? danglingRef.targetNodeId : null) ??
 		records
 			.map((record) =>
-				danglingRefResourceId(record) ??
 				firstString(record, [
 					"resourceId",
 					"resource_id",
@@ -96,14 +86,15 @@ export const extractDanglingResourcePreview = (
 	const clipIds = [
 		...new Set(
 			records.flatMap((record) => {
-				const danglingClipId = danglingRefClipId(record);
 				const directClipId = stringValue(record.clipId);
 				return [
 					...stringArray(record.clipIds),
 					...stringArray(record.clip_ids),
 					...stringArray(record.affectedClipIds),
 					...stringArray(record.affected_clip_ids),
-					...(danglingClipId ? [danglingClipId] : []),
+					...(danglingRef?.fieldName === "resource"
+						? [danglingRef.sourceNodeId]
+						: []),
 					...(directClipId ? [directClipId] : []),
 				];
 			}),

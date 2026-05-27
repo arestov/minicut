@@ -49,14 +49,12 @@ describe("extractClipTimingPreview", () => {
 	it("reads CRDT MVR field alternatives when full timing details are unavailable", () => {
 		expect(
 			extractClipTimingPreview({
+				kind: "mvr_alternatives",
+				node_id: "clip:1",
 				field_name: "duration",
 				payload: {
-					alternatives: [
-						{ value: 2, origin: "B" },
-						{ value: 3, origin: "A" },
-					],
+					alternatives: [3, 2],
 				},
-				alternatives: [3, 2],
 			}),
 		).toMatchObject({
 			current: { duration: 3 },

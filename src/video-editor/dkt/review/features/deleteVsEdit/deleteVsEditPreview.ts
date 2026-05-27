@@ -44,20 +44,11 @@ const recordArrayOrUndefined = (
 const firstRecord = (...values: unknown[]): Record<string, unknown> | undefined =>
 	values.find(isRecord) as Record<string, unknown> | undefined;
 
-const structuralDeleteParts = (conflictId: unknown) => {
-	if (typeof conflictId !== "string") return null;
-	const match = conflictId.match(
-		/^structural-delete:(crdt:[^:]+):([^:]+):(crdt:[^:]+):[^:]+:\d+$/,
-	);
-	if (!match || match[2] !== "clips") return null;
-	return {
-		trackId: match[1],
-		clipId: match[3],
-	};
-};
-
 export const extractDeleteVsEditPreview = (input: {
-	conflictId?: string | null;
+	conflict: Pick<
+		CrdtConflictRecord,
+		"kind" | "payload" | "details" | "variants" | "node_id"
+	>;
 	payload?: unknown;
 	details?: unknown;
 	variants?: unknown;
@@ -68,6 +59,7 @@ export const extractDeleteVsEditPreview = (input: {
 	const payload = recordOrUndefined(input.payload);
 	const details = recordOrUndefined(input.details);
 	const variants = recordOrUndefined(input.variants);
+	const structuralParts = readStructuralDeleteRelationConflict(input.conflict);
 	const deleted = firstRecord(
 		payload?.deleted,
 		payload?.tombstone,
@@ -83,7 +75,6 @@ export const extractDeleteVsEditPreview = (input: {
 		variants?.incoming,
 		details?.edited,
 	);
-	const structuralParts = structuralDeleteParts(input.conflictId);
 	const rawClipAttrs =
 		recordOrUndefined(edited?.clipAttrs) ??
 		recordOrUndefined(edited?.clip_attrs) ??
@@ -91,7 +82,9 @@ export const extractDeleteVsEditPreview = (input: {
 		recordOrUndefined(edited) ??
 		{};
 	const clipId =
-		structuralParts?.clipId ??
+		(structuralParts?.relationName === "clips"
+			? structuralParts.itemNodeId
+			: undefined) ??
 		stringOrUndefined(deleted?.clipId) ??
 		stringOrUndefined(deleted?.clip_id) ??
 		stringOrUndefined(rawClipAttrs.clipId) ??
@@ -99,7 +92,9 @@ export const extractDeleteVsEditPreview = (input: {
 		stringOrUndefined(input.nodeId) ??
 		"";
 	const trackId =
-		structuralParts?.trackId ??
+		(structuralParts?.relationName === "clips"
+			? structuralParts.ownerNodeId
+			: undefined) ??
 		stringOrUndefined(deleted?.trackId) ??
 		stringOrUndefined(deleted?.track_id) ??
 		stringOrUndefined(rawClipAttrs.targetTrackId) ??
@@ -174,3 +169,5 @@ export const extractDeleteVsEditPreview = (input: {
 			: null),
 	};
 };
+import { readStructuralDeleteRelationConflict } from "../../dktConflictNormalizers";
+import type { CrdtConflictRecord } from "../../types";

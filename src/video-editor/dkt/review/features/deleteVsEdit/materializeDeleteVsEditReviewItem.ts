@@ -24,7 +24,7 @@ export const materializeDeleteVsEditReviewItem = ({
 	projectId: string;
 }): MiniCutReviewItem => {
 	const preview = extractDeleteVsEditPreview({
-		conflictId: conflict.conflict_id,
+		conflict,
 		payload: conflict.payload,
 		details: conflict.details,
 		variants: conflict.variants,

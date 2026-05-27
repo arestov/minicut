@@ -1,38 +1,18 @@
 import type { CrdtConflictRecord, MiniCutReviewItem } from "../../types";
+import { readDanglingRefConflict } from "../../dktConflictNormalizers";
 import { extractDanglingResourcePreview } from "./danglingResourcePreview";
 import { materializeDanglingResourceReviewItem } from "./materializeDanglingResourceReviewItem";
 
 const includesToken = (value: string | null | undefined, token: string) =>
 	typeof value === "string" && value.toLowerCase().includes(token);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	Boolean(value) && typeof value === "object" && !Array.isArray(value);
-
 const payloadIdentifiesMissingResourceRelation = (
 	conflict: CrdtConflictRecord,
 ): boolean => {
+	const danglingRef = readDanglingRefConflict(conflict);
+	if (danglingRef?.fieldName === "resource") return true;
 	if (conflict.field_kind !== "rel") return false;
-	if (includesToken(conflict.field_name, "resource")) return true;
-	const payload = isRecord(conflict.payload) ? conflict.payload : {};
-	const relation =
-		typeof payload.relation === "string"
-			? payload.relation
-			: typeof payload.rel === "string"
-				? payload.rel
-				: null;
-	const target =
-		typeof payload.target === "string"
-			? payload.target
-			: typeof payload.targetType === "string"
-				? payload.targetType
-				: null;
-	return (
-		includesToken(relation, "resource") ||
-		(includesToken(target, "resource") &&
-			(includesToken(conflict.kind, "missing") ||
-				includesToken(conflict.kind, "dangling") ||
-				includesToken(conflict.kind, "orphan")))
-	);
+	return includesToken(conflict.field_name, "resource");
 };
 
 const isDeleteVsEditClipLifecycle = (conflict: CrdtConflictRecord): boolean =>

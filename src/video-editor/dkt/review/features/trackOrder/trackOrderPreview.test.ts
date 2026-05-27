@@ -34,12 +34,25 @@ describe("extractTrackOrderPreview", () => {
 	it("derives orders from kernel move-vs-move payloads", () => {
 		expect(
 			extractTrackOrderPreview({
+				kind: "sequence_move_vs_move",
 				payload: {
 					current: { after_id: null, op_id: "A:2" },
 					incoming: {
 						item_id: "track:overlay",
 						after_id: "track:video",
 						op_id: "B:1",
+					},
+					sequence: {
+						owner_node_id: "project:1",
+						name: "tracks",
+						item_node_id: "track:overlay",
+						current: { after_id: null, op_id: "A:2" },
+						incoming: {
+							item_id: "track:overlay",
+							after_id: "track:video",
+							op_id: "B:1",
+						},
+						operation: "move_vs_move",
 					},
 				},
 				details: null,

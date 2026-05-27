@@ -1,4 +1,5 @@
 import type { CrdtConflictRecord } from "../../types";
+import { readMvrAttrConflict } from "../../dktConflictNormalizers";
 
 export const clipTimingFields = [
 	"start",
@@ -102,8 +103,8 @@ const previewFromSource = (source: unknown): ClipTimingPreview | null => {
 
 export const extractClipTimingPreview = (
 	conflict: Pick<
-		CrdtConflictRecord,
-		"payload" | "details" | "variants" | "field_name"
+	CrdtConflictRecord,
+		"kind" | "node_id" | "payload" | "details" | "variants" | "field_name"
 	> & { alternatives?: unknown },
 ): ClipTimingPreview => {
 	const preview =
@@ -118,9 +119,16 @@ export const extractClipTimingPreview = (
 };
 
 const previewFromMvrFieldAlternatives = (
-	conflict: Pick<CrdtConflictRecord, "field_name"> & { alternatives?: unknown },
+	conflict: Pick<
+		CrdtConflictRecord,
+		"kind" | "node_id" | "field_name" | "payload"
+	> & { alternatives?: unknown },
 ): ClipTimingPreview | null => {
-	const field = conflict.field_name;
+	const mvr = readMvrAttrConflict(conflict);
+	if (!mvr) {
+		return null;
+	}
+	const field = mvr.fieldName;
 	if (
 		field !== "start" &&
 		field !== "in" &&
@@ -130,9 +138,7 @@ const previewFromMvrFieldAlternatives = (
 	) {
 		return null;
 	}
-	const alternatives = Array.isArray(conflict.alternatives)
-		? conflict.alternatives
-		: [];
+	const alternatives = mvr.alternatives;
 	const currentValue = alternatives[0];
 	const incomingValue = alternatives[1];
 	if (

@@ -1,4 +1,5 @@
 import type { CrdtConflictRecord } from "../../types";
+import { readSequenceMoveConflict } from "../../dktConflictNormalizers";
 
 export type TrackOrderEntry = {
 	trackId: string;
@@ -163,15 +164,16 @@ const orderFromMove = (
 };
 
 const orderFromKernelMovePayload = (
-	source: unknown,
+	conflict: Pick<CrdtConflictRecord, "kind" | "payload">,
 	trackMeta: Map<string, TrackOrderEntry>,
 ): Pick<TrackOrderPreview, "currentOrder" | "incomingOrder"> | null => {
-	if (!isRecord(source)) {
+	const sequence = readSequenceMoveConflict(conflict);
+	if (!sequence || sequence.relationName !== "tracks" || !sequence.current) {
 		return null;
 	}
-	const current = asMoveOp(source.current);
-	const incoming = asMoveOp(source.incoming);
-	const itemId = incoming?.itemId ?? current?.itemId;
+	const current = asMoveOp(sequence.current);
+	const incoming = asMoveOp(sequence.incoming);
+	const itemId = incoming?.itemId ?? current?.itemId ?? sequence.itemNodeId;
 	if (!current || !incoming || !itemId) {
 		return null;
 	}
@@ -194,7 +196,10 @@ const movedTrackIds = (
 };
 
 export const extractTrackOrderPreview = (
-	conflict: Pick<CrdtConflictRecord, "payload" | "details" | "variants">,
+	conflict: Pick<
+		CrdtConflictRecord,
+		"kind" | "payload" | "details" | "variants"
+	>,
 ): TrackOrderPreview => {
 	const trackMeta = new Map<string, TrackOrderEntry>();
 	collectTrackMeta(conflict.payload, trackMeta);
@@ -204,7 +209,7 @@ export const extractTrackOrderPreview = (
 		orderFromSource(conflict.payload, trackMeta) ??
 		orderFromSource(conflict.details, trackMeta) ??
 		orderFromSource(conflict.variants, trackMeta) ??
-		orderFromKernelMovePayload(conflict.payload, trackMeta);
+		orderFromKernelMovePayload(conflict, trackMeta);
 	if (!orders) {
 		throw new Error("Unsupported track order conflict payload");
 	}
