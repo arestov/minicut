@@ -946,7 +946,14 @@ export const Project = model({
 		],
 		parkIncomingVariantOnReviewTrack: [
 			{
+				input_base_rel_shape: {
+					clipId: {
+						any: true,
+						many: false,
+					},
+				},
 				to: {
+					sourceClip: ["*"],
 					reviewTrack: [
 						"<< track << #",
 						{
@@ -986,18 +993,24 @@ export const Project = model({
 					},
 				},
 				fn: [
-					["$noop", "<<<<", "<< @all:reviewItems"] as const,
+					[
+						"$noop",
+						"<<<<",
+						"<<<< $input_id:clipId",
+						"<< @all:reviewItems",
+					] as const,
 					(
 						payload: unknown,
 						noop: unknown,
 						project: unknown,
+						sourceClip: unknown,
 						reviewItems: unknown,
 					) =>
 						reduceParkIncomingVariantOnReviewTrack(
 							payload,
 							noop,
 							project,
-							undefined,
+							sourceClip,
 							undefined,
 							reviewItems,
 						),

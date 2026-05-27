@@ -12,7 +12,8 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 				reviewItemId: "review:clip",
 				clipId: "clip:1",
 				variant: "incoming",
-				timing: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
+				sourceTiming: { start: 0, in: 0, duration: 4, fadeIn: 0, fadeOut: 0 },
+				parkedTiming: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
 			},
 			"$noop",
 			{ _node_id: "project:1" },
@@ -40,6 +41,17 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 		);
 
 		expect(result).toMatchObject({
+			sourceClip: {
+				"clip:1": {
+					attrs: {
+						start: 0,
+						in: 0,
+						duration: 4,
+						fadeIn: 0,
+						fadeOut: 0,
+					},
+				},
+			},
 			reviewTrack: {
 				attrs: {
 					name: "Incoming Review - Intro",
@@ -91,6 +103,13 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 								type: "parked_variant",
 								sourceClipId: "clip:1",
 								variant: "incoming",
+								sourceTiming: {
+									start: 0,
+									in: 0,
+									duration: 4,
+									fadeIn: 0,
+									fadeOut: 0,
+								},
 								parkedClipId: { use_ref_id: "parkedIncomingClip" },
 								reviewTrackId: { use_ref_id: "incomingReviewTrack" },
 							},
@@ -120,7 +139,8 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 					conflictId: "conflict:clip",
 					reviewItemId: "review:clip",
 					clipId: "clip:1",
-					timing: { start: 2, in: 1, duration: -1 },
+					sourceTiming: { start: 0, in: 0, duration: 4 },
+					parkedTiming: { start: 2, in: 1, duration: -1 },
 				},
 				"$noop",
 				{ _node_id: "project:1" },
@@ -136,7 +156,8 @@ describe("reduceParkIncomingVariantOnReviewTrack", () => {
 					conflictId: "conflict:clip",
 					reviewItemId: "review:clip",
 					clipId: "clip:1",
-					timing: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
+					sourceTiming: { start: 0, in: 0, duration: 4, fadeIn: 0, fadeOut: 0 },
+					parkedTiming: { start: 2, in: 1, duration: 3, fadeIn: 0, fadeOut: 0 },
 				},
 				"$noop",
 				{ _node_id: "project:1" },

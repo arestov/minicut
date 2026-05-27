@@ -147,19 +147,27 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 	const reviewItemId = stringOrNull(payload.reviewItemId);
 	const clipId = stringOrNull(payload.clipId) ?? getNodeId(sourceClip);
 	const sourceClipId = getNodeId(sourceClip);
-	const timing = parseClipTimingVariant(payload.timing);
+	const sourceTiming = parseClipTimingVariant(payload.sourceTiming);
+	const parkedTiming = parseClipTimingVariant(payload.parkedTiming);
 	if (
 		!conflictId ||
 		!reviewItemId ||
 		!clipId ||
 		(sourceClipId !== null && sourceClipId !== clipId) ||
-		!timing ||
-		timing.start < 0 ||
-		timing.in < 0 ||
-		timing.duration <= 0 ||
-		timing.fadeIn < 0 ||
-		timing.fadeOut < 0 ||
-		timing.fadeIn + timing.fadeOut > timing.duration
+		!sourceTiming ||
+		!parkedTiming ||
+		sourceTiming.start < 0 ||
+		sourceTiming.in < 0 ||
+		sourceTiming.duration <= 0 ||
+		sourceTiming.fadeIn < 0 ||
+		sourceTiming.fadeOut < 0 ||
+		sourceTiming.fadeIn + sourceTiming.fadeOut > sourceTiming.duration ||
+		parkedTiming.start < 0 ||
+		parkedTiming.in < 0 ||
+		parkedTiming.duration <= 0 ||
+		parkedTiming.fadeIn < 0 ||
+		parkedTiming.fadeOut < 0 ||
+		parkedTiming.fadeIn + parkedTiming.fadeOut > parkedTiming.duration
 	) {
 		return noop;
 	}
@@ -178,6 +186,7 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 		projectId: getNodeId(project),
 		conflictId,
 		reviewItemId,
+		sourceTiming,
 		reviewTrackAttrs: {
 			kind: mediaKind === "audio" ? "audio" : "video",
 			name: `Incoming Review - ${sourceName ?? clipId}`,
@@ -194,11 +203,11 @@ export const reduceParkIncomingVariantOnReviewTrack = (
 			name: `${sourceName ?? "Clip"} incoming timing`,
 			color: stringOrNull(modelAttr(sourceClip, "color")) ?? "#f59e0b",
 			mediaKind: mediaKind ?? "video",
-			start: timing.start,
-			in: timing.in,
-			duration: timing.duration,
-			fadeIn: timing.fadeIn,
-			fadeOut: timing.fadeOut,
+			start: parkedTiming.start,
+			in: parkedTiming.in,
+			duration: parkedTiming.duration,
+			fadeIn: parkedTiming.fadeIn,
+			fadeOut: parkedTiming.fadeOut,
 			audio: objectAttr(sourceClip, "audio", { gain: 1, pan: 0 }),
 			opacity: objectAttr(sourceClip, "opacity", { value: 1 }),
 			transform: objectAttr(sourceClip, "transform", {
@@ -232,9 +241,14 @@ export const reduceCreateParkedIncomingVariant = (
 		!conflictId ||
 		!reviewItemId ||
 		!clipId ||
+		!isRecord(payload.sourceTiming) ||
 		!isRecord(payload.reviewTrackAttrs) ||
 		!isRecord(payload.parkedClipAttrs)
 	) {
+		return noop;
+	}
+	const sourceTiming = parseClipTimingVariant(payload.sourceTiming);
+	if (!sourceTiming) {
 		return noop;
 	}
 	const domainResult = {
@@ -243,6 +257,7 @@ export const reduceCreateParkedIncomingVariant = (
 		reviewTrackId: { use_ref_id: "incomingReviewTrack" },
 		sourceClipId: clipId,
 		variant: "incoming",
+		sourceTiming,
 	};
 	const decisions = matchingReviewDecisionInputs({
 		conflictId,
@@ -254,6 +269,11 @@ export const reduceCreateParkedIncomingVariant = (
 		reviewItems: payload.reviewItems,
 	});
 	return {
+		sourceClip: {
+			[clipId]: {
+				attrs: sourceTiming,
+			},
+		},
 		reviewTrack: {
 			attrs: payload.reviewTrackAttrs,
 			rels: {

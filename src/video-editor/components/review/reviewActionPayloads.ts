@@ -104,7 +104,8 @@ export const buildClipTimingParkPayload = (item: MiniCutReviewItem) => {
 		conflictGroupId: item.source?.conflictGroupId,
 		clipId: clipIdFromItem(item),
 		variant: "incoming",
-		timing: assertTimingVariant(item, preview.incoming),
+		sourceTiming: assertTimingVariant(item, preview.current),
+		parkedTiming: assertTimingVariant(item, preview.incoming),
 	};
 };
 
