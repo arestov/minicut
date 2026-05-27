@@ -100,7 +100,7 @@ describe("AppRoot review actions", () => {
 				items: [
 					{
 						attrs: {
-							reviewItemId: "review:conflict:dangling-resource",
+							reviewItemId: "review:opaque:dangling-resource",
 							status: "acknowledged",
 						},
 					},

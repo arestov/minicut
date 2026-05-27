@@ -10,8 +10,8 @@ describe("materializeTrackOrderReviewItem", () => {
 		});
 
 		expect(item).toMatchObject({
-			id: "review:conflict:track-order",
-			conflictId: "conflict:track-order",
+			id: "review:opaque:track-order",
+			conflictId: "opaque:track-order",
 			projectId: "project:1",
 			kind: "track_order",
 			title: "Track order changed while offline",
@@ -46,12 +46,28 @@ describe("materializeTrackOrderReviewItem", () => {
 		});
 	});
 
+	it("does not recover sequence facts from sequence conflict ids", () => {
+		expect(() =>
+			materializeTrackOrderReviewItem({
+				conflict: {
+					...trackOrderConflictFixture,
+					conflict_id:
+						"sequence:move-vs-move:project:1:tracks:track:audio:root",
+					payload: {},
+					details: null,
+				},
+				projectId: "project:1",
+			}),
+		).toThrow("Unsupported track order conflict payload");
+	});
+
 	it("throws for records without enough order information", () => {
 		expect(() =>
 			materializeTrackOrderReviewItem({
 				conflict: {
 					...trackOrderConflictFixture,
 					payload: { currentOrder: ["track:video"] },
+					details: null,
 				},
 				projectId: "project:1",
 			}),

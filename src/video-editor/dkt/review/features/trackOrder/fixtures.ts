@@ -1,15 +1,31 @@
 import type { CrdtConflictRecord } from "../../types";
 
 export const trackOrderConflictFixture: CrdtConflictRecord = {
-	conflict_id: "conflict:track-order",
+	conflict_id: "opaque:track-order",
 	status: "open",
-	kind: "ordered_membership_conflict",
+	kind: "sequence_move_vs_move",
 	node_id: "project:1",
 	model_name: "project",
 	field_kind: "rel",
 	field_name: "tracks",
 	aggregate: "projectTracks",
 	payload: {
+		sequence: {
+			owner_node_id: "project:1",
+			name: "tracks",
+			item_node_id: "track:audio",
+			current: {
+				item_id: "track:audio",
+				after_id: "track:video",
+			},
+			incoming: {
+				item_id: "track:audio",
+				after_id: null,
+			},
+			operation: "move_vs_move",
+		},
+	},
+	details: {
 		tracks: [
 			{ trackId: "track:video", name: "Video", kind: "video" },
 			{ trackId: "track:audio", name: "Audio", kind: "audio" },

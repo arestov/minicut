@@ -1,15 +1,27 @@
 import type { CrdtConflictRecord } from "../../types";
 
 export const deleteVsEditConflictFixture: CrdtConflictRecord = {
-	conflict_id: "conflict:delete-vs-edit",
+	conflict_id: "opaque:delete-vs-edit",
 	status: "open",
 	kind: "structural_delete_with_concurrent_activity",
-	node_id: "clip:2",
-	model_name: "clip",
+	node_id: "track:main",
+	model_name: "track",
+	field_kind: "rel",
+	field_name: "clips",
 	aggregate: "clipLifecycle",
 	payload: {
+		relation: {
+			owner_node_id: "track:main",
+			name: "clips",
+			item_node_id: "clip:2",
+			operation: "delete",
+		},
+		local_activity: "owned_subtree",
+	},
+	details: {
 		deleted: {
 			clipId: "clip:2",
+			trackId: "track:main",
 			resourceId: "resource:7",
 			deletedAt: 3,
 			peerId: "peer-a",

@@ -14,8 +14,8 @@ describe("materializeDanglingResourceReviewItem", () => {
 		});
 
 		expect(item).toMatchObject({
-			id: "review:conflict:dangling-resource",
-			conflictId: "conflict:dangling-resource",
+			id: "review:opaque:dangling-resource",
+			conflictId: "opaque:dangling-resource",
 			projectId: "project:1",
 			kind: "dangling_resource",
 			status: "open",
@@ -46,6 +46,22 @@ describe("materializeDanglingResourceReviewItem", () => {
 			missingUrl: "file:///offline/interview-missing.mov",
 			lastKnownSource: { kind: "file", name: "interview-missing.mov" },
 		});
+	});
+
+	it("does not recover resource ids from dangling-ref conflict ids", () => {
+		const conflict: CrdtConflictRecord = {
+			...danglingResourceConflictFixture,
+			conflict_id: "dangling-ref:clip:1:Clip:rel:resource:resource:1:op:1",
+			payload: {},
+			details: {},
+		};
+
+		expect(() =>
+			materializeDanglingResourceReviewItem({
+				conflict,
+				projectId: "project:1",
+			}),
+		).toThrow("Dangling resource conflict requires resource id");
 	});
 
 	it("classifies missing resource relation conflicts", () => {
@@ -117,6 +133,7 @@ describe("materializeDanglingResourceReviewItem", () => {
 					node_id: null,
 					model_name: "clip",
 					payload: { clipIds: ["clip:1"] },
+					details: null,
 				},
 				projectId: "project:1",
 			}),

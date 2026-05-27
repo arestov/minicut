@@ -89,7 +89,6 @@ export const extractDeleteVsEditPreview = (input: {
 		stringOrUndefined(deleted?.clip_id) ??
 		stringOrUndefined(rawClipAttrs.clipId) ??
 		stringOrUndefined(rawClipAttrs.clip_id) ??
-		stringOrUndefined(input.nodeId) ??
 		"";
 	const trackId =
 		(structuralParts?.relationName === "clips"

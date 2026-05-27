@@ -34,7 +34,7 @@ export const materializeDeleteVsEditReviewItem = ({
 	});
 	const clipAttrs = preview.editedVariant.clipAttrs;
 	const resourceAttrs = preview.editedVariant.resourceAttrs;
-	const clipId = preview.deletedVariant.clipId || conflict.node_id || "";
+	const clipId = preview.deletedVariant.clipId;
 	const resourceId =
 		preview.deletedVariant.resourceId ??
 		stringOrUndefined(resourceAttrs?.resourceId) ??

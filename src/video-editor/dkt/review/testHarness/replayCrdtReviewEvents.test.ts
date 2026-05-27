@@ -130,7 +130,7 @@ describe("replayCrdtReviewEvents", () => {
 		expect(result.items).toHaveLength(1);
 		expect(result.items[0]).toEqual(
 			expect.objectContaining({
-				conflictId: "conflict:dangling-resource",
+				conflictId: "opaque:dangling-resource",
 				kind: "dangling_resource",
 				status: "resolved",
 			}),

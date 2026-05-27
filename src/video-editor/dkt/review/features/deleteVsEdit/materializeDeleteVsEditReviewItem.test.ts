@@ -12,8 +12,8 @@ describe("materializeDeleteVsEditReviewItem", () => {
 		});
 
 		expect(item).toMatchObject({
-			id: "review:conflict:delete-vs-edit",
-			conflictId: "conflict:delete-vs-edit",
+			id: "review:opaque:delete-vs-edit",
+			conflictId: "opaque:delete-vs-edit",
 			projectId: "project:1",
 			kind: "delete_vs_edit",
 			title: "Deleted item was edited elsewhere",
@@ -84,5 +84,20 @@ describe("materializeDeleteVsEditReviewItem", () => {
 		expect(deleteVsEditFeature.canMaterialize(trackOrderConflictFixture)).toBe(
 			false,
 		);
+	});
+
+	it("does not recover clip ids from structural-delete conflict ids", () => {
+		expect(
+			materializeDeleteVsEditReviewItem({
+				conflict: {
+					...deleteVsEditConflictFixture,
+					conflict_id:
+						"structural-delete:track:main:clips:clip:2:op:1:1",
+					payload: { local_activity: "owned_subtree" },
+					details: {},
+				},
+				projectId: "project:1",
+			}).affectedObjects,
+		).toEqual([]);
 	});
 });

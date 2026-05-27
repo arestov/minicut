@@ -75,10 +75,7 @@ export const extractDanglingResourcePreview = (
 				]),
 			)
 			.find(Boolean) ??
-		(conflict.model_name === "resource" ||
-		conflict.aggregate === "resourceLifecycle"
-			? stringValue(conflict.node_id)
-			: null);
+		null;
 	if (!resourceId) {
 		throw new Error("Dangling resource conflict requires resource id");
 	}
