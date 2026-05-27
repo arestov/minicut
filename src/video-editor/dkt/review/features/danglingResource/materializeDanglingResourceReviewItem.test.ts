@@ -61,10 +61,10 @@ describe("materializeDanglingResourceReviewItem", () => {
 				conflict,
 				projectId: "project:1",
 			}),
-		).toThrow("Dangling resource conflict requires resource id");
+		).toThrow("Dangling resource conflict requires typed resource ref payload");
 	});
 
-	it("classifies missing resource relation conflicts", () => {
+	it("does not classify legacy missing resource relation conflicts", () => {
 		const conflict: CrdtConflictRecord = {
 			...danglingResourceConflictFixture,
 			aggregate: null,
@@ -73,15 +73,14 @@ describe("materializeDanglingResourceReviewItem", () => {
 			field_name: "resource",
 		};
 
-		expect(danglingResourceFeature.canMaterialize(conflict)).toBe(true);
+		expect(danglingResourceFeature.canMaterialize(conflict)).toBe(false);
 	});
 
-	it("uses the resourceLifecycle anchor node as the resource id", () => {
+	it("uses the typed dangling ref target as the resource id", () => {
 		const item = materializeDanglingResourceReviewItem({
 			conflict: {
 				...danglingResourceConflictFixture,
 				model_name: "resourceLifecycle",
-				payload: { clipIds: ["clip:1"] },
 			},
 			projectId: "project:1",
 		});
@@ -97,10 +96,6 @@ describe("materializeDanglingResourceReviewItem", () => {
 		const item = materializeDanglingResourceReviewItem({
 			conflict: {
 				...danglingResourceConflictFixture,
-				payload: {
-					resourceId: "resource:1",
-					resourceName: "Interview missing.mov",
-				},
 			},
 			projectId: "project:1",
 		});
@@ -137,6 +132,6 @@ describe("materializeDanglingResourceReviewItem", () => {
 				},
 				projectId: "project:1",
 			}),
-		).toThrow("Dangling resource conflict requires resource id");
+		).toThrow("Dangling resource conflict requires typed resource ref payload");
 	});
 });

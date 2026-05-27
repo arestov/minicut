@@ -19,12 +19,15 @@ export const danglingResourceConflictFixture: CrdtConflictRecord = {
 		},
 	},
 	details: {
-		resourceId: "resource:1",
-		resourceName: "Interview missing.mov",
-		resourceKind: "video",
-		clipIds: ["clip:1"],
-		missingUrl: "file:///offline/interview-missing.mov",
-		lastKnownSource: { kind: "file", name: "interview-missing.mov" },
+		minicut: {
+			danglingResource: {
+				resourceName: "Interview missing.mov",
+				resourceKind: "video",
+				clipIds: ["clip:1"],
+				missingUrl: "file:///offline/interview-missing.mov",
+				lastKnownSource: { kind: "file", name: "interview-missing.mov" },
+			},
+		},
 	},
 	source_frame_id: 21,
 	source_root_frame_id: 20,
