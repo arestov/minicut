@@ -1433,18 +1433,16 @@ export const reduceResolveTrackOrderConflict = (
 			id: null,
 			value: orderedTracks,
 		},
-		crdtResolve: {
-			conflict_id: conflictId,
-			decision: {
-				action: "resolveTrackOrderConflict",
-				review_item_id: reviewItemId,
-				domain_result: {
-					type: "track_order_applied",
-					selectedOrder,
-					trackIds: resolvedTrackIds,
-				},
+		crdtResolve: makeCrdtResolvePayload({
+			conflictId,
+			reviewItemId,
+			action: "resolveTrackOrderConflict",
+			domainResult: {
+				type: "track_order_applied",
+				selectedOrder,
+				trackIds: resolvedTrackIds,
 			},
-		},
+		}),
 	};
 };
 

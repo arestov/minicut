@@ -72,6 +72,16 @@ export type MiniCutDktCrdtRuntime = {
 			conflict_id?: unknown;
 			[key: string]: unknown;
 		}[];
+		subscribe?: (
+			listener: (event: {
+				type?: unknown;
+				conflict?: {
+					conflict_id?: unknown;
+					status?: unknown;
+					[key: string]: unknown;
+				} | null;
+			}) => void,
+		) => () => void;
 	};
 	receiveCanonicalOp?: (model: AnyModel, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: AnyModel, ops: unknown[]) => unknown;
@@ -457,6 +467,32 @@ export const bootDktModels = async (
 	};
 
 	const appModel = inited.app_model;
+	const unsubscribeConflictProjection = crdtRuntime?.conflict_store?.subscribe?.(
+		(event: {
+			type?: unknown;
+			conflict?: {
+				conflict_id?: unknown;
+				status?: unknown;
+				[key: string]: unknown;
+			} | null;
+		}) => {
+			const conflict = event.conflict;
+			if (typeof conflict?.conflict_id !== "string") {
+				return;
+			}
+			const payload =
+				conflict.status === "resolved"
+					? { resolved: [conflict] }
+					: conflict.status === "acknowledged"
+						? { acknowledged: [conflict] }
+						: event.type === "create"
+							? { opened: [conflict] }
+							: { updated: [conflict] };
+			void Promise.resolve()
+				.then(() => appModel.dispatch("handleCRDTConflict", payload))
+				.catch((error) => errorsCatcher.reject_error_prom(error));
+		},
+	);
 	if (crdtRuntime && transport && crdtRuntime.attachTransport) {
 		crdtRuntime.attachTransport(transport, { baseModel: appModel });
 	}
@@ -568,6 +604,7 @@ export const bootDktModels = async (
 		storagePackage,
 		crdtStorageOpen: storageOpen,
 		close: async () => {
+			unsubscribeConflictProjection?.();
 			await computed();
 			await storagePackage?.whenReady?.();
 			await storagePackage?.close?.();

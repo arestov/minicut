@@ -85,6 +85,13 @@ type MiniCutCrdtRuntimeLike = {
 			conflict_id?: unknown;
 			[key: string]: unknown;
 		}[];
+		subscribe?: (
+			listener: (event: {
+				type?: unknown;
+				conflict?: { status?: unknown; [key: string]: unknown } | null;
+				previous?: { status?: unknown; [key: string]: unknown } | null;
+			}) => void,
+		) => () => void;
 	};
 	receiveCanonicalOp?: (model: RuntimeModelLike, op: unknown) => unknown;
 	receiveCanonicalOps?: (model: RuntimeModelLike, ops: unknown[]) => unknown;
@@ -451,6 +458,7 @@ export const createMiniCutDktRuntime = (
 ) => {
 	let crdtPromise: ReturnType<typeof createCrdtRuntime> | null = null;
 	let crdtTransportCleanup: (() => void) | null = null;
+	let crdtConflictProjectionCleanup: (() => void) | null = null;
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
 		appModel: RuntimeModelLike;
@@ -625,6 +633,36 @@ export const createMiniCutDktRuntime = (
 						},
 					},
 				});
+				crdtConflictProjectionCleanup?.();
+				crdtConflictProjectionCleanup =
+					crdt.crdtRuntime?.conflict_store?.subscribe?.((event) => {
+						const conflict = event.conflict;
+						if (!conflict?.conflict_id) {
+							return;
+						}
+						const status = conflict.status;
+						const payload =
+							status === "resolved"
+								? { resolved: [conflict] }
+								: status === "acknowledged"
+									? { acknowledged: [conflict] }
+									: event.type === "create"
+										? { opened: [conflict] }
+										: { updated: [conflict] };
+						void Promise.resolve()
+							.then(() => inited.app_model.dispatch("handleCRDTConflict", payload))
+							.catch((error) => {
+								for (const transport of activeTransports) {
+									transport.send({
+										type: DKT_MSG.RUNTIME_ERROR,
+										message:
+											error instanceof Error
+												? error.stack || error.message
+												: String(error),
+									});
+								}
+							});
+					}) ?? null;
 				if (
 					crdt.crdtRuntime &&
 					crdt.transport?.attach &&
@@ -954,6 +992,8 @@ export const createMiniCutDktRuntime = (
 			if (shouldCloseSharedCrdt) {
 				crdtTransportCleanup?.();
 				crdtTransportCleanup = null;
+				crdtConflictProjectionCleanup?.();
+				crdtConflictProjectionCleanup = null;
 			}
 			void Promise.resolve()
 				.then(() => bootstrapApp(activeSessionKey))

@@ -973,13 +973,6 @@ export const Project = model({
 						},
 					],
 					crdtResolve: [crdtReviewResolveBatchTarget],
-					markReviewItemResolved: [
-						"<< reviewItems",
-						{
-							action: "markResolvedFromConflict",
-							sub_flow: true,
-						},
-					],
 					next: ["$output", { can_use_refs: true }],
 				},
 				output_base_rel_shape: {

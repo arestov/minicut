@@ -8,7 +8,6 @@ import type {
 } from "../dkt/review/types";
 import {
 	reduceCreateManualTrackOrderSuggestionOnReviewItem,
-	reduceMarkReviewItemResolvedFromConflict,
 	reduceSetReviewItem,
 } from "./ReviewItem/actions";
 
@@ -154,22 +153,6 @@ export const ReviewItem = model({
 				["$noop", "reviewItemId"] as const,
 				(payload: unknown, noop: unknown, reviewItemId: unknown) =>
 					reduceCreateManualTrackOrderSuggestionOnReviewItem(
-						payload,
-						noop,
-						reviewItemId,
-					),
-			],
-		},
-		markResolvedFromConflict: {
-			to: {
-				conflictId: ["conflictId"],
-				status: ["status"],
-				updatedAt: ["updatedAt"],
-			},
-			fn: [
-				["$noop", "reviewItemId"] as const,
-				(payload: unknown, noop: unknown, reviewItemId: unknown) =>
-					reduceMarkReviewItemResolvedFromConflict(
 						payload,
 						noop,
 						reviewItemId,

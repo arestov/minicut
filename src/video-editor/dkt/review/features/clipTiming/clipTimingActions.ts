@@ -268,11 +268,6 @@ export const reduceCreateParkedIncomingVariant = (
 			hold_ref_id: "parkedIncomingClip",
 		},
 		crdtResolve: makeCrdtResolveBatchPayload(decisions),
-		markReviewItemResolved: {
-			conflictId,
-			reviewItemId,
-			reviewItemIds: decisions.map((decision) => decision.reviewItemId),
-		},
 		next: {
 			clipId,
 			projectId: payload.projectId,
