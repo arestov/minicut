@@ -5,6 +5,7 @@ import {
 	readSequenceMoveConflict,
 	readStructuralDeleteRelationConflict,
 } from "../../dkt/review/dktConflictNormalizers";
+import { withMiniCutConflictDetails } from "../../dkt/review/minicutConflictEnrichment";
 import type { CrdtConflictRecord } from "../../dkt/review/types";
 import { defaultClipTransform } from "../Clip/actions";
 import { reduceCreateActivitySummary } from "../ActivitySummary/actions";
@@ -413,19 +414,23 @@ const augmentTrackOrderConflict = (payload: unknown, projects: unknown) => {
 	if (trackOrder.length === 0) {
 		return payload;
 	}
-	return {
-		...conflict,
-		details: {
-			...(asRecord(conflict.details) ?? {}),
+	const currentOrder = applyTrackOrderMove(
+		trackOrder,
+		itemId,
+		current.afterId,
+	).map((track) => track.trackId);
+	const incomingOrder = applyTrackOrderMove(
+		trackOrder,
+		itemId,
+		incoming.afterId,
+	).map((track) => track.trackId);
+	return withMiniCutConflictDetails(conflict, {
+		trackOrder: {
 			tracks: trackOrder,
-			currentOrder: applyTrackOrderMove(trackOrder, itemId, current.afterId).map(
-				(track) => track.trackId,
-			),
-			incomingOrder: applyTrackOrderMove(trackOrder, itemId, incoming.afterId).map(
-				(track) => track.trackId,
-			),
+			currentOrder,
+			incomingOrder,
 		},
-	};
+	});
 };
 
 const modelStates = (model: unknown): Record<string, unknown> =>
@@ -510,27 +515,46 @@ const augmentDeleteVsEditConflict = (
 		? clips.find((candidate) => getNodeId(candidate) === structural.itemNodeId)
 		: null;
 	const projectId = findTrackProjectId(projects, structural.ownerNodeId);
-	const details = asRecord(conflict.details) ?? {};
-	return {
-		...conflict,
-		...(projectId ? { project_id: projectId } : null),
-		details: {
-			...details,
-			deleted: {
-				...(asRecord(details.deleted) ?? {}),
+	const deleteVsEdit = {
+		deleted: {
+			clipId: structural.itemNodeId,
+			trackId: structural.ownerNodeId,
+		},
+		edited: {
+			clipAttrs: {
+				...(clip ? clipSnapshotAttrs(clip) : {}),
 				clipId: structural.itemNodeId,
-				trackId: structural.ownerNodeId,
-			},
-			edited: {
-				...(asRecord(details.edited) ?? {}),
-				clipAttrs: {
-					...(clip ? clipSnapshotAttrs(clip) : {}),
-					clipId: structural.itemNodeId,
-					targetTrackId: structural.ownerNodeId,
-				},
+				targetTrackId: structural.ownerNodeId,
 			},
 		},
 	};
+	return {
+		...withMiniCutConflictDetails(conflict, { deleteVsEdit }),
+		...(projectId ? { project_id: projectId } : null),
+	};
+};
+
+const augmentDanglingResourceConflict = (payload: unknown) => {
+	const conflict = asRecord(payload);
+	if (!conflict || conflict.kind !== "dangling_ref") {
+		return payload;
+	}
+	const danglingRef = readDanglingRefConflict(
+		conflict as unknown as CrdtConflictRecord,
+	);
+	if (!danglingRef || danglingRef.fieldName !== "resource") {
+		return payload;
+	}
+	return withMiniCutConflictDetails(conflict, {
+		danglingResource: {
+			resourceId: danglingRef.targetNodeId,
+			resourceName: "Missing media",
+			resourceKind: "media",
+			clipIds: [danglingRef.sourceNodeId],
+			missingUrl: null,
+			lastKnownSource: null,
+		},
+	});
 };
 
 const augmentClipTimingConflict = (
@@ -566,14 +590,9 @@ const augmentClipTimingConflict = (
 			.find((value) => value !== currentFieldValue) ??
 		mvrAlternativeValue(mvr.alternatives[1]);
 	const incoming = { ...current, [mvr.fieldName]: incomingValue };
-	return {
-		...conflict,
-		details: {
-			...(asRecord(conflict.details) ?? {}),
-			current,
-			incoming,
-		},
-	};
+	return withMiniCutConflictDetails(conflict, {
+		clipTiming: { current, incoming },
+	});
 };
 
 const augmentReviewConflict = (
@@ -582,10 +601,12 @@ const augmentReviewConflict = (
 	clips?: unknown,
 ) =>
 	augmentClipTimingConflict(
-		augmentDeleteVsEditConflict(
-			augmentTrackOrderConflict(payload, projects),
-			projects,
-			clips,
+		augmentDanglingResourceConflict(
+			augmentDeleteVsEditConflict(
+				augmentTrackOrderConflict(payload, projects),
+				projects,
+				clips,
+			),
 		),
 		projects,
 		clips,
