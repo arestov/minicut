@@ -444,6 +444,58 @@ const waitForIncomingReviewTrack = async (page) =>
 		return track?.clips?.length > 0 ? track : null
 	}, { timeoutMs: 30_000, intervalMs: 250 })
 
+const timingFields = ['start', 'in', 'duration', 'fadeIn', 'fadeOut']
+
+const strictTiming = (value, label) => {
+	const timing = Object.fromEntries(timingFields.map((field) => [field, value?.[field]]))
+	for (const field of timingFields) {
+		if (typeof timing[field] !== 'number' || !Number.isFinite(timing[field])) {
+			throw new Error(`Expected numeric ${label}.${field}, got ${JSON.stringify(value)}`)
+		}
+	}
+	return timing
+}
+
+const readClipTimingFromDetails = (details, clipId) => {
+	const clip = details?.tracks
+		?.flatMap((track) => track?.clips ?? [])
+		.find((candidate) =>
+			candidate?.clipId === clipId ||
+			candidate?.nodeId === clipId ||
+			candidate?.id === clipId,
+		)
+	return clip ? strictTiming(clip, `clip ${clipId}`) : null
+}
+
+const readIncomingReviewTrackTimingFromDetails = (details) => {
+	const clip = details?.tracks?.find((track) => track?.trackRole === 'incomingReview')?.clips?.[0]
+	return clip ? strictTiming(clip, 'parked clip') : null
+}
+
+const waitForParkTimingConvergence = async ({ acting, passive, sourceClipId, sourceTiming, parkedTiming }) =>
+	waitFor('park timing convergence on both peers', async () => {
+		const [actingDetails, passiveDetails] = await Promise.all([
+			debugEval(acting.page, () => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() ?? null),
+			debugEval(passive.page, () => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() ?? null),
+		])
+		const actual = {
+			[acting.label]: {
+				source: readClipTimingFromDetails(actingDetails, sourceClipId),
+				parked: readIncomingReviewTrackTimingFromDetails(actingDetails),
+			},
+			[passive.label]: {
+				source: readClipTimingFromDetails(passiveDetails, sourceClipId),
+				parked: readIncomingReviewTrackTimingFromDetails(passiveDetails),
+			},
+		}
+		return JSON.stringify(actual[acting.label].source) === JSON.stringify(sourceTiming) &&
+			JSON.stringify(actual[passive.label].source) === JSON.stringify(sourceTiming) &&
+			JSON.stringify(actual[acting.label].parked) === JSON.stringify(parkedTiming) &&
+			JSON.stringify(actual[passive.label].parked) === JSON.stringify(parkedTiming)
+			? actual
+			: null
+	}, { timeoutMs: 30_000, intervalMs: 250 })
+
 const reviewActionButtonName = (action) => {
 	const label = REVIEW_ACTION_BUTTONS[action]
 	if (!label) {
@@ -471,6 +523,9 @@ const clickReviewActionAndAssert = async ({ acting, passive, broker, action }) =
 	const groupItems = reviewItems(actingStateBefore).filter(
 		(candidate) => candidate.attrs?.status === 'open' && sameClipTimingReviewGroup(candidate, item),
 	)
+	const sourceClipId = reviewItemAffectedClipIds(item)[0]
+	const sourceTiming = action === 'park' ? strictTiming(item?.attrs?.preview?.current, 'preview.current') : null
+	const parkedTiming = action === 'park' ? strictTiming(item?.attrs?.preview?.incoming, 'preview.incoming') : null
 	const resolvedConflictIds = groupItems
 		.map((candidate) => candidate.attrs?.conflictId)
 		.filter((candidate) => typeof candidate === 'string' && candidate.length > 0)
@@ -502,6 +557,16 @@ const clickReviewActionAndAssert = async ({ acting, passive, broker, action }) =
 			waitForIncomingReviewTrack(acting.page),
 			waitForIncomingReviewTrack(passive.page),
 		])
+		if (!sourceClipId || !sourceTiming || !parkedTiming) {
+			throw new Error(`Missing park timing contract data: ${JSON.stringify({ sourceClipId, sourceTiming, parkedTiming })}`)
+		}
+		await waitForParkTimingConvergence({
+			acting,
+			passive,
+			sourceClipId,
+			sourceTiming,
+			parkedTiming,
+		})
 	}
 	const [actingAfter, passiveAfter] = await Promise.all([
 		readReviewState(acting.page),
