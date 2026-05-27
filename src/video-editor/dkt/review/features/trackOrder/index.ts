@@ -1,7 +1,10 @@
 import type { CrdtConflictRecord, MiniCutReviewItem } from "../../types";
+import { readSequenceMoveConflict } from "../../dktConflictNormalizers";
+import { readMiniCutConflictDetails } from "../../minicutConflictEnrichment";
 import { materializeTrackOrderReviewItem } from "./materializeTrackOrderReviewItem";
 
-const trackOrderKindPattern = /(track.*(order|sequence|ordered))|((order|sequence|ordered).*track)/i;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 export const trackOrderFeature = {
 	kind: "track_order" as const,
@@ -11,10 +14,10 @@ export const trackOrderFeature = {
 		"createManualTrackOrderSuggestion",
 	],
 	canMaterialize(conflict: CrdtConflictRecord): boolean {
+		const sequence = readSequenceMoveConflict(conflict);
 		return (
-			conflict.aggregate === "projectTracks" ||
-			conflict.field_name === "tracks" ||
-			trackOrderKindPattern.test(conflict.kind)
+			sequence?.relationName === "tracks" &&
+			isRecord(readMiniCutConflictDetails(conflict).trackOrder)
 		);
 	},
 	materialize({

@@ -58,7 +58,7 @@ describe("materializeTrackOrderReviewItem", () => {
 				},
 				projectId: "project:1",
 			}),
-		).toThrow("Unsupported track order conflict payload");
+		).toThrow("Track order conflict requires typed tracks sequence payload");
 	});
 
 	it("throws for records without enough order information", () => {
@@ -71,6 +71,6 @@ describe("materializeTrackOrderReviewItem", () => {
 				},
 				projectId: "project:1",
 			}),
-		).toThrow("Unsupported track order conflict payload");
+		).toThrow("Track order conflict requires typed tracks sequence payload");
 	});
 });

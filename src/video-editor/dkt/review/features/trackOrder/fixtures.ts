@@ -26,12 +26,16 @@ export const trackOrderConflictFixture: CrdtConflictRecord = {
 		},
 	},
 	details: {
-		tracks: [
-			{ trackId: "track:video", name: "Video", kind: "video" },
-			{ trackId: "track:audio", name: "Audio", kind: "audio" },
-		],
-		currentOrder: ["track:video", "track:audio"],
-		incomingOrder: ["track:audio", "track:video"],
+		minicut: {
+			trackOrder: {
+				tracks: [
+					{ trackId: "track:video", name: "Video", kind: "video" },
+					{ trackId: "track:audio", name: "Audio", kind: "audio" },
+				],
+				currentOrder: ["track:video", "track:audio"],
+				incomingOrder: ["track:audio", "track:video"],
+			},
+		},
 	},
 	source_frame_id: 41,
 	source_root_frame_id: 40,

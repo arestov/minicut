@@ -3,7 +3,7 @@ import { trackOrderConflictFixture } from "./fixtures";
 import { extractTrackOrderPreview } from "./trackOrderPreview";
 
 describe("extractTrackOrderPreview", () => {
-	it("preserves current and incoming project track order", () => {
+	it("preserves current and incoming project track order from MiniCut enrichment", () => {
 		expect(extractTrackOrderPreview(trackOrderConflictFixture)).toEqual({
 			type: "track_order",
 			currentOrder: [
@@ -18,67 +18,34 @@ describe("extractTrackOrderPreview", () => {
 		});
 	});
 
-	it("uses details or variants when payload does not contain both orders", () => {
-		expect(
+	it("rejects order details outside MiniCut enrichment", () => {
+		expect(() =>
 			extractTrackOrderPreview({
-				payload: null,
+				...trackOrderConflictFixture,
 				details: {
 					current: [{ id: "track:a", name: "A", kind: "audio" }],
 					incoming: [{ id: "track:a", name: "A", kind: "audio" }],
 				},
-				variants: null,
-			}).currentOrder,
-		).toEqual([{ trackId: "track:a", name: "A", kind: "audio" }]);
-	});
-
-	it("derives orders from kernel move-vs-move payloads", () => {
-		expect(
-			extractTrackOrderPreview({
-				kind: "sequence_move_vs_move",
-				payload: {
-					current: { after_id: null, op_id: "A:2" },
-					incoming: {
-						item_id: "track:overlay",
-						after_id: "track:video",
-						op_id: "B:1",
-					},
-					sequence: {
-						owner_node_id: "project:1",
-						name: "tracks",
-						item_node_id: "track:overlay",
-						current: { after_id: null, op_id: "A:2" },
-						incoming: {
-							item_id: "track:overlay",
-							after_id: "track:video",
-							op_id: "B:1",
-						},
-						operation: "move_vs_move",
-					},
-				},
-				details: null,
-				variants: null,
 			}),
-		).toEqual({
-			type: "track_order",
-			currentOrder: [
-				{ trackId: "track:overlay", name: "track:overlay", kind: "video" },
-				{ trackId: "track:video", name: "track:video", kind: "video" },
-			],
-			incomingOrder: [
-				{ trackId: "track:video", name: "track:video", kind: "video" },
-				{ trackId: "track:overlay", name: "track:overlay", kind: "video" },
-			],
-			movedTrackIds: ["track:video", "track:overlay"],
-		});
+		).toThrow("Track order conflict requires MiniCut preview details");
 	});
 
-	it("throws when order information is incomplete", () => {
+	it("rejects bare kernel move-vs-move payloads without domain order enrichment", () => {
 		expect(() =>
 			extractTrackOrderPreview({
+				...trackOrderConflictFixture,
+				details: null,
+			}),
+		).toThrow("Track order conflict requires MiniCut preview details");
+	});
+
+	it("throws when typed sequence information is missing", () => {
+		expect(() =>
+			extractTrackOrderPreview({
+				...trackOrderConflictFixture,
 				payload: { currentOrder: ["track:a"] },
 				details: null,
-				variants: null,
 			}),
-		).toThrow("Unsupported track order conflict payload");
+		).toThrow("Track order conflict requires typed tracks sequence payload");
 	});
 });

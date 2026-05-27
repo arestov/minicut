@@ -1,5 +1,6 @@
 import type { CrdtConflictRecord } from "../../types";
 import { readSequenceMoveConflict } from "../../dktConflictNormalizers";
+import { readMiniCutConflictDetails } from "../../minicutConflictEnrichment";
 
 export type TrackOrderEntry = {
 	trackId: string;
@@ -128,61 +129,6 @@ const orderFromSource = (
 	return currentOrder && incomingOrder ? { currentOrder, incomingOrder } : null;
 };
 
-const asMoveOp = (value: unknown): { itemId: string | null; afterId: string | null } | null => {
-	if (!isRecord(value)) {
-		return null;
-	}
-	const itemId = asTrackId(value.item_id ?? value.itemId);
-	const afterId = asTrackId(value.after_id ?? value.afterId);
-	return { itemId, afterId };
-};
-
-const entryForId = (
-	trackId: string,
-	trackMeta: Map<string, TrackOrderEntry>,
-): TrackOrderEntry =>
-	trackMeta.get(trackId) ?? { trackId, name: trackId, kind: "video" };
-
-const orderFromMove = (
-	itemId: string,
-	afterId: string | null,
-	otherAfterId: string | null,
-	trackMeta: Map<string, TrackOrderEntry>,
-): TrackOrderEntry[] => {
-	const ids = [otherAfterId, afterId, itemId].filter(
-		(id): id is string => typeof id === "string" && id.length > 0,
-	);
-	const base = Array.from(new Set(ids)).filter((id) => id !== itemId);
-	const next = [...base];
-	if (afterId === null) {
-		next.unshift(itemId);
-	} else {
-		const anchorIndex = next.indexOf(afterId);
-		next.splice(anchorIndex >= 0 ? anchorIndex + 1 : next.length, 0, itemId);
-	}
-	return next.map((trackId) => entryForId(trackId, trackMeta));
-};
-
-const orderFromKernelMovePayload = (
-	conflict: Pick<CrdtConflictRecord, "kind" | "payload">,
-	trackMeta: Map<string, TrackOrderEntry>,
-): Pick<TrackOrderPreview, "currentOrder" | "incomingOrder"> | null => {
-	const sequence = readSequenceMoveConflict(conflict);
-	if (!sequence || sequence.relationName !== "tracks" || !sequence.current) {
-		return null;
-	}
-	const current = asMoveOp(sequence.current);
-	const incoming = asMoveOp(sequence.incoming);
-	const itemId = incoming?.itemId ?? current?.itemId ?? sequence.itemNodeId;
-	if (!current || !incoming || !itemId) {
-		return null;
-	}
-	return {
-		currentOrder: orderFromMove(itemId, current.afterId, incoming.afterId, trackMeta),
-		incomingOrder: orderFromMove(itemId, incoming.afterId, current.afterId, trackMeta),
-	};
-};
-
 const movedTrackIds = (
 	currentOrder: TrackOrderEntry[],
 	incomingOrder: TrackOrderEntry[],
@@ -202,16 +148,15 @@ export const extractTrackOrderPreview = (
 	>,
 ): TrackOrderPreview => {
 	const trackMeta = new Map<string, TrackOrderEntry>();
-	collectTrackMeta(conflict.payload, trackMeta);
-	collectTrackMeta(conflict.details, trackMeta);
-	collectTrackMeta(conflict.variants, trackMeta);
-	const orders =
-		orderFromSource(conflict.payload, trackMeta) ??
-		orderFromSource(conflict.details, trackMeta) ??
-		orderFromSource(conflict.variants, trackMeta) ??
-		orderFromKernelMovePayload(conflict, trackMeta);
+	const minicutTrackOrder = readMiniCutConflictDetails(conflict).trackOrder;
+	const sequence = readSequenceMoveConflict(conflict);
+	if (!sequence || sequence.relationName !== "tracks") {
+		throw new Error("Track order conflict requires typed tracks sequence payload");
+	}
+	collectTrackMeta(minicutTrackOrder, trackMeta);
+	const orders = orderFromSource(minicutTrackOrder, trackMeta);
 	if (!orders) {
-		throw new Error("Unsupported track order conflict payload");
+		throw new Error("Track order conflict requires MiniCut preview details");
 	}
 	return {
 		type: "track_order",
