@@ -1,5 +1,4 @@
 import type { CrdtConflictRecord } from "../../types";
-import { readMvrAttrConflict } from "../../dktConflictNormalizers";
 
 export const clipTimingFields = [
 	"start",
@@ -103,62 +102,18 @@ const previewFromSource = (source: unknown): ClipTimingPreview | null => {
 
 export const extractClipTimingPreview = (
 	conflict: Pick<
-	CrdtConflictRecord,
+		CrdtConflictRecord,
 		"kind" | "node_id" | "payload" | "details" | "variants" | "field_name"
 	> & { alternatives?: unknown },
 ): ClipTimingPreview => {
 	const preview =
 		previewFromSource(conflict.payload) ??
 		previewFromSource(conflict.details) ??
-		previewFromSource(conflict.variants) ??
-		previewFromMvrFieldAlternatives(conflict);
+		previewFromSource(conflict.variants);
 	if (!preview) {
 		throw new Error("Unsupported clip timing conflict payload");
 	}
 	return preview;
-};
-
-const previewFromMvrFieldAlternatives = (
-	conflict: Pick<
-		CrdtConflictRecord,
-		"kind" | "node_id" | "field_name" | "payload"
-	> & { alternatives?: unknown },
-): ClipTimingPreview | null => {
-	const mvr = readMvrAttrConflict(conflict);
-	if (!mvr) {
-		return null;
-	}
-	const field = mvr.fieldName;
-	if (
-		field !== "start" &&
-		field !== "in" &&
-		field !== "duration" &&
-		field !== "fadeIn" &&
-		field !== "fadeOut"
-	) {
-		return null;
-	}
-	const alternatives = mvr.alternatives;
-	const currentValue = alternatives[0];
-	const incomingValue = alternatives[1];
-	if (
-		typeof currentValue !== "number" ||
-		typeof incomingValue !== "number" ||
-		!Number.isFinite(currentValue) ||
-		!Number.isFinite(incomingValue)
-	) {
-		return null;
-	}
-	const current = { start: 0, in: 0, duration: 1, fadeIn: 0, fadeOut: 0 };
-	const incoming = { ...current };
-	current[field] = currentValue;
-	incoming[field] = incomingValue;
-	return {
-		type: "clip_timing",
-		current,
-		incoming,
-		fields: [field],
-	};
 };
 
 export const containsClipTimingAlternatives = (value: unknown): boolean => {

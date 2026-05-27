@@ -3,6 +3,7 @@ import { bootDktModels } from "../../dkt/testingInit";
 import {
 	reduceAcknowledgeReviewItem,
 	reduceHandleCRDTConflict,
+	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceSelectReviewItem,
 } from "./actions";
@@ -111,6 +112,49 @@ describe("AppRoot review actions", () => {
 					},
 				],
 			},
+		});
+	});
+
+	it("enriches bare MVR clip timing conflicts from clip graph state", () => {
+		const result = reduceHandleCRDTConflictGraph(
+			{
+				opened: [
+					{
+						conflict_id: "opaque:clip-timing",
+						status: "open",
+						kind: "mvr_alternatives",
+						node_id: "clip:1",
+						model_name: "clip",
+						field_kind: "attr",
+						field_name: "duration",
+						payload: { alternatives: [5, 8] },
+					},
+				],
+				updated: [],
+				acknowledged: [],
+				resolved: [],
+			},
+			"project:1",
+			[],
+			[
+				{
+					_node_id: "clip:1",
+					states: {
+						start: 12,
+						in: 3,
+						duration: 5,
+						fadeIn: 0.25,
+						fadeOut: 0.5,
+					},
+				},
+			],
+			[],
+		);
+
+		expect(result?.reviewItems?.[0].attrs.preview).toMatchObject({
+			current: { start: 12, in: 3, duration: 5, fadeIn: 0.25, fadeOut: 0.5 },
+			incoming: { start: 12, in: 3, duration: 8, fadeIn: 0.25, fadeOut: 0.5 },
+			fields: ["duration"],
 		});
 	});
 

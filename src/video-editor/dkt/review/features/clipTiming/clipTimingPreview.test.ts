@@ -46,8 +46,8 @@ describe("extractClipTimingPreview", () => {
 		});
 	});
 
-	it("reads CRDT MVR field alternatives when full timing details are unavailable", () => {
-		expect(
+	it("does not fabricate full timing from bare CRDT MVR field alternatives", () => {
+		expect(() =>
 			extractClipTimingPreview({
 				kind: "mvr_alternatives",
 				node_id: "clip:1",
@@ -56,10 +56,6 @@ describe("extractClipTimingPreview", () => {
 					alternatives: [3, 2],
 				},
 			}),
-		).toMatchObject({
-			current: { duration: 3 },
-			incoming: { duration: 2 },
-			fields: ["duration"],
-		});
+		).toThrow("Unsupported clip timing conflict payload");
 	});
 });

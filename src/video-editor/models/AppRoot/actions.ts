@@ -1,6 +1,7 @@
 import { makeCrdtAcknowledgePayload } from "../../dkt/review/crdtReviewCommands";
 import {
 	readDanglingRefConflict,
+	readMvrAttrConflict,
 	readSequenceMoveConflict,
 	readStructuralDeleteRelationConflict,
 } from "../../dkt/review/dktConflictNormalizers";
@@ -341,7 +342,7 @@ export const reduceHandleCRDTConflict = (
 	clips?: unknown,
 ) =>
 	reduceCreateReviewSessionWithLifecycleItems(
-		augmentReviewConflict(payload, projects, clips),
+		augmentReviewConflictPayload(payload, projects, clips),
 		projectIdHint,
 	);
 
@@ -447,6 +448,17 @@ const clipSnapshotAttrs = (clip: unknown): Record<string, unknown> => {
 	};
 };
 
+const clipSnapshotTiming = (clip: unknown): Record<string, unknown> => {
+	const states = modelStates(clip);
+	return {
+		start: numberOr(states.start, 0),
+		in: numberOr(states.in, 0),
+		duration: numberOr(states.duration, 1),
+		fadeIn: numberOr(states.fadeIn, 0),
+		fadeOut: numberOr(states.fadeOut, 0),
+	};
+};
+
 const findTrackProjectId = (projects: unknown, trackId: string): string | null => {
 	if (!Array.isArray(projects)) return null;
 	for (const project of projects) {
@@ -505,16 +517,72 @@ const augmentDeleteVsEditConflict = (
 	};
 };
 
+const augmentClipTimingConflict = (payload: unknown, clips: unknown) => {
+	const conflict = asRecord(payload);
+	if (!conflict || conflict.kind !== "mvr_alternatives") {
+		return payload;
+	}
+	const mvr = readMvrAttrConflict(conflict as unknown as CrdtConflictRecord);
+	if (
+		!mvr ||
+		!["start", "in", "duration", "fadeIn", "fadeOut"].includes(
+			mvr.fieldName,
+		)
+	) {
+		return payload;
+	}
+	const clip = Array.isArray(clips)
+		? clips.find((candidate) => getNodeId(candidate) === mvr.nodeId)
+		: null;
+	if (!clip) {
+		return payload;
+	}
+	const current = clipSnapshotTiming(clip);
+	const incoming = { ...current, [mvr.fieldName]: mvr.alternatives[1] };
+	return {
+		...conflict,
+		details: {
+			...(asRecord(conflict.details) ?? {}),
+			current,
+			incoming,
+		},
+	};
+};
+
 const augmentReviewConflict = (
 	payload: unknown,
 	projects: unknown,
 	clips?: unknown,
 ) =>
-	augmentDeleteVsEditConflict(
-		augmentTrackOrderConflict(payload, projects),
-		projects,
+	augmentClipTimingConflict(
+		augmentDeleteVsEditConflict(
+			augmentTrackOrderConflict(payload, projects),
+			projects,
+			clips,
+		),
 		clips,
 	);
+
+const augmentReviewConflictPayload = (
+	payload: unknown,
+	projects: unknown,
+	clips?: unknown,
+) => {
+	const value = asRecord(payload);
+	if (!value) {
+		return payload;
+	}
+	const next = { ...value };
+	for (const key of ["opened", "updated", "acknowledged", "resolved"] as const) {
+		const list = value[key];
+		if (Array.isArray(list)) {
+			next[key] = list.map((item) =>
+				augmentReviewConflict(item, projects, clips),
+			);
+		}
+	}
+	return next;
+};
 
 export const reduceHandleCRDTConflictGraph = (
 	payload: unknown,
@@ -528,7 +596,7 @@ export const reduceHandleCRDTConflictGraph = (
 			? projectIdHint
 			: null;
 	const session = reduceCreateReviewSessionWithLifecycleItems(
-			augmentReviewConflict(payload, projects, clips),
+		augmentReviewConflictPayload(payload, projects, clips),
 		projectIdHint,
 	);
 	const items = session?.rels?.items;
