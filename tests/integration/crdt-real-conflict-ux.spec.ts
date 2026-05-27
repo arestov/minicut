@@ -489,6 +489,7 @@ test('p2p real CRDT timing conflict renders conflict UX without fake injection',
 			'parkIncomingVariantOnReviewTrack',
 		)
 		const parkPreview = await readFirstClipTimingPreview(first.page)
+		const expectedSourceTiming = asExpectedTiming(parkPreview.current, 'current')
 		const expectedParkedTiming = asExpectedTiming(parkPreview.incoming, 'incoming')
 		const conflictId = stringId((await readFirstClipTimingReviewItem(first.page)).attrs?.conflictId, 'conflict id')
 		const actionSendBatchIdsBefore = await readTraceBatchIds(first.page, /crdt-send/)
@@ -557,6 +558,7 @@ test('p2p real CRDT timing conflict renders conflict UX without fake injection',
 		}
 		const actionSendBatchIds = await waitForNewCrdtSendBatchIds(first.page, actionSendBatchIdsBefore)
 		await waitForCrdtReceiveBatchIds(second.page, actionSendBatchIds)
+		await waitForClipTimingOnBoth(first.page, second.page, firstClipId, expectedSourceTiming)
 		await waitForIncomingReviewTrackWithClip(first.page, expectedParkedTiming)
 		await waitForIncomingReviewTrackWithClip(second.page, expectedParkedTiming)
 		await waitForReviewResolvedOnBoth(first.page, second.page, conflictId)
