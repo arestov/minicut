@@ -145,7 +145,7 @@ describe("headless clip timing review actions", () => {
 	});
 
 	it("parks the incoming variant on an incoming review track", async () => {
-		const { pair, item } = await createNaturalClipTimingConflict(
+		const { pair, clipA, item } = await createNaturalClipTimingConflict(
 			"room-headless-clip-timing-park",
 		);
 		try {
@@ -159,6 +159,7 @@ describe("headless clip timing review actions", () => {
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+			await expectTimingOnBoth(pair, clipA._node_id, preview.current);
 			for (const peer of [pair.a, pair.b]) {
 				const { track, clips } = await readIncomingReviewTrackClips(peer);
 				expect(clips).toHaveLength(1);
@@ -175,13 +176,14 @@ describe("headless clip timing review actions", () => {
 	});
 
 	it("parks from peer B and resolves the same review item on both peers", async () => {
-		const { pair, item } = await createNaturalClipTimingConflict(
+		const { pair, clipA, item } = await createNaturalClipTimingConflict(
 			"room-headless-clip-timing-park-from-b",
 		);
 		try {
 			const itemB = await pair.waitForReviewItem("clip_timing", {
 				peer: pair.b,
 			});
+			const previewB = clipTimingPreview(itemB.preview);
 			expect(itemB.conflictId).toBe(item.conflictId);
 			const before = await captureReviewOpenCounts(pair, item.conflictId);
 			await dispatchReviewActionLikeUi(
@@ -192,6 +194,7 @@ describe("headless clip timing review actions", () => {
 			);
 
 			await expectReviewResolvedOnBoth(pair, item.conflictId, before);
+			await expectTimingOnBoth(pair, clipA._node_id, previewB.current);
 		} finally {
 			pair.close();
 		}

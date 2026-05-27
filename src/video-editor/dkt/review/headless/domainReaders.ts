@@ -60,6 +60,8 @@ const resourceByProjectOwnerRel = async (
 export const readClip = async (peer: HeadlessReviewPeer, clipId: string) => {
 	const clip =
 		(await clipByProjectOwnerRel(peer, clipId)) ??
+		((await peer.queryVideoClips()).find((entry) => entry._node_id === clipId) ??
+			null) ??
 		(await rootModelById(peer, "clip", clipId));
 	if (!clip) {
 		throw new Error(`Expected clip model ${clipId}`);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildClipTimingParkPayload } from "../../components/review/reviewActionPayloads";
+import type { ClipTimingVariant } from "../review/features/clipTiming";
 import { inspectReviewGraph } from "../review/testHarness/inspectReviewGraph";
 import { reviewItemFromGraphNode } from "../review/headless/reviewItemFromGraphNode";
 import type { MiniCutReviewItem } from "../review/types";
@@ -50,6 +51,49 @@ const deliverUntilQuiet = async (
 	}
 };
 
+const readClipTiming = async (
+	peer: MiniCutPeer,
+	clipId: string,
+): Promise<ClipTimingVariant> => {
+	const clip = (await peer.queryVideoClips()).find(
+		(candidate) => candidate._node_id === clipId,
+	);
+	if (!clip) {
+		throw new Error(`Expected source clip ${clipId} on peer ${peer.id}`);
+	}
+	return {
+		start: Number(await peer.ctx.queryAttr(clip, "start")),
+		in: Number(await peer.ctx.queryAttr(clip, "in")),
+		duration: Number(await peer.ctx.queryAttr(clip, "duration")),
+		fadeIn: Number(await peer.ctx.queryAttr(clip, "fadeIn") ?? 0),
+		fadeOut: Number(await peer.ctx.queryAttr(clip, "fadeOut") ?? 0),
+	};
+};
+
+const readIncomingReviewTrackClipTiming = async (
+	peer: MiniCutPeer,
+): Promise<ClipTimingVariant> => {
+	const tracks = await peer.ctx.queryRel(peer.project, "tracks");
+	for (const track of tracks) {
+		if ((await peer.ctx.queryAttr(track, "trackRole")) !== "incomingReview") {
+			continue;
+		}
+		const clips = await peer.ctx.queryRel(track, "clips");
+		const clip = clips[0];
+		if (!clip) {
+			throw new Error(`Expected parked clip on incoming review track for peer ${peer.id}`);
+		}
+		return {
+			start: Number(await peer.ctx.queryAttr(clip, "start")),
+			in: Number(await peer.ctx.queryAttr(clip, "in")),
+			duration: Number(await peer.ctx.queryAttr(clip, "duration")),
+			fadeIn: Number(await peer.ctx.queryAttr(clip, "fadeIn") ?? 0),
+			fadeOut: Number(await peer.ctx.queryAttr(clip, "fadeOut") ?? 0),
+		};
+	}
+	throw new Error(`Expected incoming review track for peer ${peer.id}`);
+};
+
 describe("MiniCut maelstrom review actions", () => {
 	it("parks grouped clip timing from peer B through natural review payloads", async () => {
 		const profile = memoryProfile();
@@ -82,6 +126,8 @@ describe("MiniCut maelstrom review actions", () => {
 		const openItems = await waitForClipTimingGroup(sim.peer("B"));
 		const conflictIds = openItems.map((item) => item.conflictId).sort();
 		const actionItem = openItems[0];
+		const expectedSourceTiming = actionItem.preview.current as ClipTimingVariant;
+		const expectedParkedTiming = actionItem.preview.incoming as ClipTimingVariant;
 		await sim.peer("B").dispatch(
 			sim.peer("B").project,
 			"parkIncomingVariantOnReviewTrack",
@@ -97,6 +143,12 @@ describe("MiniCut maelstrom review actions", () => {
 				expect(statuses.get(conflictId)).toBe("resolved");
 			}
 			expect(items.filter((item) => item.status === "open")).toHaveLength(0);
+			expect(await readClipTiming(sim.peer(peerId), clips[0]._node_id)).toEqual(
+				expectedSourceTiming,
+			);
+			expect(await readIncomingReviewTrackClipTiming(sim.peer(peerId))).toEqual(
+				expectedParkedTiming,
+			);
 		}
 	});
 });

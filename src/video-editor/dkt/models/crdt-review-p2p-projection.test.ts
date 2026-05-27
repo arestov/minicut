@@ -409,7 +409,14 @@ describe("MiniCut p2p review projection", () => {
 				reviewItemId: `review:${conflictId}`,
 				clipId: clipA._node_id,
 				variant: "incoming",
-				timing: {
+				sourceTiming: {
+					start: 0,
+					in: 0,
+					duration: 3,
+					fadeIn: 0,
+					fadeOut: 0,
+				},
+				parkedTiming: {
 					start: 0,
 					in: 0,
 					duration: 2,
@@ -421,6 +428,11 @@ describe("MiniCut p2p review projection", () => {
 			await expectConflictResolvedOnBothPeers(pair, conflictId);
 			await expectReviewItemResolvedOnBothPeers(pair, conflictId);
 			for (const peer of [pair.a, pair.b]) {
+				const sourceClip = (await peer.queryVideoClips()).find(
+					(clip) => clip._node_id === clipA._node_id,
+				);
+				expect(sourceClip).toBeTruthy();
+				expect(await peer.ctx.queryAttr(sourceClip, "duration")).toBe(3);
 				const { track, clips: parkedClips } =
 					await waitForIncomingReviewTrackWithParkedClip(peer);
 				expect(parkedClips).toHaveLength(1);
