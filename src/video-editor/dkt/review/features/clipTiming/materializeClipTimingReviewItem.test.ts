@@ -81,6 +81,6 @@ describe("materializeClipTimingReviewItem", () => {
 				},
 				projectId: "project:1",
 			}),
-		).toThrow("Unsupported clip timing conflict payload");
+		).toThrow("Clip timing conflict requires typed timing MVR payload");
 	});
 });

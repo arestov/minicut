@@ -10,8 +10,15 @@ export const clipTimingConflictFixture: CrdtConflictRecord = {
 	field_name: "start",
 	aggregate: "clipTiming",
 	payload: {
-		current: { start: 0, in: 0, duration: 4 },
-		incoming: { start: 2, in: 1, duration: 3 },
+		alternatives: [{ value: 0 }, { value: 2 }],
+	},
+	details: {
+		minicut: {
+			clipTiming: {
+				current: { start: 0, in: 0, duration: 4 },
+				incoming: { start: 2, in: 1, duration: 3 },
+			},
+		},
 	},
 	conflict_group_id: "frame:10",
 	source_frame_id: 11,
@@ -19,4 +26,3 @@ export const clipTimingConflictFixture: CrdtConflictRecord = {
 	batch_id: "peer-b:batch:1",
 	happened_at: 1,
 };
-

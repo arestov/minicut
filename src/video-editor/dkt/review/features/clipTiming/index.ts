@@ -1,4 +1,6 @@
 import type { CrdtConflictRecord, MiniCutReviewItem } from "../../types";
+import { readMvrAttrConflict } from "../../dktConflictNormalizers";
+import { readMiniCutConflictDetails } from "../../minicutConflictEnrichment";
 import {
 	containsClipTimingAlternatives,
 	clipTimingFields,
@@ -22,14 +24,14 @@ export const clipTimingFeature = {
 		if (isStructuralConflict(conflict)) {
 			return false;
 		}
+		const mvr = readMvrAttrConflict(conflict);
 		return (
-			conflict.aggregate === "clipTiming" ||
-			(conflict.model_name === "clip" &&
-				typeof conflict.field_name === "string" &&
-				timingFields.has(conflict.field_name)) ||
-			containsClipTimingAlternatives(conflict.payload) ||
-			containsClipTimingAlternatives(conflict.details) ||
-			containsClipTimingAlternatives(conflict.variants)
+			typeof mvr?.fieldName === "string" &&
+			timingFields.has(mvr.fieldName) &&
+			containsClipTimingAlternatives({
+				details: conflict.details,
+			}) &&
+			Boolean(readMiniCutConflictDetails(conflict).clipTiming)
 		);
 	},
 	materialize({

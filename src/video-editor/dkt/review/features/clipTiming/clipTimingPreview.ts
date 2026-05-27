@@ -1,4 +1,6 @@
 import type { CrdtConflictRecord } from "../../types";
+import { readMvrAttrConflict } from "../../dktConflictNormalizers";
+import { readMiniCutConflictDetails } from "../../minicutConflictEnrichment";
 
 export const clipTimingFields = [
 	"start",
@@ -107,18 +109,23 @@ export const extractClipTimingPreview = (
 	> & { alternatives?: unknown },
 ): ClipTimingPreview => {
 	const preview =
-		previewFromSource(conflict.payload) ??
-		previewFromSource(conflict.details) ??
-		previewFromSource(conflict.variants);
+		previewFromSource(readMiniCutConflictDetails(conflict).clipTiming);
+	const mvr = readMvrAttrConflict(conflict);
+	if (!mvr || !fieldSet.has(mvr.fieldName)) {
+		throw new Error("Clip timing conflict requires typed timing MVR payload");
+	}
 	if (!preview) {
-		throw new Error("Unsupported clip timing conflict payload");
+		throw new Error("Clip timing conflict requires MiniCut preview details");
 	}
 	return preview;
 };
 
 export const containsClipTimingAlternatives = (value: unknown): boolean => {
 	try {
-		return previewFromSource(value) !== null;
+		const details = readMiniCutConflictDetails({
+			details: isRecord(value) ? value.details : null,
+		});
+		return previewFromSource(details.clipTiming) !== null;
 	} catch {
 		return false;
 	}
