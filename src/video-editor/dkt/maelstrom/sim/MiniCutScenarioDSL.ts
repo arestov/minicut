@@ -29,6 +29,15 @@ export const user = (peerId: MiniCutPeerId) => ({
 });
 
 export const clipTimingGesture = (peerId: MiniCutPeerId) => ({
+	resizeStart(delta: number, options: { batchId?: string } = {}): MiniCutTraceStep {
+		return {
+			type: "clipTimingResizeGesture",
+			peerId,
+			edge: "start",
+			delta,
+			batchId: options.batchId ?? `clip-timing:${peerId}:resize-start`,
+		};
+	},
 	resizeEnd(delta: number, options: { batchId?: string } = {}): MiniCutTraceStep {
 		return {
 			type: "clipTimingResizeGesture",
