@@ -66,4 +66,37 @@ describe("ClipTimingConflictInspector", () => {
 			buildClipTimingParkPayload(item),
 		);
 	});
+
+	it("shows replicated resolution result without active decision controls", () => {
+		render(
+			<ClipTimingConflictInspector
+				item={{
+					...item,
+					status: "resolved",
+					resolution: {
+						domain_result: {
+							variant: "incoming",
+							start: 2,
+							in: 1,
+							duration: 3,
+							fadeIn: 0,
+							fadeOut: 0,
+						},
+					},
+				}}
+				onResolve={vi.fn()}
+				onParkVariant={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("Resolution result")).toBeInTheDocument();
+		expect(screen.getByText("incoming applied")).toBeInTheDocument();
+		expect(screen.getByText("Applied timing")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Choose incoming" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Park incoming on review track" }),
+		).not.toBeInTheDocument();
+	});
 });

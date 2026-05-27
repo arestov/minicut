@@ -26,6 +26,8 @@ export type CrdtConflictRecord = {
 	payload?: unknown;
 	details?: unknown;
 	variants?: unknown;
+	resolution?: unknown;
+	resolved_at?: number | null;
 	impact_summary?: unknown;
 	details_available?: boolean;
 	conflict_group_id?: string | null;
@@ -107,6 +109,7 @@ export type MiniCutReviewItem = {
 	title: string;
 	affectedObjects: MiniCutReviewObject[];
 	preview: unknown;
+	resolution?: unknown;
 	availableActions: string[];
 	actionTargets: Record<string, MiniCutReviewActionTarget>;
 	source: {

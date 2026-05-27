@@ -24,6 +24,7 @@ const REVIEW_ITEM_ATTRS = [
 	"title",
 	"affectedObjects",
 	"preview",
+	"resolution",
 	"availableActions",
 	"actionTargets",
 	"source",
@@ -102,6 +103,7 @@ const toReviewItem = ({ scope, attrs }: AttrSnapshot): MiniCutReviewItem => {
 		title: asString(snapshot.title, "CRDT conflict"),
 		affectedObjects: asArray<MiniCutReviewObject>(snapshot.affectedObjects),
 		preview: snapshot.preview ?? null,
+		resolution: snapshot.resolution ?? null,
 		availableActions: asArray<string>(snapshot.availableActions),
 		actionTargets: isRecord(snapshot.actionTargets)
 			? (snapshot.actionTargets as MiniCutReviewItem["actionTargets"])

@@ -36,6 +36,71 @@ const isClipTimingPreview = (value: unknown): value is ClipTimingPreview =>
 
 const formatTimingValue = (value: number): string => `${Number(value.toFixed(3))}s`;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const resolutionDomainResult = (item: MiniCutReviewItem): Record<string, unknown> | null => {
+	const resolution = isRecord(item.resolution) ? item.resolution : null;
+	const domainResult = resolution?.domain_result;
+	return isRecord(domainResult) ? domainResult : null;
+};
+
+const timingFromRecord = (value: unknown): ClipTimingVariant | null => {
+	if (!isRecord(value)) {
+		return null;
+	}
+	const result = Object.fromEntries(
+		fields.map((field) => [field, value[field]]),
+	) as Record<ClipTimingField, unknown>;
+	return fields.every(
+		(field) => typeof result[field] === "number" && Number.isFinite(result[field]),
+	)
+		? (result as ClipTimingVariant)
+		: null;
+};
+
+const ClipTimingResolvedSummary = ({ item }: { item: MiniCutReviewItem }) => {
+	const result = resolutionDomainResult(item);
+	const sourceTiming =
+		timingFromRecord(result?.sourceTiming) ??
+		timingFromRecord(result) ??
+		null;
+	const parkedClipId = isRecord(result?.parkedClipId)
+		? "parked clip"
+		: typeof result?.parkedClipId === "string"
+			? result.parkedClipId
+			: null;
+	const variant =
+		typeof result?.variant === "string"
+			? result.variant
+			: typeof result?.selectedVariant === "string"
+				? result.selectedVariant
+				: null;
+
+	return (
+		<div className="ve-review-inspector__resolution">
+			<strong>Resolution result</strong>
+			{variant ? <p>{variant.replaceAll("_", " ")} applied</p> : null}
+			{sourceTiming ? (
+				<table className="ve-review-inspector__timing">
+					<caption>Applied timing</caption>
+					<tbody>
+						{fields.map((field) => (
+							<tr key={field}>
+								<th scope="row">{field}</th>
+								<td>{formatTimingValue(sourceTiming[field])}</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			) : (
+				<p>Resolution details unavailable</p>
+			)}
+			{parkedClipId ? <p>Parked variant: {parkedClipId}</p> : null}
+		</div>
+	);
+};
+
 export const ClipTimingConflictInspector = ({
 	item,
 	onResolve,
@@ -63,6 +128,10 @@ export const ClipTimingConflictInspector = ({
 			[field]: Number.isFinite(next) ? next : current[field],
 		}));
 	};
+
+	if (item.status === "resolved") {
+		return <ClipTimingResolvedSummary item={item} />;
+	}
 
 	return (
 		<div className="ve-review-inspector__clip-timing">

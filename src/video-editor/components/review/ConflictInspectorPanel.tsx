@@ -42,7 +42,7 @@ const ActionButtons = ({
 		item: MiniCutReviewItem,
 		payload?: unknown,
 	) => void;
-}) => (
+}) => item.status === "open" ? (
 	<>
 		{item.availableActions.flatMap((actionId) => {
 			if (
@@ -71,7 +71,7 @@ const ActionButtons = ({
 			);
 		})}
 	</>
-);
+) : null;
 
 export const ConflictInspectorPanel = ({
 	item,
@@ -217,19 +217,21 @@ export const ConflictInspectorPanel = ({
 							))}
 						</ul>
 					) : null}
-					<div className="ve-review-inspector__actions">
-						<ActionButtons
-							item={item}
-							onReviewAction={onReviewAction}
-						/>
-						<button
-							type="button"
-							onClick={() => onAcknowledgeReviewItem?.(item)}
-						>
-							<Check aria-hidden="true" size={16} />
-							Acknowledge
-						</button>
-					</div>
+					{item.status === "open" ? (
+						<div className="ve-review-inspector__actions">
+							<ActionButtons
+								item={item}
+								onReviewAction={onReviewAction}
+							/>
+							<button
+								type="button"
+								onClick={() => onAcknowledgeReviewItem?.(item)}
+							>
+								<Check aria-hidden="true" size={16} />
+								Acknowledge
+							</button>
+						</div>
+					) : null}
 				</>
 			) : (
 				<p>No review item selected</p>

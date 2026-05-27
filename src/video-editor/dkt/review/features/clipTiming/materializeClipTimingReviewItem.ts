@@ -37,6 +37,7 @@ export const materializeClipTimingReviewItem = ({
 		title: "Clip timing conflict",
 		affectedObjects: [{ type: "clip", id: clipId, label: "Clip" }],
 		preview: extractClipTimingPreview(conflict),
+		resolution: conflict.resolution ?? null,
 		availableActions: [
 			"resolveClipTimingConflict",
 			"parkIncomingVariantOnReviewTrack",

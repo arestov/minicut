@@ -57,6 +57,7 @@ export const reviewItemAttrsFromItem = (item: MiniCutReviewItem) => ({
 	title: item.title,
 	affectedObjects: item.affectedObjects,
 	preview: item.preview,
+	resolution: item.resolution ?? null,
 	availableActions: item.availableActions,
 	actionTargets: item.actionTargets,
 	source: item.source,
