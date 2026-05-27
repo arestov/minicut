@@ -355,10 +355,10 @@ export const reduceHandleCRDTSync = (
 const trackOrderMove = (value: unknown) => {
 	const record = asRecord(value);
 	const itemId = stringOr(record?.item_id ?? record?.itemId, "");
-	return itemId
+	return record
 		? {
-				itemId,
-				afterId: stringOr(record?.after_id ?? record?.afterId, "") || null,
+				itemId: itemId || null,
+				afterId: stringOr(record.after_id ?? record.afterId, "") || null,
 			}
 		: null;
 };
@@ -402,7 +402,13 @@ const augmentTrackOrderConflict = (payload: unknown, projects: unknown) => {
 	const current = trackOrderMove(sequence?.current);
 	const incoming = trackOrderMove(sequence?.incoming);
 	const itemId = incoming?.itemId ?? current?.itemId ?? sequence?.itemNodeId;
-	if (!current || !incoming || !itemId || current.itemId !== itemId) {
+	if (
+		!current ||
+		!incoming ||
+		!itemId ||
+		(current.itemId && current.itemId !== itemId) ||
+		(incoming.itemId && incoming.itemId !== itemId)
+	) {
 		return payload;
 	}
 	const project = Array.isArray(projects)
