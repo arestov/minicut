@@ -73,4 +73,32 @@ describe("createLocalMediaResolver", () => {
 			"needs-permission",
 		);
 	});
+
+	it("is idempotent for repeated restore calls", async () => {
+		const createObjectUrl = vi.fn(() => "blob:runtime/clip");
+		const resolver = createLocalMediaResolver({
+			handleStore: createHandleStore({
+				queryPermission: vi.fn(async () => "granted"),
+				getFile: vi.fn(async () => new File(["video"], "clip.webm")),
+			}),
+			runtime: {
+				createObjectUrl,
+				revokeObjectUrl: vi.fn(),
+				setResourceStatus: vi.fn(),
+			},
+		});
+		const resource = {
+			resourceId: "resource:1",
+			sourceKind: "file-handle",
+			sourceRef: "resource:1",
+		};
+
+		await resolver.restoreResource(resource);
+		await resolver.restoreResource(resource);
+
+		expect(createObjectUrl).toHaveBeenCalledTimes(1);
+		expect(resolver.resolveResourceUrl("resource:1", "")).toBe(
+			"blob:runtime/clip",
+		);
+	});
 });
