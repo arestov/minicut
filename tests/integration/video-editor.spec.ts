@@ -1372,6 +1372,23 @@ test('timeline tools perform selection, split, and trim actions', async ({ page 
 	).toBeVisible()
 })
 
+test('split tool mode resets on reload instead of persisting in project state', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
+	const selectTool = timeline.getByRole('button', { name: 'Select tool' })
+	const splitTool = timeline.getByRole('button', { name: 'Split tool' })
+
+	await splitTool.click()
+	await expect(splitTool).toHaveAttribute('aria-pressed', 'true')
+
+	await page.reload()
+	await expect(timeline.getByRole('button', { name: 'Select tool' })).toBeVisible({ timeout: 20_000 })
+	await expect(selectTool).toHaveAttribute('aria-pressed', 'true')
+	await expect(splitTool).toHaveAttribute('aria-pressed', 'false')
+})
+
 test('timeline hand tool pans horizontally when the lane overflows', async ({ page }) => {
 	await page.goto('/')
 	await createProjectFromMenu(page)
