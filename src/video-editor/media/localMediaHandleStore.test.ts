@@ -1,6 +1,9 @@
 import { indexedDB } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
-import { createLocalMediaHandleStore } from "./localMediaHandleStore";
+import {
+	LOCAL_MEDIA_HANDLE_DB_NAME,
+	createLocalMediaHandleStore,
+} from "./localMediaHandleStore";
 
 const makeHandle = (name = "clip.webm") =>
 	({
@@ -53,5 +56,14 @@ describe("local media handle side-channel store", () => {
 		await expect(
 			store.put({ ...base, bytes: new Uint8Array([1, 2, 3]) } as never),
 		).rejects.toThrow(/must not persist media bytes/i);
+	});
+
+	it("exposes diagnostics without reading handle payloads", async () => {
+		const store = createLocalMediaHandleStore(indexedDB);
+		const diagnostics = await store.diagnostics();
+
+		expect(diagnostics.dbName).toBe(LOCAL_MEDIA_HANDLE_DB_NAME);
+		expect(diagnostics.storeName).toBe("handles");
+		expect(diagnostics.handleCount).toBeGreaterThanOrEqual(1);
 	});
 });
