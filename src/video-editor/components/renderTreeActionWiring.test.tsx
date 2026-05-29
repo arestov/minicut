@@ -14,6 +14,10 @@ const useManyMock = vi.fn();
 const useOneMock = vi.fn();
 const useAttrsMock = vi.fn();
 
+vi.mock("../../dkt-react-sync/components/One", () => ({
+	One: ({ children }: { children: ReactNode }) => children,
+}));
+
 vi.mock("../../dkt-react-sync/hooks/useRootAttrs", () => ({
 	useRootAttrs: (...args: unknown[]) => useRootAttrsMock(...args),
 }));
@@ -43,6 +47,7 @@ vi.mock("./ProjectDropdown", () => ({
 }));
 
 import { InspectorEditTabPanel } from "./inspector/InspectorEditTabPanel";
+import { MediaBin } from "./MediaBin";
 import { TimelineView } from "./TimelineView";
 import { Toolbar } from "./Toolbar";
 
@@ -128,6 +133,82 @@ describe("Toolbar wiring", () => {
 
 		expect(videoEditorActions.createProject).toHaveBeenCalledTimes(1);
 		expect(videoEditorActions.requestProjectExport).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("MediaBin import wiring", () => {
+	it("uses File System Access handles when the Import button opens the picker", async () => {
+		const user = userEvent.setup();
+		const file = new File(["video"], "picked.webm", { type: "video/webm" });
+		const handle = {
+			kind: "file",
+			name: "picked.webm",
+			getFile: vi.fn(async () => file),
+		};
+		const importFilesIntoProject = vi.fn();
+		Object.defineProperty(window, "showOpenFilePicker", {
+			value: vi.fn(async () => [handle]),
+			configurable: true,
+		});
+		useVideoEditorMock.mockReturnValue({
+			resolveResourceUrl: (_resourceId: string, fallbackUrl: string) =>
+				fallbackUrl,
+			actions: {
+				createProject: vi.fn(),
+				requestProjectExport: vi.fn(),
+				getCachedExportUrl: vi.fn(() => null),
+				addTextClip: vi.fn(),
+				stageImportFiles: vi.fn(() => null),
+				importFilesIntoProject,
+				requestImportFiles: vi.fn(),
+				requestSelectedClipExport: vi.fn(),
+				setCursor: vi.fn(),
+			},
+		});
+
+		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
+
+		await user.click(screen.getByText("Import"));
+
+		expect(importFilesIntoProject).toHaveBeenCalledWith(
+			[{ file, handle }],
+			{ _nodeId: "project:media-bin" },
+		);
+	});
+
+	it("keeps the hidden file input path for injected File imports", async () => {
+		const user = userEvent.setup();
+		const importFilesIntoProject = vi.fn();
+		Object.defineProperty(window, "showOpenFilePicker", {
+			value: undefined,
+			configurable: true,
+		});
+		useVideoEditorMock.mockReturnValue({
+			resolveResourceUrl: (_resourceId: string, fallbackUrl: string) =>
+				fallbackUrl,
+			actions: {
+				createProject: vi.fn(),
+				requestProjectExport: vi.fn(),
+				getCachedExportUrl: vi.fn(() => null),
+				addTextClip: vi.fn(),
+				stageImportFiles: vi.fn(() => null),
+				importFilesIntoProject,
+				requestImportFiles: vi.fn(),
+				requestSelectedClipExport: vi.fn(),
+				setCursor: vi.fn(),
+			},
+		});
+		const file = new File(["video"], "injected.webm", {
+			type: "video/webm",
+		});
+
+		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
+		await user.upload(screen.getByLabelText("Import media files"), file);
+
+		expect(importFilesIntoProject).toHaveBeenCalledWith(
+			expect.objectContaining({ length: 1 }),
+			{ _nodeId: "project:media-bin" },
+		);
 	});
 });
 
