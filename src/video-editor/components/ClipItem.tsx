@@ -71,6 +71,8 @@ interface ClipRenderAttrs {
 
 interface ResourceRenderAttrs {
 	duration?: unknown;
+	sourceKind?: unknown;
+	status?: unknown;
 }
 
 const EMPTY_ATTRS = Object.freeze({}) as Record<string, unknown>;
@@ -165,7 +167,11 @@ export const ClipItem = ({
 	]) as ClipRenderAttrs;
 	const effectScopes = useMany("effects");
 	const resourceScope = useOne("resource");
-	const resourceAttrs = useScopeAttrs(resourceScope, ["duration"]) as ResourceRenderAttrs;
+	const resourceAttrs = useScopeAttrs(resourceScope, [
+		"duration",
+		"sourceKind",
+		"status",
+	]) as ResourceRenderAttrs;
 	const clipId =
 		typeof scope?._nodeId === "string"
 			? scope._nodeId
@@ -192,6 +198,10 @@ export const ClipItem = ({
 			: null;
 	const opacity = Number(clipAttrs.opacity?.value ?? 1);
 	const color = String(clipAttrs.color ?? "#2563eb");
+	const missingMedia =
+		resourceAttrs.sourceKind === "file-handle" &&
+		(resourceAttrs.status === "missing" ||
+			resourceAttrs.status === "needs-permission");
 	const width = Math.max(36, duration * timelineZoom);
 	const left = Math.max(0, start * timelineZoom + dragPreviewDeltaPx);
 	const selectClip = (): void => {
@@ -460,6 +470,7 @@ export const ClipItem = ({
 			/>
 			<div className="ve-clip__title">
 				<span>{name}</span>
+				{missingMedia ? <span className="ve-clip__badge">Missing media</span> : null}
 				{effectScopes.map((effectScope) => (
 					<ScopeContext.Provider key={effectScope._nodeId} value={effectScope}>
 						<ClipGradeBadge />
