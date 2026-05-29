@@ -94,4 +94,79 @@ describe("executeImportFilesTask handle-backed imports", () => {
 		});
 		expect(resources).toHaveLength(1);
 	});
+
+	it("marks injected File imports as runtime object URLs without storing handles", async () => {
+		const tasks = createRuntimeTaskFacade();
+		const projectScope = makeScope("project:object-url");
+		const resourceScope = makeScope("resource:object-url");
+		const resourceAttrs: Record<string, unknown> = {};
+		const resources: ReactSyncScopeHandle[] = [];
+		const inputBatchHandleId = tasks.putRuntimeRef([
+			new File(["video"], "injected-video.webm", {
+				type: "video/webm",
+				lastModified: 1_780_000_003,
+			}),
+		]);
+		const task = tasks.dispatchTask("$fx_handleInputFiles", {
+			data: { inputBatchHandleId },
+		});
+		const putHandle = vi.fn(async () => undefined);
+		const env = {
+			pageRuntime: {
+				getRootScope: () => makeScope("root"),
+				readOne: () => projectScope,
+				readMany: (scope: ReactSyncScopeHandle, rel: string) =>
+					scope === projectScope && rel === "resources" ? resources : [],
+				readAttrs: (scope: ReactSyncScopeHandle) =>
+					scope === resourceScope ? resourceAttrs : {},
+			},
+			dkt: {
+				dispatch: vi.fn((actionName: string, payload: unknown) => {
+					if (actionName === "importResourceIntoActiveProject") {
+						Object.assign(resourceAttrs, payload);
+						resources.push(resourceScope);
+					}
+				}),
+			},
+			media: {
+				getFileKind: () => "video",
+				createObjectUrl: () => "blob:http://localhost/injected-video",
+				revokeObjectUrl: () => undefined,
+				getImportedResourceDuration: async () => 1,
+			},
+			export: { renderer: null, cachedResults: new Map() },
+			transfers: {
+				manager: null,
+				getPeerId: () => null,
+				resolveResourceUrl: (_resourceId: string, fallbackUrl: string) =>
+					fallbackUrl,
+				requestPlayheadWindow: () => undefined,
+				notePreviewError: () => undefined,
+			},
+			lifecycle: {
+				isDestroyed: () => false,
+				setTimeout,
+				clearTimeout,
+				registerObjectUrl: () => undefined,
+			},
+			tasks,
+			mediaHandles: {
+				put: putHandle,
+				get: vi.fn(),
+				delete: vi.fn(),
+				diagnostics: vi.fn(),
+			},
+			platform: null,
+			resourceChunkSize: 1024,
+		} as unknown as EditorActionEnvironment;
+
+		await executeImportFilesTask({ task, env, projectScope });
+
+		expect(putHandle).not.toHaveBeenCalled();
+		expect(resourceAttrs).toMatchObject({
+			sourceKind: "object-url",
+			sourceRef: null,
+			status: "ready",
+		});
+	});
 });
