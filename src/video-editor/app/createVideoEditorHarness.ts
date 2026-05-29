@@ -1,6 +1,11 @@
 import { createMiniCutPageSyncRuntime } from "../dkt/runtime/createMiniCutPageSyncRuntime";
+import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
 import { createResourceTransferManager } from "../media/resourceTransferManager";
+import {
+	createLocalMediaResolver,
+	type LocalMediaResourceSnapshot,
+} from "../media/localMediaResolver";
 import {
 	isProjectImportFilesEffectData,
 	PROJECT_IMPORT_FILES_FX,
@@ -190,6 +195,32 @@ export const createVideoEditorHarness = (
 	const importedObjectUrls = new Set<string>();
 	const exportObjectUrls = new Set<string>();
 	const startedImportHandles = new Set<string>();
+	const mediaHandleStore = createLocalMediaHandleStore();
+	const readActiveProjectResourceScopes = (): ReactSyncScopeHandle[] => {
+		const rootScope = pageRuntime?.getRootScope();
+		if (!pageRuntime || !rootScope) {
+			return [];
+		}
+		const activeProjectScope = pageRuntime.readOne(rootScope, "activeProject");
+		return activeProjectScope
+			? [...pageRuntime.readMany(activeProjectScope, "resources")]
+			: [];
+	};
+	const localMediaResolver = createLocalMediaResolver({
+		handleStore: mediaHandleStore,
+		runtime: {
+			createObjectUrl: (blob) => platform.createObjectUrl(blob),
+			revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
+			setResourceStatus: (resourceId, status) => {
+				const resourceScope = readActiveProjectResourceScopes().find(
+					(scope) => scope._nodeId === resourceId,
+				);
+				if (resourceScope) {
+					pageRuntime?.dispatch("setResourceStatus", status, resourceScope);
+				}
+			},
+		},
+	});
 
 	const subscribeToResourceScopes = (): (() => void) => {
 		if (!pageRuntime) {
@@ -238,6 +269,9 @@ export const createVideoEditorHarness = (
 							"width",
 							"height",
 							"size",
+							"lastModified",
+							"sourceKind",
+							"sourceRef",
 							"source",
 							"status",
 							"data",
@@ -254,6 +288,15 @@ export const createVideoEditorHarness = (
 					);
 
 				resourceTransferManager.syncResources(resources);
+				void localMediaResolver.restoreResources(
+					resources.map(({ resourceId, attrs }) => ({
+						resourceId,
+						sourceKind: (attrs as { sourceKind?: unknown }).sourceKind,
+						sourceRef: (attrs as { sourceRef?: unknown }).sourceRef,
+						status: (attrs as { status?: unknown }).status,
+						url: (attrs as { url?: unknown }).url,
+					}) satisfies LocalMediaResourceSnapshot),
+				);
 			};
 
 			const syncResourceSubscriptions = () => {
@@ -274,6 +317,9 @@ export const createVideoEditorHarness = (
 							"width",
 							"height",
 							"size",
+							"lastModified",
+							"sourceKind",
+							"sourceRef",
 							"source",
 							"status",
 							"data",
@@ -406,7 +452,10 @@ export const createVideoEditorHarness = (
 				return typeof peerId === "string" ? peerId : null;
 			},
 			resolveResourceUrl: (resourceId, fallbackUrl) =>
-				resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl),
+				localMediaResolver.resolveResourceUrl(
+					resourceId,
+					resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl),
+				),
 			requestPlayheadWindow: (resourceId, time) =>
 				resourceTransferManager.requestPlayheadWindow(resourceId, time),
 			notePreviewError: (resourceId) =>
@@ -425,7 +474,7 @@ export const createVideoEditorHarness = (
 			},
 		},
 		tasks: runtimeTasks,
-		mediaHandles: createLocalMediaHandleStore(),
+		mediaHandles: mediaHandleStore,
 		platform,
 		resourceChunkSize,
 	};
@@ -629,9 +678,9 @@ export const createVideoEditorHarness = (
 		debugDumpRuntimeTasksTesting: () => runtimeTasks.debugDumpTasksTesting(),
 
 		resolveResourceUrl(resourceId: string, fallbackUrl: string): string {
-			return resourceTransferManager.resolveResourceUrl(
+			return localMediaResolver.resolveResourceUrl(
 				resourceId,
-				fallbackUrl,
+				resourceTransferManager.resolveResourceUrl(resourceId, fallbackUrl),
 			);
 		},
 
@@ -659,6 +708,7 @@ export const createVideoEditorHarness = (
 			}
 			extensionBus.clear();
 			env.export.cachedResults.clear();
+			localMediaResolver.destroy();
 			resourceTransferManager.destroy();
 			pageRuntime?.destroy();
 			authorityClient.destroy?.();
