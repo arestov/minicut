@@ -81,6 +81,7 @@ interface TimelineBodyProps {
 	handleHandPan: (event: ReactPointerEvent<HTMLDivElement>) => void;
 	handlePlayheadPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
 	onAddTrack: (kind: "video" | "audio") => void;
+	onSplitToolCommit: () => void;
 	snappingEnabled: boolean;
 	stopPlayheadDrag: (event: ReactPointerEvent<HTMLDivElement>) => void;
 	cursorSeconds: number;
@@ -243,6 +244,7 @@ const TimelineBody = ({
 	handleHandPan,
 	handlePlayheadPointerDown,
 	onAddTrack,
+	onSplitToolCommit,
 	snappingEnabled,
 	stopPlayheadDrag,
 	cursorSeconds,
@@ -341,6 +343,7 @@ const TimelineBody = ({
 										timelineZoom={timelineZoom}
 										activeTool={activeTool}
 										selectedEntityId={selectedEntityId}
+										onSplitToolCommit={onSplitToolCommit}
 									/>
 								</ScopeContext.Provider>
 							))}
@@ -358,6 +361,7 @@ const ResolvedProjectTimeline = ({
 	handleHandPan,
 	handlePlayheadPointerDown,
 	onAddTrack,
+	onSplitToolCommit,
 	renderHeader,
 	snappingEnabled,
 	stopPlayheadDrag,
@@ -379,6 +383,7 @@ const ResolvedProjectTimeline = ({
 				handleHandPan={handleHandPan}
 				handlePlayheadPointerDown={handlePlayheadPointerDown}
 				onAddTrack={onAddTrack}
+				onSplitToolCommit={onSplitToolCommit}
 				snappingEnabled={snappingEnabled}
 				stopPlayheadDrag={stopPlayheadDrag}
 				cursorSeconds={cursorSeconds}
@@ -551,6 +556,7 @@ export const TimelineView = () => {
 					handleHandPan={handleHandPan}
 					handlePlayheadPointerDown={handlePlayheadPointerDown}
 					onAddTrack={(kind) => projectDispatch("addTrack", kind)}
+					onSplitToolCommit={() => setActiveTool("select")}
 					renderHeader={renderHeader}
 					snappingEnabled={snappingEnabled}
 					stopPlayheadDrag={stopPlayheadDrag}

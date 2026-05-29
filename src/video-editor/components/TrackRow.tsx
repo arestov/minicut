@@ -10,6 +10,7 @@ interface TrackRowProps {
 	timelineZoom: number;
 	activeTool: "select" | "trim" | "split" | "hand";
 	selectedEntityId: string | null;
+	onSplitToolCommit?: () => void;
 }
 
 interface TrackRenderAttrs {
@@ -114,6 +115,7 @@ export const TrackLane = ({
 	timelineZoom,
 	activeTool,
 	selectedEntityId,
+	onSplitToolCommit,
 }: TrackRowProps) => {
 	const clipScopes = useMany("clips");
 	const trackAttrs = useAttrs([
@@ -154,6 +156,7 @@ export const TrackLane = ({
 								timelineZoom={timelineZoom}
 								activeTool={activeTool}
 								selectedEntityId={selectedEntityId}
+								onSplitToolCommit={onSplitToolCommit}
 							/>
 						</ScopeContext.Provider>
 					))}

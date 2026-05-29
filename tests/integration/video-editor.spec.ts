@@ -1347,8 +1347,11 @@ test('timeline tools perform selection, split, and trim actions', async ({ page 
 	await expect(trimTool).toHaveAttribute('data-icon-name', 'stretch-horizontal')
 	await expect(splitTool).toHaveAttribute('data-icon-name', 'scissors')
 	await splitTool.click()
+	await expect(splitTool).toHaveAttribute('aria-pressed', 'true')
 	await clip.click({ position: { x: 28, y: 20 } })
 	await expect(timeline.getByRole('button', { name: /fixture-video.webm/i })).toHaveCount(2)
+	await expect(splitTool).toHaveAttribute('aria-pressed', 'false')
+	await expect(timeline.getByRole('button', { name: 'Select tool' })).toHaveAttribute('aria-pressed', 'true')
 
 	const rightClip = timeline.getByRole('button', { name: /fixture-video.webm/i }).nth(1)
 	await trimTool.click()

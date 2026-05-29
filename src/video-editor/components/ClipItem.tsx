@@ -57,6 +57,7 @@ interface ClipItemProps {
 	timelineZoom: number;
 	activeTool: "select" | "trim" | "split" | "hand";
 	selectedEntityId: string | null;
+	onSplitToolCommit?: () => void;
 }
 
 interface ClipRenderAttrs {
@@ -147,6 +148,7 @@ export const ClipItem = ({
 	timelineZoom,
 	activeTool,
 	selectedEntityId,
+	onSplitToolCommit,
 }: ClipItemProps) => {
 	const dragState = useRef<ClipPointerDragState | null>(null);
 	const [dragPreviewDeltaPx, setDragPreviewDeltaPx] = useState(0);
@@ -347,6 +349,7 @@ export const ClipItem = ({
 			}}
 			onClick={(event) => {
 				if (activeTool === "split") {
+					onSplitToolCommit?.();
 					splitAtPointer(event.clientX, event.currentTarget);
 					return;
 				}
@@ -362,6 +365,7 @@ export const ClipItem = ({
 
 				event.preventDefault();
 				if (activeTool === "split") {
+					onSplitToolCommit?.();
 					splitAtPointer(
 						event.currentTarget.getBoundingClientRect().left +
 							event.currentTarget.getBoundingClientRect().width / 2,
