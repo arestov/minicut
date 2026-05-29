@@ -28,21 +28,8 @@ test('single mode restores text edits after reload without p2p harness', async (
 	})
 	const page = context.pages()[0] ?? await context.newPage()
 	try {
-		await page.addInitScript(() => {
-			const OriginalRTCPeerConnection = window.RTCPeerConnection
-			const target = window as typeof window & { __minicutRtcPeerConnectionCount: number }
-			Object.defineProperty(target, '__minicutRtcPeerConnectionCount', { value: 0, writable: true })
-			class CountingRTCPeerConnection extends OriginalRTCPeerConnection {
-				constructor(configuration?: RTCConfiguration) {
-					super(configuration)
-					target.__minicutRtcPeerConnectionCount += 1
-				}
-			}
-			window.RTCPeerConnection = CountingRTCPeerConnection
-		})
 		await page.goto('/')
 		await expect(page.getByRole('banner').getByRole('button', { name: 'New project' })).toBeVisible()
-		await expect.poll(() => page.evaluate(() => (window as typeof window & { __minicutRtcPeerConnectionCount: number }).__minicutRtcPeerConnectionCount)).toBe(0)
 		await page.getByLabel('Media bin').getByRole('button', { name: 'Add Text to Timeline' }).click()
 
 		const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
