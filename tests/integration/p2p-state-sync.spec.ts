@@ -66,7 +66,14 @@ test('p2p state sync works over WebRTC across isolated browser contexts', async 
 		expect(combinedTrace).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					event: expect.stringMatching(/crdt-(send|receive)/),
+					event: expect.stringMatching(/page-crdt-dc:(send|receive)/),
+				}),
+			]),
+		)
+		expect(combinedTrace).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					event: expect.stringMatching(/page-manager:(client|server)-crdt-open/),
 				}),
 			]),
 		)
