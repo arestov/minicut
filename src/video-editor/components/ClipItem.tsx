@@ -164,7 +164,12 @@ export const ClipItem = ({
 	const effectScopes = useMany("effects");
 	const resourceScope = useOne("resource");
 	const resourceAttrs = useScopeAttrs(resourceScope, ["duration"]) as ResourceRenderAttrs;
-	const clipId = typeof scope?._nodeId === "string" ? scope._nodeId : null;
+	const clipId =
+		typeof scope?._nodeId === "string"
+			? scope._nodeId
+			: typeof (scope as { _node_id?: unknown } | null)?._node_id === "string"
+				? ((scope as { _node_id: string })._node_id)
+				: null;
 
 	// Skeleton guard: start/duration arrive slightly after the clip node appears
 	// in the track's clips relation (worker streams structure before attrs).
