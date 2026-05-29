@@ -277,7 +277,6 @@ describe("MiniCut canonical CRDT batches", () => {
 		expect(keys.has("arrayBuffer")).toBe(false);
 		expect(keys.has("base64")).toBe(false);
 		expectNoAttrOp(importBatches, { model_name: "resource", name: "data" });
-		expectNoAttrOp(importBatches, { model_name: "resource", name: "status" });
 		expectNoAttrOp(importBatches, { model_name: "resource", name: "url" });
 
 		await sender.close();

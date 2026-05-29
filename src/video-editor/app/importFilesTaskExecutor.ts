@@ -203,6 +203,9 @@ export const executeImportFilesTask = async ({
 					mime,
 					duration,
 					size: file.size,
+					lastModified: file.lastModified,
+					sourceKind: "object-url",
+					sourceRef: null,
 					source: {
 						kind: "local",
 						ownerPeerId:
