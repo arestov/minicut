@@ -74,6 +74,45 @@ describe("createLocalMediaResolver", () => {
 		);
 	});
 
+	it("marks resources missing when the side-channel handle is absent", async () => {
+		const setResourceStatus = vi.fn();
+		const resolver = createLocalMediaResolver({
+			handleStore: createHandleStore(null),
+			runtime: {
+				createObjectUrl: vi.fn(() => "blob:runtime/clip"),
+				revokeObjectUrl: vi.fn(),
+				setResourceStatus,
+			},
+		});
+
+		await resolver.restoreResource({
+			resourceId: "resource:1",
+			sourceKind: "file-handle",
+			sourceRef: "resource:1",
+		});
+
+		expect(setResourceStatus).toHaveBeenCalledWith("resource:1", "missing");
+	});
+
+	it("keeps missing handle resources renderable through the fallback URL contract", async () => {
+		const resolver = createLocalMediaResolver({
+			handleStore: createHandleStore(null),
+			runtime: {
+				createObjectUrl: vi.fn(() => "blob:runtime/clip"),
+				revokeObjectUrl: vi.fn(),
+				setResourceStatus: vi.fn(),
+			},
+		});
+
+		await resolver.restoreResource({
+			resourceId: "resource:1",
+			sourceKind: "file-handle",
+			sourceRef: "resource:1",
+		});
+
+		expect(resolver.resolveResourceUrl("resource:1", "")).toBe("");
+	});
+
 	it("is idempotent for repeated restore calls", async () => {
 		const createObjectUrl = vi.fn(() => "blob:runtime/clip");
 		const resolver = createLocalMediaResolver({
