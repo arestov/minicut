@@ -19,7 +19,7 @@ test('p2p state sync works over WebRTC across isolated browser contexts', async 
 	const roomId = createP2PRoomId('p2p-sync', test.info())
 	const roomUrl = buildRoomUrl(roomId)
 	const first = await openP2PPeer(browser, roomUrl)
-	const second = await openP2PPeer(browser, roomUrl)
+	let second = await openP2PPeer(browser, roomUrl)
 
 	try {
 		await expect(first.page.getByRole('heading', { name: 'minicut' })).toBeVisible()
@@ -82,6 +82,14 @@ test('p2p state sync works over WebRTC across isolated browser contexts', async 
 				expect.objectContaining({ event: expect.stringMatching(/fake|inject/i) }),
 			]),
 		)
+
+		await second.context.close()
+		second = await openP2PPeer(browser, roomUrl)
+		await waitForP2PDebugState(second.page)
+		await waitForRolePair(first.page, second.page)
+		await expect.poll(() => getProjectCount(second.page), {
+			timeout: 20_000,
+		}).toBeGreaterThanOrEqual(expectedCount)
 	} finally {
 		await closePeerHandles(first, second)
 	}
