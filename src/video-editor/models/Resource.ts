@@ -91,11 +91,7 @@ export const Resource = model({
 		sourceKind: ["input", "missing"],
 		sourceRef: ["input", null],
 		source: ["input", { kind: "local" }],
-		status: [
-			"input",
-			"missing",
-			{ aggregate: { name: "importPipeline", as: "status" } },
-		],
+		status: ["input", "missing"],
 		data: ["input", null],
 		timelineAddRequest: [
 			"input",

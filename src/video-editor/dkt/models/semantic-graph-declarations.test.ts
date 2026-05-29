@@ -280,9 +280,6 @@ describe("semantic graph declarations", () => {
 			permission: "entry",
 		});
 		expect(
-			getAttrAggregate(Resource as unknown as Record<string, unknown>, "status"),
-		).toMatchObject({ name: "importPipeline", as: "status" });
-		expect(
 			getAttrAggregate(
 				Resource as unknown as Record<string, unknown>,
 				"timelineAddRequest",
