@@ -19,6 +19,7 @@ import type {
 	EditorDktScopePort,
 } from "./editorActionEnvironment";
 import { createEditorHarnessAdapter } from "./editorHarnessAdapter";
+import { createLocalMediaHandleStore } from "./mediaHandleStore";
 import { parseExportRequest } from "./exportRequestState";
 import { executeImportFilesTask } from "./importFilesTaskExecutor";
 import {
@@ -424,6 +425,7 @@ export const createVideoEditorHarness = (
 			},
 		},
 		tasks: runtimeTasks,
+		mediaHandles: createLocalMediaHandleStore(),
 		platform,
 		resourceChunkSize,
 	};

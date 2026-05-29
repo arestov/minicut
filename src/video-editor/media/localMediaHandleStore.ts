@@ -37,9 +37,13 @@ const transactionDone = (transaction: IDBTransaction): Promise<void> =>
 	});
 
 const openDb = (
-	indexedDBFactory: IndexedDbFactoryLike = indexedDB,
+	indexedDBFactory: IndexedDbFactoryLike = globalThis.indexedDB,
 ): Promise<IDBDatabase> =>
 	new Promise((resolve, reject) => {
+		if (!indexedDBFactory) {
+			reject(new Error("IndexedDB is unavailable"));
+			return;
+		}
 		const request = indexedDBFactory.open(LOCAL_MEDIA_HANDLE_DB_NAME, 1);
 		request.onupgradeneeded = () => {
 			const db = request.result;
@@ -96,7 +100,7 @@ const validateRecord = (record: LocalMediaHandleRecord): void => {
 };
 
 export const createLocalMediaHandleStore = (
-	indexedDBFactory: IndexedDbFactoryLike = indexedDB,
+	indexedDBFactory: IndexedDbFactoryLike = globalThis.indexedDB,
 ) => {
 	const withStore = async <Value>(
 		mode: IDBTransactionMode,

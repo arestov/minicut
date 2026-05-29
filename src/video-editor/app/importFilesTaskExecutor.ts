@@ -1,4 +1,5 @@
 import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { MediaImportEntry } from "./actionRuntimeTypes";
 import type { EditorActionEnvironment } from "./editorActionEnvironment";
 import type { RuntimeTaskDescriptor } from "./runtimeTaskFacade";
 
@@ -7,8 +8,36 @@ const isFileLike = (value: unknown): value is File =>
 		value &&
 			typeof value === "object" &&
 			typeof (value as { name?: unknown }).name === "string" &&
-			typeof (value as { size?: unknown }).size === "number",
+		typeof (value as { size?: unknown }).size === "number",
 	);
+
+type NormalizedMediaImport = {
+	file: File;
+	handle: FileSystemFileHandle | null;
+};
+
+const normalizeMediaImportEntry = (
+	value: unknown,
+): NormalizedMediaImport | null => {
+	if (isFileLike(value)) {
+		return { file: value, handle: null };
+	}
+	if (
+		value &&
+		typeof value === "object" &&
+		isFileLike((value as { file?: unknown }).file)
+	) {
+		const handle = (value as { handle?: unknown }).handle;
+		return {
+			file: (value as { file: File }).file,
+			handle:
+				handle && typeof handle === "object"
+					? (handle as FileSystemFileHandle)
+					: null,
+		};
+	}
+	return null;
+};
 
 const getActiveProjectScope = (
 	env: EditorActionEnvironment,
@@ -70,6 +99,20 @@ const resolveImportedResourceNodeId = (
 		}
 	}
 	return null;
+};
+
+const resolveImportedResourceScope = (
+	env: EditorActionEnvironment,
+	projectScope: ReactSyncScopeHandle,
+	resourceId: string,
+): ReactSyncScopeHandle | null => {
+	const resourceScopes = env.pageRuntime?.readMany(projectScope, "resources");
+	if (!Array.isArray(resourceScopes)) {
+		return null;
+	}
+	return (
+		resourceScopes.find((scope) => scope._nodeId === resourceId) ?? null
+	);
 };
 
 const wait = (ms: number): Promise<void> =>
@@ -137,7 +180,12 @@ export const executeImportFilesTask = async ({
 	const { inputBatchHandleId } = importPayload;
 
 	const raw = env.tasks.consumeRuntimeRef(inputBatchHandleId);
-	const fileList = Array.isArray(raw) ? raw.filter(isFileLike) : [];
+	const fileList = Array.isArray(raw)
+		? raw.flatMap((entry: MediaImportEntry | unknown) => {
+				const normalized = normalizeMediaImportEntry(entry);
+				return normalized ? [normalized] : [];
+			})
+		: [];
 	if (fileList.length === 0) {
 		env.tasks.completeTask(task);
 		return;
@@ -159,7 +207,8 @@ export const executeImportFilesTask = async ({
 			processed,
 			total: fileList.length,
 		});
-		for (const file of fileList) {
+		for (const entry of fileList) {
+			const { file, handle } = entry;
 			const kind = env.media.getFileKind(file);
 			if (!kind) {
 				processed += 1;
@@ -204,7 +253,7 @@ export const executeImportFilesTask = async ({
 					duration,
 					size: file.size,
 					lastModified: file.lastModified,
-					sourceKind: "object-url",
+					sourceKind: handle ? "file-handle" : "object-url",
 					sourceRef: null,
 					source: {
 						kind: "local",
@@ -239,6 +288,54 @@ export const executeImportFilesTask = async ({
 					total: fileList.length,
 				});
 				continue;
+			}
+
+			if (handle) {
+				await env.mediaHandles.put({
+					resourceId,
+					handle,
+					name: file.name,
+					size: file.size,
+					lastModified: file.lastModified,
+					mime,
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				});
+				const resourceScope = resolveImportedResourceScope(
+					env,
+					projectScope,
+					resourceId,
+				);
+				env.dkt.dispatch(
+					"setResourceAttrs",
+					{
+						name: file.name,
+						kind,
+						url: objectUrl,
+						mime,
+						duration,
+						size: file.size,
+						lastModified: file.lastModified,
+						sourceKind: "file-handle",
+						sourceRef: resourceId,
+						source: {
+							kind: "local",
+							ownerPeerId:
+								typeof ownerPeerId === "string" && ownerPeerId.length > 0
+									? ownerPeerId
+									: null,
+						},
+						status: "ready",
+						data: {
+							status: "ready",
+							chunkSize: env.resourceChunkSize,
+							chunks: {},
+							ranges: { loaded: [[0, file.size]], requested: [] },
+							loadedBytes: file.size,
+						},
+					},
+					resourceScope,
+				);
 			}
 
 			if (!projectTimelineHasClips(env, projectScope)) {

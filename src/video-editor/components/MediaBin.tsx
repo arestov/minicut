@@ -279,7 +279,7 @@ const useProjectImportFiles = () => {
 	const { actions } = useVideoEditor();
 	const projectScope = useScope();
 	return useCallback(
-		(files: FileList | File[]) => {
+		(files: FileList | File[] | Array<{ file: File; handle: FileSystemFileHandle }>) => {
 			if (projectScope) {
 				actions.importFilesIntoProject(files, projectScope);
 			}
@@ -312,7 +312,38 @@ const MediaBinPanel = ({
 			<div className="ve-panel__header">
 				<h2>Media bin</h2>
 				{importFiles ? (
-					<label className="ve-import-button">
+					<label
+						className="ve-import-button"
+						onClick={async (event) => {
+							const picker = window.showOpenFilePicker;
+							if (typeof picker !== "function") {
+								return;
+							}
+							event.preventDefault();
+							const handles = await picker({
+								multiple: true,
+								types: [
+									{
+										description: "Media",
+										accept: {
+											"video/*": [".mp4", ".webm", ".mov", ".mkv"],
+											"image/*": [".png", ".jpg", ".jpeg", ".webp", ".gif"],
+											"audio/*": [".wav", ".mp3", ".ogg", ".m4a", ".aac"],
+										},
+									},
+								],
+							}).catch(() => []);
+							const entries = await Promise.all(
+								handles.map(async (handle) => ({
+									handle,
+									file: await handle.getFile(),
+								})),
+							);
+							if (entries.length > 0) {
+								importFiles(entries);
+							}
+						}}
+					>
 						<Upload size={14} aria-hidden="true" />
 						<span>Import</span>
 						<input

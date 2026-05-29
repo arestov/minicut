@@ -4,6 +4,7 @@ import type { ResourceTransferManager } from "../media/resourceTransferManager";
 import type { ExportRenderer } from "../render/exportRenderer";
 import type { ResourceKind } from "../render/registryTypes";
 import type { VideoEditorHarnessPlatform } from "./platform";
+import type { createLocalMediaHandleStore } from "./mediaHandleStore";
 import type {
 	DispatchRuntimeTaskOptions,
 	DispatchRuntimeTaskPayload,
@@ -83,6 +84,7 @@ export interface EditorActionEnvironment {
 	transfers: EditorResourceTransferPort;
 	lifecycle: EditorLifecyclePort;
 	tasks: EditorRuntimeTaskPort;
+	mediaHandles: ReturnType<typeof createLocalMediaHandleStore>;
 	platform: VideoEditorHarnessPlatform;
 	resourceChunkSize: number;
 }

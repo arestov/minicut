@@ -1,6 +1,9 @@
 import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 import { PROJECT_IMPORT_FILES_FX } from "../models/Project/effects";
-import type { VideoEditorHarnessActions } from "./actionRuntimeTypes";
+import type {
+	MediaImportEntry,
+	VideoEditorHarnessActions,
+} from "./actionRuntimeTypes";
 import type { EditorActionEnvironment } from "./editorActionEnvironment";
 import { executeImportFilesTask } from "./importFilesTaskExecutor";
 
@@ -25,7 +28,7 @@ const dispatchRoot = (
 
 const stageImportFiles = (
 	env: EditorActionEnvironment,
-	files: FileList | File[],
+	files: FileList | File[] | MediaImportEntry[],
 ): string | null => {
 	const fileList = Array.from(files);
 	if (fileList.length === 0) {
