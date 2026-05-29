@@ -37,7 +37,8 @@ test('single mode restores handle-backed media and persists post-restore edits',
 		await page.goto('/')
 		await page.getByLabel('Media bin').locator('.ve-import-button').click()
 		const mediaBin = page.getByLabel('Media bin')
-		await expect(mediaBin.locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })).toContainText('ready')
+		const handleResourceRow = mediaBin.locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })
+		await expect(handleResourceRow).toContainText('ready', { timeout: 20_000 })
 
 		const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(1)
@@ -47,7 +48,7 @@ test('single mode restores handle-backed media and persists post-restore edits',
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(2)
 
 		await page.reload()
-		await expect(mediaBin.locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })).toContainText('ready')
+		await expect(handleResourceRow).toContainText('ready', { timeout: 20_000 })
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(2)
 
 		await timeline.getByRole('button', { name: /picked-handle-video\.webm/i }).nth(1).click()
@@ -57,7 +58,7 @@ test('single mode restores handle-backed media and persists post-restore edits',
 		await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Nudge +0.5s' }).click()
 
 		await page.reload()
-		await expect(mediaBin.locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })).toContainText('ready')
+		await expect(handleResourceRow).toContainText('ready', { timeout: 20_000 })
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(3)
 	} finally {
 		await context.close()
