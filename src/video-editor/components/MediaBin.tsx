@@ -75,6 +75,8 @@ interface ResourceRenderAttrs {
 	duration?: unknown;
 	url?: unknown;
 	size?: unknown;
+	sourceKind?: unknown;
+	status?: unknown;
 }
 
 const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
@@ -87,6 +89,8 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 		"duration",
 		"url",
 		"size",
+		"sourceKind",
+		"status",
 	]) as ResourceRenderAttrs;
 	const resourceId = scope?._nodeId ?? null;
 	const name = String(resourceAttrs.name);
@@ -100,6 +104,11 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const totalBytes = Number(resourceAttrs.size ?? 0);
 	const statusLabel =
 		totalBytes > 0 ? `${Math.round(totalBytes / 1024)} KB` : null;
+	const mediaStatus =
+		resourceAttrs.sourceKind === "file-handle" &&
+		typeof resourceAttrs.status === "string"
+			? resourceAttrs.status
+			: null;
 	const durationLabel =
 		resourceAttrs.duration != null ? `${duration.toFixed(1)}s` : "-";
 
@@ -112,6 +121,7 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 					<small>
 						{kind} | {mime} | {durationLabel}
 					</small>
+					{mediaStatus ? <small>{mediaStatus}</small> : null}
 					{statusLabel ? <small>{statusLabel}</small> : null}
 					<div className="ve-resource-row__action-line">
 						<IconButton

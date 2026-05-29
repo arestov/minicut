@@ -210,6 +210,39 @@ describe("MediaBin import wiring", () => {
 			{ _nodeId: "project:media-bin" },
 		);
 	});
+
+	it("surfaces handle-backed media restore status in resource rows", () => {
+		useManyMock.mockReturnValue([{ _nodeId: "resource:status" }]);
+		useAttrsMock.mockReturnValue({
+			name: "status-video.webm",
+			kind: "video",
+			mime: "video/webm",
+			duration: 1,
+			url: "",
+			size: 1024,
+			sourceKind: "file-handle",
+			status: "needs-permission",
+		});
+		useVideoEditorMock.mockReturnValue({
+			resolveResourceUrl: (_resourceId: string, fallbackUrl: string) =>
+				fallbackUrl,
+			actions: {
+				createProject: vi.fn(),
+				requestProjectExport: vi.fn(),
+				getCachedExportUrl: vi.fn(() => null),
+				addTextClip: vi.fn(),
+				stageImportFiles: vi.fn(() => null),
+				importFilesIntoProject: vi.fn(),
+				requestImportFiles: vi.fn(),
+				requestSelectedClipExport: vi.fn(),
+				setCursor: vi.fn(),
+			},
+		});
+
+		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
+
+		expect(screen.getByText("needs-permission")).toBeInTheDocument();
+	});
 });
 
 describe("Timeline wiring", () => {
