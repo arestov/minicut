@@ -211,7 +211,9 @@ describe("MediaBin import wiring", () => {
 		);
 	});
 
-	it("surfaces handle-backed media restore status in resource rows", () => {
+	it("surfaces handle-backed media restore status in resource rows", async () => {
+		const user = userEvent.setup();
+		const reconnectResourceMedia = vi.fn();
 		useManyMock.mockReturnValue([{ _nodeId: "resource:status" }]);
 		useAttrsMock.mockReturnValue({
 			name: "status-video.webm",
@@ -237,11 +239,14 @@ describe("MediaBin import wiring", () => {
 				requestSelectedClipExport: vi.fn(),
 				setCursor: vi.fn(),
 			},
+			reconnectResourceMedia,
 		});
 
 		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
 
 		expect(screen.getByText("needs-permission")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Reconnect media" }));
+		expect(reconnectResourceMedia).toHaveBeenCalledWith("resource:status");
 	});
 });
 
