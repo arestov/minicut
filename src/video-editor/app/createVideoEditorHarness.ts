@@ -692,6 +692,62 @@ export const createVideoEditorHarness = (
 			resourceTransferManager.notePreviewError(resourceId);
 		},
 
+		async reconnectResourceMedia(resourceId: string): Promise<void> {
+			const picker = globalThis.showOpenFilePicker;
+			if (typeof picker !== "function") {
+				return;
+			}
+			const [handle] = await picker({ multiple: false }).catch(() => []);
+			if (!handle) {
+				return;
+			}
+			const file = await handle.getFile();
+			const kind = getFileKind(file);
+			if (!kind) {
+				return;
+			}
+			const objectUrl = platform.createObjectUrl(file);
+			if (!objectUrl) {
+				return;
+			}
+			importedObjectUrls.add(objectUrl);
+			const resourceScope = readActiveProjectResourceScopes().find(
+				(scope) => scope._nodeId === resourceId,
+			);
+			if (!resourceScope) {
+				return;
+			}
+			await mediaHandleStore.put({
+				resourceId,
+				handle,
+				name: file.name,
+				size: file.size,
+				lastModified: file.lastModified,
+				mime: file.type || "application/octet-stream",
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			pageRuntime?.dispatch(
+				"setResourceAttrs",
+				{
+					name: file.name,
+					kind,
+					url: objectUrl,
+					mime: file.type || "application/octet-stream",
+					duration: await platform.getImportedResourceDuration(
+						objectUrl,
+						kind,
+					).catch(() => 0),
+					size: file.size,
+					lastModified: file.lastModified,
+					sourceKind: "file-handle",
+					sourceRef: resourceId,
+					status: "ready",
+				},
+				resourceScope,
+			);
+		},
+
 		destroy(): void {
 			isDestroyed = true;
 			runtimeTasks.clear();

@@ -80,7 +80,8 @@ interface ResourceRenderAttrs {
 }
 
 const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
-	const { resolveResourceUrl } = useVideoEditor();
+	const editor = useVideoEditor();
+	const { resolveResourceUrl } = editor;
 	const scope = useContext(ScopeContext);
 	const resourceAttrs = useAttrs([
 		"name",
@@ -109,6 +110,9 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 		typeof resourceAttrs.status === "string"
 			? resourceAttrs.status
 			: null;
+	const canReconnect =
+		Boolean(resourceId) &&
+		(mediaStatus === "missing" || mediaStatus === "needs-permission");
 	const durationLabel =
 		resourceAttrs.duration != null ? `${duration.toFixed(1)}s` : "-";
 
@@ -138,6 +142,19 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 						>
 							Add
 						</IconButton>
+						{canReconnect ? (
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => {
+									if (resourceId) {
+										void editor.reconnectResourceMedia?.(resourceId);
+									}
+								}}
+							>
+								Reconnect media
+							</Button>
+						) : null}
 					</div>
 				</div>
 			</div>
