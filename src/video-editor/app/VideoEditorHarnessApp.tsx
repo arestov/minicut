@@ -12,6 +12,7 @@ import {
 	createVideoEditorHarness,
 	type VideoEditorHarness,
 } from "./createVideoEditorHarness";
+import { resolveCollaborationMode } from "./collaborationMode";
 import { createBrowserHarnessPlatform } from "./platform";
 import { type RoomUrlResolution, resolveRoomUrlState } from "./roomUrlState";
 import { VideoEditorProvider } from "./VideoEditorContext";
@@ -254,6 +255,16 @@ export const VideoEditorHarnessApp = ({
 		return { sessionKey: `minicut-${randomPart}` };
 	}, [dktBootstrapOptions, resolvedRoom]);
 	const signalUrl = useMemo(() => resolveSignalUrl(), []);
+	const collaborationMode = useMemo(
+		() =>
+			typeof window === "undefined"
+				? "p2p"
+				: resolveCollaborationMode({
+						env: import.meta.env as Record<string, unknown>,
+						searchParams: new URLSearchParams(window.location.search),
+					}),
+		[],
+	);
 	const rtcConfig = useMemo(
 		() => createDefaultRtcConfig(resolveTurnIceServer()),
 		[],
@@ -267,7 +278,7 @@ export const VideoEditorHarnessApp = ({
 			return providedHarness;
 		}
 
-		if (!resolvedRoom || !signalUrl) {
+		if (collaborationMode === "single" || !resolvedRoom || !signalUrl) {
 			return createVideoEditorHarness(undefined, {
 				platform: createBrowserHarnessPlatform({
 					authorityOptions: resolvedRoom
@@ -305,6 +316,7 @@ export const VideoEditorHarnessApp = ({
 		});
 	}, [
 		crdtHarnessResetReady,
+		collaborationMode,
 		mediaTransferOptions,
 		providedHarness,
 		resolvedRoom,

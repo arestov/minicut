@@ -4,6 +4,10 @@ import {
 	createVideoEditorHarness,
 	type VideoEditorHarness,
 } from "../app/createVideoEditorHarness";
+import {
+	resolveCollaborationMode,
+	type CollaborationMode,
+} from "../app/collaborationMode";
 import { createBrowserHarnessPlatform } from "../app/platform";
 import {
 	type RoomUrlResolution,
@@ -39,11 +43,6 @@ const resolveSignalUrl = (): string | null => {
 
 	const raw = new URLSearchParams(window.location.search).get("signalUrl");
 	if (!raw) {
-		// Keep automation runs local unless signalUrl is explicitly provided in the URL.
-		if (typeof navigator !== "undefined" && navigator.webdriver === true) {
-			return null;
-		}
-
 		const envSignalUrl = (import.meta.env as Record<string, unknown>)
 			.VITE_MINICUT_SIGNAL_URL;
 		if (typeof envSignalUrl !== "string" || envSignalUrl.length === 0) {
@@ -158,12 +157,13 @@ const resolveMediaTransferOptions = (): {
 const createBrowserHarness = (
 	resolvedRoom: RoomUrlResolution | null,
 	signalUrl: string | null,
+	collaborationMode: CollaborationMode,
 ): VideoEditorHarness => {
 	const mediaTransferOptions = resolveMediaTransferOptions();
 	const workerName = resolvedRoom
 		? `minicut-video-editor-dkt-runtime:${resolvedRoom.roomId}`
 		: undefined;
-	if (!resolvedRoom || !signalUrl) {
+	if (collaborationMode === "single" || !resolvedRoom || !signalUrl) {
 		return createVideoEditorHarness(undefined, {
 			mediaTransferOptions,
 			platform: createBrowserHarnessPlatform({
@@ -219,7 +219,14 @@ export interface MiniCutEditorSession {
 export const createMiniCutEditorSession = (): MiniCutEditorSession => {
 	const room = resolveBrowserRoom();
 	const signalUrl = resolveSignalUrl();
-	const harness = createBrowserHarness(room, signalUrl);
+	const collaborationMode =
+		typeof window === "undefined"
+			? "p2p"
+			: resolveCollaborationMode({
+					env: import.meta.env as Record<string, unknown>,
+					searchParams: new URLSearchParams(window.location.search),
+				});
+	const harness = createBrowserHarness(room, signalUrl, collaborationMode);
 	const runtime = harness.pageRuntime;
 	const sessionKey = room?.roomId ?? DEFAULT_SESSION_KEY;
 	const crdtPeerId = resolveCrdtHarnessPeerId();

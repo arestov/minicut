@@ -34,7 +34,7 @@ test('single mode restores handle-backed media and persists post-restore edits',
 	await installOpfsPicker(page)
 
 	try {
-		await page.goto('/')
+		await page.goto('/?__minicut_test_single=1')
 		await page.getByLabel('Media bin').locator('.ve-import-button').click()
 		const mediaBin = page.getByLabel('Media bin')
 		const handleResourceRow = mediaBin.locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })

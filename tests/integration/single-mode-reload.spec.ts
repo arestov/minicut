@@ -28,7 +28,7 @@ test('single mode restores text edits after reload without p2p harness', async (
 	})
 	const page = context.pages()[0] ?? await context.newPage()
 	try {
-		await page.goto('/')
+		await page.goto('/?__minicut_test_single=1')
 		await expect(page.getByRole('banner').getByRole('button', { name: 'New project' })).toBeVisible()
 		await page.getByLabel('Media bin').getByRole('button', { name: 'Add Text to Timeline' }).click()
 
