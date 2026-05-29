@@ -18,6 +18,7 @@ export const MINICUT_APP_ID = "minicut";
 export const MINICUT_APP_SCHEMA_VERSION = 1;
 export const MINICUT_DERIVED_SCHEMA_VERSION = 1;
 export const MINICUT_DKT_STORAGE_VERSION = 1;
+export const MINICUT_INDEXEDDB_SCHEMA_VERSION = 2;
 export const MINICUT_SCHEMA_DICTIONARY_MODE = "none";
 
 export type MiniCutWorkspaceManifest = {

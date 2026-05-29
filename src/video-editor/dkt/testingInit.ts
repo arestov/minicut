@@ -26,6 +26,7 @@ import {
 	WORKSPACE_OPEN_STATUS,
 } from "./runtime/workspaceOpenState";
 import {
+	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 	type MiniCutWorkspaceOpenResult,
 	openMiniCutWorkspaceStorage,
 	stageMiniCutWorkspaceManifest,
@@ -330,7 +331,7 @@ const createStoragePackage = async (
 		return sanitizeDktCrdtStoragePackage(
 			(await makeDktCrdtIndexedDBStorage({
 				dbName: storage.dbName,
-				version: storage.version,
+				version: storage.version ?? MINICUT_INDEXEDDB_SCHEMA_VERSION,
 				indexedDB: storage.indexedDB,
 			})) as MiniCutDktCrdtStoragePackage,
 		);

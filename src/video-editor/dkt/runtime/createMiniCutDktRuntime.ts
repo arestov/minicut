@@ -20,6 +20,7 @@ import {
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import {
+	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 	openMiniCutWorkspaceStorage,
 	stageMiniCutWorkspaceManifest,
 	type MiniCutWorkspaceOpenResult,
@@ -228,7 +229,7 @@ const createStoragePackage = async (
 		return sanitizeDktCrdtStoragePackage(
 			(await makeDktCrdtIndexedDBStorage({
 				dbName: storage.dbName,
-				version: storage.version,
+				version: storage.version ?? MINICUT_INDEXEDDB_SCHEMA_VERSION,
 				indexedDB: storage.indexedDB,
 			})) as MiniCutCrdtStoragePackage,
 		);
@@ -253,6 +254,7 @@ const defaultProductionCrdtStorage = (
 ): MiniCutCrdtStorageOptions => ({
 	type: "indexeddb",
 	dbName: `minicut-crdt-${peerId}`,
+	version: MINICUT_INDEXEDDB_SCHEMA_VERSION,
 });
 
 const createCrdtRuntime = async (
@@ -369,6 +371,7 @@ const createCrdtRuntimeForSession = async (
 			storage: {
 				type: "indexeddb",
 				dbName: normalized.defaultStorageDbNameForSessionKey(sessionKey),
+				version: MINICUT_INDEXEDDB_SCHEMA_VERSION,
 			},
 		},
 		sessionKey,

@@ -8,7 +8,10 @@ import {
 	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
-import { createMiniCutStoredDktManifest } from "../storage/minicutWorkspaceManifest";
+import {
+	MINICUT_INDEXEDDB_SCHEMA_VERSION,
+	createMiniCutStoredDktManifest,
+} from "../storage/minicutWorkspaceManifest";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 import {
 	WORKSPACE_OPEN_FAILURE,
@@ -52,6 +55,20 @@ const createMemoryTransport = () => {
 		},
 	};
 };
+
+const createLegacyIndexedDbShell = (dbName: string): Promise<void> =>
+	new Promise((resolve, reject) => {
+		const request = indexedDB.open(dbName, 1);
+		request.onerror = () =>
+			reject(request.error ?? new Error("Failed to create legacy IndexedDB"));
+		request.onupgradeneeded = () => {
+			request.result.createObjectStore("dkt_models");
+		};
+		request.onsuccess = () => {
+			request.result.close();
+			resolve();
+		};
+	});
 
 const waitForIdle = async (
 	memory: ReturnType<typeof createMemoryTransport>,
@@ -381,6 +398,44 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 			peerId: "worker-crdt-indexeddb",
 			durableLogCount: 0,
 			hasRegistry: true,
+		});
+	});
+
+	it("upgrades existing IndexedDB workspace databases that predate the manifest store", async () => {
+		const dbName = `minicut-worker-crdt-legacy-shell-${Date.now()}`;
+		await createLegacyIndexedDbShell(dbName);
+		const runtime = createMiniCutDktRuntime({
+			enabled: true,
+			crdt: {
+				enabled: true,
+				testOnly: true,
+				peerId: "worker-crdt-indexeddb-upgrade",
+				storage: {
+					type: "indexeddb",
+					dbName,
+					indexedDB,
+				},
+				workspaceIdForSessionKey: (sessionKey) => `harness:room:${sessionKey}`,
+				transport: null,
+			},
+		});
+
+		const dump = await runtime.debugDumpState();
+		const db = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open(dbName);
+			request.onerror = () =>
+				reject(request.error ?? new Error("Failed to reopen upgraded IndexedDB"));
+			request.onsuccess = () => resolve(request.result);
+		});
+		try {
+			expect(db.version).toBe(MINICUT_INDEXEDDB_SCHEMA_VERSION);
+			expect([...db.objectStoreNames]).toContain("dkt_manifest");
+		} finally {
+			db.close();
+		}
+		expect(dump.crdt).toMatchObject({
+			enabled: true,
+			peerId: "worker-crdt-indexeddb-upgrade",
 		});
 	});
 
