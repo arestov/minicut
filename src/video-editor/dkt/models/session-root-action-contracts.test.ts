@@ -476,6 +476,59 @@ describe("SessionRoot action contracts", () => {
 		});
 	});
 
+	it("importResourceIntoActiveProject infers durable media source metadata", async () => {
+		const harness = await createActionContractHarness();
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"importResourceIntoActiveProject",
+			{
+				name: "Runtime Object URL",
+				kind: "video",
+				url: "blob:http://localhost/runtime-object-url",
+				mime: "video/webm",
+				duration: 1,
+				size: 128,
+				lastModified: 1_780_000_001,
+				status: "ready",
+			},
+		);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"importResourceIntoActiveProject",
+			{
+				name: "Remote URL",
+				kind: "image",
+				url: "https://example.invalid/image.png",
+				mime: "image/png",
+				duration: 1,
+				size: 128,
+				status: "ready",
+			},
+		);
+
+		const resources = await harness.ctx.queryRel(harness.project, "resources");
+		const objectUrlResource = resources.find(
+			(resource) => harness.ctx.getAttr(resource, "name") === "Runtime Object URL",
+		);
+		const remoteUrlResource = resources.find(
+			(resource) => harness.ctx.getAttr(resource, "name") === "Remote URL",
+		);
+
+		expect(harness.ctx.getAttr(objectUrlResource, "sourceKind")).toBe(
+			"object-url",
+		);
+		expect(harness.ctx.getAttr(objectUrlResource, "sourceRef")).toBeNull();
+		expect(harness.ctx.getAttr(objectUrlResource, "lastModified")).toBe(
+			1_780_000_001,
+		);
+		expect(harness.ctx.getAttr(remoteUrlResource, "sourceKind")).toBe(
+			"remote-url",
+		);
+	});
+
 	it("nudgeSelectedClip moves the selected clip by the requested delta", async () => {
 		const harness = await createActionContractHarness();
 		const selectedClipId = String(harness.videoClip._node_id);
