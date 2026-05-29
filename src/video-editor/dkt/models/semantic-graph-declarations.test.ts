@@ -405,7 +405,7 @@ describe("semantic graph declarations", () => {
 		).toMatchObject({
 			"$meta$removed": "lww",
 			url: { sync: false, reason: "effect-runtime" },
-			status: { sync: false, reason: "effect-runtime" },
+			status: "lww",
 			data: { sync: false, reason: "effect-runtime" },
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		});

@@ -27,6 +27,9 @@ export type MiniCutDktResourceSeed = {
 	width?: number;
 	height?: number;
 	size?: number;
+	lastModified?: number | null;
+	sourceKind?: string;
+	sourceRef?: string | null;
 	source?: Record<string, unknown>;
 	status?: string;
 	data?: Record<string, unknown>;

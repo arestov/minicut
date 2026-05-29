@@ -354,6 +354,9 @@ describe("SessionRoot action contracts", () => {
 				mime: "video/webm",
 				duration: 5,
 				size: 500,
+				lastModified: 1_780_000_000,
+				sourceKind: "file-handle",
+				sourceRef: "resource:session-imported-video",
 				source: { kind: "local" },
 				status: "ready",
 				data: { status: "ready" },
@@ -366,6 +369,18 @@ describe("SessionRoot action contracts", () => {
 				harness.ctx.getAttr(resource, "name") === "Session Imported Video",
 		);
 		expect(createdResource?._node_id).toBeTruthy();
+		if (!createdResource) {
+			throw new Error("Expected created resource");
+		}
+		expect(harness.ctx.getAttr(createdResource, "sourceKind")).toBe(
+			"file-handle",
+		);
+		expect(harness.ctx.getAttr(createdResource, "sourceRef")).toBe(
+			"resource:session-imported-video",
+		);
+		expect(harness.ctx.getAttr(createdResource, "lastModified")).toBe(
+			1_780_000_000,
+		);
 		expect(
 			await readNodeIds(harness.ctx, harness.project, "resources"),
 		).toHaveLength(beforeResourceIds.length + 1);

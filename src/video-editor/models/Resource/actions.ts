@@ -15,8 +15,9 @@ export const reduceSetResourceStatus = (payload: unknown) => {
 			? payload
 			: (payload as { status?: unknown } | null)?.status;
 	return status === "missing" ||
-		status === "partial" ||
+		status === "needs-permission" ||
 		status === "ready" ||
+		status === "partial" ||
 		status === "loading" ||
 		status === "error"
 		? { status }
@@ -38,6 +39,12 @@ export const reduceSetResourceAttrs = (payload: unknown) => {
 		width: numberOrNull(value.width),
 		height: numberOrNull(value.height),
 		size: numberOrNull(value.size),
+		lastModified: numberOrNull(value.lastModified),
+		sourceKind: stringOr(value.sourceKind, "missing"),
+		sourceRef:
+			typeof value.sourceRef === "string" && value.sourceRef
+				? value.sourceRef
+				: null,
 		source: objectOr(value.source, { kind: "local" }),
 		status: stringOr(value.status, "missing"),
 		data: objectOr(value.data, null),

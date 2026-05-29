@@ -7,6 +7,12 @@
 
 export type ResourceKind = "video" | "audio" | "image" | "text";
 export type ResourceSourceKind = "local" | "p2p";
+export type ResourceDurableSourceKind =
+	| "file-handle"
+	| "object-url"
+	| "remote-url"
+	| "missing";
+export type ResourceDurableStatus = "ready" | "needs-permission" | "missing";
 export type ResourceDataStatus = "missing" | "partial" | "ready";
 export type ResourceChunkStatus = "missing" | "loading" | "ready";
 export type ResourceByteRange = [number, number];

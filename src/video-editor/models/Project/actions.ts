@@ -5,6 +5,8 @@ import type {
 	ResourceDataStatus,
 	ResourceChunkStatus,
 	ResourceSourceKind,
+	ResourceDurableSourceKind,
+	ResourceDurableStatus,
 	ResourceKind,
 } from "../../domain/types";
 import type {
@@ -94,6 +96,29 @@ const asResourceKind = (value: unknown): ResourceKind =>
 
 const asResourceSourceKind = (value: unknown): ResourceSourceKind =>
 	value === "p2p" ? "p2p" : "local";
+
+const asResourceDurableSourceKind = (
+	value: unknown,
+	url: unknown,
+): ResourceDurableSourceKind => {
+	if (
+		value === "file-handle" ||
+		value === "object-url" ||
+		value === "remote-url" ||
+		value === "missing"
+	) {
+		return value;
+	}
+	const urlValue = asString(url) ?? "";
+	if (urlValue.startsWith("blob:")) return "object-url";
+	if (urlValue.startsWith("http://") || urlValue.startsWith("https://")) {
+		return "remote-url";
+	}
+	return "missing";
+};
+
+const asResourceDurableStatus = (value: unknown): ResourceDurableStatus =>
+	value === "ready" || value === "needs-permission" ? value : "missing";
 
 const asResourceDataStatus = (value: unknown): ResourceDataStatus =>
 	value === "partial" || value === "ready" ? value : "missing";
@@ -211,6 +236,9 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 		width: asNumber(value?.width),
 		height: asNumber(value?.height),
 		size: asNumber(value?.size),
+		lastModified: asNumber(value?.lastModified),
+		sourceKind: asResourceDurableSourceKind(value?.sourceKind, value?.url),
+		sourceRef: asString(value?.sourceRef),
 		source: {
 			kind: asResourceSourceKind(
 				asObject<{ kind?: unknown }>(value?.source)?.kind,
@@ -223,7 +251,7 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 					}
 				: null),
 		},
-		status: asString(value?.status) ?? "missing",
+		status: asResourceDurableStatus(value?.status),
 		data: normalizeResourceData(value?.data),
 	};
 };
