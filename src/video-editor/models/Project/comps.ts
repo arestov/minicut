@@ -2,6 +2,7 @@ import type {
 	PreviewClipSource,
 	PreviewStructure,
 } from "../../read-model/previewComps";
+import { normalizePreviewClipSource } from "../../read-model/previewComps";
 
 export const reduceProjectPreviewClipSources = (
 	allTrackClipData: unknown,
@@ -9,8 +10,9 @@ export const reduceProjectPreviewClipSources = (
 	const sources: PreviewClipSource[] = [];
 	if (Array.isArray(allTrackClipData)) {
 		for (const clipData of allTrackClipData) {
-			if (clipData && typeof clipData === "object" && "id" in clipData) {
-				sources.push(clipData as PreviewClipSource);
+			const source = normalizePreviewClipSource(clipData);
+			if (source) {
+				sources.push(source);
 			}
 		}
 	}

@@ -1,6 +1,10 @@
 import type { TextAttrs } from "../models/Text/types";
 import type { EffectRenderInstruction } from "../render/colorPipeline";
-import type { EntityId, ResourceAttrs } from "../render/registryTypes";
+import type {
+	EntityId,
+	ResourceAttrs,
+	ResourceKind,
+} from "../render/registryTypes";
 import type { ScalarKeyframe } from "../render/timing";
 import { evaluateFadeOpacity, evaluateKeyframedScalar } from "../render/timing";
 
@@ -68,6 +72,129 @@ export interface PreviewStructure {
 	clipSources: PreviewClipSource[];
 }
 
+const asObject = (value: unknown): Record<string, unknown> | null =>
+	value && typeof value === "object"
+		? (value as Record<string, unknown>)
+		: null;
+
+const stringOr = (value: unknown, fallback: string): string =>
+	typeof value === "string" ? value : fallback;
+
+const finiteNumberOr = (value: unknown, fallback: number): number =>
+	typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const normalizeResourceKind = (value: unknown): ResourceKind => {
+	if (
+		value === "video" ||
+		value === "audio" ||
+		value === "image" ||
+		value === "text"
+	) {
+		return value;
+	}
+	return "video";
+};
+
+const normalizeScalarKeyframes = (value: unknown): ScalarKeyframe[] | undefined => {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+	const keyframes = value
+		.map((item): ScalarKeyframe | null => {
+			const keyframe = asObject(item);
+			const time = finiteNumberOr(keyframe?.time, Number.NaN);
+			const keyframeValue = finiteNumberOr(keyframe?.value, Number.NaN);
+			if (!Number.isFinite(time) || !Number.isFinite(keyframeValue)) {
+				return null;
+			}
+			return {
+				time,
+				value: keyframeValue,
+				...(keyframe?.interpolation === "hold"
+					? { interpolation: "hold" as const }
+					: {}),
+			};
+		})
+		.filter((keyframe): keyframe is ScalarKeyframe => keyframe !== null);
+	return keyframes.length > 0 ? keyframes : undefined;
+};
+
+export const normalizeResolvedAnimatedScalar = (
+	value: unknown,
+	fallback: number,
+): ResolvedAnimatedScalar => {
+	const scalar = asObject(value);
+	if (!scalar) {
+		return { value: finiteNumberOr(value, fallback) };
+	}
+	const keyframes = normalizeScalarKeyframes(scalar.keyframes);
+	return {
+		value: finiteNumberOr(scalar.value, fallback),
+		...(keyframes ? { keyframes } : {}),
+	};
+};
+
+const normalizePreviewClipTransform = (
+	value: unknown,
+): PreviewClipSource["transform"] => {
+	const transform = asObject(value);
+	return {
+		x: normalizeResolvedAnimatedScalar(transform?.x, 0),
+		y: normalizeResolvedAnimatedScalar(transform?.y, 0),
+		scale: normalizeResolvedAnimatedScalar(transform?.scale, 1),
+		rotation: normalizeResolvedAnimatedScalar(transform?.rotation, 0),
+	};
+};
+
+const normalizeAudio = (value: unknown): PreviewClipSource["audio"] => {
+	const audio = asObject(value);
+	return {
+		gain: finiteNumberOr(audio?.gain, 1),
+		pan: finiteNumberOr(audio?.pan, 0),
+	};
+};
+
+const normalizeTextAttrs = (value: unknown): TextAttrs | null =>
+	value && typeof value === "object" ? (value as TextAttrs) : null;
+
+export const normalizePreviewClipSource = (
+	value: unknown,
+): PreviewClipSource | null => {
+	const clip = asObject(value);
+	const id = stringOr(clip?.id, "");
+	if (!clip || !id) {
+		return null;
+	}
+	const name = stringOr(clip.name, "Clip");
+	const resourceKind = normalizeResourceKind(clip.resourceKind);
+	const effects = Array.isArray(clip.effects)
+		? (clip.effects.filter(Boolean) as EffectRenderInstruction[])
+		: [];
+	return {
+		id,
+		resourceId: typeof clip.resourceId === "string" ? clip.resourceId : null,
+		name,
+		color: stringOr(clip.color, "#2563eb"),
+		resourceName: stringOr(clip.resourceName, name),
+		resourceKind,
+		resourceUrl: stringOr(clip.resourceUrl, ""),
+		mime: stringOr(clip.mime, "application/octet-stream"),
+		inPoint: finiteNumberOr(clip.inPoint, 0),
+		start: finiteNumberOr(clip.start, 0),
+		duration: finiteNumberOr(clip.duration, 0),
+		fadeIn: finiteNumberOr(clip.fadeIn, 0),
+		fadeOut: finiteNumberOr(clip.fadeOut, 0),
+		opacity: normalizeResolvedAnimatedScalar(clip.opacity, 1),
+		transform: normalizePreviewClipTransform(clip.transform),
+		audio: normalizeAudio(clip.audio),
+		filters: Array.isArray(clip.filters)
+			? clip.filters.filter((filter): filter is string => typeof filter === "string")
+			: [],
+		effects,
+		text: normalizeTextAttrs(clip.text),
+	};
+};
+
 export const reduceProjectPreviewClipSources = (
 	allTrackClipData: unknown,
 	allClipTrackState?: unknown,
@@ -89,8 +216,9 @@ export const reduceProjectPreviewClipSources = (
 			continue;
 		}
 		const clipData = allTrackClipData[index];
-		if (clipData && typeof clipData === "object" && "id" in clipData) {
-			sources.push(clipData as PreviewClipSource);
+		const source = normalizePreviewClipSource(clipData);
+		if (source) {
+			sources.push(source);
 		}
 	}
 	return { clipSources: sources };
@@ -123,42 +251,43 @@ export const renderPreviewClipSourceAtCursor = (
 	clip: PreviewClipSource,
 	cursor: number,
 ): RenderedClip | null => {
-	if (cursor < clip.start || cursor >= clip.start + clip.duration) {
+	const source = normalizePreviewClipSource(clip);
+	if (!source || cursor < source.start || cursor >= source.start + source.duration) {
 		return null;
 	}
 
-	const localTime = Math.max(0, cursor - clip.start);
-	const baseOpacity = evaluateKeyframedScalar(clip.opacity, localTime);
+	const localTime = Math.max(0, cursor - source.start);
+	const baseOpacity = evaluateKeyframedScalar(source.opacity, localTime);
 
 	return {
-		id: clip.id,
-		resourceId: clip.resourceId,
-		name: clip.name,
-		color: clip.color,
-		resourceName: clip.resourceName,
-		resourceKind: clip.resourceKind,
-		resourceUrl: clip.resourceUrl,
-		mime: clip.mime,
-		inPoint: clip.inPoint,
-		start: clip.start,
+		id: source.id,
+		resourceId: source.resourceId,
+		name: source.name,
+		color: source.color,
+		resourceName: source.resourceName,
+		resourceKind: source.resourceKind,
+		resourceUrl: source.resourceUrl,
+		mime: source.mime,
+		inPoint: source.inPoint,
+		start: source.start,
 		opacity: evaluateFadeOpacity(
 			cursor,
-			clip.start,
-			clip.duration,
+			source.start,
+			source.duration,
 			baseOpacity,
-			clip.fadeIn,
-			clip.fadeOut,
+			source.fadeIn,
+			source.fadeOut,
 		),
 		transform: {
-			x: evaluateKeyframedScalar(clip.transform.x, localTime),
-			y: evaluateKeyframedScalar(clip.transform.y, localTime),
-			scale: evaluateKeyframedScalar(clip.transform.scale, localTime),
-			rotation: evaluateKeyframedScalar(clip.transform.rotation, localTime),
+			x: evaluateKeyframedScalar(source.transform.x, localTime),
+			y: evaluateKeyframedScalar(source.transform.y, localTime),
+			scale: evaluateKeyframedScalar(source.transform.scale, localTime),
+			rotation: evaluateKeyframedScalar(source.transform.rotation, localTime),
 		},
-		audio: clip.audio,
-		filters: clip.filters,
-		effects: clip.effects,
-		text: clip.text,
+		audio: source.audio,
+		filters: source.filters,
+		effects: source.effects,
+		text: source.text,
 	};
 };
 

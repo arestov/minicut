@@ -1,6 +1,7 @@
 import {
 	createPreviewFrame,
 	lookupPreviewBufferFrame,
+	normalizePreviewClipSource,
 	type PreviewBuffer,
 	type PreviewFrame,
 	type PreviewStructure,
@@ -16,7 +17,11 @@ export const reducePreviewStructure = (
 		typeof previewClipSources === "object" &&
 		Array.isArray((previewClipSources as PreviewStructure).clipSources)
 	) {
-		return previewClipSources as PreviewStructure;
+		return {
+			clipSources: (previewClipSources as PreviewStructure).clipSources
+				.map((source) => normalizePreviewClipSource(source))
+				.filter((source): source is NonNullable<typeof source> => source !== null),
+		};
 	}
 	return DEFAULT_PREVIEW_STRUCTURE;
 };

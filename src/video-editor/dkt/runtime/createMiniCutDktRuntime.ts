@@ -5,6 +5,7 @@ import type {
 import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
 import { makeDktCrdtIndexedDBStorage } from "dkt/crdt/storage/indexeddb.js";
 import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
+import { reinit } from "dkt/runtime/app/reinit.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
@@ -103,6 +104,8 @@ type MiniCutCrdtRuntimeLike = {
 		transport: DktCrdtTransport,
 		options?: { baseModel?: RuntimeModelLike },
 	) => unknown;
+	restoreFromStorage?: () => Promise<void> | void;
+	projectCRDTMeta?: (model: RuntimeModelLike) => Promise<void> | void;
 };
 
 type MiniCutCrdtStoragePackage = {
@@ -111,6 +114,24 @@ type MiniCutCrdtStoragePackage = {
 	commitChanges?: (meta?: unknown) => Promise<void> | void;
 	whenReady?: () => Promise<void> | void;
 	close?: () => Promise<void> | void;
+};
+
+const readDktStorageSnapshot = async (
+	storagePackage: MiniCutCrdtStoragePackage | null,
+): Promise<unknown | null> => {
+	const dktStorage = storagePackage?.dktStorage;
+	if (
+		!dktStorage ||
+		typeof dktStorage !== "object" ||
+		typeof (dktStorage as { getSnapshot?: unknown }).getSnapshot !== "function"
+	) {
+		return null;
+	}
+
+	return (
+		(await (dktStorage as { getSnapshot: () => Promise<unknown> | unknown })
+			.getSnapshot()) ?? null
+	);
 };
 
 type MiniCutCrdtStorageOptions =
@@ -454,6 +475,7 @@ export const createMiniCutDktRuntime = (
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
 		appModel: RuntimeModelLike;
+		restoredFromStorage: boolean;
 	}> | null = null;
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>();
 	const activeTransports = new Set<
@@ -598,9 +620,7 @@ export const createMiniCutDktRuntime = (
 						}
 					},
 				}) as RuntimeLike;
-				const inited = await runtime.start({
-					App: MiniCutAppRoot,
-					interfaces: {
+				const interfaces = {
 						time: {
 							setTimeout: globalThis.setTimeout.bind(globalThis),
 							clearTimeout: globalThis.clearTimeout.bind(globalThis),
@@ -623,8 +643,22 @@ export const createMiniCutDktRuntime = (
 								publishImportFilesRequest(payload);
 							},
 						},
-					},
-				});
+					};
+				const storageSnapshot =
+					crdt.storageOpen?.ok === true &&
+					crdt.storageOpen.status === WORKSPACE_OPEN_STATUS.READY
+						? await readDktStorageSnapshot(crdt.storagePackage)
+						: null;
+				const inited = storageSnapshot
+					? await (Promise.resolve(
+							reinit(MiniCutAppRoot, runtime, storageSnapshot, interfaces, {
+								reinit_all_attrs: true,
+							}),
+						) as Promise<{ app_model: RuntimeModelLike }>)
+					: await runtime.start({
+							App: MiniCutAppRoot,
+							interfaces,
+						});
 				if (
 					crdt.crdtRuntime &&
 					crdt.transport?.attach &&
@@ -649,7 +683,11 @@ export const createMiniCutDktRuntime = (
 						crdtTransportCleanup = cleanup;
 					}
 				}
-				return { runtime, appModel: inited.app_model };
+				return {
+					runtime,
+					appModel: inited.app_model,
+					restoredFromStorage: Boolean(storageSnapshot),
+				};
 			})();
 		}
 
@@ -688,6 +726,10 @@ export const createMiniCutDktRuntime = (
 								storageOpenStatus,
 							},
 						);
+						if (app.restoredFromStorage) {
+							await crdt?.crdtRuntime?.restoreFromStorage?.();
+							await crdt?.crdtRuntime?.projectCRDTMeta?.(app.appModel);
+						}
 						resolve(sessionRoot as RuntimeModelLike);
 					} catch (error) {
 						reject(error);

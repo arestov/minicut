@@ -1,4 +1,7 @@
-import type { PreviewClipSource } from "../read-model/previewComps";
+import {
+	normalizePreviewClipSource,
+	type PreviewClipSource,
+} from "../read-model/previewComps";
 import type { ResourceAttrs, ResourceKind } from "./registryTypes";
 import { evaluateFadeOpacity, evaluateKeyframedScalar } from "./timing";
 
@@ -60,40 +63,46 @@ export const compileClipFrameOperationFromSource = (
 	source: PreviewClipSource,
 	time: number,
 ): ClipFrameOperation => {
-	const localTime = Math.max(0, time - source.start);
-	const baseOpacity = evaluateKeyframedScalar(source.opacity, localTime);
+	const normalizedSource = normalizePreviewClipSource(source) ?? source;
+	const localTime = Math.max(0, time - normalizedSource.start);
+	const baseOpacity = evaluateKeyframedScalar(normalizedSource.opacity, localTime);
 	const opacity = evaluateFadeOpacity(
 		time,
-		source.start,
-		source.duration,
+		normalizedSource.start,
+		normalizedSource.duration,
 		baseOpacity,
-		source.fadeIn,
-		source.fadeOut,
+		normalizedSource.fadeIn,
+		normalizedSource.fadeOut,
 	);
 	const transform: EvaluatedTransformAttrs = {
-		x: evaluateKeyframedScalar(source.transform.x, localTime),
-		y: evaluateKeyframedScalar(source.transform.y, localTime),
-		scale: evaluateKeyframedScalar(source.transform.scale, localTime),
-		rotation: evaluateKeyframedScalar(source.transform.rotation, localTime),
+		x: evaluateKeyframedScalar(normalizedSource.transform.x, localTime),
+		y: evaluateKeyframedScalar(normalizedSource.transform.y, localTime),
+		scale: evaluateKeyframedScalar(normalizedSource.transform.scale, localTime),
+		rotation: evaluateKeyframedScalar(
+			normalizedSource.transform.rotation,
+			localTime,
+		),
 	};
 	return {
-		clipId: source.id,
-		resourceId: source.resourceId ?? source.id,
-		resourceKind: source.resourceKind,
-		start: source.start,
-		duration: source.duration,
+		clipId: normalizedSource.id,
+		resourceId: normalizedSource.resourceId ?? normalizedSource.id,
+		resourceKind: normalizedSource.resourceKind,
+		start: normalizedSource.start,
+		duration: normalizedSource.duration,
 		localTime,
-		sourceTime: source.inPoint + localTime,
+		sourceTime: normalizedSource.inPoint + localTime,
 		operations: [
 			{ type: "transform", value: transform },
-			...(source.text ? [{ type: "text" as const, value: source.text }] : []),
-			...source.effects.map((effect) => ({
+			...(normalizedSource.text
+				? [{ type: "text" as const, value: normalizedSource.text }]
+				: []),
+			...normalizedSource.effects.map((effect) => ({
 				type: "effect" as const,
 				value: effect,
 			})),
 			{ type: "opacity", value: opacity },
-			...(source.resourceKind === "audio"
-				? [{ type: "audio" as const, value: source.audio }]
+			...(normalizedSource.resourceKind === "audio"
+				? [{ type: "audio" as const, value: normalizedSource.audio }]
 				: []),
 		],
 	};
@@ -104,6 +113,8 @@ export const compileFrameOperationsFromPlan = (
 	time: number,
 ): ClipFrameOperation[] =>
 	plan.clipSources
+		.map((s) => normalizePreviewClipSource(s))
+		.filter((s): s is PreviewClipSource => s !== null)
 		.filter((s) => time >= s.start && time < s.start + s.duration)
 		.map((s) => compileClipFrameOperationFromSource(s, time));
 
@@ -119,6 +130,8 @@ export const compileEditframeClipsFromPlan = (
 	plan: ExportPlan,
 ): EditframeClip[] =>
 	plan.clipSources
+		.map((s) => normalizePreviewClipSource(s))
+		.filter((s): s is PreviewClipSource => s !== null)
 		.filter((s) => s.resourceKind !== "text")
 		.map((s) => ({
 			type: getEditframeTypeFromKind(s.resourceKind),

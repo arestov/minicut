@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { ReactSyncScopeHandle } from "../scope/ScopeHandle";
+import { getRelShape } from "../shape/autoShapes";
 import { useReactScopeRuntime } from "./useReactScopeRuntime";
 
 /**
@@ -8,11 +9,18 @@ import { useReactScopeRuntime } from "./useReactScopeRuntime";
  */
 export const useRootOne = (relName: string): ReactSyncScopeHandle | null => {
 	const runtime = useReactScopeRuntime();
+	const shape = getRelShape(relName);
 	const rootScope = useSyncExternalStore(
 		runtime.subscribeRootScope.bind(runtime),
 		runtime.getRootScope.bind(runtime),
 		runtime.getRootScope.bind(runtime),
 	);
+	useEffect(() => {
+		if (!rootScope) {
+			return;
+		}
+		return runtime.mountShape(rootScope, shape);
+	}, [runtime, rootScope, shape]);
 	return useSyncExternalStore(
 		(listener) =>
 			rootScope ? runtime.subscribeOne(rootScope, relName, listener) : () => {},

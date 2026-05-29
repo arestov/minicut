@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { chromium, expect, test, type Page } from '@playwright/test'
+import path from 'node:path'
 
 // This spec injects conflict meta to smoke-test UI rendering only.
 // It does not prove real CRDT conflict generation or propagation.
@@ -194,6 +195,126 @@ const createProjectViaDebug = async (page: Page, title: string) => {
 	}, title)
 }
 
+const waitForRuntimeSettled = async (page: Page) => {
+	await page.evaluate(async () => {
+		const debug = window.__MINICUT_P2P_DEBUG__
+		if (!debug?.waitForRuntimeSettled) throw new Error('MiniCut debug bridge is unavailable')
+		await debug.waitForRuntimeSettled()
+	})
+}
+
+const readRestoreSummary = async (page: Page) =>
+	page.evaluate(async () => {
+		const debug = window.__MINICUT_P2P_DEBUG__
+		const details = debug?.getActiveProjectDetails?.() as {
+			title?: unknown
+			tracks?: Array<{
+				kind?: unknown
+				clips?: Array<{
+					name?: unknown
+					start?: unknown
+					duration?: unknown
+				}>
+			}>
+		} | null
+		const graph = debug?.dumpGraph?.() as {
+			dict?: unknown
+			nodes?: unknown
+		} | null
+		const workerState = await debug?.dumpWorkerState?.() as {
+			crdt?: {
+				durableLogCount?: unknown
+				storageOpen?: { status?: unknown; statusLabel?: unknown }
+			}
+		} | null
+		const nodes: Array<{ modelName?: unknown; model_name?: unknown; attrs?: unknown }> = []
+		if (Array.isArray(graph?.nodes)) {
+			nodes.push(...graph.nodes as typeof nodes)
+		}
+		if (graph?.dict && typeof graph.dict === 'object') {
+			nodes.push(...Object.values(graph.dict as Record<string, unknown>).filter((node): node is typeof nodes[number] =>
+				Boolean(node && typeof node === 'object'),
+			))
+		}
+		const effectKinds = nodes
+			.filter((node) => (node.modelName ?? node.model_name) === 'effect')
+			.map((node) => {
+				const attrs = node.attrs && typeof node.attrs === 'object'
+					? node.attrs as { kind?: unknown; enabled?: unknown }
+					: null
+				return {
+					kind: typeof attrs?.kind === 'string' ? attrs.kind : null,
+					enabled: attrs?.enabled !== false,
+				}
+			})
+
+		return {
+			details,
+			effectKinds,
+			storageOpen: workerState?.crdt?.storageOpen ?? null,
+			durableLogCount: typeof workerState?.crdt?.durableLogCount === 'number'
+				? workerState.crdt.durableLogCount
+				: 0,
+		}
+	})
+
+const readSelectionState = async (page: Page) =>
+	page.evaluate(() => {
+		const debug = window.__MINICUT_P2P_DEBUG__
+		if (!debug?.getSelectionState) throw new Error('MiniCut debug bridge is unavailable')
+		return debug.getSelectionState() as {
+			selectedEntityId?: unknown
+			selectedClip?: { name?: unknown } | null
+			selectedClipSummary?: unknown
+		} | null
+	})
+
+const setTimelineCursor = async (page: Page, cursor: number) => {
+	await page.evaluate(async (nextCursor) => {
+		const debug = window.__MINICUT_P2P_DEBUG__
+		if (!debug?.dispatchRootAction) throw new Error('MiniCut debug bridge is unavailable')
+		await debug.dispatchRootAction('setCursor', nextCursor)
+	}, cursor)
+}
+
+const getVideoTrackClipsByName = async (page: Page, clipName: string) => {
+	const summary = await readRestoreSummary(page)
+	const videoTrack = summary.details?.tracks?.find((track) => track.kind === 'video')
+	return [...(videoTrack?.clips ?? [])]
+		.filter((clip) => clip.name === clipName)
+		.sort((a, b) => Number(a.start ?? 0) - Number(b.start ?? 0))
+}
+
+const expectVideoTrackClipsByName = async (
+	page: Page,
+	clipName: string,
+	count: number,
+) => {
+	await expect.poll(async () => (await getVideoTrackClipsByName(page, clipName)).length, {
+		timeout: 10_000,
+	}).toBe(count)
+	return getVideoTrackClipsByName(page, clipName)
+}
+
+const importMediaFile = async (page: Page, filePath: string, fileName: string) => {
+	await page.getByLabel('Import media files').setInputFiles(filePath)
+	await expect.poll(
+		async () => page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: fileName }).count(),
+		{ timeout: 45_000 },
+	).toBeGreaterThan(0)
+}
+
+const addResourceToTimeline = async (page: Page, resourceName: string) => {
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
+	await page
+		.getByLabel('Media bin')
+		.locator('.ve-resource-row')
+		.filter({ hasText: resourceName })
+		.getByRole('button', { name: 'Add to timeline' })
+		.click()
+	await expect(timeline.getByRole('button', { name: new RegExp(resourceName, 'i') })).toBeVisible()
+}
+
 test.describe('CRDT UI E2E', () => {
 	test('@crdt-smoke boots the worker with IndexedDB CRDT storage', async ({ page }, testInfo) => {
 		test.skip(testInfo.project.name !== 'crdt-ui-indexeddb', 'CRDT harness storage smoke runs only in the CRDT Playwright profile')
@@ -260,6 +381,110 @@ test.describe('CRDT UI E2E', () => {
 		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
 		await expect(panel).toContainText(createHarnessWorkspaceId(roomId))
 		await expect(panel).toContainText(createHarnessDbName(roomId))
+	})
+
+	test('@crdt-smoke restores edited project state and renders it after browser restart', async ({ baseURL }, testInfo) => {
+		test.skip(testInfo.project.name !== 'crdt-ui-indexeddb', 'CRDT harness storage smoke runs only in the CRDT Playwright profile')
+		const roomId = `restore-ui-${Date.now()}`
+		const userDataDir = testInfo.outputPath('persistent-profile')
+		const clipName = 'Persistent caption'
+		const importedResourceName = 'fixture-video.webm'
+		const importedResourcePath = path.resolve('tests/fixtures/media', importedResourceName)
+
+		const launchApp = async () => {
+			const context = await chromium.launchPersistentContext(userDataDir, {
+				baseURL,
+				headless: true,
+			})
+			await context.addInitScript(() => {
+				;(window as Window & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean }).__MINICUT_ENABLE_DEBUG_BRIDGE__ = true
+			})
+			const page = context.pages()[0] ?? await context.newPage()
+			await page.goto(`/#/${roomId}`)
+			await waitForDebugBridge(page)
+			return { context, page }
+		}
+
+		const first = await launchApp()
+		try {
+			await first.page.getByLabel('Media bin').getByRole('button', { name: 'Add Text to Timeline' }).click()
+			const timeline = first.page.getByRole('region', { name: 'Timeline', exact: true })
+			const initialTextClip = timeline.getByRole('button', { name: /^Resize clip start Text\b/i }).first()
+			await expect(initialTextClip).toBeVisible()
+			await initialTextClip.click()
+
+			const inspector = first.page.getByRole('complementary', { name: 'Inspector' })
+			await inspector.getByRole('textbox', { name: 'Clip name' }).fill(clipName)
+			await expect(timeline.getByRole('button', { name: new RegExp(clipName, 'i') })).toHaveCount(1)
+			await setTimelineCursor(first.page, 1)
+			await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Split clip' }).click()
+			await expect(timeline.getByRole('button', { name: new RegExp(clipName, 'i') })).toHaveCount(2)
+			await timeline.getByRole('button', { name: new RegExp(clipName, 'i') }).first().click()
+			await inspector.getByRole('button', { name: 'Tint' }).click()
+			await expect(inspector.getByText('1 effects')).toBeVisible()
+			await waitForRuntimeSettled(first.page)
+			await expect.poll(async () => (await readRestoreSummary(first.page)).durableLogCount, {
+				timeout: 20_000,
+			}).toBeGreaterThan(0)
+		} finally {
+			await first.context.close()
+		}
+
+		const second = await launchApp()
+		try {
+			await waitForStorageSnapshot(second.page, roomId)
+			const summary = await readRestoreSummary(second.page)
+			expect(summary.storageOpen).toMatchObject({
+				status: WORKSPACE_OPEN_STATUS.READY,
+				statusLabel: 'ready',
+			})
+			expect(summary.details?.title).toBe('Project 1')
+			const videoTrack = summary.details?.tracks?.find((track) => track.kind === 'video')
+			const restoredClips = [...(videoTrack?.clips ?? [])]
+				.filter((clip) => clip.name === clipName)
+				.sort((a, b) => Number(a.start ?? 0) - Number(b.start ?? 0))
+			expect(restoredClips).toHaveLength(2)
+			expect(restoredClips.map((clip) => clip.duration)).toEqual([1, 2])
+			expect(summary.effectKinds).toEqual(expect.arrayContaining([
+				expect.objectContaining({ kind: 'tint', enabled: true }),
+			]))
+
+			const timeline = second.page.getByRole('region', { name: 'Timeline', exact: true })
+			await expect(timeline.getByRole('button', { name: new RegExp(clipName, 'i') })).toHaveCount(2)
+
+			await timeline.getByRole('button', { name: new RegExp(clipName, 'i') }).nth(1).click()
+			await setTimelineCursor(second.page, 2)
+			await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Split clip' }).click()
+			const textClipsAfterReloadSplit = await expectVideoTrackClipsByName(second.page, clipName, 3)
+			expect(textClipsAfterReloadSplit.map((clip) => clip.duration)).toEqual([1, 1, 1])
+			await expect(timeline.getByRole('button', { name: new RegExp(clipName, 'i') })).toHaveCount(3)
+
+			await importMediaFile(second.page, importedResourcePath, importedResourceName)
+			await addResourceToTimeline(second.page, importedResourceName)
+			const importedClips = await expectVideoTrackClipsByName(second.page, importedResourceName, 1)
+			const importedStart = Number(importedClips[0]?.start ?? 0)
+			await timeline.getByRole('button', { name: new RegExp(importedResourceName, 'i') }).first().click()
+			await setTimelineCursor(second.page, importedStart + 0.5)
+			await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Split clip' }).click()
+			const importedSplitClips = await expectVideoTrackClipsByName(second.page, importedResourceName, 2)
+			expect(importedSplitClips[0]?.duration).toBeCloseTo(0.5, 5)
+			await expect(timeline.getByRole('button', { name: new RegExp(importedResourceName, 'i') })).toHaveCount(2)
+
+			await timeline.getByRole('button', { name: new RegExp(importedResourceName, 'i') }).nth(1).click()
+			await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Nudge +0.5s' }).click()
+			const importedNudgedClips = await expectVideoTrackClipsByName(second.page, importedResourceName, 2)
+			expect(importedNudgedClips[1]?.start).toBeCloseTo(importedStart + 1, 5)
+			await expect(timeline.getByRole('button', { name: new RegExp(importedResourceName, 'i') }).nth(1)).toContainText(`${(importedStart + 1).toFixed(1)}s`)
+
+			await timeline.getByRole('button', { name: new RegExp(clipName, 'i') }).first().click()
+			await expect.poll(async () => (await readSelectionState(second.page))?.selectedClip?.name ?? null, {
+				timeout: 10_000,
+			}).toBe(clipName)
+			await setTimelineCursor(second.page, 0.5)
+			await expect(second.page.getByRole('region', { name: 'Preview panel' })).toContainText('Text')
+		} finally {
+			await second.context.close()
+		}
 	})
 
 	test('@crdt-smoke reset clears only the current workspace db', async ({ page, context }, testInfo) => {
