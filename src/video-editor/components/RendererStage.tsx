@@ -564,6 +564,7 @@ const VisualClipLayer = ({
 			{clip.resourceKind === "text" ? renderTextClip({ ...clip, text }) : null}
 			{!hasMedia && clip.resourceKind !== "text" ? (
 				<>
+					<strong>Missing media</strong>
 					<strong>{clip.name}</strong>
 					<span>{clip.resourceName}</span>
 				</>
