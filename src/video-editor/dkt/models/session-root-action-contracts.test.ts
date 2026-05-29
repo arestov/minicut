@@ -650,7 +650,7 @@ describe("SessionRoot action contracts", () => {
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 
-	it("splitSelectedClip is a no-op without a selected clip or a valid split point", async () => {
+	it("splitSelectedClip is a no-op without a selected clip or at invalid split points", async () => {
 		const harness = await createActionContractHarness();
 		const selectedClipId = String(harness.videoClip._node_id);
 		const beforeNodeIds = await readNodeIds(
@@ -674,15 +674,22 @@ describe("SessionRoot action contracts", () => {
 			"selectEntity",
 			selectedClipId,
 		);
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "setCursor", 99);
-		await dispatchAndSettle(
-			harness.ctx,
-			harness.sessionRoot,
-			"splitSelectedClip",
-		);
-		expect(await readNodeIds(harness.ctx, harness.videoTrack, "clips")).toEqual(
-			beforeNodeIds,
-		);
+		for (const invalidCursor of [1, 5, 99]) {
+			await dispatchAndSettle(
+				harness.ctx,
+				harness.sessionRoot,
+				"setCursor",
+				invalidCursor,
+			);
+			await dispatchAndSettle(
+				harness.ctx,
+				harness.sessionRoot,
+				"splitSelectedClip",
+			);
+			expect(
+				await readNodeIds(harness.ctx, harness.videoTrack, "clips"),
+			).toEqual(beforeNodeIds);
+		}
 	});
 
 	it("deleteSelectedClip removes the selected clip and clears selection", async () => {

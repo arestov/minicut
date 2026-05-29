@@ -465,6 +465,14 @@ test('split clip follows playhead and reflects resulting durations in timeline w
 	expect(rightWidth).toBeLessThan(42)
 })
 
+test('split clip action is disabled until a clip is selected', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
+	await expect(timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Split clip' })).toBeDisabled()
+})
+
 test('project dropdown shows items when opened', async ({ page }) => {
 	await page.goto('/')
 
