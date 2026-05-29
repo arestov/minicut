@@ -6,6 +6,10 @@ import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../dkt/shared/messageTypes";
+import {
+	formatRuntimeErrorForConsole,
+	serializeRuntimeError,
+} from "../dkt/runtime/runtimeErrorDiagnostics";
 
 const runtime = createMiniCutDktWorkerModelRuntime();
 
@@ -58,10 +62,11 @@ sharedWorkerScope.onconnect = (event: MessageEvent) => {
 	const connection = runtime.connect(transport);
 
 	port.onmessageerror = (error) => {
+		const serialized = serializeRuntimeError(error, "shared-worker-port-messageerror");
 		transport.send({
 			type: DKT_MSG.RUNTIME_ERROR,
-			message:
-				error instanceof Error ? error.stack || error.message : String(error),
+			message: formatRuntimeErrorForConsole(serialized),
+			error: serialized,
 		});
 	};
 

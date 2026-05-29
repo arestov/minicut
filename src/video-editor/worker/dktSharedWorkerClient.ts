@@ -3,6 +3,7 @@ import {
 	DKT_MSG,
 	type MiniCutDktTransportMessage,
 } from "../dkt/shared/messageTypes";
+import { formatRuntimeErrorForConsole } from "../dkt/runtime/runtimeErrorDiagnostics";
 import type { EditorAuthorityClient } from "./authorityClient";
 
 const DEFAULT_DKT_SHARED_WORKER_NAME = "minicut-video-editor-dkt-runtime";
@@ -130,7 +131,17 @@ export class DktSharedWorkerAuthorityClient implements EditorAuthorityClient {
 				this.#onSyncMessage?.(message);
 				break;
 			case DKT_MSG.RUNTIME_ERROR:
-				console.error("[minicut:dkt-runtime:error]", message.message);
+				console.error(
+					"[minicut:dkt-runtime:error]",
+					message.error ?? message.message,
+				);
+				this.#onError?.(
+					new Error(
+						message.error
+							? formatRuntimeErrorForConsole(message.error)
+							: String(message.message),
+					),
+				);
 				break;
 		}
 	}

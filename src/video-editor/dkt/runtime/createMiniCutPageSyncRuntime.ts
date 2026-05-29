@@ -26,6 +26,7 @@ import {
 	createSyncRequireShapeMessage,
 	createSyncUpdateStructureUsageMessage,
 } from "./scopedActionTransport";
+import { formatRuntimeErrorForConsole } from "./runtimeErrorDiagnostics";
 
 type RootAttrsCacheEntry = {
 	rootNodeId: string | null;
@@ -351,12 +352,16 @@ export const createMiniCutPageSyncRuntime = ({
 				return;
 			}
 			case DKT_MSG.RUNTIME_ERROR: {
-				console.error("[minicut:dkt-runtime:error]", message.message);
+				console.error(
+					"[minicut:dkt-runtime:error]",
+					message.error ?? message.message,
+				);
 				const current = store.getSnapshot();
 				store.setSnapshot(
 					createPageRuntimeSnapshotWithVersion(current, {
-						runtimeError:
-							typeof message.message === "string"
+						runtimeError: message.error
+							? formatRuntimeErrorForConsole(message.error)
+							: typeof message.message === "string"
 								? message.message
 								: String(message.message),
 					}),

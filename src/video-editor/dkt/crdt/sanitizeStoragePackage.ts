@@ -5,6 +5,26 @@ type StoragePackage = {
 	close?: () => Promise<void> | void;
 };
 
+const cloneAssert = (value: unknown, label: string): void => {
+	if (typeof structuredClone !== "function") {
+		return;
+	}
+	try {
+		structuredClone(value);
+	} catch (error) {
+		const reason =
+			error instanceof Error ||
+			(typeof DOMException !== "undefined" && error instanceof DOMException)
+				? `${error.name}: ${error.message}`
+				: String(error);
+		const message = `MiniCut DKT storage value is not structured-cloneable at ${label}: ${reason}`;
+		if (typeof DOMException !== "undefined") {
+			throw new DOMException(message, "DataCloneError");
+		}
+		throw new Error(`DataCloneError: ${message}`);
+	}
+};
+
 export const sanitizeStorageValue = (
 	value: unknown,
 	seen: WeakSet<object> = new WeakSet(),
@@ -66,14 +86,14 @@ export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 	const wrappedDktStorage = {
 		...dktStorage,
 		putSchema(value: unknown) {
-			return (dktStorage.putSchema as (value: unknown) => unknown)?.(
-				sanitizeStorageValue(value),
-			);
+			const sanitized = sanitizeStorageValue(value);
+			cloneAssert(sanitized, "dkt.putSchema");
+			return (dktStorage.putSchema as (value: unknown) => unknown)?.(sanitized);
 		},
 		putProjectMeta(value: unknown) {
-			return (dktStorage.putProjectMeta as (value: unknown) => unknown)?.(
-				sanitizeStorageValue(value),
-			);
+			const sanitized = sanitizeStorageValue(value);
+			cloneAssert(sanitized, "dkt.putProjectMeta");
+			return (dktStorage.putProjectMeta as (value: unknown) => unknown)?.(sanitized);
 		},
 		createModel(
 			id: string,
@@ -82,6 +102,26 @@ export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 			rels?: Record<string, unknown>,
 			mentions?: Record<string, unknown>,
 		) {
+			const sanitizedAttrs = sanitizeStorageValue(attrs) as Record<
+				string,
+				unknown
+			>;
+			const sanitizedRels = sanitizeStorageValue(rels) as Record<
+				string,
+				unknown
+			>;
+			const sanitizedMentions = sanitizeStorageValue(mentions) as Record<
+				string,
+				unknown
+			>;
+			cloneAssert(
+				{
+					attrs: sanitizedAttrs,
+					rels: sanitizedRels,
+					mentions: sanitizedMentions,
+				},
+				`dkt.createModel:${modelName}:${id}`,
+			);
 			return (
 				dktStorage.createModel as (
 					id: string,
@@ -90,30 +130,28 @@ export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 					rels?: Record<string, unknown>,
 					mentions?: Record<string, unknown>,
 				) => unknown
-			)?.(
-				id,
-				modelName,
-				sanitizeStorageValue(attrs) as Record<string, unknown>,
-				sanitizeStorageValue(rels) as Record<string, unknown>,
-				sanitizeStorageValue(mentions) as Record<string, unknown>,
-			);
+			)?.(id, modelName, sanitizedAttrs, sanitizedRels, sanitizedMentions);
 		},
 		updateModelAttrs(id: string, changesList: unknown[]) {
+			const sanitized = sanitizeChangesList(changesList) as unknown[];
+			cloneAssert(sanitized, `dkt.updateModelAttrs:${id}`);
 			return (
 				dktStorage.updateModelAttrs as (
 					id: string,
 					changesList: unknown[],
 				) => unknown
-			)?.(id, sanitizeChangesList(changesList) as unknown[]);
+			)?.(id, sanitized);
 		},
 		updateModelRel(id: string, relName: string, value: unknown) {
+			const sanitized = sanitizeStorageValue(value);
+			cloneAssert(sanitized, `dkt.updateModelRel:${id}:${relName}`);
 			return (
 				dktStorage.updateModelRel as (
 					id: string,
 					relName: string,
 					value: unknown,
 				) => unknown
-			)?.(id, relName, sanitizeStorageValue(value));
+			)?.(id, relName, sanitized);
 		},
 		updateModelMention(
 			id: string,
@@ -121,6 +159,11 @@ export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 			mentionName: string,
 			value: unknown,
 		) {
+			const sanitized = sanitizeStorageValue(value);
+			cloneAssert(
+				sanitized,
+				`dkt.updateModelMention:${modelName}:${id}:${mentionName}`,
+			);
 			return (
 				dktStorage.updateModelMention as (
 					id: string,
@@ -128,17 +171,19 @@ export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 					mentionName: string,
 					value: unknown,
 				) => unknown
-			)?.(id, modelName, mentionName, sanitizeStorageValue(value));
+			)?.(id, modelName, mentionName, sanitized);
 		},
 		createExpectedRel(key: string, data: unknown) {
+			const sanitized = sanitizeStorageValue(data);
+			cloneAssert(sanitized, `dkt.createExpectedRel:${key}`);
 			return (
 				dktStorage.createExpectedRel as (key: string, data: unknown) => unknown
-			)?.(key, sanitizeStorageValue(data));
+			)?.(key, sanitized);
 		},
 		commitChanges(meta?: unknown) {
-			return (dktStorage.commitChanges as (meta?: unknown) => unknown)?.(
-				sanitizeStorageValue(meta),
-			);
+			const sanitized = sanitizeStorageValue(meta);
+			cloneAssert(sanitized, "dkt.commitChanges.meta");
+			return (dktStorage.commitChanges as (meta?: unknown) => unknown)?.(sanitized);
 		},
 	};
 	return {

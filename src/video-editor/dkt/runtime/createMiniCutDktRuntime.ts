@@ -34,6 +34,10 @@ import {
 	getWorkspaceOpenStatusLabel,
 	type WorkspaceOpenState,
 } from "./workspaceOpenState";
+import {
+	formatRuntimeErrorForConsole,
+	serializeRuntimeError,
+} from "./runtimeErrorDiagnostics";
 
 type RuntimeModelLike = {
 	_node_id?: string | null;
@@ -609,13 +613,14 @@ export const createMiniCutDktRuntime = (
 						? { dkt_storage: crdt.storagePackage.dktStorage }
 						: null),
 					onError(error: unknown) {
+						const serialized = serializeRuntimeError(error, "dkt-runtime-onError", {
+							sessionKey,
+						});
 						for (const transport of activeTransports) {
 							transport.send({
 								type: DKT_MSG.RUNTIME_ERROR,
-								message:
-									error instanceof Error
-										? error.stack || error.message
-										: String(error),
+								message: formatRuntimeErrorForConsole(serialized),
+								error: serialized,
 							});
 						}
 					},
@@ -803,11 +808,16 @@ export const createMiniCutDktRuntime = (
 		activeTransports.add(transport);
 
 		const sendError = (error: unknown, requestId?: string): void => {
+			const serialized = serializeRuntimeError(error, "dkt-worker-message", {
+				sessionKey: activeSessionKey,
+				sessionId: activeSessionId,
+				requestId,
+			});
 			transport.send({
 				type: DKT_MSG.RUNTIME_ERROR,
 				requestId,
-				message:
-					error instanceof Error ? error.stack || error.message : String(error),
+				message: formatRuntimeErrorForConsole(serialized),
+				error: serialized,
 			});
 		};
 

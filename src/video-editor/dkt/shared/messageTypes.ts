@@ -1,4 +1,5 @@
 import type { ProductRoomProtocolMessage } from "../../worker/productRoomProtocol";
+import type { SerializedRuntimeError } from "../runtime/runtimeErrorDiagnostics";
 
 export const DKT_MSG = {
 	BOOTSTRAP: "dkt:bootstrap",
@@ -59,6 +60,7 @@ export type DktRuntimeErrorMessage = {
 	type: typeof DKT_MSG.RUNTIME_ERROR;
 	requestId?: string;
 	message: unknown;
+	error?: SerializedRuntimeError;
 };
 
 export type DktWorkspaceOpenStateMessage = {
