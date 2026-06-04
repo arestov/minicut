@@ -17,6 +17,7 @@
 9. `runtimeRef` нужен только для live runtime objects вроде `File`, `Blob`, file handle, `MessagePort`, `OffscreenCanvas`. В DKT state можно класть serializable id/metadata/status, но не сам файл или handler object.
 10. Если точно найден баг в DKT, сначала сделай DKT test/repro, который его воспроизводит; MiniCut workaround не должен скрывать framework bug.
 11. Декларативность DKT = framework-visible intent. Не прячь важные зависимости, rel traversal, writes, side-effect triggers и cross-model transitions в adapter/helper code. Описывай их в model attrs/rels/comp/actions/effects, чтобы DKT мог оптимизировать, доставлять compact diff, lazy-load-ить graph state, реплицировать/persist-ить нужный подграф, а также поддерживать статический анализ и визуализацию.
+12. `Date.now()` и `new Date()` запрещены внутри DKT `comp` attrs и `action.fn`: это скрытый wall-clock side effect внутри pure state primitive. Для derived time conditions используй `$meta$time` в `comp`; для timestamp writes используй `$now` или текущий DKT time action-dep; для реальных timers/schedulers держи side effect на `effects`/runtime boundary и возвращай результат в DKT явным action/event payload. См. [$meta$time в comp attrs](</D:/code/linkcraft/dkt/docs/State/meta-time-comp-reference-ru.md>) и [Meta Resource Schema Groups](</D:/code/linkcraft/dkt/docs/internal/meta-resource-schema-groups.md>).
 
 
 ## Сводная таблица замечаний
@@ -87,6 +88,74 @@ MiniCut нельзя безопасно отдавать fleet без локал
 - `Track.addClip`, `Track.addTextClip`, `Track.splitClipAt` обязаны корректно обновлять `Track.clips`.
 - `Clip.addEffect` обязан обновлять `Clip.effects`.
 - Для clip/text/resource/effect relations нельзя рассчитывать, что UI потом сам что-то «дособерёт» обходом graph.
+
+### 4.1. Time purity rules
+
+В DKT-моделях время - это dependency или payload, а не императивный global read.
+
+Запрещено в `attrs.comp`, `rels.comp`, `action.fn`, reducers и model-level helper
+functions, вызываемых из них:
+
+```js
+Date.now()
+new Date()
+performance.now()
+```
+
+Почему это критично:
+
+- `action` и `comp` должны быть воспроизводимыми относительно объявленных deps;
+- скрытое чтение часов ломает deterministic tests, replay, sync/storage,
+  lazy-load и future orchestration/recovery;
+- DKT не видит такой dependency и не может корректно reinit/watch/export schema.
+
+Используй альтернативы:
+
+| Задача | Чем заменить | Документация |
+| --- | --- | --- |
+| Derived time condition: expired, active interval, local day, timed out | `$meta$time` dependency в `comp` attr | [$meta$time в comp attrs](</D:/code/linkcraft/dkt/docs/State/meta-time-comp-reference-ru.md>) |
+| Записать `createdAt`, `updatedAt`, `startedAt`, `completedAt` в action | `$now` или текущий DKT time action-dep; если syntax отличается, сначала добавить/уточнить DKT time dep, не использовать `Date.now()` | [AppGuide README](</D:/code/linkcraft/dkt/docs/AppGuide/README.md>) |
+| Реальный timeout/scheduler/timer | `effects.out`, `$fx_` или runtime task boundary, который потом dispatch-ит явный DKT action/event payload со временем | [`$fx_` usage guide](</D:/code/linkcraft/dkt/docs/fx-usage-guide-ru.md>) |
+| Deterministic tests для timeout/recovery | explicit tick/event payload, например `{ now }`, затем отдельный read step | [Flow step read/write boundaries in tests](</D:/code/linkcraft/dkt/docs/internal/flow-step-read-write-testing.md>) |
+| Schema/reinit tooling для generated time deps | generated `$meta$time` sources, не app attrs | [Meta Resource Schema Groups](</D:/code/linkcraft/dkt/docs/internal/meta-resource-schema-groups.md>) |
+
+Пример derived attr:
+
+```js
+attrs: {
+  timeoutAt: ['input', null],
+
+  isTimedOut: [
+    'comp',
+    ['$meta$time/instant/[:timeoutAt]'],
+    Boolean,
+  ],
+}
+```
+
+Пример timestamp write:
+
+```js
+actions: {
+  markStarted: {
+    to: {
+      startedAt: ['startedAt'],
+      updatedAt: ['updatedAt'],
+    },
+    fn: [
+      ['$now'],
+      (_payload, now) => ({
+        startedAt: now,
+        updatedAt: now,
+      }),
+    ],
+  },
+}
+```
+
+Если `$now` в текущем DKT runtime называется иначе или еще не подключен в этом
+контуре, это blocker для timestamp write: сначала подключить правильный DKT
+time action-dep, а не обходить его через `Date.now()`.
 
 ### 5. Identity и node-id contract
 
