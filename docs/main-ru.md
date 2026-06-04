@@ -18,6 +18,7 @@
 10. Если точно найден баг в DKT, сначала сделай DKT test/repro, который его воспроизводит; MiniCut workaround не должен скрывать framework bug.
 11. Декларативность DKT = framework-visible intent. Не прячь важные зависимости, rel traversal, writes, side-effect triggers и cross-model transitions в adapter/helper code. Описывай их в model attrs/rels/comp/actions/effects, чтобы DKT мог оптимизировать, доставлять compact diff, lazy-load-ить graph state, реплицировать/persist-ить нужный подграф, а также поддерживать статический анализ и визуализацию.
 12. `Date.now()` и `new Date()` запрещены внутри DKT `comp` attrs и `action.fn`: это скрытый wall-clock side effect внутри pure state primitive. Для derived time conditions используй `$meta$time` в `comp`; для timestamp writes используй `$now` или текущий DKT time action-dep; для реальных timers/schedulers держи side effect на `effects`/runtime boundary и возвращай результат в DKT явным action/event payload. См. [$meta$time в comp attrs](</D:/code/linkcraft/dkt/docs/State/meta-time-comp-reference-ru.md>) и [Meta Resource Schema Groups](</D:/code/linkcraft/dkt/docs/internal/meta-resource-schema-groups.md>).
+13. UI не строит domain read-model. Dynamic model sets выражай через `comp rel`; per-model state/detail/flags - через маленькие `comp attrs` на owning model. Renderer может выбирать layout, labels и DOM structure, но не должен искать latest/active, фильтровать domain statuses, агрегировать child state или собирать большой synthetic view-model.
 
 
 ## Сводная таблица замечаний
@@ -156,6 +157,47 @@ actions: {
 Если `$now` в текущем DKT runtime называется иначе или еще не подключен в этом
 контуре, это blocker для timestamp write: сначала подключить правильный DKT
 time action-dep, а не обходить его через `Date.now()`.
+
+### 4.2. UI projection ownership
+
+UI может решать layout, порядок визуальных блоков, локальные labels и DOM
+structure. Domain projection должна жить в DKT model layer.
+
+Если компоненту нужна готовая форма данных, сначала раздели ее на две части:
+
+- Domain projection: какие модели видимы, какая сущность active/latest, какой
+  state/detail/flag показывать. Это `comp rel` или маленькие `comp attrs` на
+  owning model.
+- Layout projection: как уже готовые attrs разложить в DOM, какие короткие
+  labels использовать, какой визуальный компонент выбрать. Это может оставаться
+  в renderer.
+
+Практическая форма:
+
+- Набор существующих моделей для render traversal - `comp rel`, например
+  filtered/ordered/visible relation. Это сохраняет stable scope list и `_nodeId`
+  keys.
+- State, flag, counter или detail для конкретной модели - отдельный `comp attr`
+  на владельце состояния.
+- Fixed gates/summary slots, которые не являются child model list, - отдельные
+  маленькие `comp attrs` на ближайшей owning model.
+- Renderer читает declared attrs/rels и рендерит их; он не вычисляет domain
+  semantics.
+
+Запрещенные признаки renderer read-model:
+
+- компонент ищет latest/active по rel list;
+- компонент фильтрует domain statuses, чтобы решить, какие модели существуют
+  для бизнес-смысла;
+- компонент агрегирует child states в parent state;
+- компонент строит большой synthetic array/object, где смешаны domain state,
+  traversal, latest selection и UI labels;
+- один большой `comp attr` возвращает nested view-model вместо точечных attrs и
+  rels.
+
+Правило выбора: если изменение значения должно быть видно DKT как dependency,
+diff, persisted/synced state или testable model contract, это не layout - это
+`comp attr`/`comp rel`.
 
 ### 5. Identity и node-id contract
 
