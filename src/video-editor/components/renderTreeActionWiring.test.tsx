@@ -225,6 +225,8 @@ describe("MediaBin import wiring", () => {
 			sourceKind: "file-handle",
 			status: "needs-permission",
 			localMediaStatus: "needs-permission",
+			localMediaAvailability: "unavailable",
+			originalAccessStatus: "prompt",
 		});
 		useVideoEditorMock.mockReturnValue({
 			resolveResourceUrl: (_resourceId: string, fallbackUrl: string) =>
@@ -250,23 +252,40 @@ describe("MediaBin import wiring", () => {
 		expect(requestResourceAccess).toHaveBeenCalledWith("resource:status");
 	});
 
-	it("requires confirmation before committing a compatible replacement", async () => {
+	it("starts replacement from the user click without local workflow state", async () => {
 		const user = userEvent.setup();
-		const commitResourceRelink = vi.fn(async () => ({ ok: true }));
+		const startMediaRecovery = vi.fn(async () => ({ operationId: "op" }));
 		useManyMock.mockReturnValue([{ _nodeId: "resource:replace" }]);
-		useAttrsMock.mockReturnValue({ name: "source.webm", kind: "video", mime: "video/webm", duration: 10, url: "", size: 100, sourceKind: "file-handle", localMediaStatus: "ready-project-copy" });
+		useAttrsMock.mockReturnValue({ name: "source.webm", kind: "video", mime: "video/webm", duration: 10, url: "", size: 100, sourceKind: "file-handle", localMediaStatus: "ready-project-copy", localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted" });
 		useVideoEditorMock.mockReturnValue({
 			resolveResourceUrl: (_id: string, url: string) => url,
 			actions: { createProject: vi.fn(), addTextClip: vi.fn(), importFilesIntoProject: vi.fn() },
-			inspectRelinkCandidate: vi.fn(async () => ({ operationId: "op", confirmationToken: "confirm", policy: { classification: "compatible-replacement", reasons: ["identity-mismatch"], requiresConfirmation: true } })),
-			commitResourceRelink,
+			startMediaRecovery,
 		});
 		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
 		expect(screen.getByText("Using project copy")).toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Replace source" }));
-		expect(screen.getByRole("dialog", { name: "Confirm source replacement" })).toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: "Confirm replacement" }));
-		expect(commitResourceRelink).toHaveBeenCalledWith("op", "confirm");
+		expect(startMediaRecovery).toHaveBeenCalledWith("resource:replace", "replace-source");
+		expect(screen.queryByRole("dialog", { name: "Confirm source replacement" })).not.toBeInTheDocument();
+	});
+
+	it("renders failure and retry from the active task projection", async () => {
+		const user = userEvent.setup(); const startMediaRecovery = vi.fn();
+		useManyMock.mockReturnValue([{ _nodeId: "resource:failed" }]);
+		useAttrsMock.mockReturnValue({ name: "source.webm", kind: "video", phase: "failed", intent: "replace-source", reasonCode: "source-range-too-short" });
+		useVideoEditorMock.mockReturnValue({ resolveResourceUrl: (_id: string, url: string) => url, actions: { createProject: vi.fn(), addTextClip: vi.fn(), importFilesIntoProject: vi.fn() }, startMediaRecovery });
+		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
+		expect(screen.getByRole("alert")).toHaveTextContent("shorter than the source range");
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(startMediaRecovery).toHaveBeenCalledWith("resource:failed", "replace-source");
+	});
+
+	it("disables workflow actions while the task is committing", () => {
+		useManyMock.mockReturnValue([{ _nodeId: "resource:committing" }]);
+		useAttrsMock.mockReturnValue({ name: "source.webm", kind: "video", phase: "committing", operationId: "op" });
+		useVideoEditorMock.mockReturnValue({ resolveResourceUrl: (_id: string, url: string) => url, actions: { createProject: vi.fn(), addTextClip: vi.fn(), importFilesIntoProject: vi.fn() } });
+		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
+		expect(screen.getByRole("status")).toHaveTextContent("Saving source");
 	});
 });
 

@@ -131,6 +131,17 @@ describe("owned MediaRecoveryTask action contracts", () => {
 		expect(getAttr(task, "outcome")).toBe("completed");
 	});
 
+	it("moves confirmation into committing and emits a serializable commit request", async () => {
+		const requests: unknown[] = []; const harness = await createActionContractHarness({ interfaces: { mediaRecoveryRuntime: { requestMediaRecovery: (payload: unknown) => requests.push(payload) } } });
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "startMediaRecovery", { ...attempt("boot:commit", "operation:commit"), runtimeHandleId: "runtime:commit" });
+		const task = (await queryRel(harness.videoResource, "activeMediaRecoveryTask"))[0]!;
+		await dispatchAndSettle(harness.ctx, task, "recordInspection", { operationId: "operation:commit", classification: "compatible-replacement", confirmationRequired: true, candidateMetadata: { duration: 10 }, updatedAt: 2 });
+		expect(getAttr(task, "phase")).toBe("awaiting-confirmation");
+		await dispatchAndSettle(harness.ctx, task, "requestCommit", { operationId: "operation:commit", updatedAt: 3 });
+		expect(getAttr(task, "phase")).toBe("committing");
+		expect(requests.at(-1)).toMatchObject({ mode: "commit", operationId: "operation:commit", runtimeHandleId: "runtime:commit", resourceId: harness.videoResource._node_id });
+	});
+
 	it("declares recovery operational state as a local-only model", () => {
 		const typedModel = MediaRecoveryTask as unknown as {
 			crdt?: { mode?: string };

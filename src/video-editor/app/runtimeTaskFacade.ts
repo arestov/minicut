@@ -99,6 +99,7 @@ export const createRuntimeTaskFacade = () => {
 		runtimeRefs.delete(runtimeHandleId);
 		return entry?.value;
 	};
+	const getRuntimeRef = (runtimeHandleId: string): unknown => runtimeRefs.get(runtimeHandleId)?.value;
 
 	const deleteRuntimeRef = (runtimeHandleId: string): void => {
 		runtimeRefs.delete(runtimeHandleId);
@@ -277,6 +278,7 @@ export const createRuntimeTaskFacade = () => {
 		dispatchTask,
 		putRuntimeRef,
 		consumeRuntimeRef,
+		getRuntimeRef,
 		deleteRuntimeRef,
 		completeTask,
 		failTask,

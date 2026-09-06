@@ -3,8 +3,9 @@ import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandl
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
 import { createResourceTransferManager } from "../media/resourceTransferManager";
 import { browserProjectAssetRoot, createProjectAssetStore, type ProjectAssetStore } from "../media/projectAssetStore";
-import { createMediaRelinkService, type RelinkIntent } from "../media/mediaRelinkService";
 import { fingerprintMediaFile } from "../media/mediaContentFingerprint";
+import { probeBrowserMediaFile } from "../media/browserMediaProbe";
+import { commitRecoveryStorage } from "../media/mediaRecoveryStorageCommit";
 import {
 	createLocalMediaResolver,
 	type LocalMediaResourceSnapshot,
@@ -30,6 +31,7 @@ import { createEditorHarnessAdapter } from "./editorHarnessAdapter";
 import { createLocalMediaHandleStore } from "./mediaHandleStore";
 import { parseExportRequest } from "./exportRequestState";
 import { executeImportFilesTask } from "./importFilesTaskExecutor";
+import { executeMediaRecoveryInspectionTask } from "./mediaRecoveryTaskExecutor";
 import {
 	createBrowserHarnessPlatform,
 	type VideoEditorHarnessPlatform,
@@ -232,33 +234,6 @@ export const createVideoEditorHarness = (
 		},
 	});
 	const fingerprintFile = fingerprintMediaFile;
-	const mediaRelinkService = createMediaRelinkService({
-		handles: mediaHandleStore,
-		assets: projectAssets,
-		probe: async (file) => {
-			const kind = getFileKind(file);
-			if (!kind) throw new Error("Unsupported media kind");
-			const probeUrl = platform.createObjectUrl(file);
-			if (!probeUrl) throw new Error("Cannot probe media");
-			try {
-				const duration = await platform.getImportedResourceDuration(probeUrl, kind);
-				return { kind, duration, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" || kind === "video" ? 1 : 0 } };
-			} finally { platform.revokeObjectUrl(probeUrl); }
-		},
-		fingerprint: fingerprintFile,
-		createObjectUrl: (file) => platform.createObjectUrl(file),
-		revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
-		complete: (payload) => {
-			const resourceId = String(payload.resourceId ?? "");
-			const scope = readActiveProjectResourceScopes().find((item) => item._nodeId === resourceId);
-			if (!scope) throw new Error("Resource no longer exists");
-			const current = pageRuntime?.readAttrs(scope, ["name", "kind", "url", "mime", "duration", "width", "height", "size", "lastModified", "sourceKind", "sourceRef", "source", "status", "data", "assetStorageKind", "assetRef", "contentFingerprint", "fingerprintVersion", "localMediaStatus"]) ?? {};
-			pageRuntime?.dispatch("setResourceAttrs", { ...current, ...payload, sourceKind: "file-handle", sourceRef: resourceId, localMediaStatus: "ready-project-copy" }, scope);
-		},
-		activate: (resourceId, url) => localMediaResolver.activateObjectUrl(resourceId, url),
-		now: () => Date.now(),
-	});
-
 	const subscribeToResourceScopes = (): (() => void) => {
 		if (!pageRuntime) {
 			return EMPTY_CLEANUP;
@@ -621,6 +596,41 @@ export const createVideoEditorHarness = (
 		};
 	};
 
+	const subscribeToMediaRecoveryTasks = (): (() => void) => {
+		if (!pageRuntime || !dktPort) return EMPTY_CLEANUP;
+		return pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {
+			const request = payload as Record<string, unknown>;
+			if (request.mode === "commit") {
+				void (async () => {
+					const resourceId = String(request.resourceId ?? ""); const taskId = String(request.taskId ?? ""); const operationId = String(request.operationId ?? "");
+					const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId); const root = pageRuntime.getRootScope(); const project = root ? pageRuntime.readOne(root, "activeProject") : null;
+					if (!resourceScope || !project || pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return;
+					const runtime = runtimeTasks.getRuntimeRef(String(request.runtimeHandleId ?? "")) as { file?: File; handle?: FileSystemFileHandle } | null;
+					if (!(runtime?.file instanceof File) || !runtime.handle) { pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: "runtime-ref-expired", errorMessage: "Choose the file again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); return; }
+					const url = platform.createObjectUrl(runtime.file); if (!url) return;
+					const now = Date.now();
+					const result = await commitRecoveryStorage({ projectId: project._nodeId, resourceId, operationId, file: runtime.file, handleRecord: { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now }, assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore, publish: async (refs) => {
+						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return "noop";
+						const metadata = request.candidateMetadata as Record<string, unknown> | null;
+						pageRuntime.dispatch("completeMediaRecovery", { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: "file-handle", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, duration: metadata?.duration, width: metadata?.width ?? null, height: metadata?.height ?? null, localMediaAvailability: refs.assetRef ? "ready-project-copy" : "ready-file-handle", originalAccessStatus: "granted", updatedAt: Date.now() }, resourceScope);
+						return "applied";
+					} });
+					if (result.ok) { localMediaResolver.activateObjectUrl(resourceId, url, result.assetRef ? "ready-project-copy" : "ready-file-handle"); runtimeTasks.deleteRuntimeRef(String(request.runtimeHandleId ?? "")); }
+					else { platform.revokeObjectUrl(url); if (result.reason !== "stale") pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: result.reason, errorMessage: "Could not save the selected source. Try again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); }
+				})();
+				return;
+			}
+			void executeMediaRecoveryInspectionTask({
+				request: payload,
+				consumeRuntimeRef: (id) => runtimeTasks.getRuntimeRef(id),
+				probe: (file, signal) => probeBrowserMediaFile(file, signal),
+				fingerprint: (file, signal) => fingerprintFile(file, undefined, signal),
+				dispatch: (action, value, target) => pageRuntime.dispatch(action, value, target),
+				now: () => Date.now(),
+			}).then((outcome) => { if (outcome?.policy.classification === "exact-match") pageRuntime.dispatch("requestCommit", { operationId: outcome.operationId, updatedAt: Date.now() }, { kind: "scope", _nodeId: String(request.taskId) }); });
+		}) ?? EMPTY_CLEANUP;
+	};
+
 	const subscribeToImportProgressRequests = (): (() => void) => {
 		if (!pageRuntime || !dktPort) {
 			return EMPTY_CLEANUP;
@@ -710,6 +720,7 @@ export const createVideoEditorHarness = (
 	const unsubscribeDownloadBridge = subscribeToDownloadBridge();
 	const unsubscribeRenderExportTasks = subscribeToRenderExportTasks();
 	const unsubscribeHandleInputFilesTasks = subscribeToHandleInputFilesTasks();
+	const unsubscribeMediaRecoveryTasks = subscribeToMediaRecoveryTasks();
 	const unsubscribeImportProgressRequests = subscribeToImportProgressRequests();
 
 	return {
@@ -741,37 +752,24 @@ export const createVideoEditorHarness = (
 		},
 
 		async reconnectResourceMedia(resourceId: string): Promise<void> {
-			const result = await this.inspectRelinkCandidate(resourceId, "locate-original");
-			if (result?.policy.classification === "exact-match") await mediaRelinkService.commitResourceRelink(result.operationId);
+			await this.startMediaRecovery(resourceId, "locate-original");
 		},
 
 		requestResourceAccess(resourceId: string) {
 			return localMediaResolver.requestResourceAccess(resourceId);
 		},
 
-		async inspectRelinkCandidate(resourceId: string, intent: RelinkIntent) {
+		async startMediaRecovery(resourceId: string, intent: "locate-original" | "replace-source") {
 			const picker = (globalThis as typeof globalThis & { showOpenFilePicker?: (options?: unknown) => Promise<FileSystemFileHandle[]> }).showOpenFilePicker;
 			if (typeof picker !== "function") return null;
 			const [handle] = await picker({ multiple: false }).catch(() => []);
 			if (!handle) return null;
 			const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId);
-			const root = pageRuntime?.getRootScope();
-			const project = root ? pageRuntime?.readOne(root, "activeProject") : null;
-			if (!resourceScope || !project) return null;
-			const attrs = pageRuntime?.readAttrs(resourceScope, ["kind", "duration", "width", "height", "contentFingerprint", "fingerprintVersion", "requiredSourceEnd"]) as Record<string, unknown>;
-			const kind = attrs.kind === "audio" || attrs.kind === "image" ? attrs.kind : "video";
-			return mediaRelinkService.inspectRelinkCandidate({
-				resourceId, projectId: project._nodeId, intent,
-				original: { kind, duration: Number(attrs.duration), width: typeof attrs.width === "number" ? attrs.width : null, height: typeof attrs.height === "number" ? attrs.height : null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" || kind === "video" ? 1 : 0 } },
-				requiredSourceEnd: Number(attrs.requiredSourceEnd ?? 0),
-				originalFingerprint: typeof attrs.contentFingerprint === "string" ? attrs.contentFingerprint : null,
-				fingerprintVersion: typeof attrs.fingerprintVersion === "string" ? attrs.fingerprintVersion : null,
-				candidateHandle: handle,
-			});
-		},
-
-		commitResourceRelink(operationId: string, confirmationToken?: string) {
-			return mediaRelinkService.commitResourceRelink(operationId, confirmationToken);
+			if (!resourceScope) return null;
+			const file = await handle.getFile(); const operationId = crypto.randomUUID();
+			const runtimeHandleId = runtimeTasks.putRuntimeRef({ file, handle });
+			pageRuntime?.dispatch("startMediaRecovery", { operationId, attemptId: crypto.randomUUID(), bootId: `user:${crypto.randomUUID()}`, recoveryKind: intent, intent, runtimeHandleId, createdAt: Date.now(), updatedAt: Date.now() }, resourceScope);
+			return { operationId };
 		},
 
 		destroy(): void {
@@ -781,6 +779,7 @@ export const createVideoEditorHarness = (
 			unsubscribeDownloadBridge();
 			unsubscribeRenderExportTasks();
 			unsubscribeHandleInputFilesTasks();
+			unsubscribeMediaRecoveryTasks();
 			unsubscribeImportProgressRequests();
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url);

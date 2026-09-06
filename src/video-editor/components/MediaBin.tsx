@@ -79,6 +79,8 @@ interface ResourceRenderAttrs {
 	sourceKind?: unknown;
 	status?: unknown;
 	localMediaStatus?: unknown;
+	localMediaAvailability?: unknown;
+	originalAccessStatus?: unknown;
 }
 
 const RELINK_REASON_LABELS: Record<string, string> = {
@@ -95,6 +97,20 @@ const RELINK_REASON_LABELS: Record<string, string> = {
 	"identity-mismatch": "File content differs from the original.",
 };
 
+const RecoveryTaskActions = ({ resourceId }: { resourceId: string }) => {
+	const editor = useVideoEditor(); const taskDispatch = useActions();
+	const attrs = useAttrs(["operationId", "intent", "phase", "reasonCode", "errorMessage", "compatibility"]) as Record<string, unknown>;
+	const phase = String(attrs.phase ?? "created"); const intent = attrs.intent === "replace-source" ? "replace-source" : "locate-original";
+	const busy = phase === "inspecting" || phase === "committing";
+	const reason = typeof attrs.reasonCode === "string" ? RELINK_REASON_LABELS[attrs.reasonCode] ?? attrs.reasonCode : typeof attrs.errorMessage === "string" ? attrs.errorMessage : null;
+	return <div className="ve-media-recovery" aria-busy={busy}>
+		{reason && (phase === "rejected" || phase === "failed") ? <p role="alert">{reason}</p> : null}
+		{phase === "awaiting-confirmation" ? <div role="dialog" aria-modal="true" aria-label="Confirm source replacement"><p>{reason ?? "The replacement differs from the original."}</p><Button type="button" disabled={busy} onClick={() => taskDispatch("requestCommit", { operationId: attrs.operationId, updatedAt: Date.now() })}>Confirm replacement</Button></div> : null}
+		{phase === "failed" || phase === "rejected" || phase === "cancelled" ? <Button type="button" variant="outline" onClick={() => void editor.startMediaRecovery?.(resourceId, intent)}>Retry</Button> : null}
+		{busy ? <small role="status">{phase === "committing" ? "Saving source…" : "Checking source…"}</small> : null}
+	</div>;
+};
+
 const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const editor = useVideoEditor();
 	const { resolveResourceUrl } = editor;
@@ -109,9 +125,9 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 		"sourceKind",
 		"status",
 		"localMediaStatus",
+		"localMediaAvailability",
+		"originalAccessStatus",
 	]) as ResourceRenderAttrs;
-	const [pendingReplacement, setPendingReplacement] = useState<{ operationId: string; confirmationToken: string; reasons: string[] } | null>(null);
-	const [relinkError, setRelinkError] = useState<string | null>(null);
 	const resourceId = scope?._nodeId ?? null;
 	const name = String(resourceAttrs.name);
 	const kind = resourceAttrs.kind ?? "video";
@@ -125,21 +141,8 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const statusLabel =
 		totalBytes > 0 ? `${Math.round(totalBytes / 1024)} KB` : null;
 	const mediaStatus = typeof resourceAttrs.localMediaStatus === "string" ? resourceAttrs.localMediaStatus : "unknown";
-	const inspect = async (intent: "locate-original" | "replace-source") => {
-		if (!resourceId) return;
-		setRelinkError(null);
-		const result = await editor.inspectRelinkCandidate?.(resourceId, intent);
-		if (!result) return;
-		if (result.policy.classification === "exact-match") {
-			await editor.commitResourceRelink?.(result.operationId);
-			return;
-		}
-		if (result.policy.classification === "compatible-replacement" && result.confirmationToken) {
-			setPendingReplacement({ operationId: result.operationId, confirmationToken: result.confirmationToken, reasons: result.policy.reasons });
-			return;
-		}
-		setRelinkError(result.policy.reasons.map((reason: string) => RELINK_REASON_LABELS[reason] ?? reason).join(" "));
-	};
+	const availability = typeof resourceAttrs.localMediaAvailability === "string" ? resourceAttrs.localMediaAvailability : mediaStatus;
+	const originalAccess = typeof resourceAttrs.originalAccessStatus === "string" ? resourceAttrs.originalAccessStatus : "unknown";
 	const durationLabel =
 		resourceAttrs.duration != null ? `${duration.toFixed(1)}s` : "-";
 
@@ -152,8 +155,8 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 					<small>
 						{kind} | {mime} | {durationLabel}
 					</small>
-					{mediaStatus === "ready-project-copy" ? <small>Using project copy</small> : null}
-					{mediaStatus === "permission-denied" ? <small>Access denied</small> : null}
+					{availability === "ready-project-copy" ? <small>Using project copy</small> : null}
+					{originalAccess === "denied" ? <small>Access denied</small> : null}
 					{mediaStatus !== "unknown" && mediaStatus !== "ready-project-copy" && mediaStatus !== "permission-denied" ? <small>{mediaStatus}</small> : null}
 					{statusLabel ? <small>{statusLabel}</small> : null}
 					<div className="ve-resource-row__action-line">
@@ -171,26 +174,19 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 						>
 							Add
 						</IconButton>
-						{mediaStatus === "needs-permission" || mediaStatus === "permission-denied" ? (
+						{originalAccess === "prompt" || originalAccess === "denied" ? (
 							<Button
 								type="button"
 								variant="outline"
 								onClick={() => { if (resourceId) void editor.requestResourceAccess?.(resourceId); }}
 							>
-								{mediaStatus === "needs-permission" ? "Grant access" : "Try again"}
+								{originalAccess === "prompt" ? "Grant access" : "Try again"}
 							</Button>
 						) : null}
-						{mediaStatus === "missing" || mediaStatus === "permission-denied" ? <Button type="button" variant="outline" onClick={() => void inspect("locate-original")}>{mediaStatus === "missing" ? "Locate file" : "Locate original"}</Button> : null}
-						<Button type="button" variant="outline" disabled={!resourceId} onClick={() => void inspect("replace-source")}>Replace source</Button>
+						{originalAccess === "missing" || originalAccess === "denied" ? <Button type="button" variant="outline" onClick={() => resourceId && void editor.startMediaRecovery?.(resourceId, "locate-original")}>{originalAccess === "missing" ? "Locate file" : "Locate original"}</Button> : null}
+						<Button type="button" variant="outline" disabled={!resourceId} onClick={() => resourceId && void editor.startMediaRecovery?.(resourceId, "replace-source")}>Replace source</Button>
 					</div>
-					{relinkError ? <p role="alert">{relinkError}</p> : null}
-					{pendingReplacement ? (
-						<div role="dialog" aria-modal="true" aria-label="Confirm source replacement">
-							<p>{pendingReplacement.reasons.map((reason) => RELINK_REASON_LABELS[reason] ?? reason).join(" ")}</p>
-							<Button type="button" onClick={async () => { await editor.commitResourceRelink?.(pendingReplacement.operationId, pendingReplacement.confirmationToken); setPendingReplacement(null); }}>Confirm replacement</Button>
-							<Button type="button" variant="outline" onClick={() => setPendingReplacement(null)}>Cancel</Button>
-						</div>
-					) : null}
+					{resourceId ? <One rel="activeMediaRecoveryTask" fallback={null}><RecoveryTaskActions resourceId={resourceId} /></One> : null}
 				</div>
 			</div>
 		</li>

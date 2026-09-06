@@ -83,6 +83,8 @@ const violations = []
 const mediaRecoveryGuards = [
 	{ name: 'Import recovery must not read model state', pattern: '\\b(readAttrs|waitForImportedResource|resolveImportedResource)\\b', roots: ['src/video-editor/app/importFilesTaskExecutor.ts'] },
 	{ name: 'Import recovery must not patch Resource after creation', pattern: '["\']setResourceAttrs["\']', roots: ['src/video-editor/app/importFilesTaskExecutor.ts'] },
+	{ name: 'Media recovery must not use imperative model reads', pattern: '\\breadAttrs\\b', roots: ['src/video-editor/app/mediaRecoveryTaskExecutor.ts'] },
+	{ name: 'Media recovery lifecycle must not be stored in Maps', pattern: '\\bnew Map\\b', roots: ['src/video-editor/app/mediaRecoveryTaskExecutor.ts'] },
 ]
 
 for (const check of mediaRecoveryGuards) {

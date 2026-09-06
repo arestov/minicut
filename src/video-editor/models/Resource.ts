@@ -311,6 +311,7 @@ export const Resource = model({
 									bootId: value.bootId,
 									recoveryKind: value.recoveryKind,
 									intent: value.intent,
+									runtimeHandleId: value.runtimeHandleId ?? null,
 									phase: "created",
 									createdAt: value.createdAt,
 									updatedAt: value.updatedAt,

@@ -24,6 +24,7 @@ export const MEDIA_RECOVERY_TASK_CREATION_SHAPE = {
 		"bootId",
 		"recoveryKind",
 		"intent",
+		"runtimeHandleId",
 		"phase",
 		"candidateMetadata",
 		"candidateFingerprint",
@@ -80,6 +81,7 @@ export const MediaRecoveryTask = model({
 		bootId: ["input", ""],
 		recoveryKind: ["input", "restore"],
 		intent: ["input", "restore"],
+		runtimeHandleId: ["input", null],
 		phase: ["input", "created"],
 		candidateMetadata: ["input", null],
 		candidateFingerprint: ["input", null],
@@ -143,6 +145,25 @@ export const MediaRecoveryTask = model({
 				},
 			],
 		},
+		requestCommit: [
+			{
+				to: { phase: ["phase"], forwarded: ["$output"] },
+				fn: [
+					["$noop", "operationId", "phase"] as const,
+					(payload: unknown, noop: unknown, operationId: unknown, phase: unknown) => {
+						const value = payload as Record<string, unknown> | null;
+						return value?.operationId === operationId && (phase === "ready-to-commit" || phase === "awaiting-confirmation") ? { phase: "committing", forwarded: value } : noop;
+					},
+				],
+			},
+			{
+				to: ["$fx_mediaRecovery", { intent: "call", drop_when_api_not_ready: false }],
+				fn: [
+					["$noop", "_node_id", "operationId", "runtimeHandleId", "candidateMetadata", "candidateFingerprint", "candidateFingerprintVersion", "< @one:_node_id < resource"] as const,
+					(_payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, runtimeHandleId: unknown, candidateMetadata: unknown, candidateFingerprint: unknown, candidateFingerprintVersion: unknown, resourceId: unknown) => typeof taskId === "string" && typeof resourceId === "string" ? { mode: "commit", taskId, resourceId, operationId, runtimeHandleId, candidateMetadata, candidateFingerprint, candidateFingerprintVersion } : noop,
+				],
+			},
+		],
 		transition: {
 			to: {
 				phase: ["phase"],
