@@ -22,13 +22,24 @@ object URL.
 
 ## Durable Local Media
 
-Durable local media is handle-backed:
+On import MiniCut attempts to create an OPFS project copy before falling back
+to a linked-only resource. DKT stores only the serializable descriptor
+(`assetStorageKind`, logical `assetRef`, fingerprint and version); it never
+stores OPFS handles or paths. The committed layout is
+`projects/{projectId}/assets/{resourceId}` with a manifest written last, so an
+interrupted temporary write is never visible as an asset.
+
+The original source remains handle-backed independently:
 
 - DKT stores resource metadata and a stable source reference.
 - A browser side channel stores `FileSystemFileHandle` objects keyed by
   resource id.
-- On reload, MiniCut asks the handle for a fresh `File`, creates a fresh object
-  URL, and uses that URL for the current session.
+- On reload, MiniCut first resolves the project copy and creates a fresh object
+  URL. Only when no copy exists does it query the original handle.
+- `prompt` becomes `needs-permission` and never triggers a permission dialog at
+  boot. `denied` becomes `permission-denied`; neither state deletes the handle.
+- `Grant access` calls `requestPermission()` on the cached handle. Locate and
+  Replace are separate picker-based operations.
 
 The side channel stores handles only. It must not store `Blob`,
 `ArrayBuffer`, typed arrays, media chunks, thumbnails, waveform data, or copied
@@ -39,3 +50,25 @@ file bytes.
 If a project graph restores but the local handle is absent or permission is not
 available, MiniCut should keep the project and timeline intact and show an
 explicit missing or reconnect state for the affected resource.
+
+The graph remains editable and preserves clips, effects, and timing even when
+no local media bytes are available.
+
+## Safe relink and replacement
+
+Locate accepts a candidate automatically only when `isSameEntry()` or a
+same-version content fingerprint proves identity. Matching name, size, or
+duration is not identity evidence. Replace may accept a technically compatible
+different source only after explicit confirmation. A candidate shorter than
+`max(clip.in + clip.duration)` (with at most a two-frame tolerance), or with an
+incompatible kind/stream topology, is rejected before storage changes.
+
+Relink uses operation ids and commits side-channel storage before one DKT
+completion action. Failed or stale operations retain the prior handle, project
+asset, runtime URL, and graph metadata.
+
+## Scope and data loss
+
+OPFS and the handle database are origin/profile-local. Clearing site data can
+delete both. A project copy is not a portable project bundle and is not
+replicated to another browser or device.

@@ -203,6 +203,10 @@ export const Project = model({
 							source?: unknown;
 							status?: unknown;
 							data?: unknown;
+							assetStorageKind?: unknown;
+							assetRef?: unknown;
+							contentFingerprint?: unknown;
+							fingerprintVersion?: unknown;
 						} | null;
 						if (
 							!item ||
@@ -231,6 +235,10 @@ export const Project = model({
 								source: objectOr(item.source, { kind: "local" }),
 								status: stringOr(item.status, "missing"),
 								data: objectOr(item.data, {}),
+								assetStorageKind: item.assetStorageKind === "project-copy" ? "project-copy" : "linked",
+								assetRef: typeof item.assetRef === "string" ? item.assetRef : null,
+								contentFingerprint: typeof item.contentFingerprint === "string" ? item.contentFingerprint : null,
+								fingerprintVersion: typeof item.fingerprintVersion === "string" ? item.fingerprintVersion : null,
 							},
 						};
 					})

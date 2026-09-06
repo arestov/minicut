@@ -250,6 +250,8 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 							?.ownerPeerId,
 					}
 				: null),
+			...(asObject<Record<string, unknown>>(value?.source)?.assetStorageKind === "project-copy" ? { assetStorageKind: "project-copy" } : null),
+			...(typeof asObject<Record<string, unknown>>(value?.source)?.assetRef === "string" ? { assetRef: asObject<Record<string, unknown>>(value?.source)?.assetRef } : null),
 		},
 		status: asResourceDurableStatus(value?.status),
 		data: normalizeResourceData(value?.data),

@@ -279,6 +279,7 @@ export const createVideoEditorHarness = (
 				resourceTransferManager.syncResources([]);
 				return;
 			}
+			void projectAssets.cleanupStaleTemporaryEntries(activeProjectScope._nodeId);
 
 			disposeProjectResources();
 
@@ -329,8 +330,8 @@ export const createVideoEditorHarness = (
 					resources.map(({ resourceId, attrs }) => ({
 						resourceId,
 						projectId: activeProjectScope._nodeId,
-						assetStorageKind: (attrs as { assetStorageKind?: unknown }).assetStorageKind,
-						assetRef: (attrs as { assetRef?: unknown }).assetRef,
+						assetStorageKind: (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind,
+						assetRef: (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef,
 						sourceKind: (attrs as { sourceKind?: unknown }).sourceKind,
 						sourceRef: (attrs as { sourceRef?: unknown }).sourceRef,
 						status: (attrs as { status?: unknown }).status,

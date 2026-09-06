@@ -26,6 +26,7 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 	const objectUrls = new Map<string, string>();
 	const inflight = new Map<string, Promise<string | null>>();
 	const handles = new Map<string, PermissionFileHandle>();
+	const latestSnapshots = new Map<string, LocalMediaResourceSnapshot>();
 	const setStatus = (resourceId: string, value: LocalMediaStatus) => {
 		runtime.setLocalMediaStatus?.(resourceId, value);
 		if (!runtime.setLocalMediaStatus) runtime.setResourceStatus?.(resourceId, value === "ready-project-copy" || value === "ready-file-handle" ? "ready" : value === "needs-permission" || value === "permission-denied" ? "needs-permission" : "missing");
@@ -44,7 +45,9 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 		const resourceId = resource.resourceId;
 		if (!resourceId) return null;
 		setStatus(resourceId, "resolving");
-		const projectId = typeof resource.projectId === "string" ? resource.projectId : null;
+		const projectId = typeof resource.assetRef === "string" && resource.assetRef.includes("/")
+			? resource.assetRef.slice(0, resource.assetRef.lastIndexOf("/"))
+			: typeof resource.projectId === "string" ? resource.projectId : null;
 		if (projectAssets && projectId && (resource.assetStorageKind === "project-copy" || typeof resource.assetRef === "string")) {
 			try {
 				const file = await projectAssets.getFile(projectId, resourceId);
@@ -66,14 +69,30 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 			if (state === "prompt") { setStatus(resourceId, "needs-permission"); return null; }
 			if (state === "denied") { setStatus(resourceId, "permission-denied"); return null; }
 			if (state !== "granted") { setStatus(resourceId, "error"); return null; }
-			return bind(resourceId, await handle.getFile(), "ready-file-handle");
+			const handleFile = await handle.getFile();
+			const latest = latestSnapshots.get(resourceId);
+			if (projectAssets && latest?.assetStorageKind === "project-copy" && typeof latest.assetRef === "string") {
+				const latestProjectId = latest.assetRef.slice(0, latest.assetRef.lastIndexOf("/"));
+				const copy = await projectAssets.getFile(latestProjectId, resourceId);
+				if (copy) return bind(resourceId, copy, "ready-project-copy");
+			}
+			return bind(resourceId, handleFile, "ready-file-handle");
 		} catch { setStatus(resourceId, "error"); return null; }
 	};
 	const restoreResource = (resource: LocalMediaResourceSnapshot): Promise<string | null> => {
+		latestSnapshots.set(resource.resourceId, resource);
 		const cached = objectUrls.get(resource.resourceId);
-		if (cached) return Promise.resolve(cached);
+		if (cached) {
+			setStatus(resource.resourceId, resource.assetStorageKind === "project-copy" ? "ready-project-copy" : "ready-file-handle");
+			return Promise.resolve(cached);
+		}
 		const current = inflight.get(resource.resourceId);
-		if (current) return current;
+		if (current) {
+			if (resource.assetStorageKind !== "project-copy") return current;
+			const promoted = current.then(() => doRestore(resource)).finally(() => inflight.delete(resource.resourceId));
+			inflight.set(resource.resourceId, promoted);
+			return promoted;
+		}
 		const task = doRestore(resource).finally(() => inflight.delete(resource.resourceId));
 		inflight.set(resource.resourceId, task);
 		return task;
@@ -98,6 +117,6 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 		restoreResources: async (resources: LocalMediaResourceSnapshot[]) => { await Promise.all(resources.map(restoreResource)); },
 		requestResourceAccess,
 		getCachedHandle: (resourceId: string) => handles.get(resourceId) ?? null,
-		destroy() { for (const url of objectUrls.values()) runtime.revokeObjectUrl(url); objectUrls.clear(); inflight.clear(); handles.clear(); },
+		destroy() { for (const url of objectUrls.values()) runtime.revokeObjectUrl(url); objectUrls.clear(); inflight.clear(); handles.clear(); latestSnapshots.clear(); },
 	};
 };

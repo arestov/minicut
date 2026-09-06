@@ -384,6 +384,7 @@ export const executeImportFilesTask = async ({
 			const assetResult = available && env.projectAssets
 				? await env.projectAssets.putFromFile(projectId, resourceId, file, { name: file.name, mime, size: file.size, lastModified: file.lastModified }, { operationId: inputBatchHandleId })
 				: { ok: false as const, reason: available ? "unavailable" as const : "quota-exceeded" as const };
+			if (!assetResult.ok) console.warn("[minicut:media] Project copy unavailable", assetResult.reason, "error" in assetResult ? assetResult.error : undefined);
 			if (assetResult.ok) {
 				const resourceScope = resolveImportedResourceScope(env, projectScope, resourceId);
 				env.dkt.dispatch("setResourceAttrs", {
@@ -392,6 +393,7 @@ export const executeImportFilesTask = async ({
 					sourceRef: handle ? resourceId : null,
 					assetStorageKind: "project-copy",
 					assetRef: assetResult.assetRef,
+					source: { kind: "local", ownerPeerId, assetStorageKind: "project-copy", assetRef: assetResult.assetRef },
 					contentFingerprint,
 					fingerprintVersion,
 					localMediaStatus: "ready-project-copy",
