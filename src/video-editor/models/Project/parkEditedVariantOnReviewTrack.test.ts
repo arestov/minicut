@@ -39,7 +39,6 @@ describe("parkEditedVariantOnReviewTrack", () => {
 				},
 				hold_ref_id: "deleteVsEditReviewTrack",
 			},
-			reviewTracks: { use_ref_id: "deleteVsEditReviewTrack" },
 			parkedClip: {
 				attrs: {
 					name: "Remote edit edited variant",

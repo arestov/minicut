@@ -35,7 +35,9 @@ describe("Project review tracks", () => {
 					locked: false,
 				},
 			},
-			tracks: { use_ref_id: "newReviewTrack" },
+			$output: {
+				rels: { track: { use_ref_id: "newReviewTrack" } },
+			},
 		});
 	});
 

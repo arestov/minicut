@@ -1,4 +1,5 @@
 import { appRoot } from "dkt/appRoot.js";
+import { addr } from "dkt/dcl/addr.js";
 import { merge as mergeDcl } from "dkt/dcl/merge.js";
 import {
 	reduceCreateProjectModel,
@@ -69,11 +70,41 @@ const appProps = mergeDcl({
 		sessions: ["input", { linking: "<< $session_root", many: true }],
 		free_sessions: ["input", { linking: "<< $session_root", many: true }],
 		project: ["input", { linking: "project", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
-		track: ["input", { linking: "track", many: true, role: "projection" }],
-		resource: ["input", { linking: "resource", many: true, role: "projection" }],
-		clip: ["input", { linking: "clip", many: true, role: "projection" }],
-		text: ["input", { linking: "text", many: true, role: "projection" }],
-		effect: ["input", { linking: "effect", many: true, role: "projection" }],
+		track: [
+			"comp",
+			[addr({ relPath: ["project", "tracks"], zip: "all" })],
+			{ linking: "track", many: true, role: "projection" },
+		],
+		resource: [
+			"comp",
+			[addr({ relPath: ["project", "resources"], zip: "all" })],
+			{ linking: "resource", many: true, role: "projection" },
+		],
+		clip: [
+			"comp",
+			[addr({ relPath: ["project", "tracks", "clips"], zip: "all" })],
+			{ linking: "clip", many: true, role: "projection" },
+		],
+		text: [
+			"comp",
+			[
+				addr({
+					relPath: ["project", "tracks", "clips", "text"],
+					zip: "all",
+				}),
+			],
+			{ linking: "text", many: true, role: "projection" },
+		],
+		effect: [
+			"comp",
+			[
+				addr({
+					relPath: ["project", "tracks", "clips", "effects"],
+					zip: "all",
+				}),
+			],
+			{ linking: "effect", many: true, role: "projection" },
+		],
 		reviewItem: ["input", { linking: "review_item", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
 		reviewArchiveEntry: ["input", { linking: "review_archive_entry", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
 		reviewSession: ["input", { linking: "review_session", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],

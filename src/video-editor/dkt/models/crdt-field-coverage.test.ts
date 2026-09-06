@@ -301,12 +301,14 @@ const getCrdtSection = (
 const getDeclaredCrdtFieldNames = (
 	model: Record<string, unknown>,
 	section: FieldSection,
+	includeComputedRels = false,
 ): string[] =>
 	Object.entries(getModelSection(model, section))
 		.filter(([, descriptor]) => {
 			return (
 				Array.isArray(descriptor) &&
 				(descriptor[0] === "input" ||
+					(section === "rels" && includeComputedRels && descriptor[0] === "comp") ||
 					descriptor[0] === "model" ||
 					descriptor[0] === "sel")
 			);
@@ -337,7 +339,11 @@ describe("CRDT field coverage", () => {
 					name.startsWith("$meta$"),
 				);
 				const declaredFields = [
-					...getDeclaredCrdtFieldNames(entry.model, section),
+					...getDeclaredCrdtFieldNames(
+						entry.model,
+						section,
+						entry.name === "MiniCutAppRoot",
+					),
 					...systemFields,
 				].sort();
 				const classifiedFields = Object.keys(entry.fields[section]).sort();
