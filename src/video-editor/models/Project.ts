@@ -1,4 +1,5 @@
 import { model } from "dkt/model.js";
+import { addr } from "dkt/dcl/addr.js";
 import {
 	crdtReviewResolveBatchTarget,
 	crdtReviewResolveTarget,
@@ -296,45 +297,48 @@ export const Project = model({
 		primaryVideoTrack: ["input", { linking: "<< track << #", role: "projection" }],
 		primaryAudioTrack: ["input", { linking: "<< track << #", role: "projection" }],
 		reviewItems: [
-			"sel",
+			"comp",
+			[
+				addr({
+					relPath: ["$root", "reviewItem"],
+					where: ["=", "projectId", ["local", "_node_id"]],
+					take: "all",
+				}),
+			],
 			{
-				from: "$root.reviewItem",
-				where: {
-					">projectId": ["=", "_node_id"],
-				},
-				rel_shape: {
-					many: true,
-					linking: "<< reviewItem << #",
-					role: "projection",
-				},
+				many: true,
+				linking: "<< reviewItem << #",
+				role: "projection",
 			},
 		],
 		reviewArchiveEntries: [
-			"sel",
+			"comp",
+			[
+				addr({
+					relPath: ["$root", "reviewArchiveEntry"],
+					where: ["=", "projectId", ["local", "_node_id"]],
+					take: "all",
+				}),
+			],
 			{
-				from: "$root.reviewArchiveEntry",
-				where: {
-					">projectId": ["=", "_node_id"],
-				},
-				rel_shape: {
-					many: true,
-					linking: "<< reviewArchiveEntry << #",
-					role: "projection",
-				},
+				many: true,
+				linking: "<< reviewArchiveEntry << #",
+				role: "projection",
 			},
 		],
 		reviewSessions: [
-			"sel",
+			"comp",
+			[
+				addr({
+					relPath: ["$root", "reviewSession"],
+					where: ["=", "projectId", ["local", "_node_id"]],
+					take: "all",
+				}),
+			],
 			{
-				from: "$root.reviewSession",
-				where: {
-					">projectId": ["=", "_node_id"],
-				},
-				rel_shape: {
-					many: true,
-					linking: "<< reviewSession << #",
-					role: "projection",
-				},
+				many: true,
+				linking: "<< reviewSession << #",
+				role: "projection",
 			},
 		],
 	},
