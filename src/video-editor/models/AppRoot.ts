@@ -24,6 +24,7 @@ import { Clip } from "./Clip";
 import { Effect } from "./Effect";
 import { PROJECT_CREATION_SHAPE, Project } from "./Project";
 import { Resource } from "./Resource";
+import { MediaRecoveryTask } from "./MediaRecoveryTask";
 import {
 	REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
 	ReviewArchiveEntry,
@@ -48,6 +49,7 @@ const appProps = mergeDcl({
 		Project,
 		Track,
 		Resource,
+		MediaRecoveryTask,
 		Clip,
 		Text,
 		Effect,
@@ -79,6 +81,11 @@ const appProps = mergeDcl({
 			"comp",
 			[addr({ relPath: ["project", "resources"], zip: "all" })],
 			{ linking: "resource", many: true, role: "projection" },
+		],
+		mediaRecoveryTask: [
+			"comp",
+			[addr({ relPath: ["project", "resources", "mediaRecoveryTasks"], zip: "all" })],
+			{ linking: "media_recovery_task", many: true, role: "projection" },
 		],
 		clip: [
 			"comp",
@@ -126,7 +133,7 @@ const appProps = mergeDcl({
 			activeReviewItemId: { sync: false, reason: "projection" },
 			projectMetaList: { sync: false, reason: "projection" },
 		},
-		rels: {
+			rels: {
 			$session_root: { sync: false, reason: "framework-owned" },
 			common_session_root: { sync: false, reason: "projection" },
 			sessions: { sync: false, reason: "projection" },
@@ -134,6 +141,7 @@ const appProps = mergeDcl({
 			project: "sequence",
 			track: { sync: false, reason: "projection" },
 			resource: { sync: false, reason: "projection" },
+			mediaRecoveryTask: { sync: false, reason: "projection" },
 			clip: { sync: false, reason: "projection" },
 			text: { sync: false, reason: "projection" },
 			effect: { sync: false, reason: "projection" },

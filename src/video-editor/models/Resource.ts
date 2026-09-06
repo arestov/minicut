@@ -15,6 +15,7 @@ import {
 	objectOr,
 	stringOr,
 } from "./valueGuards";
+import { MEDIA_RECOVERY_TASK_CREATION_SHAPE } from "./MediaRecoveryTask";
 
 export const RESOURCE_CREATION_SHAPE = {
 	attrs: [
@@ -37,6 +38,8 @@ export const RESOURCE_CREATION_SHAPE = {
 		"contentFingerprint",
 		"fingerprintVersion",
 		"localMediaStatus",
+		"localMediaAvailability",
+		"originalAccessStatus",
 	],
 	rels: {
 		project: {},
@@ -80,11 +83,15 @@ export const Resource = model({
 			contentFingerprint: "lww",
 			fingerprintVersion: "lww",
 			localMediaStatus: { sync: false, reason: "effect-runtime" },
+			localMediaAvailability: { sync: false, reason: "effect-runtime" },
+			originalAccessStatus: { sync: false, reason: "effect-runtime" },
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		},
-		rels: {
+			rels: {
 			project: { sync: false, reason: "framework-owned" },
 			clips: "or-set",
+			activeMediaRecoveryTask: { sync: false, reason: "effect-runtime" },
+			mediaRecoveryTasks: { sync: false, reason: "effect-runtime" },
 		},
 	},
 	attrs: {
@@ -107,6 +114,8 @@ export const Resource = model({
 		contentFingerprint: ["input", null],
 		fingerprintVersion: ["input", null],
 		localMediaStatus: ["input", "unknown"],
+		localMediaAvailability: ["input", "unavailable"],
+		originalAccessStatus: ["input", "unknown"],
 		requiredSourceEnd: [
 			"comp",
 			["< @all:in < clips", "< @all:duration < clips"] as const,
@@ -255,8 +264,86 @@ export const Resource = model({
 				},
 			},
 		],
+		activeMediaRecoveryTask: [
+			"input",
+			{
+				linking: "<< mediaRecoveryTasks",
+				role: "projection",
+			},
+		],
+		mediaRecoveryTasks: [
+			"input",
+			{
+				many: true,
+				linking: "<< mediaRecoveryTask << #",
+				role: "owner",
+				ownership: "slot-single",
+				inverseRel: "resource",
+			},
+		],
 	},
 	actions: {
+		startMediaRecovery: [
+			{
+				to: {
+					oldTask: ["<< activeMediaRecoveryTask", { action: "supersedeForAttempt", sub_flow: true }],
+					forwarded: ["$output"],
+				},
+				fn: (payload: unknown) => ({ oldTask: payload, forwarded: payload }),
+			},
+			{
+				to: {
+					createdTask: ["<< mediaRecoveryTasks", { method: "at_end", can_create: true, can_hold_refs: true, creation_shape: MEDIA_RECOVERY_TASK_CREATION_SHAPE }],
+					forwarded: ["$output"],
+				},
+				output_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+				fn: [
+					["$noop", "< @one:bootId < activeMediaRecoveryTask", "< @one:recoveryKind < activeMediaRecoveryTask"] as const,
+					(payload: unknown, noop: unknown, activeBootId: unknown, activeRecoveryKind: unknown) => {
+						const value = payload as Record<string, unknown> | null;
+						if (!value || typeof value.operationId !== "string" || typeof value.bootId !== "string" || typeof value.recoveryKind !== "string") return noop;
+						if (value.bootId === activeBootId && value.recoveryKind === activeRecoveryKind) return noop;
+						return {
+							createdTask: { attrs: { ...value, phase: "created" }, hold_ref_id: "newMediaRecoveryTask" },
+							forwarded: { task: { use_ref_id: "newMediaRecoveryTask" } },
+						};
+					},
+				],
+			},
+			{
+				input_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+				when: [[] as const, (payload: unknown) => Boolean((payload as { task?: unknown } | null)?.task)],
+				to: { activeMediaRecoveryTask: ["<< activeMediaRecoveryTask", { method: "set_one", can_use_refs: true }] },
+				fn: (payload: unknown) => ({ activeMediaRecoveryTask: (payload as { task?: unknown } | null)?.task ?? null }),
+			},
+		],
+		completeMediaRecovery: [{
+			to: {
+				assetStorageKind: ["assetStorageKind"], assetRef: ["assetRef"], sourceKind: ["sourceKind"], sourceRef: ["sourceRef"], url: ["url"], contentFingerprint: ["contentFingerprint"], fingerprintVersion: ["fingerprintVersion"], duration: ["duration"], width: ["width"], height: ["height"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], task: ["<< activeMediaRecoveryTask", { action: "completePublication", sub_flow: true }],
+			},
+			fn: [
+				["$noop", "< @one:operationId < activeMediaRecoveryTask", "< @one:phase < activeMediaRecoveryTask"] as const,
+				(payload: unknown, noop: unknown, activeOperationId: unknown, activePhase: unknown) => {
+					const value = payload as Record<string, unknown> | null;
+					if (!value || value.operationId !== activeOperationId || activePhase !== "committing") return noop;
+					return {
+						assetStorageKind: value.assetStorageKind,
+						assetRef: value.assetRef ?? null,
+						sourceKind: value.sourceKind,
+						sourceRef: value.sourceRef ?? null,
+						url: typeof value.url === "string" ? value.url : "",
+						contentFingerprint: value.contentFingerprint ?? null,
+						fingerprintVersion: value.fingerprintVersion ?? null,
+						duration: value.duration,
+						width: value.width ?? null,
+						height: value.height ?? null,
+						localMediaAvailability: value.localMediaAvailability,
+						originalAccessStatus: value.originalAccessStatus,
+						task: value,
+					};
+				},
+			],
+		}],
 		renameResource: {
 			to: {
 				name: ["name"],

@@ -57,6 +57,37 @@ const addClip = async (ctx: DktTestContext, videoTrack: AnyModel) => {
 };
 
 describe("MiniCut CRDT local dispatch staging", () => {
+	it("does not publish owned media recovery task state or relations", async () => {
+		const { ctx, project } = await createCrdtContext();
+		await ctx.lockToRead(async () => {
+			await project.dispatch("importResource", {
+				name: "Local recovery source",
+				kind: "video",
+				url: "",
+				mime: "video/webm",
+				duration: 4,
+			});
+		});
+		const resource = (await ctx.queryRel(project, "resources"))[0];
+		if (!resource) throw new Error("Expected resource");
+		drainCrdtOutbox(ctx.runtime);
+
+		await ctx.lockToRead(async () => {
+			await resource.dispatch("startMediaRecovery", {
+				operationId: "operation:local",
+				attemptId: "attempt:local",
+				bootId: "boot:local",
+				recoveryKind: "restore",
+				intent: "restore",
+				createdAt: 1,
+				updatedAt: 1,
+			});
+		});
+
+		expect(await ctx.queryRel(resource, "activeMediaRecoveryTask")).toHaveLength(1);
+		expectNoCrdtStagedOps(ctx.runtime);
+	});
+
 	it("Project.setProjectTimestamps stages durable project metadata ops", async () => {
 		const { ctx, project } = await createCrdtContext();
 
