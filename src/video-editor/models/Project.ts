@@ -599,8 +599,15 @@ export const Project = model({
 							creation_shape: RESOURCE_CREATION_SHAPE,
 						},
 					],
+					forwarded: ["$output"],
 				},
+				output_base_rel_shape: { resource: { linking: "<< resources", many: false } },
 				fn: reduceImportResourceCreateOnly,
+			},
+			{
+				input_base_rel_shape: { resource: { linking: "<< resources", many: false } },
+				to: ["<<<< $input:resource", { action: "startMediaRecovery", sub_flow: true }],
+				fn: (payload: unknown) => payload,
 			},
 		],
 		setTracks: {

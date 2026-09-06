@@ -7,7 +7,7 @@ import type { EditorActionEnvironment } from "./editorActionEnvironment";
 const makeScope = (id: string): ReactSyncScopeHandle => ({ kind: "scope", _nodeId: id });
 
 describe("executeImportFilesTask handle-backed imports", () => {
-	it("persists file handles by resource id and writes sourceRef on the resource", async () => {
+	it("creates the resource and recovery task declaratively without read-after-dispatch", async () => {
 		const tasks = createRuntimeTaskFacade();
 		const projectScope = makeScope("project:1");
 		const resourceScope = makeScope("resource:1");
@@ -84,23 +84,22 @@ describe("executeImportFilesTask handle-backed imports", () => {
 
 		await executeImportFilesTask({ task, env, projectScope });
 
-		expect(putHandle).toHaveBeenCalledWith(
-			expect.objectContaining({
-				resourceId: "resource:1",
-				name: "handle-video.webm",
-				mime: "video/webm",
-			}),
-		);
+		expect(putHandle).not.toHaveBeenCalled();
 		expect(resourceAttrs).toMatchObject({
 			sourceKind: "file-handle",
-			sourceRef: "resource:1",
+			sourceRef: null,
 			status: "ready",
-			assetStorageKind: "project-copy",
-			assetRef: "project:1/resource:1",
+			assetStorageKind: "linked",
+			assetRef: null,
 			contentFingerprint: "abc",
-			localMediaStatus: "ready-project-copy",
+			localMediaStatus: "ready-file-handle",
+			recoveryKind: "import",
+			intent: "restore",
+			operationId: expect.any(String),
+			runtimeHandleId: expect.any(String),
 		});
-		expect(putAsset).toHaveBeenCalledOnce();
+		expect(putAsset).not.toHaveBeenCalled();
+		expect(dispatch.mock.calls.some(([name]) => name === "setResourceAttrs")).toBe(false);
 		expect(resources).toHaveLength(1);
 	});
 

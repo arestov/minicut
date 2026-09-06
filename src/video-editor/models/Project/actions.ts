@@ -1149,6 +1149,10 @@ export const reduceImportResourceCreateOnly = (
 			attrs,
 			hold_ref_id: "newResource",
 		},
+		forwarded: {
+			resource: { use_ref_id: "newResource" },
+			...(payload && typeof payload === "object" ? payload as Record<string, unknown> : {}),
+		},
 	};
 };
 

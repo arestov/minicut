@@ -14,6 +14,22 @@ const attempt = (bootId: string, operationId: string) => ({
 });
 
 describe("owned MediaRecoveryTask action contracts", () => {
+	it("creates an imported Resource and exactly one owned task in the same flow", async () => {
+		const requests: unknown[] = [];
+		const harness = await createActionContractHarness({ interfaces: { mediaRecoveryRuntime: { requestMediaRecovery: (payload: unknown) => requests.push(payload) } } });
+		const before = await queryRel(harness.project, "resources");
+		await dispatchAndSettle(harness.ctx, harness.project, "importResource", {
+			name: "import.webm", kind: "video", url: "blob:import", mime: "video/webm", duration: 4, size: 10, status: "ready",
+			operationId: "operation:import", attemptId: "attempt:import", bootId: "boot:import", recoveryKind: "import", intent: "restore", runtimeHandleId: "runtime:import",
+			original: { kind: "video", duration: 4, streams: { videoStreams: 1, audioStreams: null } }, requiredSourceEnd: 4, createdAt: 1, updatedAt: 1,
+		});
+		const after = await queryRel(harness.project, "resources"); const imported = after.find((resource) => !before.some((old) => old._node_id === resource._node_id));
+		expect(imported).toBeTruthy();
+		expect(await queryRel(imported!, "mediaRecoveryTasks")).toHaveLength(1);
+		expect(await queryRel(imported!, "activeMediaRecoveryTask")).toHaveLength(1);
+		expect(requests).toHaveLength(1);
+	});
+
 	it("routes serializable recovery work through the declared task effect", async () => {
 		const requests: unknown[] = [];
 		const harness = await createActionContractHarness({

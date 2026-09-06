@@ -80,6 +80,17 @@ const excludeGlobs = [
 
 const violations = []
 
+const mediaRecoveryGuards = [
+	{ name: 'Import recovery must not read model state', pattern: '\\b(readAttrs|waitForImportedResource|resolveImportedResource)\\b', roots: ['src/video-editor/app/importFilesTaskExecutor.ts'] },
+	{ name: 'Import recovery must not patch Resource after creation', pattern: '["\']setResourceAttrs["\']', roots: ['src/video-editor/app/importFilesTaskExecutor.ts'] },
+]
+
+for (const check of mediaRecoveryGuards) {
+	const res = spawnSync('rg', ['-n', '--color', 'never', '-S', check.pattern, ...check.roots], { encoding: 'utf8' })
+	if (res.status === 0) violations.push({ check: check.name, output: res.stdout.trim() })
+	else if (res.status !== 1) process.exit(2)
+}
+
 for (const check of checks) {
 	const checkRoots = check.contractRoots || roots
 	const args = ['-n', '--color', 'never', '-S', check.pattern, ...excludeGlobs, ...check.extraArgs, ...checkRoots]
