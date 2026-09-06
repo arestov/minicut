@@ -64,4 +64,49 @@ describe("ShapeRegistry", () => {
 			["root", []],
 		]);
 	});
+
+	it("requires a child shape when the relation appears after the initial mount", () => {
+		const registry = new ShapeRegistry();
+		const rootScope = createScope("root");
+		const childScope = createScope("child");
+		const oneListeners = new Set<() => void>();
+		const requireNodeShapes = vi.fn();
+		let currentChild: ReactSyncScopeHandle | null = null;
+		const runtime = {
+			publishShapeGraph: vi.fn(),
+			requireNodeShapes,
+			readOne: vi.fn(() => currentChild),
+			subscribeOne: vi.fn(
+				(
+					_scope: ReactSyncScopeHandle,
+					_relName: string,
+					listener: () => void,
+				) => {
+					oneListeners.add(listener);
+					return () => oneListeners.delete(listener);
+				},
+			),
+			readMany: vi.fn(() => []),
+			subscribeMany: vi.fn(() => () => {}),
+		};
+		const childShape = defineShape({ attrs: ["name"] });
+		const rootShape = defineShape({ one: { selectedClip: childShape } });
+
+		const stop = registry.mount(runtime, rootScope, rootShape);
+		expect(requireNodeShapes.mock.calls).toEqual([["root", [rootShape.id]]]);
+
+		currentChild = childScope;
+		for (const listener of oneListeners) listener();
+		expect(requireNodeShapes.mock.calls).toEqual([
+			["root", [rootShape.id]],
+			["child", [childShape.id]],
+		]);
+
+		stop();
+		expect(requireNodeShapes.mock.calls.at(-2)).toEqual([
+			"child",
+			[],
+		]);
+		expect(requireNodeShapes.mock.calls.at(-1)).toEqual(["root", []]);
+	});
 });

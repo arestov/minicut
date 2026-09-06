@@ -155,4 +155,66 @@ describe("ReactSyncReceiver", () => {
 			"clip-3",
 		]);
 	});
+
+	it("applies relation cleanup before pruning a model in the same update", () => {
+		const receiver = new ReactSyncReceiver(null);
+		const onClips = vi.fn();
+		receiver.handleSync(SYNCR_TYPES.SET_DICT, [undefined, "clips", "name"]);
+		receiver.handleSync(SYNCR_TYPES.TREE_ROOT, {
+			node_id: "track-1",
+			data: [null, null, null],
+		});
+		receiver.handleSync(SYNCR_TYPES.UPDATE, [
+			3, "clip-1", null, null, null,
+			0, "clip-1", 2, 2, "Clip 1",
+			1, "track-1", 1, ["clip-1"],
+		]);
+		receiver.subscribeNodeList("track-1", "clips", onClips);
+
+		receiver.handleSync(SYNCR_TYPES.UPDATE, [
+			1, "track-1", 1, [],
+			7, ["clip-1"], "dkt-tx-1",
+		]);
+
+		expect(receiver.getNode("clip-1")).toBeNull();
+		expect(receiver.readRel("track-1", "clips")).toEqual([]);
+		expect(onClips).toHaveBeenCalledTimes(1);
+	});
+
+	it("cleans stale replica refs and reports an out-of-order prune in dev", () => {
+		const receiver = new ReactSyncReceiver(null);
+		receiver.handleSync(SYNCR_TYPES.SET_DICT, [undefined, "clips"]);
+		receiver.handleSync(SYNCR_TYPES.TREE_ROOT, {
+			node_id: "track-1",
+			data: [null, null, null],
+		});
+		receiver.handleSync(SYNCR_TYPES.UPDATE, [
+			1, "track-1", 1, ["clip-1"],
+		]);
+
+		expect(() =>
+			receiver.handleSync(SYNCR_TYPES.UPDATE, [
+				7, ["clip-1"], "dkt-tx-stale",
+			]),
+		).toThrow("pruned model still referenced in React replica");
+		expect(receiver.getNode("clip-1")).toBeNull();
+		expect(receiver.readRel("track-1", "clips")).toEqual([]);
+	});
+
+	it("treats repeated prune chunks as idempotent and drops node caches", () => {
+		const receiver = new ReactSyncReceiver(null);
+		receiver.handleSync(SYNCR_TYPES.SET_DICT, [undefined, "name"]);
+		receiver.handleSync(SYNCR_TYPES.UPDATE, [
+			3, "clip-1", null, null, null,
+			0, "clip-1", 2, 1, "Clip 1",
+		]);
+		const previousScope = receiver.getScope("clip-1");
+		expect(receiver.readAttrs("clip-1", ["name"]).name).toBe("Clip 1");
+
+		receiver.handleSync(SYNCR_TYPES.UPDATE, [7, ["clip-1"], "dkt-tx-1"]);
+		receiver.handleSync(SYNCR_TYPES.UPDATE, [7, ["clip-1"], "dkt-tx-1"]);
+
+		expect(receiver.readAttrs("clip-1", ["name"])).toEqual({});
+		expect(receiver.getScope("clip-1")).not.toBe(previousScope);
+	});
 });

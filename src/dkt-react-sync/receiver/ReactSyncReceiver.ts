@@ -1,4 +1,10 @@
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
+import { SYRU_PRUNE_MODEL } from "dkt-all/libs/provoda/SyncR_U_TYPES.js";
+import {
+	SYNC_PRUNE_MODEL_LENGTH,
+	SYNC_PRUNE_MODEL_NODE_IDS,
+	SYNC_PRUNE_MODEL_TRANSACTION_ID,
+} from "dkt-all/libs/provoda/SyncR_cursor.js";
 import type { ReactSyncScopeHandle } from "../scope/ScopeHandle";
 
 type DictKey = number | string;
@@ -24,10 +30,6 @@ export type ReactSyncDebugGraph = {
 	nodes: ReactSyncDebugNode[];
 };
 
-/*
-  tmp/dkt currently does not export SyncR_U_TYPES.js and SyncR_cursor.js correctly.
-  Keep the compact protocol cursor constants local here until DKT build is fixed.
-*/
 const SYRU_UPDATE_ATTRS = 0;
 const SYRU_UPDATE_RELS = 1;
 const R_UPDATE_TREE_BASE = 3;
@@ -593,6 +595,10 @@ export class ReactSyncReceiver {
 		const dirtyAttrsByNodeId = new Map<string, Set<string>>();
 		const dirtyRelsByNodeId = new Map<string, Set<string>>();
 		const dirtyListsByNodeId = new Map<string, Set<string>>();
+		const pendingPrunes: Array<{
+			nodeIds: readonly unknown[];
+			transactionId: unknown;
+		}> = [];
 		let cursor = 0;
 
 		while (cursor < list.length) {
@@ -666,6 +672,19 @@ export class ReactSyncReceiver {
 					cursor += SYNC_TREE_COMPLETE_LENGTH;
 					break;
 				}
+				case SYRU_PRUNE_MODEL: {
+					pendingPrunes.push({
+						nodeIds: Array.isArray(
+							list[cursor + SYNC_PRUNE_MODEL_NODE_IDS],
+						)
+							? (list[cursor + SYNC_PRUNE_MODEL_NODE_IDS] as readonly unknown[])
+							: [],
+						transactionId:
+							list[cursor + SYNC_PRUNE_MODEL_TRANSACTION_ID],
+					});
+					cursor += SYNC_PRUNE_MODEL_LENGTH;
+					break;
+				}
 				default: {
 					throw new Error(
 						`unknown sync update chunk type: ${String(changeType)}`,
@@ -674,9 +693,89 @@ export class ReactSyncReceiver {
 			}
 		}
 
+		for (const prune of pendingPrunes) {
+			this.pruneModels(
+				prune.nodeIds,
+				prune.transactionId,
+				dirtyRelsByNodeId,
+				dirtyListsByNodeId,
+			);
+		}
+
 		this.flushDirtyNamed(this.attrSubsByNodeId, dirtyAttrsByNodeId);
 		this.flushDirtyNamed(this.relSubsByNodeId, dirtyRelsByNodeId);
 		this.flushDirtyNamed(this.listSubsByNodeId, dirtyListsByNodeId);
+	}
+
+	private pruneModels(
+		rawNodeIds: readonly unknown[],
+		transactionId: unknown,
+		dirtyRelsByNodeId: Map<string, Set<string>>,
+		dirtyListsByNodeId: Map<string, Set<string>>,
+	) {
+		const nodeIds = new Set(rawNodeIds.map(toNodeId));
+		if (!nodeIds.size) return;
+		const staleRefs: Array<{ ownerId: string; relName: string; nodeId: string }> = [];
+
+		for (const node of this.nodesById.values()) {
+			if (nodeIds.has(node.nodeId)) continue;
+			for (const [relKey, current] of node.rels) {
+				if (current == null) continue;
+				const relName = this.resolveName(relKey) ?? String(relKey);
+				if (Array.isArray(current)) {
+					const next = current.filter((nodeId) => !nodeIds.has(nodeId));
+					if (next.length === current.length) continue;
+					for (const nodeId of current) {
+						if (nodeIds.has(nodeId)) staleRefs.push({ ownerId: node.nodeId, relName, nodeId });
+					}
+					node.rels.set(relKey, next);
+				} else {
+					if (!nodeIds.has(current)) continue;
+					staleRefs.push({ ownerId: node.nodeId, relName, nodeId: current });
+					node.rels.set(relKey, null);
+				}
+				node.relsVersion += 1;
+				this.pushDirtyName(dirtyRelsByNodeId, node.nodeId, relName);
+				this.pushDirtyName(dirtyListsByNodeId, node.nodeId, relName);
+			}
+		}
+
+		for (const nodeId of nodeIds) {
+			const attrsListeners = this.attrSubsByNodeId.get(nodeId);
+			const relListeners = this.relSubsByNodeId.get(nodeId);
+			const listListeners = this.listSubsByNodeId.get(nodeId);
+			if (attrsListeners) this.flushAllNamed(new Map([[nodeId, attrsListeners]]));
+			if (relListeners) this.flushAllNamed(new Map([[nodeId, relListeners]]));
+			if (listListeners) this.flushAllNamed(new Map([[nodeId, listListeners]]));
+			this.attrSubsByNodeId.delete(nodeId);
+			this.relSubsByNodeId.delete(nodeId);
+			this.listSubsByNodeId.delete(nodeId);
+			this.nodesById.delete(nodeId);
+			this.scopesByNodeId.delete(nodeId);
+			for (const key of this.attrsReadCache.keys()) {
+				if (key.startsWith(`${nodeId}\u001f`)) this.attrsReadCache.delete(key);
+			}
+			for (const key of this.manyReadCache.keys()) {
+				if (key.startsWith(`${nodeId}\u001f`)) this.manyReadCache.delete(key);
+			}
+			if (this.rootNodeId === nodeId) {
+				this.rootNodeId = null;
+				notifyAll(this.rootSubs);
+			}
+		}
+		this.manyReadCache.clear();
+
+		if (
+			staleRefs.length &&
+			(typeof process === "undefined" || process.env.NODE_ENV !== "production")
+		) {
+			throw new Error(
+				`pruned model still referenced in React replica: ${JSON.stringify({
+					transactionId,
+					staleRefs,
+				})}`,
+			);
+		}
 	}
 
 	private setDict(dictFlat: readonly (string | undefined)[] | null) {
