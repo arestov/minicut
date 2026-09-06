@@ -14,6 +14,34 @@ const attempt = (bootId: string, operationId: string) => ({
 });
 
 describe("owned MediaRecoveryTask action contracts", () => {
+	it("routes serializable recovery work through the declared task effect", async () => {
+		const requests: unknown[] = [];
+		const harness = await createActionContractHarness({
+			interfaces: {
+				mediaRecoveryRuntime: {
+					requestMediaRecovery: (payload: unknown) => requests.push(payload),
+				},
+			},
+		});
+
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "startMediaRecovery", {
+			...attempt("boot:fx", "operation:fx"),
+			intent: "replace-source",
+			runtimeHandleId: "rt_tmp_candidate",
+		});
+
+		expect(requests).toHaveLength(1);
+		expect(requests[0]).toMatchObject({
+			operationId: "operation:fx",
+			bootId: "boot:fx",
+			intent: "replace-source",
+			runtimeHandleId: "rt_tmp_candidate",
+			resourceId: harness.videoResource._node_id,
+			original: { kind: "video", duration: 10 },
+		});
+		expect(JSON.stringify(requests[0])).not.toContain("FileSystemFileHandle");
+	});
+
 	it("creates one active task per boot key and supersedes the old attempt", async () => {
 		const harness = await createActionContractHarness();
 
@@ -46,9 +74,9 @@ describe("owned MediaRecoveryTask action contracts", () => {
 		const task = (await queryRel(harness.videoResource, "activeMediaRecoveryTask"))[0]!;
 
 		await dispatchAndSettle(harness.ctx, task, "transition", { operationId: "operation:1", phase: "completed", updatedAt: 101 });
-		expect(getAttr(task, "phase")).toBe("created");
+		expect(getAttr(task, "phase")).toBe("inspecting");
 
-		for (const phase of ["inspecting", "ready-to-commit", "committing"] as const) {
+		for (const phase of ["ready-to-commit", "committing"] as const) {
 			await dispatchAndSettle(harness.ctx, task, "transition", { operationId: "operation:1", phase, updatedAt: 102 });
 			expect(getAttr(task, "phase")).toBe(phase);
 		}

@@ -106,6 +106,43 @@ export const MediaRecoveryTask = model({
 		],
 	},
 	actions: {
+		runRecoveryEffect: [
+			{
+				to: { phase: ["phase"], forwarded: ["$output"] },
+				fn: [
+					["$noop", "operationId", "phase"] as const,
+					(payload: unknown, noop: unknown, operationId: unknown, phase: unknown) => {
+						const value = payload as Record<string, unknown> | null;
+						if (!value || value.operationId !== operationId || (phase !== "created" && phase !== "awaiting-user-action")) return noop;
+						return { phase: "inspecting", forwarded: value };
+					},
+				],
+			},
+			{
+				to: ["$fx_mediaRecovery", { intent: "call", drop_when_api_not_ready: false }],
+				fn: [
+					["$noop", "_node_id", "operationId", "bootId", "intent", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource", "< @one:contentFingerprint < resource", "< @one:fingerprintVersion < resource", "< @one:requiredSourceEnd < resource"] as const,
+					(payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, bootId: unknown, intent: unknown, resourceId: unknown, kind: unknown, duration: unknown, width: unknown, height: unknown, contentFingerprint: unknown, fingerprintVersion: unknown, requiredSourceEnd: unknown) => {
+						const value = payload as Record<string, unknown> | null;
+						if (!value || typeof taskId !== "string" || typeof resourceId !== "string") return noop;
+						return { taskId, resourceId, operationId, bootId, intent, runtimeHandleId: value.runtimeHandleId, original: { kind, duration, width, height }, originalFingerprint: contentFingerprint, fingerprintVersion, requiredSourceEnd };
+					},
+				],
+			},
+		],
+		recordInspection: {
+			to: { phase: ["phase"], candidateMetadata: ["candidateMetadata"], candidateFingerprint: ["candidateFingerprint"], candidateFingerprintVersion: ["candidateFingerprintVersion"], compatibility: ["compatibility"], reasonCode: ["reasonCode"], errorMessage: ["errorMessage"], confirmationRequired: ["confirmationRequired"], updatedAt: ["updatedAt"] },
+			fn: [
+				["$noop", "operationId", "phase"] as const,
+				(payload: unknown, noop: unknown, operationId: unknown, phase: unknown) => {
+					const value = payload as Record<string, unknown> | null;
+					if (!value || value.operationId !== operationId || phase !== "inspecting") return noop;
+					const classification = value.classification;
+					const nextPhase = classification === "incompatible" ? "rejected" : value.confirmationRequired === true ? "awaiting-confirmation" : "ready-to-commit";
+					return { phase: nextPhase, candidateMetadata: value.candidateMetadata ?? null, candidateFingerprint: value.candidateFingerprint ?? null, candidateFingerprintVersion: value.candidateFingerprintVersion ?? null, compatibility: value.compatibility ?? null, reasonCode: typeof value.reasonCode === "string" ? value.reasonCode : null, errorMessage: null, confirmationRequired: value.confirmationRequired === true, updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : null };
+				},
+			],
+		},
 		transition: {
 			to: {
 				phase: ["phase"],
@@ -156,6 +193,26 @@ export const MediaRecoveryTask = model({
 					return { phase: "completed", outcome: "completed", updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : null, stagedAssetRef: null, stagedHandleRef: null };
 				},
 			],
+		},
+	},
+	effects: {
+		api: {
+			mediaRecoveryRuntime: [
+				["_node_id"] as const,
+				["#mediaRecoveryRuntime"] as const,
+				(runtime: unknown) => runtime,
+			],
+		},
+		out: {
+			$fx_mediaRecovery: {
+				api: ["mediaRecoveryRuntime"],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as { requestMediaRecovery?: (payload: unknown) => void } | null;
+					const payload = (state as { payload?: unknown } | null)?.payload;
+					if (runtime?.requestMediaRecovery && payload && typeof payload === "object") runtime.requestMediaRecovery(payload);
+				},
+			},
 		},
 	},
 });

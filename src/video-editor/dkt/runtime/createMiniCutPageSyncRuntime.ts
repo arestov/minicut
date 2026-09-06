@@ -376,6 +376,10 @@ export const createMiniCutPageSyncRuntime = ({
 				emitRuntimeTaskRequest("$fx_handleInputFiles", message.payload);
 				return;
 			}
+			case DKT_MSG.MEDIA_RECOVERY_REQUEST: {
+				emitRuntimeTaskRequest("$fx_mediaRecovery", message.payload);
+				return;
+			}
 			case DKT_MSG.SYNC_HANDLE: {
 				handleSyncMessage(message);
 				return;

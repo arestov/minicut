@@ -304,8 +304,20 @@ export const Resource = model({
 						if (!value || typeof value.operationId !== "string" || typeof value.bootId !== "string" || typeof value.recoveryKind !== "string") return noop;
 						if (value.bootId === activeBootId && value.recoveryKind === activeRecoveryKind) return noop;
 						return {
-							createdTask: { attrs: { ...value, phase: "created" }, hold_ref_id: "newMediaRecoveryTask" },
-							forwarded: { task: { use_ref_id: "newMediaRecoveryTask" } },
+							createdTask: {
+								attrs: {
+									operationId: value.operationId,
+									attemptId: value.attemptId,
+									bootId: value.bootId,
+									recoveryKind: value.recoveryKind,
+									intent: value.intent,
+									phase: "created",
+									createdAt: value.createdAt,
+									updatedAt: value.updatedAt,
+								},
+								hold_ref_id: "newMediaRecoveryTask",
+							},
+							forwarded: { ...value, task: { use_ref_id: "newMediaRecoveryTask" } },
 						};
 					},
 				],
@@ -313,8 +325,17 @@ export const Resource = model({
 			{
 				input_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
 				when: [[] as const, (payload: unknown) => Boolean((payload as { task?: unknown } | null)?.task)],
-				to: { activeMediaRecoveryTask: ["<< activeMediaRecoveryTask", { method: "set_one", can_use_refs: true }] },
-				fn: (payload: unknown) => ({ activeMediaRecoveryTask: (payload as { task?: unknown } | null)?.task ?? null }),
+				to: {
+					activeMediaRecoveryTask: ["<< activeMediaRecoveryTask", { method: "set_one", can_use_refs: true }],
+					forwarded: ["$output"],
+				},
+				output_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+				fn: (payload: unknown) => ({ activeMediaRecoveryTask: (payload as { task?: unknown } | null)?.task ?? null, forwarded: payload }),
+			},
+			{
+				input_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+				to: ["<<<< $input:task", { action: "runRecoveryEffect", sub_flow: true }],
+				fn: (payload: unknown) => payload,
 			},
 		],
 		completeMediaRecovery: [{
