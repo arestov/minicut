@@ -83,8 +83,8 @@ const readIncomingReviewClips = async (
 	peer: HeadlessReviewPeer,
 ): Promise<HeadlessDktModel[]> => {
 	const tracks = (await peer.ctx.queryRel(
-		peer.ctx.appModel,
-		"track",
+		peer.project,
+		"tracks",
 	)) as HeadlessDktModel[];
 	for (const track of tracks) {
 		if ((await attr(peer, track, "trackRole")) === "incomingReview") {
@@ -179,7 +179,7 @@ describe("headless delete-vs-edit review actions", () => {
 			expect(parked?._node_id).toBeTruthy();
 			await expectClipAttrs(pair.a, parked as HeadlessDktModel, {
 				...preview.editedVariant.clipAttrs,
-				name: `${String(preview.editedVariant.clipAttrs.name)} edited variant`,
+				name: `${String(preview.editedVariant.clipAttrs.name ?? "Restored edited clip")} edited variant`,
 			});
 		} finally {
 			pair.close();

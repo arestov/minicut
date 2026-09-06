@@ -758,7 +758,6 @@ export const reduceResolveDeleteVsEditByRestoreVariant = (
 		clip: {
 			attrs: restoredAttrs,
 			rels: {
-				track: targetTrack,
 				resource: resourceRef ?? null,
 			},
 			hold_ref_id: "restoredDeleteVsEditClip",
@@ -924,6 +923,64 @@ export const reduceCommitParkEditedVariantOnReviewTrack = (payload: unknown) => 
 						},
 					})
 				: null,
+	};
+};
+
+export const reducePrepareParkEditedVariantOnReviewTrack = (
+	payload: unknown,
+	noop: unknown,
+	project: unknown,
+	tracks: unknown,
+) => {
+	const prepared = reduceParkEditedVariantOnReviewTrack(
+		payload,
+		noop,
+		project,
+		tracks,
+	) as Record<string, unknown>;
+	if (!asObject(prepared) || !asObject(prepared.parkedClip) || !asObject(prepared.next)) {
+		return noop;
+	}
+	const reviewTrack = asObject<Record<string, unknown>>(prepared.reviewTrack)
+		? {
+				attrs: prepared.reviewTrack.attrs,
+				hold_ref_id: prepared.reviewTrack.hold_ref_id,
+			}
+		: prepared.reviewTrack;
+	const preparedNext = Object.fromEntries(
+		Object.entries(prepared.next).filter(([name]) => name !== "clip"),
+	);
+	return {
+		reviewTrack,
+		next: {
+			...preparedNext,
+			parkedClip: prepared.parkedClip,
+		},
+	};
+};
+
+export const reduceCreateParkedEditedVariantOnOwner = (
+	payload: unknown,
+	noop: unknown,
+) => {
+	const value = asObject<Record<string, unknown>>(payload);
+	const parkedClip = asObject<Record<string, unknown>>(value?.parkedClip);
+	if (!value || !parkedClip) return noop;
+	const parkedClipRels = asObject<Record<string, unknown>>(parkedClip.rels)
+		? Object.fromEntries(
+				Object.entries(parkedClip.rels as Record<string, unknown>).filter(([name]) => name !== "track"),
+			)
+		: {};
+	return {
+		parkedClip: {
+			...parkedClip,
+			rels: parkedClipRels,
+			hold_ref_id: "parkedDeleteVsEditClip",
+		},
+		next: {
+			...value,
+			clip: { use_ref_id: "parkedDeleteVsEditClip" },
+		},
 	};
 };
 

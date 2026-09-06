@@ -22,7 +22,8 @@ import {
 	reduceMaterializeProjectCRDTConflictReview,
 	reduceMoveClipToTrackContext,
 	reduceMoveClipToTrackPayload,
-	reduceParkEditedVariantOnReviewTrack,
+	reducePrepareParkEditedVariantOnReviewTrack,
+	reduceCreateParkedEditedVariantOnOwner,
 	reducePreserveDeleteAndArchiveIncomingEdit,
 	reduceCommitDeleteVsEditRestoreVariant,
 	reduceCommitParkEditedVariantOnReviewTrack,
@@ -917,7 +918,7 @@ export const Project = model({
 				},
 				to: {
 					clip: [
-						"<< clip << #",
+						"<< clips << $input_id:targetTrackId",
 						{
 							method: "at_end",
 							can_create: true,
@@ -930,7 +931,7 @@ export const Project = model({
 				},
 				output_base_rel_shape: {
 					clip: {
-						linking: "<< clip << #",
+						any: true,
 						many: false,
 					},
 					targetTrack: {
@@ -976,23 +977,9 @@ export const Project = model({
 							creation_shape: TRACK_CREATION_SHAPE,
 						},
 					],
-					parkedClip: [
-						"<< clip << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							can_use_refs: true,
-							creation_shape: CLIP_CREATION_SHAPE,
-						},
-					],
 					next: ["$output", { can_use_refs: true }],
 				},
 				output_base_rel_shape: {
-					clip: {
-						linking: "<< clip << #",
-						many: false,
-					},
 					targetTrack: {
 						linking: "<< track << #",
 						many: false,
@@ -1000,27 +987,40 @@ export const Project = model({
 				},
 				fn: [
 					["$noop", "<<<<", "<< @all:tracks"] as const,
-					reduceParkEditedVariantOnReviewTrack,
+					reducePrepareParkEditedVariantOnReviewTrack,
 				],
 			},
 			{
 				input_base_rel_shape: {
-					clip: {
-						linking: "<< clip << #",
-						many: false,
-					},
 					targetTrack: {
 						linking: "<< track << #",
 						many: false,
 					},
 				},
 				to: {
-					targetTracks: [
-						"<<<< $input:targetTrack",
-						{ action: "acceptClipIfTarget", sub_flow: true },
+					parkedClip: [
+						"<< clips << $input:targetTrack",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
 					],
-					crdtResolve: [crdtReviewResolveTarget],
+					next: ["$output", { can_use_refs: true }],
 				},
+				output_base_rel_shape: {
+					clip: { any: true, many: false },
+					targetTrack: { linking: "<< track << #", many: false },
+				},
+				fn: [["$noop"] as const, reduceCreateParkedEditedVariantOnOwner],
+			},
+			{
+				input_base_rel_shape: {
+					clip: { any: true, many: false },
+					targetTrack: { linking: "<< track << #", many: false },
+				},
+				to: { crdtResolve: [crdtReviewResolveTarget] },
 				fn: reduceCommitParkEditedVariantOnReviewTrack,
 			},
 		],
