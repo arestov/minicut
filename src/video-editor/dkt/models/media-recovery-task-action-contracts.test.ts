@@ -133,7 +133,6 @@ describe("owned MediaRecoveryTask action contracts", () => {
 			originalAccessStatus: "granted",
 			updatedAt: 103,
 		};
-		await dispatchAndSettle(harness.ctx, harness.videoResource, "completeMediaRecovery", completion);
 		await dispatchAndSettle(harness.ctx, task, "completePublication", completion);
 
 		expect(getAttr(harness.videoResource, "assetRef")).toContain("operation:1");

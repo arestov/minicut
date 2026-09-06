@@ -74,8 +74,10 @@ export const createMiniCutPageSyncRuntime = ({
 			timeoutId: ReturnType<typeof setTimeout>;
 		}
 	>();
+	const pendingActionResolves = new Map<string, { resolve: () => void; reject: (error: Error) => void; timeoutId: ReturnType<typeof setTimeout> }>();
 	let idleRequestSequence = 0;
 	let dumpRequestSequence = 0;
+	let actionRequestSequence = 0;
 
 	const pushDebugMessage = (
 		direction: "in" | "out" | "error",
@@ -276,6 +278,15 @@ export const createMiniCutPageSyncRuntime = ({
 			),
 		);
 	};
+	const dispatchAndWait = (actionName: string, payload?: unknown, scope?: ReactSyncScopeHandle | null, meta?: unknown): Promise<void> => {
+		if (!actionName) return Promise.reject(new Error("action name is required"));
+		const requestId = `page-action:${++actionRequestSequence}`;
+		return new Promise<void>((resolve, reject) => {
+			const timeoutId = setTimeout(() => { pendingActionResolves.delete(requestId); reject(new Error(`Timed out waiting for action ${actionName}`)); }, 20_000);
+			pendingActionResolves.set(requestId, { resolve, reject, timeoutId });
+			emit(createDispatchActionMessage(actionName, payload, scope?._nodeId ?? null, meta, requestId));
+		});
+	};
 
 	const scopeDispatchCache = new WeakMap<
 		ReactSyncScopeHandle,
@@ -335,6 +346,10 @@ export const createMiniCutPageSyncRuntime = ({
 				return;
 			}
 			case DKT_MSG.ACTION_ACCEPTED: {
+				if (message.requestId) {
+					const pending = pendingActionResolves.get(message.requestId);
+					if (pending) { clearTimeout(pending.timeoutId); pendingActionResolves.delete(message.requestId); pending.resolve(); }
+				}
 				return;
 			}
 			case DKT_MSG.WORKSPACE_OPEN_STATE: {
@@ -352,6 +367,10 @@ export const createMiniCutPageSyncRuntime = ({
 				return;
 			}
 			case DKT_MSG.RUNTIME_ERROR: {
+				if (message.requestId) {
+					const pending = pendingActionResolves.get(message.requestId);
+					if (pending) { clearTimeout(pending.timeoutId); pendingActionResolves.delete(message.requestId); pending.reject(new Error(String(message.message))); }
+				}
 				console.error(
 					"[minicut:dkt-runtime:error]",
 					message.error ?? message.message,
@@ -525,6 +544,7 @@ export const createMiniCutPageSyncRuntime = ({
 			syncSnapshotWithReceiver();
 		},
 		dispatchAction,
+		dispatchAndWait,
 		getSnapshot: () => store.getSnapshot(),
 		getRootScope: () => syncReceiver.getRootScope(),
 		subscribeRootScope: (listener) => syncReceiver.subscribeRoot(listener),
@@ -563,6 +583,8 @@ export const createMiniCutPageSyncRuntime = ({
 			};
 		},
 		destroy() {
+			for (const pending of pendingActionResolves.values()) { clearTimeout(pending.timeoutId); pending.reject(new Error("Page runtime destroyed")); }
+			pendingActionResolves.clear();
 			const sessionKey = store.getSnapshot().sessionKey;
 			if (sessionKey) {
 				emit(createCloseSessionMessage());

@@ -272,6 +272,22 @@ describe("createMiniCutPageSyncRuntime", () => {
 		expect(runtime.getSnapshot().runtimeError).toContain("storage open failed");
 	});
 
+	it("resolves acknowledged action dispatches and rejects correlated runtime errors", async () => {
+		const memory = createMemoryTransport();
+		const runtime = createMiniCutPageSyncRuntime({ transport: memory.transport });
+		const accepted = runtime.dispatchAndWait("publish", { value: 1 });
+		const first = memory.sent.at(-1);
+		if (!first || first.type !== DKT_MSG.DISPATCH_ACTION || !first.requestId) throw new Error("Expected correlated action request");
+		memory.emit({ type: DKT_MSG.ACTION_ACCEPTED, requestId: first.requestId, actionName: "publish" });
+		await expect(accepted).resolves.toBeUndefined();
+
+		const rejected = runtime.dispatchAndWait("publish", { value: 2 });
+		const second = memory.sent.at(-1);
+		if (!second || second.type !== DKT_MSG.DISPATCH_ACTION || !second.requestId) throw new Error("Expected correlated action request");
+		memory.emit({ type: DKT_MSG.RUNTIME_ERROR, requestId: second.requestId, message: "publish failed" });
+		await expect(rejected).rejects.toThrow("publish failed");
+	});
+
 	it("stores workspace open failure control state without a root graph", () => {
 		const memory = createMemoryTransport();
 		const runtime = createMiniCutPageSyncRuntime({

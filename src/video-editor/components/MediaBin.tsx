@@ -99,7 +99,7 @@ const RELINK_REASON_LABELS: Record<string, string> = {
 
 const RecoveryTaskActions = ({ resourceId }: { resourceId: string }) => {
 	const editor = useVideoEditor(); const taskDispatch = useActions();
-	const attrs = useAttrs(["operationId", "intent", "phase", "reasonCode", "errorMessage", "compatibility"]) as Record<string, unknown>;
+	const attrs = useAttrs(["operationId", "bootId", "intent", "phase", "reasonCode", "errorMessage", "compatibility"]) as Record<string, unknown>;
 	const phase = String(attrs.phase ?? "created"); const intent = attrs.intent === "replace-source" ? "replace-source" : "locate-original";
 	const busy = phase === "inspecting" || phase === "committing";
 	const reason = typeof attrs.reasonCode === "string" ? RELINK_REASON_LABELS[attrs.reasonCode] ?? attrs.reasonCode : typeof attrs.errorMessage === "string" ? attrs.errorMessage : null;
@@ -123,6 +123,9 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 		"url",
 		"size",
 		"sourceKind",
+		"sourceRef",
+		"assetStorageKind",
+		"assetRef",
 		"status",
 		"localMediaStatus",
 		"localMediaAvailability",

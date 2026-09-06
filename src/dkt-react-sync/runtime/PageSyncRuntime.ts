@@ -37,6 +37,12 @@ export interface PageSyncRuntime extends ReactScopeRuntime {
 		scope?: ReactSyncScopeHandle | null,
 		meta?: unknown,
 	): void;
+	dispatchAndWait(
+		actionName: string,
+		payload?: unknown,
+		scope?: ReactSyncScopeHandle | null,
+		meta?: unknown,
+	): Promise<void>;
 	destroy(): void;
 	getSnapshot(): PageRootSnapshot;
 	getRootAttrs(attrNames: readonly string[]): Record<string, unknown>;

@@ -342,7 +342,6 @@ export const Resource = model({
 		completeMediaRecovery: {
 			aggregate: {
 				name: "importPipeline",
-				role: "boundary",
 				as: "completeMediaRecovery",
 				permission: "entry",
 			},

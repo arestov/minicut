@@ -634,16 +634,32 @@ export const installMiniCutDebugBridgeTesting = (
 			const resources = runtime
 				.readMany(projectScope, "resources")
 				.map((resourceScope) => {
+					const recoveryTaskScope = runtime.readOne(resourceScope, "activeMediaRecoveryTask");
+					const recoveryTask = recoveryTaskScope
+						? runtime.readAttrs(recoveryTaskScope, ["operationId", "bootId", "intent", "phase", "reasonCode", "errorMessage", "outcome"])
+						: null;
 					const resourceAttrs = runtime.readAttrs(resourceScope, [
 						"name",
 						"kind",
 						"duration",
 						"status",
+						"assetStorageKind",
+						"assetRef",
+						"sourceRef",
+						"url",
+						"localMediaAvailability",
+						"originalAccessStatus",
 					]) as {
 						name?: unknown;
 						kind?: unknown;
 						duration?: unknown;
 						status?: unknown;
+						assetStorageKind?: unknown;
+						assetRef?: unknown;
+						sourceRef?: unknown;
+						url?: unknown;
+						localMediaAvailability?: unknown;
+						originalAccessStatus?: unknown;
 					};
 					return {
 						nodeId: resourceScope._nodeId,
@@ -664,6 +680,16 @@ export const installMiniCutDebugBridgeTesting = (
 							typeof resourceAttrs.status === "string"
 								? resourceAttrs.status
 								: null,
+						assetStorageKind: resourceAttrs.assetStorageKind ?? null,
+						assetRef: resourceAttrs.assetRef ?? null,
+						sourceRef: resourceAttrs.sourceRef ?? null,
+						url: harness.resolveResourceUrl(
+							resourceScope._nodeId,
+							typeof resourceAttrs.url === "string" ? resourceAttrs.url : "",
+						),
+						localMediaAvailability: resourceAttrs.localMediaAvailability ?? null,
+						originalAccessStatus: resourceAttrs.originalAccessStatus ?? null,
+						activeMediaRecoveryTask: recoveryTaskScope ? { nodeId: recoveryTaskScope._nodeId, ...recoveryTask } : null,
 					};
 				});
 

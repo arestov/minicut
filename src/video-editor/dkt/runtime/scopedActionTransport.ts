@@ -23,12 +23,14 @@ export const createDispatchActionMessage = (
 	payload?: unknown,
 	scopeNodeId?: string | null,
 	meta?: unknown,
+	requestId?: string,
 ): MiniCutDktTransportMessage => ({
 	type: DKT_MSG.DISPATCH_ACTION,
 	actionName,
 	payload,
 	scopeNodeId: scopeNodeId ?? null,
 	...(meta === undefined ? {} : { meta }),
+	...(requestId === undefined ? {} : { requestId }),
 });
 
 export const createSyncUpdateStructureUsageMessage = (

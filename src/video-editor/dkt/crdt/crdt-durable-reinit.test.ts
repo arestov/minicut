@@ -94,6 +94,54 @@ const findModel = (ctx: DktTestContext, id: string): Model => {
 };
 
 describe("MiniCut CRDT durable reinit", () => {
+	it("persists the full write-set of a local-only task root action", async () => {
+		const ctx = await bootDktModels({
+			interfaces: { mediaRecoveryRuntime: { requestMediaRecovery: () => {} } },
+			crdt: {
+				enabled: true,
+				peerId: "durable-local-root",
+				storage: createIndexedDbStorage(),
+				transport: null,
+			},
+		});
+		await ctx.lockToRead(async () => {
+			await ctx.sessionRoot.dispatch("createProject", { title: "Local root durability" });
+		});
+		const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0]!;
+		await ctx.lockToRead(async () => {
+			await project.dispatch("importResource", {
+				name: "recover.webm", kind: "video", url: "blob:before", mime: "video/webm", duration: 4, status: "ready",
+				operationId: "operation:durable", attemptId: "attempt:durable", bootId: "boot:durable", recoveryKind: "import", intent: "restore", runtimeHandleId: "runtime:durable",
+				original: { kind: "video", duration: 4 }, requiredSourceEnd: 4, createdAt: 1, updatedAt: 1,
+			});
+		});
+		const resource = (await ctx.queryRel(project, "resources"))[0]!;
+		const task = (await ctx.queryRel(resource, "activeMediaRecoveryTask"))[0]!;
+		for (const phase of ["ready-to-commit", "committing"] as const) {
+			await ctx.lockToRead(async () => {
+				await task.dispatch("transition", { operationId: "operation:durable", phase, updatedAt: 2 });
+			});
+		}
+		await ctx.lockToRead(async () => {
+			await task.dispatch("completePublication", {
+				operationId: "operation:durable", assetStorageKind: "project-copy", assetRef: "asset:durable",
+				sourceKind: "file-handle", sourceRef: "handle:durable", url: "blob:after",
+				localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted", updatedAt: 3,
+			});
+		});
+		expect(await ctx.queryAttr(resource, "assetRef")).toBe("asset:durable");
+		expect(await ctx.queryAttr(task, "phase")).toBe("completed");
+
+		const restarted = await reinitContext(ctx, "durable-local-root");
+		const restoredResource = findModel(restarted, String(resource._node_id));
+		const restoredTask = findModel(restarted, String(task._node_id));
+		expect(await restarted.queryAttr(restoredResource, "assetRef")).toBe("asset:durable");
+		expect(await restarted.queryAttr(restoredTask, "phase")).toBe("completed");
+
+		await ctx.close();
+		await restarted.close();
+	});
+
 	it("restores graph and durable CRDT log, then continues editing", async () => {
 		const ctx = await bootDktModels({
 			crdt: {

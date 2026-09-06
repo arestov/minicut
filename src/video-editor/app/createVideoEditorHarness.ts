@@ -323,11 +323,9 @@ export const createVideoEditorHarness = (
 					if (startedRecoveryResources.has(resourceId)) continue;
 					if (recoveringResources.has(resourceId)) continue;
 					const resourceScope = { kind: "scope" as const, _nodeId: resourceId };
-					if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")) continue;
 					const snapshot = { resourceId, projectId: activeProjectScope._nodeId, assetStorageKind: durableStorageKind, assetRef: durableAssetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: (attrs as { sourceRef?: unknown }).sourceRef, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
 					const recovery = (async () => {
 						await new Promise<void>((resolve) => platform.setTimeout(resolve, 0));
-						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")) return;
 						const assetRef = typeof snapshot.assetRef === "string" ? snapshot.assetRef : null;
 						const handleRef = typeof snapshot.sourceRef === "string" && snapshot.sourceRef.includes("/handle/") ? snapshot.sourceRef : null;
 						await projectAssets.reconcile(activeProjectScope._nodeId, resourceId, assetRef);
@@ -642,8 +640,7 @@ export const createVideoEditorHarness = (
 						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return "noop";
 						const metadata = request.candidateMetadata as Record<string, unknown> | null;
 						const completion = { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: "file-handle", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, ...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}), ...(typeof metadata?.width === "number" ? { width: metadata.width } : {}), ...(typeof metadata?.height === "number" ? { height: metadata.height } : {}), localMediaAvailability: refs.assetRef ? "ready-project-copy" : "ready-file-handle", originalAccessStatus: "granted", updatedAt: Date.now() };
-						pageRuntime.dispatch("completeMediaRecovery", completion, resourceScope);
-						pageRuntime.dispatch("completePublication", completion, { kind: "scope", _nodeId: taskId });
+						await pageRuntime.dispatchAndWait("completePublication", completion, { kind: "scope", _nodeId: taskId });
 						return "applied";
 					} });
 					if (result.ok) { localMediaResolver.activateObjectUrl(resourceId, url, result.assetRef ? "ready-project-copy" : "ready-file-handle"); runtimeTasks.deleteRuntimeRef(String(request.runtimeHandleId ?? "")); }
