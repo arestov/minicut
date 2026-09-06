@@ -323,7 +323,8 @@ export const createVideoEditorHarness = (
 					if (startedRecoveryResources.has(resourceId)) continue;
 					if (recoveringResources.has(resourceId)) continue;
 					const resourceScope = { kind: "scope" as const, _nodeId: resourceId };
-					const snapshot = { resourceId, projectId: activeProjectScope._nodeId, assetStorageKind: durableStorageKind, assetRef: durableAssetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: (attrs as { sourceRef?: unknown }).sourceRef, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
+					const durableSourceRef = (attrs as { sourceRef?: unknown }).sourceRef;
+					const snapshot = { resourceId, projectId: activeProjectScope._nodeId, assetStorageKind: durableStorageKind, assetRef: durableAssetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: durableSourceRef, handleRef: durableSourceRef, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
 					const recovery = (async () => {
 						await new Promise<void>((resolve) => platform.setTimeout(resolve, 0));
 						const assetRef = typeof snapshot.assetRef === "string" ? snapshot.assetRef : null;
@@ -636,7 +637,13 @@ export const createVideoEditorHarness = (
 					if (!(runtime?.file instanceof File) || !runtime.handle) { pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: "runtime-ref-expired", errorMessage: "Choose the file again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); return; }
 					const url = platform.createObjectUrl(runtime.file); if (!url) return;
 					const now = Date.now();
-					const result = await commitRecoveryStorage({ projectId: project._nodeId, resourceId, operationId, file: runtime.file, handleRecord: { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now }, assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore, publish: async (refs) => {
+					const result = await commitRecoveryStorage({ projectId: project._nodeId, resourceId, operationId, file: runtime.file, handleRecord: { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now }, assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore, fault: async (point) => {
+						const testWindow = globalThis as typeof globalThis & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean; __MINICUT_MEDIA_RECOVERY_FAULT_POINT__?: string };
+						if (testWindow.__MINICUT_ENABLE_DEBUG_BRIDGE__ === true && testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__ === point) {
+							delete testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__;
+							throw new Error(`Injected media recovery fault at ${point}`);
+						}
+					}, publish: async (refs) => {
 						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return "noop";
 						const metadata = request.candidateMetadata as Record<string, unknown> | null;
 						const completion = { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: "file-handle", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, ...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}), ...(typeof metadata?.width === "number" ? { width: metadata.width } : {}), ...(typeof metadata?.height === "number" ? { height: metadata.height } : {}), localMediaAvailability: refs.assetRef ? "ready-project-copy" : "ready-file-handle", originalAccessStatus: "granted", updatedAt: Date.now() };
@@ -661,7 +668,12 @@ export const createVideoEditorHarness = (
 			void executeMediaRecoveryInspectionTask({
 				request: payload,
 				consumeRuntimeRef: (id) => runtimeTasks.getRuntimeRef(id),
-				probe: (file, signal) => probeBrowserMediaFile(file, signal),
+				probe: (file, signal) => {
+					const testWindow = globalThis as typeof globalThis & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean; __MINICUT_MEDIA_PROBE_OVERRIDE__?: Awaited<ReturnType<typeof probeBrowserMediaFile>> };
+					return testWindow.__MINICUT_ENABLE_DEBUG_BRIDGE__ === true && testWindow.__MINICUT_MEDIA_PROBE_OVERRIDE__
+						? Promise.resolve(testWindow.__MINICUT_MEDIA_PROBE_OVERRIDE__)
+						: probeBrowserMediaFile(file, signal);
+				},
 				fingerprint: (file, signal) => fingerprintFile(file, undefined, signal),
 				dispatch: (action, value, target) => pageRuntime.dispatch(action, value, target),
 				now: () => Date.now(),

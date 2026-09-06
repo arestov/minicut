@@ -127,7 +127,7 @@ export const MediaRecoveryTask = model({
 					(payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, bootId: unknown, intent: unknown, resourceId: unknown, kind: unknown, duration: unknown, width: unknown, height: unknown, contentFingerprint: unknown, fingerprintVersion: unknown, requiredSourceEnd: unknown) => {
 						const value = payload as Record<string, unknown> | null;
 						if (!value || typeof taskId !== "string" || typeof resourceId !== "string") return noop;
-						return { taskId, resourceId, operationId, bootId, intent, runtimeHandleId: value.runtimeHandleId, original: { kind, duration, width, height }, originalFingerprint: contentFingerprint, fingerprintVersion, requiredSourceEnd };
+						return { taskId, resourceId, operationId, bootId, intent, runtimeHandleId: value.runtimeHandleId, original: { kind, duration, width, height, frameRate: null, timebase: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : null } }, originalFingerprint: contentFingerprint, fingerprintVersion, requiredSourceEnd };
 					},
 				],
 			},
