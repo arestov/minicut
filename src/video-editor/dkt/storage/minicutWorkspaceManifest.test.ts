@@ -23,16 +23,23 @@ const createMemoryDktStorage = (initial: {
 	let manifest: unknown = initial.manifest ?? null;
 	const migrations: unknown[] = [];
 	return {
-		getManifest: async () => manifest,
+		getManifest: (done: (error: unknown, value?: unknown) => void) =>
+			done(null, manifest),
 		putManifest: (next: unknown) => {
 			manifest = next;
 		},
-		getSchema: async () => initial.schema ?? null,
+		getSchema: (done: (error: unknown, value?: unknown) => void) =>
+			done(null, initial.schema ?? null),
 		hasUnknownData: async () => initial.unknownData === true,
-		appendMigrationRecord: async (record: unknown) => {
+		appendMigrationRecord: (
+			done: (error: unknown, value?: unknown) => void,
+			record: unknown,
+		) => {
 			migrations.push(record);
+			done(null, null);
 		},
-		commitChanges: async () => undefined,
+		commitChanges: (done: (error: unknown, value?: unknown) => void) =>
+			done(null, null),
 		readManifest: () => manifest,
 		readMigrations: () => migrations.slice(),
 	};
