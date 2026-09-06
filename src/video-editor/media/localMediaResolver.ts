@@ -89,6 +89,12 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 	};
 	return {
 		resolveResourceUrl, restoreResource,
+		activateObjectUrl(resourceId: string, url: string, ready: LocalMediaStatus = "ready-project-copy") {
+			const previous = objectUrls.get(resourceId);
+			objectUrls.set(resourceId, url);
+			if (previous && previous !== url) runtime.revokeObjectUrl(previous);
+			setStatus(resourceId, ready);
+		},
 		restoreResources: async (resources: LocalMediaResourceSnapshot[]) => { await Promise.all(resources.map(restoreResource)); },
 		requestResourceAccess,
 		getCachedHandle: (resourceId: string) => handles.get(resourceId) ?? null,
