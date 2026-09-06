@@ -4,6 +4,7 @@ import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
 import { createResourceTransferManager } from "../media/resourceTransferManager";
 import { browserProjectAssetRoot, createProjectAssetStore, type ProjectAssetStore } from "../media/projectAssetStore";
 import { createMediaRelinkService, type RelinkIntent } from "../media/mediaRelinkService";
+import { fingerprintMediaFile } from "../media/mediaContentFingerprint";
 import {
 	createLocalMediaResolver,
 	type LocalMediaResourceSnapshot,
@@ -226,10 +227,7 @@ export const createVideoEditorHarness = (
 			},
 		},
 	});
-	const fingerprintFile = async (file: File) => {
-		const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
-		return { fingerprint: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""), version: "sha256-v1" };
-	};
+	const fingerprintFile = fingerprintMediaFile;
 	const mediaRelinkService = createMediaRelinkService({
 		handles: mediaHandleStore,
 		assets: projectAssets,
