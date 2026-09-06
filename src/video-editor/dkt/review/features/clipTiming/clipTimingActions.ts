@@ -297,6 +297,80 @@ export const reduceCreateParkedIncomingVariant = (
 	};
 };
 
+export const reducePrepareParkedIncomingVariant = (
+	payload: unknown,
+	noop: unknown,
+	project: unknown,
+	sourceClip?: unknown,
+	sourceResourceInput?: unknown,
+	reviewItems?: unknown,
+) => {
+	const prepared = reduceParkIncomingVariantOnReviewTrack(
+		payload,
+		noop,
+		project,
+		sourceClip,
+		sourceResourceInput,
+		reviewItems,
+	) as Record<string, unknown>;
+	if (!isRecord(prepared) || !isRecord(prepared.parkedClip)) return noop;
+	const reviewTrack = isRecord(prepared.reviewTrack)
+		? {
+				attrs: prepared.reviewTrack.attrs,
+				hold_ref_id: prepared.reviewTrack.hold_ref_id,
+			}
+		: prepared.reviewTrack;
+	return {
+		sourceClip: prepared.sourceClip,
+		reviewTrack,
+		next: {
+			...(isRecord(payload) ? payload : {}),
+			parkedClip: prepared.parkedClip,
+			targetTrack: { use_ref_id: "incomingReviewTrack" },
+			reviewItems,
+		},
+	};
+};
+
+export const reduceCreateParkedIncomingVariantOnOwner = (
+	payload: unknown,
+	noop: unknown,
+) => {
+	if (!isRecord(payload) || !isRecord(payload.parkedClip)) return noop;
+	const conflictId = stringOrNull(payload.conflictId);
+	const reviewItemId = stringOrNull(payload.reviewItemId);
+	const clipId = stringOrNull(payload.clipId);
+	const sourceTiming = parseClipTimingVariant(payload.sourceTiming);
+	const targetTrackId = getNodeId(payload.targetTrack);
+	if (!conflictId || !reviewItemId || !clipId || !sourceTiming || !targetTrackId) {
+		return noop;
+	}
+	const domainResult = {
+		type: "parked_variant",
+		parkedClipId: { use_ref_id: "parkedIncomingClip" },
+		reviewTrackId: targetTrackId,
+		sourceClipId: clipId,
+		variant: "incoming",
+		sourceTiming,
+	};
+	const decisions = matchingReviewDecisionInputs({
+		conflictId,
+		reviewItemId,
+		conflictGroupId: stringOrNull(payload.conflictGroupId),
+		clipId,
+		action: "parkIncomingVariantOnReviewTrack",
+		domainResult,
+		reviewItems: payload.reviewItems,
+	});
+	return {
+		parkedClip: {
+			...payload.parkedClip,
+			hold_ref_id: "parkedIncomingClip",
+		},
+		crdtResolve: makeCrdtResolveBatchPayload(decisions),
+	};
+};
+
 export const reduceAcceptParkedClipOnReviewTrack = (payload: unknown) => {
 	if (!isRecord(payload)) {
 		return payload;

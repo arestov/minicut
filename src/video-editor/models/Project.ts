@@ -5,8 +5,8 @@ import {
 	crdtReviewResolveTarget,
 } from "../dkt/review/crdtReviewCommands";
 import {
-	reduceAcceptParkedClipOnReviewTrack,
-	reduceParkIncomingVariantOnReviewTrack,
+	reduceCreateParkedIncomingVariantOnOwner,
+	reducePrepareParkedIncomingVariant,
 } from "../dkt/review/features/clipTiming/clipTimingActions";
 import { CLIP_CREATION_SHAPE } from "./Clip";
 import {
@@ -853,23 +853,9 @@ export const Project = model({
 							creation_shape: TRACK_CREATION_SHAPE,
 						},
 					],
-					parkedClip: [
-						"<< clip << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: CLIP_CREATION_SHAPE,
-						},
-					],
-					crdtResolve: [crdtReviewResolveBatchTarget],
 					next: ["$output", { can_use_refs: true }],
 				},
 				output_base_rel_shape: {
-					clip: {
-						linking: "<< clip << #",
-						many: false,
-					},
 					targetTrack: {
 						linking: "<< track << #",
 						many: false,
@@ -889,7 +875,7 @@ export const Project = model({
 						sourceClip: unknown,
 						reviewItems: unknown,
 					) =>
-						reduceParkIncomingVariantOnReviewTrack(
+						reducePrepareParkedIncomingVariant(
 							payload,
 							noop,
 							project,
@@ -901,20 +887,24 @@ export const Project = model({
 			},
 			{
 				input_base_rel_shape: {
-					clip: {
-						linking: "<< clip << #",
-						many: false,
-					},
 					targetTrack: {
 						linking: "<< track << #",
 						many: false,
 					},
 				},
-				to: [
-					"<<<< $input:targetTrack",
-					{ action: "acceptClipIfTarget", sub_flow: true },
-				],
-				fn: reduceAcceptParkedClipOnReviewTrack,
+				to: {
+					parkedClip: [
+						"<< clips << $input:targetTrack",
+						{
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
+						},
+					],
+					crdtResolve: [crdtReviewResolveBatchTarget],
+				},
+				fn: [["$noop"] as const, reduceCreateParkedIncomingVariantOnOwner],
 			},
 		],
 		resolveDeleteVsEditByRestoreVariant: [
