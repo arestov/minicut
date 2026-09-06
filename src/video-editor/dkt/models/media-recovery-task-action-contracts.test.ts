@@ -84,6 +84,16 @@ describe("owned MediaRecoveryTask action contracts", () => {
 		expect(getAttr(firstTask, "phase")).toBe("interrupted");
 	});
 
+	it("records automatic availability on Resource and its active boot task", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "startMediaRecovery", attempt("boot:auto", "operation:auto"));
+		const task = (await queryRel(harness.videoResource, "activeMediaRecoveryTask"))[0]!;
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "recordAutomaticMediaRecovery", { availability: "ready-project-copy", originalAccess: "denied", updatedAt: 5 });
+		expect(getAttr(harness.videoResource, "localMediaAvailability")).toBe("ready-project-copy");
+		expect(getAttr(harness.videoResource, "originalAccessStatus")).toBe("denied");
+		expect(getAttr(task, "phase")).toBe("completed");
+	});
+
 	it("enforces transitions and atomically publishes only the current operation", async () => {
 		const harness = await createActionContractHarness();
 		await dispatchAndSettle(harness.ctx, harness.videoResource, "startMediaRecovery", attempt("boot:1", "operation:1"));

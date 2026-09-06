@@ -60,7 +60,7 @@ export const executeMediaRecoveryInspectionTask = async ({
 		dispatch("transition", { operationId: request.operationId, phase: "failed", reasonCode, errorMessage, updatedAt: now() }, scope(request.taskId));
 	};
 	if (!request.runtimeHandleId) {
-		fail("runtime-ref-missing", "The selected file is no longer available. Choose it again.");
+		dispatch("transition", { operationId: request.operationId, phase: "awaiting-user-action", reasonCode: "user-action-required", errorMessage: null, updatedAt: now() }, scope(request.taskId));
 		return null;
 	}
 	const runtimeValue = consumeRuntimeRef(request.runtimeHandleId) as Partial<MediaRecoveryRuntimeCandidate> | null;

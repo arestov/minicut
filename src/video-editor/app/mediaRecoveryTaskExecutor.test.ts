@@ -15,6 +15,11 @@ const request = {
 };
 
 describe("media recovery task effect executor", () => {
+	it("keeps automatic boot recovery waiting for an explicit user action", async () => {
+		const dispatch = vi.fn();
+		await executeMediaRecoveryInspectionTask({ request: { ...request, runtimeHandleId: undefined, intent: "restore" }, consumeRuntimeRef: vi.fn(), probe: vi.fn(), fingerprint: vi.fn(), dispatch, now: () => 4 });
+		expect(dispatch).toHaveBeenCalledWith("transition", expect.objectContaining({ phase: "awaiting-user-action", reasonCode: "user-action-required" }), { kind: "scope", _nodeId: "task:1" });
+	});
 	it("returns serializable inspection data through the scoped task action", async () => {
 		const dispatch = vi.fn();
 		const outcome = await executeMediaRecoveryInspectionTask({

@@ -145,6 +145,15 @@ export const MediaRecoveryTask = model({
 				},
 			],
 		},
+		recordRestoreState: {
+			to: { phase: ["phase"], reasonCode: ["reasonCode"], errorMessage: ["errorMessage"], updatedAt: ["updatedAt"], outcome: ["outcome"] },
+			fn: [["$noop", "phase"] as const, (payload: unknown, noop: unknown, phase: unknown) => {
+				const value = payload as { availability?: unknown; originalAccess?: unknown; updatedAt?: unknown } | null;
+				if (!value || phase === "completed" || phase === "superseded" || phase === "interrupted") return noop;
+				const ready = value.availability === "ready-project-copy" || value.availability === "ready-file-handle";
+				return { phase: ready ? "completed" : "awaiting-user-action", reasonCode: ready ? null : value.originalAccess === "denied" ? "permission-denied" : value.originalAccess === "prompt" ? "permission-required" : "source-missing", errorMessage: null, updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : null, outcome: ready ? "completed" : null };
+			}],
+		},
 		requestCommit: [
 			{
 				to: { phase: ["phase"], forwarded: ["$output"] },

@@ -424,6 +424,10 @@ export const Resource = model({
 				},
 			],
 		},
+		recordAutomaticMediaRecovery: [
+			{ to: { localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], forwarded: ["$output"] }, fn: (payload: unknown) => { const value = payload as { availability?: unknown; originalAccess?: unknown } | null; return { localMediaAvailability: value?.availability, originalAccessStatus: value?.originalAccess, forwarded: payload }; } },
+			{ to: ["<< activeMediaRecoveryTask", { action: "recordRestoreState", sub_flow: true }], fn: (payload: unknown) => payload },
+		],
 		setResourceAttrs: {
 			aggregate: {
 				name: "importPipeline",

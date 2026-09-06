@@ -147,6 +147,9 @@ export const createVideoEditorHarness = (
 	authority?: EditorAuthorityClient,
 	options: CreateVideoEditorHarnessOptions = {},
 ) => {
+	const mediaRecoveryBootId = `boot:${crypto.randomUUID()}`;
+	const startedRecoveryResources = new Set<string>();
+	const recoveringResources = new Map<string, Promise<void>>();
 	let authorityClientRef: EditorAuthorityClient | null = null;
 	const resourceChunkSize =
 		options.mediaTransferOptions?.chunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE;
@@ -229,7 +232,7 @@ export const createVideoEditorHarness = (
 			},
 			setLocalMediaAxes: (resourceId, state) => {
 				const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId);
-				if (resourceScope) pageRuntime?.dispatch("setLocalMediaAxes", state, resourceScope);
+				if (resourceScope) pageRuntime?.dispatch("recordAutomaticMediaRecovery", { ...state, updatedAt: Date.now() }, resourceScope);
 			},
 		},
 	});
@@ -256,8 +259,6 @@ export const createVideoEditorHarness = (
 				resourceTransferManager.syncResources([]);
 				return;
 			}
-			void projectAssets.cleanupStaleTemporaryEntries(activeProjectScope._nodeId);
-
 			disposeProjectResources();
 
 			let disposeResourceAttrs = EMPTY_CLEANUP;
@@ -303,16 +304,22 @@ export const createVideoEditorHarness = (
 					);
 
 				resourceTransferManager.syncResources(resources);
-				void localMediaResolver.restoreResources(
-					resources.map(({ resourceId, attrs }) => ({
-						resourceId,
-						projectId: activeProjectScope._nodeId,
-						assetStorageKind: (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind,
-						assetRef: (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef,
-						sourceKind: (attrs as { sourceKind?: unknown }).sourceKind,
-						sourceRef: (attrs as { sourceRef?: unknown }).sourceRef,
-					}) satisfies LocalMediaResourceSnapshot),
-				);
+				for (const { resourceId, attrs } of resources) {
+					if (recoveringResources.has(resourceId)) continue;
+					const snapshot = { resourceId, projectId: activeProjectScope._nodeId, assetStorageKind: (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind, assetRef: (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: (attrs as { sourceRef?: unknown }).sourceRef, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
+					const recovery = (async () => {
+						const assetRef = typeof snapshot.assetRef === "string" ? snapshot.assetRef : null;
+						const handleRef = typeof snapshot.sourceRef === "string" && snapshot.sourceRef.includes("/handle/") ? snapshot.sourceRef : null;
+						await projectAssets.reconcile(activeProjectScope._nodeId, resourceId, assetRef);
+						await mediaHandleStore.reconcile(resourceId, handleRef);
+						if (!startedRecoveryResources.has(resourceId)) {
+							startedRecoveryResources.add(resourceId);
+							pageRuntime.dispatch("startMediaRecovery", { operationId: `${mediaRecoveryBootId}:${resourceId}`, attemptId: `${mediaRecoveryBootId}:${resourceId}`, bootId: mediaRecoveryBootId, recoveryKind: "restore", intent: "restore", createdAt: Date.now(), updatedAt: Date.now() }, { kind: "scope", _nodeId: resourceId });
+						}
+						await localMediaResolver.restoreResource(snapshot);
+					})().finally(() => recoveringResources.delete(resourceId));
+					recoveringResources.set(resourceId, recovery);
+				}
 			};
 
 			const syncResourceSubscriptions = () => {
