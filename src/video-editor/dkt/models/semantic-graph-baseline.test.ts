@@ -96,7 +96,7 @@ const setupProjectWithSeededClip = async (options?: {
 };
 
 describe("semantic graph baseline", () => {
-	it("rejects direct track membership patch when inverse side is stale", async () => {
+	it("settles the framework-owned inverse after an owner membership patch", async () => {
 		const ctx = await bootDktModels({
 			graphSemantics: { inverseValidation: "error" },
 		});
@@ -129,16 +129,13 @@ describe("semantic graph baseline", () => {
 		if (typeof runtime.applyExternalGraphPatch !== "function") {
 			throw new Error("Runtime applyExternalGraphPatch is unavailable");
 		}
-		await expect(
-			Promise.resolve(
-				applyExternalGraphPatchAndWait(
-					runtime,
-					createRelPatch(String(videoTrack._node_id), { clips: [] }),
-					{ origin: "sync_receiver", intent_type: "external_patch" },
-				),
-			),
-		).rejects.toThrow("REL_INVERSE_MISMATCH");
-		expect(await ctx.queryRel(videoTrack, "clips")).toHaveLength(1);
+		await applyExternalGraphPatchAndWait(
+			runtime,
+			createRelPatch(String(videoTrack._node_id), { clips: [] }),
+			{ origin: "sync_receiver", intent_type: "external_patch" },
+		);
+		expect(await ctx.queryRel(videoTrack, "clips")).toHaveLength(0);
+		expect(await ctx.queryRel(clips[0], "track")).toHaveLength(0);
 	});
 
 	it("rejects clip timing patch with non-positive duration", async () => {

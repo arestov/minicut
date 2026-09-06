@@ -89,13 +89,11 @@ const MODEL_CASES: ModelCase[] = [
 				autoCreateDefaultTracks: "bootstrap-only",
 			},
 			rels: {
+				rootOwner: "framework-owned",
 				tracks: "crdt",
 				resources: "crdt",
 				primaryVideoTrack: "crdt",
 				primaryAudioTrack: "crdt",
-				reviewItems: "projection",
-				reviewArchiveEntries: "projection",
-				reviewSessions: "projection",
 			},
 		},
 	},
@@ -112,7 +110,7 @@ const MODEL_CASES: ModelCase[] = [
 				editedVariant: "projection",
 				createdAt: "projection",
 			},
-			rels: {},
+			rels: { rootOwner: "framework-owned" },
 		},
 	},
 	{
@@ -134,7 +132,7 @@ const MODEL_CASES: ModelCase[] = [
 			},
 			rels: {
 				clips: "crdt",
-				project: "crdt",
+				project: "framework-owned",
 			},
 		},
 	},
@@ -164,7 +162,7 @@ const MODEL_CASES: ModelCase[] = [
 				effects: "crdt",
 				text: "crdt",
 				resource: "crdt",
-				track: "crdt",
+				track: "framework-owned",
 				project: "crdt",
 				crdtConflicts: "framework-owned",
 			},
@@ -193,7 +191,7 @@ const MODEL_CASES: ModelCase[] = [
 				timelineAddRequest: "effect-runtime",
 			},
 			rels: {
-				project: "crdt",
+				project: "framework-owned",
 				clips: "crdt",
 			},
 		},
@@ -208,7 +206,7 @@ const MODEL_CASES: ModelCase[] = [
 				box: "crdt",
 			},
 			rels: {
-				clip: "crdt",
+				clip: "framework-owned",
 			},
 		},
 	},
@@ -225,7 +223,7 @@ const MODEL_CASES: ModelCase[] = [
 				color: "crdt",
 			},
 			rels: {
-				clip: "crdt",
+				clip: "framework-owned",
 				project: "crdt",
 			},
 		},
