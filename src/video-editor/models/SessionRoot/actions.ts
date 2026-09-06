@@ -11,8 +11,6 @@ import {
 import { type ExportPlan, normalizeExportPlan } from "../../render/renderPlan";
 import { WORKSPACE_OPEN_STATUS } from "../../dkt/runtime/workspaceOpenState";
 import { PROJECT_CREATION_SHAPE } from "../Project";
-import { normalizeResourceCreationAttrs } from "../Project/actions";
-import { RESOURCE_CREATION_SHAPE } from "../Resource";
 
 /** Inline session state patch type – replaces legacy EditorSessionState from domain/types. */
 type SessionStateFields = {
@@ -916,37 +914,15 @@ export const sessionSetActiveProjectImportProgressAction = {
 	],
 } as const satisfies DktActionDefinition;
 
-export const sessionImportResourceIntoActiveProjectAction = {
-	to: {
-		resource: [
-			"<< resource << #",
-			{
-				method: "at_end",
-				can_create: true,
-				can_hold_refs: true,
-				creation_shape: RESOURCE_CREATION_SHAPE,
-			},
+export const sessionImportResourceIntoActiveProjectAction = [
+	{
+		to: [
+			"<< activeProject",
+			{ action: "importResource", sub_flow: true },
 		],
-		projectResource: [
-			"<< activeProject.resources",
-			{
-				method: "at_end",
-				can_use_refs: true,
-			},
-		],
+		fn: (payload: unknown) => payload as Record<string, unknown>,
 	},
-	fn: [
-		["<< @one:activeProject"] as const,
-		(_payload: unknown, activeProject: unknown) => ({
-			resource: {
-				attrs: normalizeResourceCreationAttrs(_payload),
-				rels: activeProject ? { project: activeProject } : undefined,
-				hold_ref_id: "activeProjectImportResource",
-			},
-			projectResource: { use_ref_id: "activeProjectImportResource" },
-		}),
-	],
-} as const satisfies DktActionDescriptor;
+] as const satisfies DktActionDefinition;
 
 export const sessionAddActiveProjectResourceToTimelineAction = [
 	{

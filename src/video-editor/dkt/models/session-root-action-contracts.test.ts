@@ -299,10 +299,6 @@ describe("SessionRoot action contracts", () => {
 			harness.videoTrack,
 			"clips",
 		);
-		const beforeTextCount = (
-			await harness.ctx.queryRel(harness.ctx.appModel, "text")
-		).length;
-
 		await dispatchAndSettle(
 			harness.ctx,
 			harness.sessionRoot,
@@ -325,13 +321,15 @@ describe("SessionRoot action contracts", () => {
 			"clips",
 		);
 		expect(afterClipIds.length).toBe(beforeClipIds.length + 1);
-		const textModels = await harness.ctx.queryRel(harness.ctx.appModel, "text");
-		expect(textModels.length).toBe(beforeTextCount + 1);
-		expect(
-			textModels.some(
-				(text) => harness.ctx.getAttr(text, "content") === "Session text",
-			),
-		).toBe(true);
+		const createdClip = (await harness.ctx.queryRel(harness.videoTrack, "clips")).find(
+			(clip) => !beforeClipIds.includes(String(clip._node_id)),
+		);
+		expect(createdClip).toBeTruthy();
+		const textModels = createdClip
+			? await harness.ctx.queryRel(createdClip, "text")
+			: [];
+		expect(textModels).toHaveLength(1);
+		expect(harness.ctx.getAttr(textModels[0], "content")).toBe("Session text");
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 

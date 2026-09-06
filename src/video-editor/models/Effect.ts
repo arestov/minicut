@@ -7,7 +7,6 @@ import {
 	reduceEffectKindAction,
 	reduceEffectNameAction,
 	reduceEffectParamsAction,
-	reduceSetEffectClip,
 	reduceSetEffectProject,
 } from "./Effect/actions";
 import { defaultEffectAttrs } from "./Effect/defaults";
@@ -133,12 +132,6 @@ export const Effect = model({
 				color: ["color"],
 			},
 			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectColorAction(payload) ?? noop],
-		},
-		setEffectClip: {
-			to: {
-				clip: ["<< clip", { method: "set_one" }],
-			},
-			fn: reduceSetEffectClip,
 		},
 		setEffectProject: {
 			to: {

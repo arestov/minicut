@@ -1,6 +1,5 @@
 import { model } from "dkt/model.js";
 import {
-	reduceSetClipRef,
 	reduceSetTextBox,
 	reduceSetTextStyle,
 	reduceTextContentAction,
@@ -88,12 +87,6 @@ export const Text = model({
 				box: ["box"],
 			},
 			fn: [["box"] as const, reduceSetTextBox],
-		},
-		setClip: {
-			to: {
-				clip: ["<< clip", { method: "set_one" }],
-			},
-			fn: reduceSetClipRef,
 		},
 	},
 });

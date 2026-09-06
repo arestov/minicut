@@ -6,32 +6,30 @@ import {
 } from "./action-contract-test-harness";
 
 describe("Text action contracts", () => {
-	it("setTextContent, setTextStyle, setTextBox, and setClip update the text node", async () => {
+	it("updates text attributes while clip ownership is framework-maintained", async () => {
 		const harness = await createActionContractHarness();
 
 		await dispatchAndSettle(
 			harness.ctx,
-			harness.ctx.appModel,
-			"createTextModel",
+			harness.videoTrack,
+			"addTextClip",
 			{
-				content: "Initial text",
-				style: {
-					fontFamily: "Inter",
-					fontSize: 24,
-					color: "#ffffff",
-				},
-				box: {
-					x: 0.2,
-					y: 0.3,
-					width: 0.4,
-					height: 0.2,
+				name: "Text contract owner",
+				mediaKind: "text",
+				start: 8,
+				duration: 2,
+				text: {
+					content: "Initial text",
+					style: { fontFamily: "Inter", fontSize: 24, color: "#ffffff" },
+					box: { x: 0.2, y: 0.3, width: 0.4, height: 0.2 },
 				},
 			},
 		);
 
-		const text = (
-			await harness.ctx.queryRel(harness.ctx.appModel, "text")
-		).find((entry) => harness.ctx.getAttr(entry, "content") === "Initial text");
+		const ownerClip = (await harness.ctx.queryRel(harness.videoTrack, "clips")).find(
+			(entry) => harness.ctx.getAttr(entry, "name") === "Text contract owner",
+		);
+		const text = ownerClip && (await harness.ctx.queryRel(ownerClip, "text"))[0];
 		if (!text) {
 			throw new Error("Expected integration text model");
 		}
@@ -53,9 +51,6 @@ describe("Text action contracts", () => {
 			width: 0.55,
 			height: 0.25,
 		});
-		await dispatchAndSettle(harness.ctx, text, "setClip", {
-			clip: harness.videoClip,
-		});
 
 		expect(harness.ctx.getAttr(text, "content")).toBe("Updated text");
 		expect(harness.ctx.getAttr(text, "style")).toEqual({
@@ -71,19 +66,19 @@ describe("Text action contracts", () => {
 		});
 		const textClipRel = await harness.ctx.queryRel(text, "clip");
 		expect(textClipRel).toHaveLength(1);
-		expect(textClipRel[0]).toBe(harness.videoClip);
+		expect(textClipRel[0]).toBe(ownerClip);
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 });
 
 describe("Effect action contracts", () => {
-	it("setEffectName, setEffectKind, setEffectEnabled, setEffectAmount, setEffectParams, setEffectColor, setEffectClip, and setEffectProject update the effect node", async () => {
+	it("updates effect attributes while clip ownership is framework-maintained", async () => {
 		const harness = await createActionContractHarness();
 
 		await dispatchAndSettle(
 			harness.ctx,
-			harness.ctx.appModel,
-			"createEffectModel",
+			harness.videoClip,
+			"addEffect",
 			{
 				name: "Initial Effect",
 				kind: "blur",
@@ -94,9 +89,9 @@ describe("Effect action contracts", () => {
 			},
 		);
 
-		const effect = (
-			await harness.ctx.queryRel(harness.ctx.appModel, "effect")
-		).find((entry) => harness.ctx.getAttr(entry, "name") === "Initial Effect");
+		const effect = (await harness.ctx.queryRel(harness.videoClip, "effects")).find(
+			(entry) => harness.ctx.getAttr(entry, "name") === "Initial Effect",
+		);
 		if (!effect) {
 			throw new Error("Expected integration effect model");
 		}
@@ -115,9 +110,6 @@ describe("Effect action contracts", () => {
 		});
 		await dispatchAndSettle(harness.ctx, effect, "setEffectColor", {
 			color: { lift: "#222222" },
-		});
-		await dispatchAndSettle(harness.ctx, effect, "setEffectClip", {
-			clip: harness.videoClip,
 		});
 		await dispatchAndSettle(harness.ctx, effect, "setEffectProject", {
 			project: harness.project,
@@ -182,9 +174,6 @@ describe("Resource action contracts", () => {
 				resourceId: String(harness.videoResource._node_id),
 			},
 		);
-		await dispatchAndSettle(harness.ctx, harness.videoResource, "setProject", {
-			project: harness.project,
-		});
 		await dispatchAndSettle(harness.ctx, harness.videoResource, "setClips", {
 			clips: [harness.videoClip],
 		});

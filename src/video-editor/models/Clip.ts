@@ -18,7 +18,6 @@ import {
 	reduceResolveClipTimingConflict,
 	reduceSetText,
 	reduceSetTimelineAttrs,
-	reduceSetTrack,
 	reduceSetTransform,
 	reduceSplitAt,
 	reduceTrim,
@@ -489,36 +488,21 @@ export const Clip = model({
 		},
 		addEffect: {
 			to: {
-				effect: [
-					"<< effect << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: EFFECT_CREATION_SHAPE,
-					},
-				],
 				effects: [
 					"<< effects",
 					{
 						method: "at_end",
-						can_use_refs: true,
+						can_create: true,
+						creation_shape: EFFECT_CREATION_SHAPE,
 					},
 				],
 			},
 			fn: [
-				["$noop", "<<<<"] as const,
-				(payload: unknown, noop: unknown, self: unknown) => {
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) => {
 					const attrs = normalizeEffectCreationAttrs(payload);
 					return attrs
-						? {
-								effect: {
-									attrs,
-									rels: { clip: self },
-									hold_ref_id: "newEffect",
-								},
-								effects: { use_ref_id: "newEffect" },
-							}
+						? { effects: { attrs } }
 						: noop;
 				},
 			],
@@ -534,12 +518,6 @@ export const Clip = model({
 				text: ["<< text", { method: "set_one" }],
 			},
 			fn: reduceSetText,
-		},
-		setTrack: {
-			to: {
-				track: ["<< track", { method: "set_one" }],
-			},
-			fn: reduceSetTrack,
 		},
 		setProject: {
 			to: {
@@ -636,12 +614,6 @@ export const Clip = model({
 						return { clipId };
 					},
 				],
-			},
-			{
-				to: {
-					track: ["<< track", { method: "set_one" }],
-				},
-				fn: [[], () => ({ track: null })],
 			},
 		],
 		splitSelfAt: [

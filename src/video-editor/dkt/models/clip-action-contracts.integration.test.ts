@@ -167,35 +167,30 @@ describe("Clip action contracts", () => {
 		});
 	});
 
-	it("setResource, setText, setTrack, setProject, addEffect, removeEffect, reorderEffect, and setEffects mutate relations", async () => {
+	it("moves ownership through owner actions and mutates clip references/effects", async () => {
 		const { harness, clip } = await createTempClip();
 
 		await dispatchAndSettle(
 			harness.ctx,
-			harness.ctx.appModel,
-			"createTextModel",
+			harness.videoTrack,
+			"addTextClip",
 			{
-				content: "Integration temp text",
-				style: {
-					fontFamily: "Inter",
-					fontSize: 36,
-					color: "#ffffff",
-				},
-				box: {
-					x: 0.1,
-					y: 0.1,
-					width: 0.5,
-					height: 0.2,
+				name: "Text owner",
+				mediaKind: "text",
+				start: 8,
+				duration: 2,
+				text: {
+					content: "Integration temp text",
+					style: { fontFamily: "Inter", fontSize: 36, color: "#ffffff" },
+					box: { x: 0.1, y: 0.1, width: 0.5, height: 0.2 },
 				},
 			},
 		);
 
-		const text = (
-			await harness.ctx.queryRel(harness.ctx.appModel, "text")
-		).find(
-			(entry) =>
-				harness.ctx.getAttr(entry, "content") === "Integration temp text",
+		const textOwner = (await harness.ctx.queryRel(harness.videoTrack, "clips")).find(
+			(entry) => harness.ctx.getAttr(entry, "name") === "Text owner",
 		);
+		const text = textOwner && (await harness.ctx.queryRel(textOwner, "text"))[0];
 		if (!text) {
 			throw new Error("Expected integration temp text");
 		}
@@ -204,8 +199,9 @@ describe("Clip action contracts", () => {
 			resource: harness.imageResource,
 		});
 		await dispatchAndSettle(harness.ctx, clip, "setText", { text });
-		await dispatchAndSettle(harness.ctx, clip, "setTrack", {
-			track: harness.audioTrack,
+		await dispatchAndSettle(harness.ctx, harness.project, "moveClipToTrack", {
+			clip,
+			targetTrack: harness.audioTrack,
 		});
 		await dispatchAndSettle(harness.ctx, clip, "setProject", {
 			project: harness.project,

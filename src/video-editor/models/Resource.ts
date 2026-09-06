@@ -6,7 +6,6 @@ import {
 	reduceRequestAddToTimeline,
 	reduceResolveDanglingResourceByRelink,
 	reduceSetClipsRef,
-	reduceSetProjectRef,
 	reduceSetResourceAttrs,
 	reduceSetResourceStatus,
 } from "./Resource/actions";
@@ -290,12 +289,6 @@ export const Resource = model({
 				timelineAddRequest: ["timelineAddRequest"],
 			},
 			fn: reduceRequestAddToTimeline,
-		},
-		setProject: {
-			to: {
-				project: ["<< project", { method: "set_one" }],
-			},
-			fn: reduceSetProjectRef,
 		},
 		setClips: {
 			to: {
