@@ -409,6 +409,20 @@ export const Resource = model({
 				},
 			],
 		},
+		setLocalMediaAxes: {
+			to: { localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"] },
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) => {
+					const value = payload as { availability?: unknown; originalAccess?: unknown } | null;
+					const availability = value?.availability;
+					const access = value?.originalAccess;
+					const validAvailability = availability === "unknown" || availability === "resolving" || availability === "ready-project-copy" || availability === "ready-file-handle" || availability === "unavailable" || availability === "error";
+					const validAccess = access === "unknown" || access === "granted" || access === "prompt" || access === "denied" || access === "missing";
+					return validAvailability && validAccess ? { localMediaAvailability: availability, originalAccessStatus: access } : noop;
+				},
+			],
+		},
 		setResourceAttrs: {
 			aggregate: {
 				name: "importPipeline",

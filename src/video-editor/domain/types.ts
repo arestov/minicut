@@ -23,6 +23,8 @@ export type LocalMediaStatus =
 	| "permission-denied"
 	| "missing"
 	| "error";
+export type LocalMediaAvailability = "unknown" | "resolving" | "ready-project-copy" | "ready-file-handle" | "unavailable" | "error";
+export type OriginalAccessStatus = "unknown" | "granted" | "prompt" | "denied" | "missing";
 export type ResourceDataStatus = "missing" | "partial" | "ready";
 export type ResourceChunkStatus = "missing" | "loading" | "ready";
 export type ResourceByteRange = [number, number];

@@ -214,7 +214,7 @@ export const createVideoEditorHarness = (
 	const localMediaResolver = createLocalMediaResolver({
 		handleStore: mediaHandleStore,
 		projectAssets,
-		runtime: {
+			runtime: {
 			createObjectUrl: (blob) => platform.createObjectUrl(blob),
 			revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
 			setLocalMediaStatus: (resourceId, status) => {
@@ -224,6 +224,10 @@ export const createVideoEditorHarness = (
 				if (resourceScope) {
 					pageRuntime?.dispatch("setLocalMediaStatus", status, resourceScope);
 				}
+			},
+			setLocalMediaAxes: (resourceId, state) => {
+				const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId);
+				if (resourceScope) pageRuntime?.dispatch("setLocalMediaAxes", state, resourceScope);
 			},
 		},
 	});
