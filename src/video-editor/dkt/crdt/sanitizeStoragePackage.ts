@@ -40,6 +40,10 @@ export const sanitizeStorageValue = (
 			.map((item) => sanitizeStorageValue(item, seen))
 			.filter((item) => item !== undefined);
 	}
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) {
+		return value;
+	}
 	const result: Record<string, unknown> = {};
 	for (const key of Object.keys(value)) {
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -64,6 +68,9 @@ const sanitizeChangesList = (changesList: unknown): unknown => {
 	}
 	return result;
 };
+
+const sanitizeModelPart = (part: unknown): unknown =>
+	Array.isArray(part) ? sanitizeChangesList(part) : sanitizeStorageValue(part);
 
 export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 	storagePackage: Package,
@@ -102,15 +109,15 @@ export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 			rels?: Record<string, unknown>,
 			mentions?: Record<string, unknown>,
 		) {
-			const sanitizedAttrs = sanitizeStorageValue(attrs) as Record<
+			const sanitizedAttrs = sanitizeModelPart(attrs) as Record<
 				string,
 				unknown
 			>;
-			const sanitizedRels = sanitizeStorageValue(rels) as Record<
+			const sanitizedRels = sanitizeModelPart(rels) as Record<
 				string,
 				unknown
 			>;
-			const sanitizedMentions = sanitizeStorageValue(mentions) as Record<
+			const sanitizedMentions = sanitizeModelPart(mentions) as Record<
 				string,
 				unknown
 			>;

@@ -31,6 +31,7 @@ import {
 	openMiniCutWorkspaceStorage,
 	stageMiniCutWorkspaceManifest,
 } from "./storage/minicutWorkspaceManifest";
+import { migrateMiniCutIndexedDbStorageV1ToV2 } from "./storage/migrateMiniCutIndexedDbStorageV2";
 
 type AnyModel = {
 	_node_id?: string | null;
@@ -99,6 +100,7 @@ export type MiniCutDktCrdtStoragePackage = {
 	commitChanges?: (meta?: unknown) => Promise<void> | void;
 	whenReady?: () => Promise<void> | void;
 	close?: () => Promise<void> | void;
+	migrateDktStorageV1?: (workspaceId: string) => Promise<{ manifest: unknown } | null>;
 };
 
 export type MiniCutDktCrdtStorageOptions =
@@ -329,7 +331,7 @@ const createStoragePackage = async (
 		return makeDktCrdtMemoryStorage() as MiniCutDktCrdtStoragePackage;
 	}
 	if (storage.type === "indexeddb") {
-		return sanitizeDktCrdtStoragePackage(
+		const storagePackage = sanitizeDktCrdtStoragePackage(
 			(await makeDktCrdtIndexedDBStorage({
 				dbName: storage.dbName,
 				version: storage.version ?? MINICUT_INDEXEDDB_SCHEMA_VERSION,
@@ -337,6 +339,15 @@ const createStoragePackage = async (
 				keyRange: storage.keyRange,
 			})) as MiniCutDktCrdtStoragePackage,
 		);
+		storagePackage.migrateDktStorageV1 = (workspaceId) =>
+			migrateMiniCutIndexedDbStorageV1ToV2({
+				indexedDB: (storage.indexedDB ?? globalThis.indexedDB) as IDBFactory,
+				dbName: storage.dbName,
+				version: storage.version ?? MINICUT_INDEXEDDB_SCHEMA_VERSION,
+				storage: storagePackage.dktStorage as never,
+				workspaceId,
+			});
+		return storagePackage;
 	}
 	throw new Error("Unsupported MiniCut CRDT storage option");
 };
@@ -364,6 +375,9 @@ const createCrdtRuntimeForTests = async (
 		? await openMiniCutWorkspaceStorage({
 				storage: storagePackage.dktStorage,
 				workspaceId,
+				migrateStorageV1: storagePackage.migrateDktStorageV1
+					? () => storagePackage.migrateDktStorageV1!(workspaceId)
+					: undefined,
 			})
 		: null;
 	if (storageOpen?.ok === false) {

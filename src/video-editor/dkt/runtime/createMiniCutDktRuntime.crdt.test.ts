@@ -188,7 +188,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 
 		await expect(runDktStorageRequest(storagePackage.dktStorage.getManifest!)).resolves.toMatchObject({
 			workspaceId: "harness:room:minicut-local",
-			storageVersion: 1,
+			storageVersion: 2,
 			schemaVersion: 1,
 		});
 		await storagePackage.close?.();
@@ -225,7 +225,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 
 		await expect(runDktStorageRequest(storagePackage.dktStorage.getManifest!)).resolves.toMatchObject({
 			workspaceId: "harness:room:room-from-bootstrap",
-			storageVersion: 1,
+			storageVersion: 2,
 			schemaVersion: 1,
 		});
 

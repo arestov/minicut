@@ -1,4 +1,4 @@
-import { indexedDB } from "fake-indexeddb";
+import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { describe, expect, it } from "vitest";
 import { createMiniCutTimelineFixture } from "../maelstrom/fixtures/createMiniCutTimelineFixture";
@@ -18,6 +18,7 @@ const createIndexedDbStorage = (testName: string) => (peerId: string) => ({
 		.toString(36)
 		.slice(2)}`,
 	indexedDB,
+	keyRange: IDBKeyRange,
 });
 
 const readOpenTimingConflicts = (peer: MiniCutPeer, clipId: string) =>

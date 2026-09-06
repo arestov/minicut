@@ -1,5 +1,6 @@
 import {
 	adoptLegacyDktStorageV0,
+	createDktStorageV2Manifest,
 	inspectDktStorageForOpen,
 } from "dkt-all/libs/provoda/crdt/storage/atomic/dktStorageOpenPolicy.js";
 import {
@@ -17,9 +18,9 @@ import {
 export const MINICUT_APP_ID = "minicut";
 export const MINICUT_APP_SCHEMA_VERSION = 1;
 export const MINICUT_DERIVED_SCHEMA_VERSION = 1;
-export const MINICUT_DKT_STORAGE_VERSION = 1;
+export const MINICUT_DKT_STORAGE_VERSION = 2;
 export const MINICUT_INDEXEDDB_SCHEMA_VERSION = 2;
-export const MINICUT_SCHEMA_DICTIONARY_MODE = "none";
+export const MINICUT_SCHEMA_DICTIONARY_MODE = "plain-string-to-number";
 
 export type MiniCutWorkspaceManifest = {
 	kind: "dkt-workspace";
@@ -32,7 +33,11 @@ export type MiniCutWorkspaceManifest = {
 	schemaDictionaryMode: typeof MINICUT_SCHEMA_DICTIONARY_MODE;
 };
 
-export type MiniCutWorkspaceSourceOpenStatus = "empty" | "ready" | "adopted_v0";
+export type MiniCutWorkspaceSourceOpenStatus =
+	| "empty"
+	| "ready"
+	| "adopted_v0"
+	| "migrated_v1";
 
 export type MiniCutWorkspaceOpenFailure = Exclude<
 	WorkspaceOpenFailure,
@@ -72,6 +77,7 @@ type DktStorageOpenInspection =
 	| { kind: "legacy_v0"; schema: unknown }
 	| { kind: "newer_storage"; manifest: unknown }
 	| { kind: "manifest_mismatch"; manifest: unknown }
+	| { kind: "migration_required"; from: string; to: number; schema: unknown }
 	| { kind: "ambiguous_legacy_store" };
 
 const HARNESS_ROOM_WORKSPACE_PREFIX = "harness:room:";
@@ -90,11 +96,13 @@ const encodeWorkspacePart = (value: string): string =>
 export const createMiniCutStoredDktManifest = (workspaceId: string) => {
 	const manifest = createMiniCutExpectedManifest(workspaceId);
 	return {
-		manifestVersion: 1,
-		storageVersion: manifest.dktStorageVersion,
+		...createDktStorageV2Manifest({
+			appId: manifest.appId,
+			profileId: "minicut-crdt-v1",
+			schemaVersion: manifest.appSchemaVersion,
+		}),
 		schemaVersion: manifest.appSchemaVersion,
 		appId: manifest.appId,
-		profileId: "minicut-crdt-v1",
 		schemaDictionaryMode: manifest.schemaDictionaryMode,
 		kind: manifest.kind,
 		workspaceId: manifest.workspaceId,
@@ -301,14 +309,26 @@ export const openMiniCutWorkspaceStorage = async ({
 	storage,
 	workspaceId,
 	adoptLegacyV0 = true,
+	migrateStorageV1,
 }: {
 	storage: unknown;
 	workspaceId: string;
 	adoptLegacyV0?: boolean;
+	migrateStorageV1?: () => Promise<{ manifest: unknown } | null>;
 }): Promise<MiniCutWorkspaceOpenResult> => {
 	const manifest = createMiniCutExpectedManifest(workspaceId);
 	const expected = createDktExpectedOpenPolicy(manifest);
 	try {
+		const migrated = await migrateStorageV1?.();
+		if (migrated) {
+			return createReadyOpenResult({
+				status: WORKSPACE_OPEN_STATUS.READY,
+				sourceStatus: "migrated_v1",
+				storage,
+				manifest,
+				dktManifest: migrated.manifest,
+			});
+		}
 		const inspected = (await inspectDktStorageForOpen(
 			storage,
 			expected,

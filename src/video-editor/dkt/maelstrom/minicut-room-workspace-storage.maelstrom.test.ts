@@ -6,6 +6,7 @@ import {
 import { createMiniCutMaelstromProfiles } from "./sim/MiniCutMaelstromProfiles";
 import type { MiniCutMaelstromProfile } from "./sim/MiniCutMaelstromProfiles";
 import { createMiniCutCrdtSimulation } from "./sim/createMiniCutCrdtSimulation";
+import { runDktStorageRequest, type DktStorageRequest } from "../storage/dktStorageRequest";
 
 type RoomWorkspaceProfile = MiniCutMaelstromProfile & {
 	workspaceIdForPeer: (peerId: string) => string;
@@ -24,17 +25,22 @@ const roomWorkspaceProfile = (): RoomWorkspaceProfile => {
 
 const readManifest = async (peer: ReturnType<Awaited<ReturnType<typeof createMiniCutCrdtSimulation>>["peer"]>) => {
 	const storage = peer.ctx.storagePackage?.dktStorage as
-		| { getManifest?: () => Promise<unknown> }
+		| { getManifest?: DktStorageRequest<unknown> }
 		| undefined;
-	return storage?.getManifest?.() ?? null;
+	return storage?.getManifest
+		? runDktStorageRequest(storage.getManifest)
+		: null;
 };
 
 const readProjectCount = async (peer: ReturnType<Awaited<ReturnType<typeof createMiniCutCrdtSimulation>>["peer"]>) => {
-	const snapshot = await (
+	const getSnapshot = (
 		peer.ctx.storagePackage?.dktStorage as
-			| { getSnapshot?: () => Promise<unknown> }
+			| { getSnapshot?: DktStorageRequest<unknown> }
 			| undefined
-	)?.getSnapshot?.();
+	)?.getSnapshot;
+	const snapshot = getSnapshot
+		? await runDktStorageRequest(getSnapshot)
+		: null;
 	const models = (snapshot as { models?: Record<string, { model_name?: unknown }> } | null)
 		?.models;
 	return Object.values(models ?? {}).filter(
@@ -71,7 +77,7 @@ describe("MiniCut maelstrom room workspace storage", () => {
 		const initialManifest = await readManifest(peerA);
 		expect(initialManifest).toMatchObject({
 			workspaceId: expectedWorkspaceId,
-			storageVersion: 1,
+			storageVersion: 2,
 			schemaVersion: 1,
 			profileId: "minicut-crdt-v1",
 		});

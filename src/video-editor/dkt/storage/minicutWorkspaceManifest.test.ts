@@ -52,10 +52,10 @@ describe("MiniCut workspace manifest", () => {
 			manifestVersion: 1,
 			workspaceId: "harness:room:alpha",
 			appId: "minicut",
-			dktStorageVersion: 1,
+			dktStorageVersion: 2,
 			appSchemaVersion: 1,
 			derivedSchemaVersion: 1,
-			schemaDictionaryMode: "none",
+			schemaDictionaryMode: "plain-string-to-number",
 		});
 	});
 
@@ -136,7 +136,7 @@ describe("MiniCut workspace manifest", () => {
 		const storage = createMemoryDktStorage({
 			manifest: {
 				manifestVersion: 1,
-				storageVersion: 2,
+				storageVersion: 3,
 				schemaVersion: 1,
 				appId: "minicut",
 			},
@@ -173,7 +173,7 @@ describe("MiniCut workspace manifest", () => {
 		});
 	});
 
-	it("adopts legacy v0 DKT storage when schema exists", async () => {
+	it("requires an explicit migration for legacy v0 storage", async () => {
 		const storage = createMemoryDktStorage({ schema: { clip: {} } });
 
 		const result = await openMiniCutWorkspaceStorage({
@@ -182,18 +182,12 @@ describe("MiniCut workspace manifest", () => {
 		});
 
 		expect(result).toMatchObject({
-			ok: true,
-			status: WORKSPACE_OPEN_STATUS.READY,
-			sourceStatus: "adopted_v0",
+			ok: false,
+			status: WORKSPACE_OPEN_STATUS.FAILED,
+			failureReason: WORKSPACE_OPEN_FAILURE.INCOMPATIBLE,
 		});
-		expect(storage.readManifest()).toMatchObject({
-			storageVersion: 1,
-			schemaVersion: 1,
-			appId: "minicut",
-			profileId: "minicut-crdt-v1",
-			adoptedFrom: "legacy_v0",
-		});
-		expect(storage.readMigrations()).toHaveLength(1);
+		expect(storage.readManifest()).toBeNull();
+		expect(storage.readMigrations()).toHaveLength(0);
 	});
 
 	it("stages a stored DKT manifest for empty workspaces", () => {
@@ -205,12 +199,33 @@ describe("MiniCut workspace manifest", () => {
 
 		expect(staged).toMatchObject({
 			workspaceId: "harness:room:stage",
-			storageVersion: 1,
+			storageVersion: 2,
 			schemaVersion: 1,
 			profileId: "minicut-crdt-v1",
 		});
 		expect(storage.readManifest()).toMatchObject({
 			workspaceId: "harness:room:stage",
+		});
+	});
+
+	it("uses the explicit v1 migration hook before reporting ready", async () => {
+		const storage = createMemoryDktStorage({
+			manifest: { storageVersion: 1, schemaVersion: 1, appId: "minicut" },
+		});
+		const migratedManifest = createMiniCutStoredDktManifest(
+			"harness:room:migrated",
+		);
+		const result = await openMiniCutWorkspaceStorage({
+			storage,
+			workspaceId: "harness:room:migrated",
+			migrateStorageV1: async () => ({ manifest: migratedManifest }),
+		});
+
+		expect(result).toMatchObject({
+			ok: true,
+			status: WORKSPACE_OPEN_STATUS.READY,
+			sourceStatus: "migrated_v1",
+			dktManifest: { storageVersion: 2 },
 		});
 	});
 });
