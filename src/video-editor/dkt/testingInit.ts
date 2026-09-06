@@ -496,12 +496,15 @@ export const bootDktModels = async (
 		new Promise<AnyModel>((resolve, reject) => {
 			const doHook = async () => {
 				try {
-					const sr = await hookSessionRoot(appModel, appModel.start_page, {
-						sessionKey: TEST_SESSION_KEY,
-						route: null,
-						storageOpenStatus:
-							storageOpen?.openState.status ??
-							WORKSPACE_LOCAL_EMPTY_READY_STATE.status,
+					const sr = hookSessionRoot(appModel, {
+						rel: "$session_root",
+						attrs: {
+							sessionKey: TEST_SESSION_KEY,
+							route: null,
+							storageOpenStatus:
+								storageOpen?.openState.status ??
+								WORKSPACE_LOCAL_EMPTY_READY_STATE.status,
+						},
 					});
 					resolve(sr as AnyModel);
 				} catch (err) {

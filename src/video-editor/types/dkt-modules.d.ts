@@ -91,9 +91,8 @@ declare module "dkt-all/libs/provoda/bwlev/SessionRoot.js" {
 declare module "dkt-all/libs/provoda/provoda/BrowseMap.js" {
 	export const hookSessionRoot: (
 		appModel: unknown,
-		startPage: unknown,
-		options?: unknown,
-	) => Promise<unknown>;
+		options: { rel: string; attrs: Record<string, unknown> },
+	) => unknown;
 }
 
 declare module "dkt-all/libs/provoda/_internal/_listRels.js" {

@@ -725,14 +725,14 @@ export const createMiniCutDktRuntime = (
 						const storageOpenStatus =
 							crdt?.workspaceOpenState?.status ??
 							WORKSPACE_LOCAL_EMPTY_READY_STATE.status;
-						const sessionRoot = await hookSessionRoot(
-							app.appModel,
-							app.appModel.start_page,
-							{
+						const sessionRoot = hookSessionRoot(app.appModel, {
+							rel: "$session_root",
+							attrs: {
 								sessionKey: resolvedSessionId,
 								route: null,
 								storageOpenStatus,
 							},
+						},
 						);
 						if (app.restoredFromStorage) {
 							await crdt?.crdtRuntime?.restoreFromStorage?.();
