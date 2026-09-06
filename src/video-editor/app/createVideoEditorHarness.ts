@@ -318,7 +318,7 @@ export const createVideoEditorHarness = (
 					if (!hydratedRecoveryResources.has(`${activeProjectScope._nodeId}:${resourceId}`)) continue;
 					const durableStorageKind = (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind;
 					const durableAssetRef = (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef;
-					if (typeof durableStorageKind !== "string" || typeof attrs.sourceKind !== "string" || typeof attrs.status !== "string") continue;
+					if (typeof durableStorageKind !== "string" || typeof (attrs as { sourceKind?: unknown }).sourceKind !== "string" || typeof attrs.status !== "string") continue;
 					if (durableStorageKind === "project-copy" && typeof durableAssetRef !== "string") continue;
 					if (startedRecoveryResources.has(resourceId)) continue;
 					if (recoveringResources.has(resourceId)) continue;
