@@ -6,6 +6,10 @@ import type {
 	DktCrdtWireMessage,
 } from "../../crdt/testRelayContracts";
 import { createMiniCutHarnessWorkspaceId } from "../../storage/minicutWorkspaceManifest";
+import {
+	runDktStorageRequest,
+	type DktStorageRequest,
+} from "../../storage/dktStorageRequest";
 import { waitForRuntimeIdle } from "../../test/waitForRuntimeIdle";
 import {
 	bootDktModels,
@@ -101,9 +105,12 @@ const queryVideoTrackClips = async (
 ): Promise<RuntimeModel[]> => {
 	const clipsFromRel = await ctx.queryRel(videoTrack, "clips");
 	if (clipsFromRel.length > 0) return clipsFromRel;
-	const snapshot = await (
+	const snapshotRequest = (
 		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
-	)?.getSnapshot?.();
+	)?.getSnapshot as DktStorageRequest<unknown> | undefined;
+	const snapshot = snapshotRequest
+		? await runDktStorageRequest(snapshotRequest)
+		: null;
 	const snapshotClipRefs = (
 		snapshot as {
 			models?: Record<string, { rels?: Record<string, unknown> }>;
@@ -180,14 +187,14 @@ const commitDktStorage = async (
 	const packageCommit = ctx.storagePackage?.commitChanges;
 	const dktStorageCommit = (
 		ctx.storagePackage?.dktStorage as
-			| { commitChanges?: (meta?: unknown) => Promise<unknown> | unknown }
+			| { commitChanges?: DktStorageRequest<unknown, [unknown?]> }
 			| undefined
 	)?.commitChanges;
 	if (packageCommit) {
 		await packageCommit.call(ctx.storagePackage, meta);
 		return;
 	}
-	await dktStorageCommit?.(meta);
+	if (dktStorageCommit) await runDktStorageRequest(dktStorageCommit, meta);
 };
 
 const waitForDktStorageReady = async (ctx: DktTestContext) => {
@@ -350,7 +357,7 @@ const seedGraphStorageFromSnapshot = async (
 					data: unknown,
 				) => Promise<unknown> | unknown;
 				putProjectMeta?: (meta: unknown) => Promise<unknown> | unknown;
-				commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
+				commitChanges?: DktStorageRequest<unknown, [unknown?]>;
 		  }
 		| undefined;
 	if (!dktStorage?.createModel) return;
@@ -384,7 +391,9 @@ const seedGraphStorageFromSnapshot = async (
 	if (raw.meta !== undefined) {
 		await dktStorage.putProjectMeta?.(raw.meta);
 	}
-	await dktStorage.commitChanges?.({ reason });
+	if (dktStorage.commitChanges) {
+		await runDktStorageRequest(dktStorage.commitChanges, { reason });
+	}
 };
 
 const enableUnloadNow = async (ctx: DktTestContext, enabled: boolean) => {
@@ -400,9 +409,12 @@ const readDurableOrLiveSnapshot = async (
 	ctx: DktTestContext,
 	options: SimulationOptions,
 ): Promise<unknown> => {
-	const durableSnapshot = await (
-		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
-	)?.getSnapshot?.();
+	const snapshotRequest = (
+		ctx.storagePackage?.dktStorage as { getSnapshot?: DktStorageRequest<unknown> }
+	)?.getSnapshot;
+	const durableSnapshot = snapshotRequest
+		? await runDktStorageRequest(snapshotRequest)
+		: null;
 	if (durableSnapshot) return durableSnapshot;
 	if (options.unloadModels !== true) {
 		let snapshot: unknown = null;
@@ -586,11 +598,14 @@ export const createMiniCutCrdtSimulation = async (
 	const primaryCtx = await createPeer(primaryId, network, options);
 	contexts.set(primaryId, primaryCtx);
 	await createProjectOnPrimary(primaryId, contexts);
-	const bootstrapSnapshot = await (
+	const bootstrapSnapshotRequest = (
 		primaryCtx.storagePackage?.dktStorage as {
-			getSnapshot?: () => Promise<unknown>;
+			getSnapshot?: DktStorageRequest<unknown>;
 		}
-	)?.getSnapshot?.();
+	)?.getSnapshot;
+	const bootstrapSnapshot = bootstrapSnapshotRequest
+		? await runDktStorageRequest(bootstrapSnapshotRequest)
+		: null;
 	if (!bootstrapSnapshot)
 		throw new Error("MiniCut maelstrom primary peer has no bootstrap snapshot");
 	for (const id of options.peers.slice(1)) {

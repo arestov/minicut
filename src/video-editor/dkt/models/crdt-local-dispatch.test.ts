@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+	runDktStorageRequest,
+	type DktStorageRequest,
+} from "../storage/dktStorageRequest";
 import { bootDktModels, type DktTestContext } from "../testingInit";
 import {
 	drainCrdtOutbox,
@@ -164,12 +168,14 @@ describe("MiniCut CRDT local dispatch staging", () => {
 
 		const dktStorage = ctx.storagePackage?.dktStorage as
 			| {
-					getSnapshot?: () => Promise<{
+					getSnapshot?: DktStorageRequest<{
 						models?: Record<string, { attrs?: Record<string, unknown> }>;
 					}>;
 			  }
 			| undefined;
-		const previewSnapshot = await dktStorage?.getSnapshot?.();
+		const previewSnapshot = dktStorage?.getSnapshot
+			? await runDktStorageRequest(dktStorage.getSnapshot)
+			: null;
 		expect(previewSnapshot?.models?.[String(clip._node_id)]?.attrs?.start ?? 0)
 			.toBe(0);
 
@@ -190,7 +196,9 @@ describe("MiniCut CRDT local dispatch staging", () => {
 
 		const ops = drainCrdtOutbox(ctx.runtime);
 		expectCrdtOutboxContains(ops, { kind: "attr", name: "start", value: 1 });
-		const finalSnapshot = await dktStorage?.getSnapshot?.();
+		const finalSnapshot = dktStorage?.getSnapshot
+			? await runDktStorageRequest(dktStorage.getSnapshot)
+			: null;
 		expect(finalSnapshot?.models?.[String(clip._node_id)]?.attrs?.start).toBe(1);
 	});
 
