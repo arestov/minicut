@@ -22,7 +22,7 @@ export const Text = model({
 			box: "lww",
 		},
 		rels: {
-			clip: "lww",
+			clip: { sync: false, reason: "framework-owned" },
 		},
 	},
 	attrs: {
@@ -62,8 +62,7 @@ export const Text = model({
 			"input",
 			{
 				linking: "<< clip << #",
-				role: "nav",
-				inverseRel: "text",
+				inverseOf: { clip: "text" },
 			},
 		],
 	},

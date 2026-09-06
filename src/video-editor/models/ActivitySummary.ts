@@ -58,6 +58,12 @@ export const ACTIVITY_SUMMARY_CREATION_SHAPE = {
 
 export const ActivitySummary = model({
 	model_name: "activity_summary",
+	rels: {
+		rootOwner: [
+			"input",
+			{ linking: "app_root", inverseOf: { app_root: "activitySummary" } },
+		],
+	},
 	attrs: {
 		activitySummaryId: ["input", ""],
 		projectId: ["input", ""],

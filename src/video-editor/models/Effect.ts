@@ -34,7 +34,7 @@ export const Effect = model({
 			color: ["mvr", { conflictMeta: true }],
 		},
 		rels: {
-			clip: "lww",
+			clip: { sync: false, reason: "framework-owned" },
 			project: "lww",
 		},
 	},
@@ -92,8 +92,7 @@ export const Effect = model({
 			"input",
 			{
 				linking: "<< clip << #",
-				role: "nav",
-				inverseRel: "effects",
+				inverseOf: { clip: "effects" },
 			},
 		],
 		project: ["input", { linking: "<< project << #", role: "nav" }],

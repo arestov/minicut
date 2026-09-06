@@ -135,6 +135,7 @@ export const Project = model({
 			previewFrame: { sync: false, reason: "projection" },
 		},
 		rels: {
+			rootOwner: { sync: false, reason: "framework-owned" },
 			tracks: ["sequence", { conflictMeta: true }],
 			resources: "or-set",
 			primaryVideoTrack: "lww",
@@ -261,6 +262,10 @@ export const Project = model({
 		],
 	},
 	rels: {
+		rootOwner: [
+			"input",
+			{ linking: "app_root", inverseOf: { app_root: "project" } },
+		],
 		tracks: [
 			"input",
 			{
@@ -284,7 +289,7 @@ export const Project = model({
 				many: true,
 				linking: "<< resource << #",
 				role: "owner",
-				ownership: "multi",
+				ownership: "slot-single",
 				inverseRel: "project",
 				aggregate: {
 					name: "resourceLifecycle",

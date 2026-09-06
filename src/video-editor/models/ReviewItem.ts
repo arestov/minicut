@@ -92,6 +92,12 @@ export const REVIEW_ITEM_CREATION_SHAPE = {
 
 export const ReviewItem = model({
 	model_name: "review_item",
+	rels: {
+		rootOwner: [
+			"input",
+			{ linking: "app_root", inverseOf: { app_root: "reviewItem" } },
+		],
+	},
 	attrs: {
 		reviewItemId: ["input", ""],
 		conflictId: ["input", ""],

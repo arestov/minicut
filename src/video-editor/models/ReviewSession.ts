@@ -84,6 +84,10 @@ export const ReviewSession = model({
 		],
 	},
 	rels: {
+		rootOwner: [
+			"input",
+			{ linking: "app_root", inverseOf: { app_root: "reviewSession" } },
+		],
 		items: [
 			"input",
 			{

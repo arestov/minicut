@@ -170,7 +170,7 @@ describe("semantic graph declarations", () => {
 		});
 	});
 
-	it("exports project, track, and resource inverseRel metadata", () => {
+	it("exports canonical owner and framework inverse metadata", () => {
 		expect(
 			getAggregate(Project as unknown as Record<string, unknown>, "projectTracks"),
 		).toMatchObject({
@@ -190,8 +190,8 @@ describe("semantic graph declarations", () => {
 		expect(
 			getRelOptions(Track as unknown as Record<string, unknown>, "project"),
 		).toMatchObject({
-			role: "nav",
 			inverseRel: "tracks",
+			inverseOf: { project: "tracks" },
 			aggregate: { name: "projectTracks", role: "mirror", as: "project" },
 		});
 
@@ -199,7 +199,7 @@ describe("semantic graph declarations", () => {
 			getRelOptions(Project as unknown as Record<string, unknown>, "resources"),
 		).toMatchObject({
 			role: "owner",
-			ownership: "multi",
+			ownership: "slot-single",
 			inverseRel: "project",
 			aggregate: {
 				name: "resourceLifecycle",
@@ -211,8 +211,8 @@ describe("semantic graph declarations", () => {
 		expect(
 			getRelOptions(Resource as unknown as Record<string, unknown>, "project"),
 		).toMatchObject({
-			role: "nav",
 			inverseRel: "resources",
+			inverseOf: { project: "resources" },
 			aggregate: {
 				name: "resourceLifecycle",
 				role: "mirror",
@@ -291,8 +291,7 @@ describe("semantic graph declarations", () => {
 		expect(
 			getRelOptions(Effect as unknown as Record<string, unknown>, "clip"),
 		).toMatchObject({
-			role: "nav",
-			inverseRel: "effects",
+			inverseOf: { clip: "effects" },
 		});
 	});
 
@@ -322,6 +321,7 @@ describe("semantic graph declarations", () => {
 		expect(
 			getCrdtSection(Project as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
+			rootOwner: { sync: false, reason: "framework-owned" },
 			tracks: ["sequence", { conflictMeta: true }],
 			resources: "or-set",
 			primaryVideoTrack: "lww",
@@ -347,7 +347,7 @@ describe("semantic graph declarations", () => {
 		expect(
 			getCrdtSection(Clip as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
-			track: ["lww", { conflictMeta: true }],
+			track: { sync: false, reason: "framework-owned" },
 		});
 		expect(
 			getCrdtSection(Effect as unknown as Record<string, unknown>, "attrs"),
@@ -409,7 +409,7 @@ describe("semantic graph declarations", () => {
 		expect(
 			getCrdtSection(Resource as unknown as Record<string, unknown>, "rels"),
 		).toMatchObject({
-			project: "lww",
+			project: { sync: false, reason: "framework-owned" },
 			clips: "or-set",
 		});
 		expect(getCrdtBlock(EditorSessionRoot as unknown as Record<string, unknown>))

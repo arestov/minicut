@@ -133,7 +133,7 @@ export const Clip = model({
 			effects: "sequence",
 			text: "lww",
 			resource: "lww",
-			track: ["lww", { conflictMeta: true }],
+			track: { sync: false, reason: "framework-owned" },
 			project: "lww",
 			crdtConflicts: { sync: false, reason: "framework-owned" },
 		},
@@ -249,8 +249,8 @@ export const Clip = model({
 			"input",
 			{
 				linking: "<< track << #",
-				role: "nav",
 				inverseRel: "clips",
+				inverseOf: { track: "clips" },
 				aggregate: { name: "timelineMembership", role: "mirror", as: "track" },
 			},
 		],

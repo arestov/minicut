@@ -74,7 +74,7 @@ export const Resource = model({
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		},
 		rels: {
-			project: "lww",
+			project: { sync: false, reason: "framework-owned" },
 			clips: "or-set",
 		},
 	},
@@ -198,8 +198,8 @@ export const Resource = model({
 			"input",
 			{
 				linking: "<< project << #",
-				role: "nav",
 				inverseRel: "resources",
+				inverseOf: { project: "resources" },
 				aggregate: { name: "resourceLifecycle", role: "mirror", as: "project" },
 			},
 		],

@@ -62,7 +62,7 @@ export const Track = model({
 		},
 		rels: {
 			clips: ["sequence", { conflictMeta: true }],
-			project: "lww",
+			project: { sync: false, reason: "framework-owned" },
 		},
 	},
 	attrs: {
@@ -134,8 +134,8 @@ export const Track = model({
 			"input",
 			{
 				linking: "<< project << #",
-				role: "nav",
 				inverseRel: "tracks",
+				inverseOf: { project: "tracks" },
 				aggregate: { name: "projectTracks", role: "mirror", as: "project" },
 			},
 		],

@@ -1,10 +1,7 @@
 import { appRoot } from "dkt/appRoot.js";
 import { merge as mergeDcl } from "dkt/dcl/merge.js";
 import {
-	reduceCreateClipModel,
-	reduceCreateEffectModel,
 	reduceCreateProjectModel,
-	reduceCreateResourceModel,
 	reduceCreateActivitySummaryModel,
 	reduceCreateReviewItemModel,
 	reduceCreateReviewSessionModel,
@@ -16,18 +13,16 @@ import {
 	reduceLinkReviewSessionActivityFromOutput,
 	reduceLinkReviewSessionItemsFromOutput,
 	resolveReviewProjectIdHint,
-	reduceCreateTextModel,
-	reduceCreateTrackModel,
 	reduceSelectReviewItem,
 } from "./AppRoot/actions";
 import {
 	ACTIVITY_SUMMARY_CREATION_SHAPE,
 	ActivitySummary,
 } from "./ActivitySummary";
-import { CLIP_CREATION_SHAPE, Clip } from "./Clip";
-import { EFFECT_CREATION_SHAPE, Effect } from "./Effect";
+import { Clip } from "./Clip";
+import { Effect } from "./Effect";
 import { PROJECT_CREATION_SHAPE, Project } from "./Project";
-import { RESOURCE_CREATION_SHAPE, Resource } from "./Resource";
+import { Resource } from "./Resource";
 import {
 	REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
 	ReviewArchiveEntry,
@@ -38,8 +33,8 @@ import {
 	ReviewSession,
 } from "./ReviewSession";
 import { EditorSessionRoot } from "./SessionRoot";
-import { TEXT_CREATION_SHAPE, Text } from "./Text";
-import { TRACK_CREATION_SHAPE, Track } from "./Track";
+import { Text } from "./Text";
+import { Track } from "./Track";
 
 const appProps = mergeDcl({
 	init: (target: unknown) => {
@@ -47,21 +42,42 @@ const appProps = mergeDcl({
 		typedTarget.start_page = typedTarget;
 	},
 	model_name: "app_root",
+	models: [
+		EditorSessionRoot,
+		Project,
+		Track,
+		Resource,
+		Clip,
+		Text,
+		Effect,
+		ReviewItem,
+		ReviewArchiveEntry,
+		ReviewSession,
+		ActivitySummary,
+	],
 	rels: {
-		$session_root: ["model", EditorSessionRoot],
+		$session_root: [
+			"input",
+			{
+				linking: "session_root",
+				role: "owner",
+				ownership: "slot-single",
+				inverseRel: "$parent",
+			},
+		],
 		common_session_root: ["input", { linking: "<< $session_root" }],
 		sessions: ["input", { linking: "<< $session_root", many: true }],
 		free_sessions: ["input", { linking: "<< $session_root", many: true }],
-		project: ["model", Project, { many: true }],
-		track: ["model", Track, { many: true }],
-		resource: ["model", Resource, { many: true }],
-		clip: ["model", Clip, { many: true }],
-		text: ["model", Text, { many: true }],
-		effect: ["model", Effect, { many: true }],
-		reviewItem: ["model", ReviewItem, { many: true }],
-		reviewArchiveEntry: ["model", ReviewArchiveEntry, { many: true }],
-		reviewSession: ["model", ReviewSession, { many: true }],
-		activitySummary: ["model", ActivitySummary, { many: true }],
+		project: ["input", { linking: "project", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
+		track: ["input", { linking: "track", many: true, role: "projection" }],
+		resource: ["input", { linking: "resource", many: true, role: "projection" }],
+		clip: ["input", { linking: "clip", many: true, role: "projection" }],
+		text: ["input", { linking: "text", many: true, role: "projection" }],
+		effect: ["input", { linking: "effect", many: true, role: "projection" }],
+		reviewItem: ["input", { linking: "review_item", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
+		reviewArchiveEntry: ["input", { linking: "review_archive_entry", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
+		reviewSession: ["input", { linking: "review_session", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
+		activitySummary: ["input", { linking: "activity_summary", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
 	},
 	attrs: {
 		activeReviewItemId: ["input", null],
@@ -107,61 +123,6 @@ const appProps = mergeDcl({
 				},
 			],
 			fn: reduceCreateProjectModel,
-		},
-		createTrackModel: {
-			to: [
-				"<< track << #",
-				{
-					method: "at_end",
-					can_create: true,
-					creation_shape: TRACK_CREATION_SHAPE,
-				},
-			],
-			fn: reduceCreateTrackModel,
-		},
-		createResourceModel: {
-			to: [
-				"<< resource << #",
-				{
-					method: "at_end",
-					can_create: true,
-					creation_shape: RESOURCE_CREATION_SHAPE,
-				},
-			],
-			fn: reduceCreateResourceModel,
-		},
-		createTextModel: {
-			to: [
-				"<< text << #",
-				{
-					method: "at_end",
-					can_create: true,
-					creation_shape: TEXT_CREATION_SHAPE,
-				},
-			],
-			fn: reduceCreateTextModel,
-		},
-		createEffectModel: {
-			to: [
-				"<< effect << #",
-				{
-					method: "at_end",
-					can_create: true,
-					creation_shape: EFFECT_CREATION_SHAPE,
-				},
-			],
-			fn: reduceCreateEffectModel,
-		},
-		createClipModel: {
-			to: [
-				"<< clip << #",
-				{
-					method: "at_end",
-					can_create: true,
-					creation_shape: CLIP_CREATION_SHAPE,
-				},
-			],
-			fn: reduceCreateClipModel,
 		},
 		createReviewItemModel: {
 			to: [
