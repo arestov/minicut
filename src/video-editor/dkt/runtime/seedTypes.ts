@@ -33,6 +33,11 @@ export type MiniCutDktResourceSeed = {
 	source?: Record<string, unknown>;
 	status?: string;
 	data?: Record<string, unknown>;
+	assetStorageKind?: "linked" | "project-copy";
+	assetRef?: string | null;
+	contentFingerprint?: string | null;
+	fingerprintVersion?: string | null;
+	localMediaStatus?: string;
 };
 
 export type MiniCutDktClipSeed = {

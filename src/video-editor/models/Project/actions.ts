@@ -253,6 +253,11 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 		},
 		status: asResourceDurableStatus(value?.status),
 		data: normalizeResourceData(value?.data),
+		assetStorageKind: value?.assetStorageKind === "project-copy" ? "project-copy" : "linked",
+		assetRef: asString(value?.assetRef),
+		contentFingerprint: asString(value?.contentFingerprint),
+		fingerprintVersion: asString(value?.fingerprintVersion),
+		localMediaStatus: typeof value?.localMediaStatus === "string" ? value.localMediaStatus : "unknown",
 	};
 };
 

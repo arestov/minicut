@@ -32,6 +32,11 @@ export const RESOURCE_CREATION_SHAPE = {
 		"source",
 		"status",
 		"data",
+		"assetStorageKind",
+		"assetRef",
+		"contentFingerprint",
+		"fingerprintVersion",
+		"localMediaStatus",
 	],
 	rels: {
 		project: {},
@@ -70,6 +75,11 @@ export const Resource = model({
 			source: "lww",
 			status: "lww",
 			data: { sync: false, reason: "effect-runtime" },
+			assetStorageKind: "lww",
+			assetRef: "lww",
+			contentFingerprint: "lww",
+			fingerprintVersion: "lww",
+			localMediaStatus: { sync: false, reason: "effect-runtime" },
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 		},
 		rels: {
@@ -92,6 +102,24 @@ export const Resource = model({
 		source: ["input", { kind: "local" }],
 		status: ["input", "missing"],
 		data: ["input", null],
+		assetStorageKind: ["input", "linked"],
+		assetRef: ["input", null],
+		contentFingerprint: ["input", null],
+		fingerprintVersion: ["input", null],
+		localMediaStatus: ["input", "unknown"],
+		requiredSourceEnd: [
+			"comp",
+			["< @all:in < clips", "< @all:duration < clips"] as const,
+			(inPoints: unknown, durations: unknown) => {
+				if (!Array.isArray(inPoints) || !Array.isArray(durations)) return 0;
+				return inPoints.reduce((maximum, value, index) => {
+					const duration = durations[index];
+					return typeof value === "number" && Number.isFinite(value) && typeof duration === "number" && Number.isFinite(duration)
+						? Math.max(maximum, value + duration)
+						: maximum;
+				}, 0);
+			},
+		],
 		timelineAddRequest: [
 			"input",
 			null,
@@ -249,6 +277,18 @@ export const Resource = model({
 					reduceSetResourceStatus(payload) ?? noop,
 			],
 		},
+		setLocalMediaStatus: {
+			to: { localMediaStatus: ["localMediaStatus"] },
+			fn: [
+				["$noop"] as const,
+				(payload: unknown, noop: unknown) => {
+					const status = typeof payload === "string" ? payload : (payload as { status?: unknown } | null)?.status;
+					return status === "unknown" || status === "resolving" || status === "ready-project-copy" || status === "ready-file-handle" || status === "needs-permission" || status === "permission-denied" || status === "missing" || status === "error"
+						? { localMediaStatus: status }
+						: noop;
+				},
+			],
+		},
 		setResourceAttrs: {
 			aggregate: {
 				name: "importPipeline",
@@ -271,6 +311,11 @@ export const Resource = model({
 				source: ["source"],
 				status: ["status"],
 				data: ["data"],
+				assetStorageKind: ["assetStorageKind"],
+				assetRef: ["assetRef"],
+				contentFingerprint: ["contentFingerprint"],
+				fingerprintVersion: ["fingerprintVersion"],
+				localMediaStatus: ["localMediaStatus"],
 			},
 			fn: [
 				["$noop"] as const,

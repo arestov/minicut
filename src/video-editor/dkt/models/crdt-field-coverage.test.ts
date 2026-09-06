@@ -189,6 +189,11 @@ const MODEL_CASES: ModelCase[] = [
 				status: "crdt",
 				data: "effect-runtime",
 				timelineAddRequest: "effect-runtime",
+				assetStorageKind: "crdt",
+				assetRef: "crdt",
+				contentFingerprint: "crdt",
+				fingerprintVersion: "crdt",
+				localMediaStatus: "effect-runtime",
 			},
 			rels: {
 				project: "framework-owned",

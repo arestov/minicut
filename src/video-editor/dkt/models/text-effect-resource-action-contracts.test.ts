@@ -135,6 +135,9 @@ describe("Effect action contracts", () => {
 describe("Resource action contracts", () => {
 	it("renameResource, setResourceStatus, setResourceAttrs, requestAddToTimeline, setProject, and setClips update the resource node", async () => {
 		const harness = await createActionContractHarness();
+		expect(harness.ctx.getAttr(harness.videoResource, "assetStorageKind")).toBe("linked");
+		expect(harness.ctx.getAttr(harness.videoResource, "assetRef")).toBeNull();
+		expect(harness.ctx.getAttr(harness.videoResource, "localMediaStatus")).toBe("unknown");
 
 		await dispatchAndSettle(
 			harness.ctx,
@@ -164,6 +167,11 @@ describe("Resource action contracts", () => {
 				source: { kind: "local" },
 				status: "ready",
 				data: { status: "ready" },
+				assetStorageKind: "project-copy",
+				assetRef: "project/resource",
+				contentFingerprint: "sha256:abc",
+				fingerprintVersion: "sha256-v1",
+				localMediaStatus: "ready-project-copy",
 			},
 		);
 		await dispatchAndSettle(
@@ -183,6 +191,11 @@ describe("Resource action contracts", () => {
 		);
 		expect(harness.ctx.getAttr(harness.videoResource, "status")).toBe("ready");
 		expect(harness.ctx.getAttr(harness.videoResource, "duration")).toBe(12);
+		expect(harness.ctx.getAttr(harness.videoResource, "assetStorageKind")).toBe("project-copy");
+		expect(harness.ctx.getAttr(harness.videoResource, "localMediaStatus")).toBe("ready-project-copy");
+		expect(harness.ctx.getAttr(harness.videoResource, "requiredSourceEnd")).toBe(
+			Number(harness.ctx.getAttr(harness.videoClip, "in")) + Number(harness.ctx.getAttr(harness.videoClip, "duration")),
+		);
 		expect(
 			harness.ctx.getAttr(harness.videoResource, "timelineAddRequest"),
 		).toMatchObject({

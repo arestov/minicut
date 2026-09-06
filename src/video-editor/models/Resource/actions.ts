@@ -48,6 +48,11 @@ export const reduceSetResourceAttrs = (payload: unknown) => {
 		source: objectOr(value.source, { kind: "local" }),
 		status: stringOr(value.status, "missing"),
 		data: objectOr(value.data, null),
+		assetStorageKind: value.assetStorageKind === "project-copy" ? "project-copy" : "linked",
+		assetRef: typeof value.assetRef === "string" && value.assetRef ? value.assetRef : null,
+		contentFingerprint: typeof value.contentFingerprint === "string" && value.contentFingerprint ? value.contentFingerprint : null,
+		fingerprintVersion: typeof value.fingerprintVersion === "string" && value.fingerprintVersion ? value.fingerprintVersion : null,
+		localMediaStatus: typeof value.localMediaStatus === "string" ? value.localMediaStatus : "unknown",
 	};
 };
 

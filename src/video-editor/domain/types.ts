@@ -13,6 +13,16 @@ export type ResourceDurableSourceKind =
 	| "remote-url"
 	| "missing";
 export type ResourceDurableStatus = "ready" | "needs-permission" | "missing";
+export type ResourceAssetStorageKind = "linked" | "project-copy";
+export type LocalMediaStatus =
+	| "unknown"
+	| "resolving"
+	| "ready-project-copy"
+	| "ready-file-handle"
+	| "needs-permission"
+	| "permission-denied"
+	| "missing"
+	| "error";
 export type ResourceDataStatus = "missing" | "partial" | "ready";
 export type ResourceChunkStatus = "missing" | "loading" | "ready";
 export type ResourceByteRange = [number, number];
