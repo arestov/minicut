@@ -77,7 +77,22 @@ interface ResourceRenderAttrs {
 	size?: unknown;
 	sourceKind?: unknown;
 	status?: unknown;
+	localMediaStatus?: unknown;
 }
+
+const RELINK_REASON_LABELS: Record<string, string> = {
+	"invalid-metadata": "Media metadata could not be verified.",
+	"media-kind-mismatch": "The media type does not match.",
+	"stream-topology-mismatch": "The audio/video streams do not match.",
+	"source-range-too-short": "The file is shorter than the source range used by the timeline.",
+	"duration-differs": "Duration differs from the original.",
+	"frame-rate-differs": "Frame rate differs from the original.",
+	"timebase-differs": "Timebase differs from the original.",
+	"dimensions-differ": "Frame dimensions differ from the original.",
+	"audio-properties-differ": "Audio properties differ from the original.",
+	"identity-not-proven": "File identity could not be proven.",
+	"identity-mismatch": "File content differs from the original.",
+};
 
 const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const editor = useVideoEditor();
@@ -92,7 +107,10 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 		"size",
 		"sourceKind",
 		"status",
+		"localMediaStatus",
 	]) as ResourceRenderAttrs;
+	const [pendingReplacement, setPendingReplacement] = useState<{ operationId: string; confirmationToken: string; reasons: string[] } | null>(null);
+	const [relinkError, setRelinkError] = useState<string | null>(null);
 	const resourceId = scope?._nodeId ?? null;
 	const name = String(resourceAttrs.name);
 	const kind = resourceAttrs.kind ?? "video";
@@ -105,14 +123,22 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 	const totalBytes = Number(resourceAttrs.size ?? 0);
 	const statusLabel =
 		totalBytes > 0 ? `${Math.round(totalBytes / 1024)} KB` : null;
-	const mediaStatus =
-		resourceAttrs.sourceKind === "file-handle" &&
-		typeof resourceAttrs.status === "string"
-			? resourceAttrs.status
-			: null;
-	const canReconnect =
-		Boolean(resourceId) &&
-		(mediaStatus === "missing" || mediaStatus === "needs-permission");
+	const mediaStatus = typeof resourceAttrs.localMediaStatus === "string" ? resourceAttrs.localMediaStatus : "unknown";
+	const inspect = async (intent: "locate-original" | "replace-source") => {
+		if (!resourceId) return;
+		setRelinkError(null);
+		const result = await editor.inspectRelinkCandidate?.(resourceId, intent);
+		if (!result) return;
+		if (result.policy.classification === "exact-match") {
+			await editor.commitResourceRelink?.(result.operationId);
+			return;
+		}
+		if (result.policy.classification === "compatible-replacement" && result.confirmationToken) {
+			setPendingReplacement({ operationId: result.operationId, confirmationToken: result.confirmationToken, reasons: result.policy.reasons });
+			return;
+		}
+		setRelinkError(result.policy.reasons.map((reason: string) => RELINK_REASON_LABELS[reason] ?? reason).join(" "));
+	};
 	const durationLabel =
 		resourceAttrs.duration != null ? `${duration.toFixed(1)}s` : "-";
 
@@ -125,7 +151,9 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 					<small>
 						{kind} | {mime} | {durationLabel}
 					</small>
-					{mediaStatus ? <small>{mediaStatus}</small> : null}
+					{mediaStatus === "ready-project-copy" ? <small>Using project copy</small> : null}
+					{mediaStatus === "permission-denied" ? <small>Access denied</small> : null}
+					{mediaStatus !== "unknown" && mediaStatus !== "ready-project-copy" && mediaStatus !== "permission-denied" ? <small>{mediaStatus}</small> : null}
 					{statusLabel ? <small>{statusLabel}</small> : null}
 					<div className="ve-resource-row__action-line">
 						<IconButton
@@ -142,20 +170,26 @@ const ResourceRow = ({ onAddToTimeline }: ResourceRowProps) => {
 						>
 							Add
 						</IconButton>
-						{canReconnect ? (
+						{mediaStatus === "needs-permission" || mediaStatus === "permission-denied" ? (
 							<Button
 								type="button"
 								variant="outline"
-								onClick={() => {
-									if (resourceId) {
-										void editor.reconnectResourceMedia?.(resourceId);
-									}
-								}}
+								onClick={() => { if (resourceId) void editor.requestResourceAccess?.(resourceId); }}
 							>
-								Reconnect media
+								{mediaStatus === "needs-permission" ? "Grant access" : "Try again"}
 							</Button>
 						) : null}
+						{mediaStatus === "missing" || mediaStatus === "permission-denied" ? <Button type="button" variant="outline" onClick={() => void inspect("locate-original")}>{mediaStatus === "missing" ? "Locate file" : "Locate original"}</Button> : null}
+						<Button type="button" variant="outline" disabled={!resourceId} onClick={() => void inspect("replace-source")}>Replace source</Button>
 					</div>
+					{relinkError ? <p role="alert">{relinkError}</p> : null}
+					{pendingReplacement ? (
+						<div role="dialog" aria-modal="true" aria-label="Confirm source replacement">
+							<p>{pendingReplacement.reasons.map((reason) => RELINK_REASON_LABELS[reason] ?? reason).join(" ")}</p>
+							<Button type="button" onClick={async () => { await editor.commitResourceRelink?.(pendingReplacement.operationId, pendingReplacement.confirmationToken); setPendingReplacement(null); }}>Confirm replacement</Button>
+							<Button type="button" variant="outline" onClick={() => setPendingReplacement(null)}>Cancel</Button>
+						</div>
+					) : null}
 				</div>
 			</div>
 		</li>

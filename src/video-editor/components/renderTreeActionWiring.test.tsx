@@ -213,7 +213,7 @@ describe("MediaBin import wiring", () => {
 
 	it("surfaces handle-backed media restore status in resource rows", async () => {
 		const user = userEvent.setup();
-		const reconnectResourceMedia = vi.fn();
+		const requestResourceAccess = vi.fn();
 		useManyMock.mockReturnValue([{ _nodeId: "resource:status" }]);
 		useAttrsMock.mockReturnValue({
 			name: "status-video.webm",
@@ -224,6 +224,7 @@ describe("MediaBin import wiring", () => {
 			size: 1024,
 			sourceKind: "file-handle",
 			status: "needs-permission",
+			localMediaStatus: "needs-permission",
 		});
 		useVideoEditorMock.mockReturnValue({
 			resolveResourceUrl: (_resourceId: string, fallbackUrl: string) =>
@@ -239,14 +240,33 @@ describe("MediaBin import wiring", () => {
 				requestSelectedClipExport: vi.fn(),
 				setCursor: vi.fn(),
 			},
-			reconnectResourceMedia,
+			requestResourceAccess,
 		});
 
 		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
 
 		expect(screen.getByText("needs-permission")).toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: "Reconnect media" }));
-		expect(reconnectResourceMedia).toHaveBeenCalledWith("resource:status");
+		await user.click(screen.getByRole("button", { name: "Grant access" }));
+		expect(requestResourceAccess).toHaveBeenCalledWith("resource:status");
+	});
+
+	it("requires confirmation before committing a compatible replacement", async () => {
+		const user = userEvent.setup();
+		const commitResourceRelink = vi.fn(async () => ({ ok: true }));
+		useManyMock.mockReturnValue([{ _nodeId: "resource:replace" }]);
+		useAttrsMock.mockReturnValue({ name: "source.webm", kind: "video", mime: "video/webm", duration: 10, url: "", size: 100, sourceKind: "file-handle", localMediaStatus: "ready-project-copy" });
+		useVideoEditorMock.mockReturnValue({
+			resolveResourceUrl: (_id: string, url: string) => url,
+			actions: { createProject: vi.fn(), addTextClip: vi.fn(), importFilesIntoProject: vi.fn() },
+			inspectRelinkCandidate: vi.fn(async () => ({ operationId: "op", confirmationToken: "confirm", policy: { classification: "compatible-replacement", reasons: ["identity-mismatch"], requiresConfirmation: true } })),
+			commitResourceRelink,
+		});
+		renderWithScope(<MediaBin />, { _nodeId: "project:media-bin" });
+		expect(screen.getByText("Using project copy")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Replace source" }));
+		expect(screen.getByRole("dialog", { name: "Confirm source replacement" })).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Confirm replacement" }));
+		expect(commitResourceRelink).toHaveBeenCalledWith("op", "confirm");
 	});
 });
 
