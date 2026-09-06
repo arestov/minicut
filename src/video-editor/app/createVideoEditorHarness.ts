@@ -1,4 +1,5 @@
 import { createMiniCutPageSyncRuntime } from "../dkt/runtime/createMiniCutPageSyncRuntime";
+import { WORKSPACE_OPEN_STATUS } from "../dkt/runtime/workspaceOpenState";
 import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
 import { createResourceTransferManager } from "../media/resourceTransferManager";
@@ -248,6 +249,8 @@ export const createVideoEditorHarness = (
 		let disposeProjectResources = EMPTY_CLEANUP;
 
 		const syncActiveProjectResources = () => {
+			const workspaceStatus = pageRuntime.getSnapshot().workspaceOpenState?.status;
+			if (workspaceStatus !== WORKSPACE_OPEN_STATUS.READY && workspaceStatus !== WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY) return;
 			const rootScope = pageRuntime.getRootScope();
 			if (!rootScope) {
 				resourceTransferManager.syncResources([]);
@@ -315,6 +318,7 @@ export const createVideoEditorHarness = (
 					if (!hydratedRecoveryResources.has(`${activeProjectScope._nodeId}:${resourceId}`)) continue;
 					const durableStorageKind = (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind;
 					const durableAssetRef = (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef;
+					if (typeof durableStorageKind !== "string" || typeof attrs.sourceKind !== "string" || typeof attrs.status !== "string") continue;
 					if (durableStorageKind === "project-copy" && typeof durableAssetRef !== "string") continue;
 					if (startedRecoveryResources.has(resourceId)) continue;
 					if (recoveringResources.has(resourceId)) continue;
@@ -405,12 +409,14 @@ export const createVideoEditorHarness = (
 		const disposeRootScope = pageRuntime.subscribeRootScope(
 			resubscribeActiveProjectRel,
 		);
+		const disposeWorkspaceState = pageRuntime.subscribe(resubscribeActiveProjectRel);
 
 		resubscribeActiveProjectRel();
 
 		return () => {
 			disposeProjectResources();
 			disposeActiveProjectRel();
+			disposeWorkspaceState();
 			disposeRootScope();
 		};
 	};
@@ -636,6 +642,7 @@ export const createVideoEditorHarness = (
 						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return "noop";
 						const metadata = request.candidateMetadata as Record<string, unknown> | null;
 						const completion = { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: "file-handle", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, ...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}), ...(typeof metadata?.width === "number" ? { width: metadata.width } : {}), ...(typeof metadata?.height === "number" ? { height: metadata.height } : {}), localMediaAvailability: refs.assetRef ? "ready-project-copy" : "ready-file-handle", originalAccessStatus: "granted", updatedAt: Date.now() };
+						pageRuntime.dispatch("completeMediaRecovery", completion, resourceScope);
 						pageRuntime.dispatch("completePublication", completion, { kind: "scope", _nodeId: taskId });
 						return "applied";
 					} });

@@ -117,7 +117,7 @@ describe("owned MediaRecoveryTask action contracts", () => {
 		expect(getAttr(harness.videoResource, "assetRef")).not.toBe("stale-asset");
 		expect(getAttr(task, "phase")).toBe("committing");
 
-		await dispatchAndSettle(harness.ctx, task, "completePublication", {
+		const completion = {
 			operationId: "operation:1",
 			assetStorageKind: "project-copy",
 			assetRef: "project/project:1/resource/resource:1/asset/operation:1",
@@ -132,7 +132,9 @@ describe("owned MediaRecoveryTask action contracts", () => {
 			localMediaAvailability: "ready-project-copy",
 			originalAccessStatus: "granted",
 			updatedAt: 103,
-		});
+		};
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "completeMediaRecovery", completion);
+		await dispatchAndSettle(harness.ctx, task, "completePublication", completion);
 
 		expect(getAttr(harness.videoResource, "assetRef")).toContain("operation:1");
 		expect(getAttr(harness.videoResource, "localMediaAvailability")).toBe("ready-project-copy");

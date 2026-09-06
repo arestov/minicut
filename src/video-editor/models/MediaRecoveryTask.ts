@@ -213,27 +213,17 @@ export const MediaRecoveryTask = model({
 				},
 			],
 		},
-		completePublication: [
-			{
-				to: { forwarded: ["$output"] },
-				fn: [
-					["$noop", "operationId", "phase"] as const,
-					(payload: unknown, noop: unknown, operationId: unknown, phase: unknown) => {
-						const value = payload as Record<string, unknown> | null;
-						return value && value.operationId === operationId && phase === "committing" ? { forwarded: value } : noop;
-					},
-				],
-			},
-			{
-				when: [[] as const, (payload: unknown) => Boolean(payload)],
-				to: { phase: ["phase"], outcome: ["outcome"], updatedAt: ["updatedAt"], stagedAssetRef: ["stagedAssetRef"], stagedHandleRef: ["stagedHandleRef"], forwarded: ["$output"] },
-				fn: (payload: unknown) => {
-					const value = payload as Record<string, unknown>;
-					return { phase: "completed", outcome: "completed", updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : null, stagedAssetRef: null, stagedHandleRef: null, forwarded: value };
+		completePublication: {
+			to: { phase: ["phase"], outcome: ["outcome"], updatedAt: ["updatedAt"], stagedAssetRef: ["stagedAssetRef"], stagedHandleRef: ["stagedHandleRef"] },
+			fn: [
+				["$noop", "operationId", "phase"] as const,
+				(payload: unknown, noop: unknown, operationId: unknown, phase: unknown) => {
+					const value = payload as Record<string, unknown> | null;
+					if (!value || value.operationId !== operationId || phase !== "committing") return noop;
+					return { phase: "completed", outcome: "completed", updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : null, stagedAssetRef: null, stagedHandleRef: null };
 				},
-			},
-			{ when: [[] as const, (payload: unknown) => Boolean(payload)], to: ["<< resource", { action: "completeMediaRecovery", sub_flow: true }], fn: (payload: unknown) => payload },
-		],
+			],
+		},
 	},
 	effects: {
 		api: {

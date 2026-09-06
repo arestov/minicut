@@ -340,6 +340,12 @@ export const Resource = model({
 			},
 		],
 		completeMediaRecovery: {
+			aggregate: {
+				name: "importPipeline",
+				role: "boundary",
+				as: "completeMediaRecovery",
+				permission: "entry",
+			},
 			to: {
 				assetStorageKind: ["assetStorageKind"], assetRef: ["assetRef"], sourceKind: ["sourceKind"], sourceRef: ["sourceRef"], url: ["url"], contentFingerprint: ["contentFingerprint"], fingerprintVersion: ["fingerprintVersion"], duration: ["duration"], width: ["width"], height: ["height"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"],
 			},
