@@ -339,15 +339,15 @@ export const Resource = model({
 				fn: (payload: unknown) => payload,
 			},
 		],
-		completeMediaRecovery: [{
+		completeMediaRecovery: {
 			to: {
-				assetStorageKind: ["assetStorageKind"], assetRef: ["assetRef"], sourceKind: ["sourceKind"], sourceRef: ["sourceRef"], url: ["url"], contentFingerprint: ["contentFingerprint"], fingerprintVersion: ["fingerprintVersion"], duration: ["duration"], width: ["width"], height: ["height"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], task: ["<< activeMediaRecoveryTask", { action: "completePublication", sub_flow: true }],
+				assetStorageKind: ["assetStorageKind"], assetRef: ["assetRef"], sourceKind: ["sourceKind"], sourceRef: ["sourceRef"], url: ["url"], contentFingerprint: ["contentFingerprint"], fingerprintVersion: ["fingerprintVersion"], duration: ["duration"], width: ["width"], height: ["height"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"],
 			},
 			fn: [
-				["$noop", "< @one:operationId < activeMediaRecoveryTask", "< @one:phase < activeMediaRecoveryTask"] as const,
-				(payload: unknown, noop: unknown, activeOperationId: unknown, activePhase: unknown) => {
+				["duration", "width", "height"] as const,
+				(payload: unknown, duration: unknown, width: unknown, height: unknown) => {
 					const value = payload as Record<string, unknown> | null;
-					if (!value || value.operationId !== activeOperationId || activePhase !== "committing") return noop;
+					if (!value) return {};
 					return {
 						assetStorageKind: value.assetStorageKind,
 						assetRef: value.assetRef ?? null,
@@ -356,16 +356,15 @@ export const Resource = model({
 						url: typeof value.url === "string" ? value.url : "",
 						contentFingerprint: value.contentFingerprint ?? null,
 						fingerprintVersion: value.fingerprintVersion ?? null,
-						duration: value.duration,
-						width: value.width ?? null,
-						height: value.height ?? null,
+						duration: typeof value.duration === "number" ? value.duration : duration,
+						width: typeof value.width === "number" ? value.width : width ?? null,
+						height: typeof value.height === "number" ? value.height : height ?? null,
 						localMediaAvailability: value.localMediaAvailability,
 						originalAccessStatus: value.originalAccessStatus,
-						task: value,
 					};
 				},
 			],
-		}],
+		},
 		renameResource: {
 			to: {
 				name: ["name"],

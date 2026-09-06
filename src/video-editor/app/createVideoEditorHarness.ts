@@ -150,6 +150,9 @@ export const createVideoEditorHarness = (
 	const mediaRecoveryBootId = `boot:${crypto.randomUUID()}`;
 	const startedRecoveryResources = new Set<string>();
 	const recoveringResources = new Map<string, Promise<void>>();
+	const committingRecoveryOperations = new Set<string>();
+	const hydratedRecoveryResources = new Set<string>();
+	const capturedHydratedProjects = new Set<string>();
 	let authorityClientRef: EditorAuthorityClient | null = null;
 	const resourceChunkSize =
 		options.mediaTransferOptions?.chunkSize ?? DEFAULT_RESOURCE_CHUNK_SIZE;
@@ -304,17 +307,30 @@ export const createVideoEditorHarness = (
 					);
 
 				resourceTransferManager.syncResources(resources);
+				if (!capturedHydratedProjects.has(activeProjectScope._nodeId)) {
+					for (const { resourceId } of resources) hydratedRecoveryResources.add(`${activeProjectScope._nodeId}:${resourceId}`);
+					capturedHydratedProjects.add(activeProjectScope._nodeId);
+				}
 				for (const { resourceId, attrs } of resources) {
+					if (!hydratedRecoveryResources.has(`${activeProjectScope._nodeId}:${resourceId}`)) continue;
+					const durableStorageKind = (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind;
+					const durableAssetRef = (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef;
+					if (durableStorageKind === "project-copy" && typeof durableAssetRef !== "string") continue;
+					if (startedRecoveryResources.has(resourceId)) continue;
 					if (recoveringResources.has(resourceId)) continue;
-					const snapshot = { resourceId, projectId: activeProjectScope._nodeId, assetStorageKind: (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind, assetRef: (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: (attrs as { sourceRef?: unknown }).sourceRef, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
+					const resourceScope = { kind: "scope" as const, _nodeId: resourceId };
+					if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")) continue;
+					const snapshot = { resourceId, projectId: activeProjectScope._nodeId, assetStorageKind: durableStorageKind, assetRef: durableAssetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: (attrs as { sourceRef?: unknown }).sourceRef, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
 					const recovery = (async () => {
+						await new Promise<void>((resolve) => platform.setTimeout(resolve, 0));
+						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")) return;
 						const assetRef = typeof snapshot.assetRef === "string" ? snapshot.assetRef : null;
 						const handleRef = typeof snapshot.sourceRef === "string" && snapshot.sourceRef.includes("/handle/") ? snapshot.sourceRef : null;
 						await projectAssets.reconcile(activeProjectScope._nodeId, resourceId, assetRef);
 						await mediaHandleStore.reconcile(resourceId, handleRef);
 						if (!startedRecoveryResources.has(resourceId)) {
 							startedRecoveryResources.add(resourceId);
-							pageRuntime.dispatch("startMediaRecovery", { operationId: `${mediaRecoveryBootId}:${resourceId}`, attemptId: `${mediaRecoveryBootId}:${resourceId}`, bootId: mediaRecoveryBootId, recoveryKind: "restore", intent: "restore", createdAt: Date.now(), updatedAt: Date.now() }, { kind: "scope", _nodeId: resourceId });
+							pageRuntime.dispatch("startMediaRecovery", { operationId: `${mediaRecoveryBootId}:${resourceId}`, attemptId: `${mediaRecoveryBootId}:${resourceId}`, bootId: mediaRecoveryBootId, recoveryKind: "restore", intent: "restore", createdAt: Date.now(), updatedAt: Date.now() }, resourceScope);
 						}
 						await localMediaResolver.restoreResource(snapshot);
 					})().finally(() => recoveringResources.delete(resourceId));
@@ -605,13 +621,13 @@ export const createVideoEditorHarness = (
 
 	const subscribeToMediaRecoveryTasks = (): (() => void) => {
 		if (!pageRuntime || !dktPort) return EMPTY_CLEANUP;
-		return pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {
-			const request = payload as Record<string, unknown>;
-			if (request.mode === "commit") {
-				void (async () => {
+		const commitRequest = async (request: Record<string, unknown>) => {
 					const resourceId = String(request.resourceId ?? ""); const taskId = String(request.taskId ?? ""); const operationId = String(request.operationId ?? "");
+					if (!operationId || committingRecoveryOperations.has(operationId)) return;
+					committingRecoveryOperations.add(operationId);
+					await new Promise<void>((resolve) => platform.setTimeout(resolve, 0));
 					const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId); const root = pageRuntime.getRootScope(); const project = root ? pageRuntime.readOne(root, "activeProject") : null;
-					if (!resourceScope || !project || pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return;
+					if (!resourceScope || !project) return;
 					const runtime = runtimeTasks.getRuntimeRef(String(request.runtimeHandleId ?? "")) as { file?: File; handle?: FileSystemFileHandle } | null;
 					if (!(runtime?.file instanceof File) || !runtime.handle) { pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: "runtime-ref-expired", errorMessage: "Choose the file again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); return; }
 					const url = platform.createObjectUrl(runtime.file); if (!url) return;
@@ -619,12 +635,23 @@ export const createVideoEditorHarness = (
 					const result = await commitRecoveryStorage({ projectId: project._nodeId, resourceId, operationId, file: runtime.file, handleRecord: { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now }, assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore, publish: async (refs) => {
 						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return "noop";
 						const metadata = request.candidateMetadata as Record<string, unknown> | null;
-						pageRuntime.dispatch("completeMediaRecovery", { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: "file-handle", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, duration: metadata?.duration, width: metadata?.width ?? null, height: metadata?.height ?? null, localMediaAvailability: refs.assetRef ? "ready-project-copy" : "ready-file-handle", originalAccessStatus: "granted", updatedAt: Date.now() }, resourceScope);
+						const completion = { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: "file-handle", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, ...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}), ...(typeof metadata?.width === "number" ? { width: metadata.width } : {}), ...(typeof metadata?.height === "number" ? { height: metadata.height } : {}), localMediaAvailability: refs.assetRef ? "ready-project-copy" : "ready-file-handle", originalAccessStatus: "granted", updatedAt: Date.now() };
+						pageRuntime.dispatch("completePublication", completion, { kind: "scope", _nodeId: taskId });
 						return "applied";
 					} });
 					if (result.ok) { localMediaResolver.activateObjectUrl(resourceId, url, result.assetRef ? "ready-project-copy" : "ready-file-handle"); runtimeTasks.deleteRuntimeRef(String(request.runtimeHandleId ?? "")); }
 					else { platform.revokeObjectUrl(url); if (result.reason !== "stale") pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: result.reason, errorMessage: "Could not save the selected source. Try again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); }
-				})();
+		};
+		return pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {
+			const request = payload as Record<string, unknown>;
+			if (request.mode === "commit") {
+				void commitRequest(request);
+				return;
+			}
+			if (request.intent === "restore" && typeof request.runtimeHandleId === "string") {
+				const operationId = String(request.operationId); const taskId = String(request.taskId); const candidate = request.original;
+				pageRuntime.dispatch("recordInspection", { operationId, classification: "exact-match", confirmationRequired: false, compatibility: { classification: "exact-match", reasons: [], requiresConfirmation: false, diff: {}, durationTolerance: 0 }, candidateMetadata: candidate, candidateFingerprint: request.originalFingerprint ?? null, candidateFingerprintVersion: request.fingerprintVersion ?? null, updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId });
+				pageRuntime.dispatch("requestCommit", { operationId, updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId });
 				return;
 			}
 			void executeMediaRecoveryInspectionTask({

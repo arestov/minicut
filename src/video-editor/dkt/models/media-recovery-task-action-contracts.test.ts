@@ -107,7 +107,7 @@ describe("owned MediaRecoveryTask action contracts", () => {
 			expect(getAttr(task, "phase")).toBe(phase);
 		}
 
-		await dispatchAndSettle(harness.ctx, harness.videoResource, "completeMediaRecovery", {
+		await dispatchAndSettle(harness.ctx, task, "completePublication", {
 			operationId: "stale",
 			assetStorageKind: "project-copy",
 			assetRef: "stale-asset",
@@ -117,7 +117,7 @@ describe("owned MediaRecoveryTask action contracts", () => {
 		expect(getAttr(harness.videoResource, "assetRef")).not.toBe("stale-asset");
 		expect(getAttr(task, "phase")).toBe("committing");
 
-		await dispatchAndSettle(harness.ctx, harness.videoResource, "completeMediaRecovery", {
+		await dispatchAndSettle(harness.ctx, task, "completePublication", {
 			operationId: "operation:1",
 			assetStorageKind: "project-copy",
 			assetRef: "project/project:1/resource/resource:1/asset/operation:1",

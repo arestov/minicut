@@ -28,7 +28,7 @@ describe("executeImportFilesTask handle-backed imports", () => {
 		const putHandle = vi.fn(async () => undefined);
 		const putAsset = vi.fn(async () => ({ ok: true as const, assetRef: "project:1/resource:1" }));
 		const dispatch = vi.fn((actionName: string, payload: unknown, scope) => {
-			if (actionName === "importResourceIntoActiveProject") {
+			if (actionName === "importResource") {
 				Object.assign(resourceAttrs, payload, { url: (payload as { url: string }).url });
 				resources.push(resourceScope);
 				return;
@@ -130,7 +130,7 @@ describe("executeImportFilesTask handle-backed imports", () => {
 			},
 			dkt: {
 				dispatch: vi.fn((actionName: string, payload: unknown) => {
-					if (actionName === "importResourceIntoActiveProject") {
+					if (actionName === "importResource") {
 						Object.assign(resourceAttrs, payload);
 						resources.push(resourceScope);
 					}

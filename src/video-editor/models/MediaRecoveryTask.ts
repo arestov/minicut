@@ -166,10 +166,10 @@ export const MediaRecoveryTask = model({
 				],
 			},
 			{
-				to: ["$fx_mediaRecovery", { intent: "call", drop_when_api_not_ready: false }],
+				to: ["$fx_mediaRecoveryCommit", { intent: "call", drop_when_api_not_ready: false }],
 				fn: [
-					["$noop", "_node_id", "operationId", "runtimeHandleId", "candidateMetadata", "candidateFingerprint", "candidateFingerprintVersion", "< @one:_node_id < resource"] as const,
-					(_payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, runtimeHandleId: unknown, candidateMetadata: unknown, candidateFingerprint: unknown, candidateFingerprintVersion: unknown, resourceId: unknown) => typeof taskId === "string" && typeof resourceId === "string" ? { mode: "commit", taskId, resourceId, operationId, runtimeHandleId, candidateMetadata, candidateFingerprint, candidateFingerprintVersion } : noop,
+					["$noop", "_node_id", "operationId", "runtimeHandleId", "candidateMetadata", "candidateFingerprint", "candidateFingerprintVersion", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource"] as const,
+					(_payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, runtimeHandleId: unknown, candidateMetadata: unknown, candidateFingerprint: unknown, candidateFingerprintVersion: unknown, resourceId: unknown, kind: unknown, duration: unknown, width: unknown, height: unknown) => typeof taskId === "string" && typeof resourceId === "string" ? { mode: "commit", taskId, resourceId, operationId, runtimeHandleId, candidateMetadata: candidateMetadata ?? { kind, duration, width, height }, candidateFingerprint, candidateFingerprintVersion } : noop,
 				],
 			},
 		],
@@ -213,17 +213,27 @@ export const MediaRecoveryTask = model({
 				},
 			],
 		},
-		completePublication: {
-			to: { phase: ["phase"], outcome: ["outcome"], updatedAt: ["updatedAt"], stagedAssetRef: ["stagedAssetRef"], stagedHandleRef: ["stagedHandleRef"] },
-			fn: [
-				["$noop", "operationId", "phase"] as const,
-				(payload: unknown, noop: unknown, operationId: unknown, phase: unknown) => {
-					const value = payload as Record<string, unknown> | null;
-					if (!value || value.operationId !== operationId || phase !== "committing") return noop;
-					return { phase: "completed", outcome: "completed", updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : null, stagedAssetRef: null, stagedHandleRef: null };
+		completePublication: [
+			{
+				to: { forwarded: ["$output"] },
+				fn: [
+					["$noop", "operationId", "phase"] as const,
+					(payload: unknown, noop: unknown, operationId: unknown, phase: unknown) => {
+						const value = payload as Record<string, unknown> | null;
+						return value && value.operationId === operationId && phase === "committing" ? { forwarded: value } : noop;
+					},
+				],
+			},
+			{
+				when: [[] as const, (payload: unknown) => Boolean(payload)],
+				to: { phase: ["phase"], outcome: ["outcome"], updatedAt: ["updatedAt"], stagedAssetRef: ["stagedAssetRef"], stagedHandleRef: ["stagedHandleRef"], forwarded: ["$output"] },
+				fn: (payload: unknown) => {
+					const value = payload as Record<string, unknown>;
+					return { phase: "completed", outcome: "completed", updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : null, stagedAssetRef: null, stagedHandleRef: null, forwarded: value };
 				},
-			],
-		},
+			},
+			{ when: [[] as const, (payload: unknown) => Boolean(payload)], to: ["<< resource", { action: "completeMediaRecovery", sub_flow: true }], fn: (payload: unknown) => payload },
+		],
 	},
 	effects: {
 		api: {
@@ -235,6 +245,15 @@ export const MediaRecoveryTask = model({
 		},
 		out: {
 			$fx_mediaRecovery: {
+				api: ["mediaRecoveryRuntime"],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as { requestMediaRecovery?: (payload: unknown) => void } | null;
+					const payload = (state as { payload?: unknown } | null)?.payload;
+					if (runtime?.requestMediaRecovery && payload && typeof payload === "object") runtime.requestMediaRecovery(payload);
+				},
+			},
+			$fx_mediaRecoveryCommit: {
 				api: ["mediaRecoveryRuntime"],
 				create_when: { api_inits: true },
 				fn: (api: unknown, state: unknown) => {

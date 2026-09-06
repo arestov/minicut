@@ -45,7 +45,7 @@ export const executeImportFilesTask = async ({ task, env, projectScope: supplied
 			const operationId = crypto.randomUUID(); const attemptId = crypto.randomUUID(); const bootId = `import:${batchRef}`;
 			const runtimeHandleId = env.tasks.putRuntimeRef({ file, handle });
 			const ownerPeerId = env.transfers.getPeerId(); const mime = file.type || "application/octet-stream";
-			env.dkt.dispatch("importResourceIntoActiveProject", {
+			env.dkt.dispatch("importResource", {
 				name: file.name, kind, url: objectUrl, mime, duration, size: file.size, lastModified: file.lastModified,
 				sourceKind: handle ? "file-handle" : "object-url", sourceRef: null, source: { kind: "local", ownerPeerId }, status: "ready",
 				data: { status: "ready", chunkSize: env.resourceChunkSize, chunks: {}, ranges: { loaded: [[0, file.size]], requested: [] }, loadedBytes: file.size },
@@ -54,7 +54,7 @@ export const executeImportFilesTask = async ({ task, env, projectScope: supplied
 				operationId, attemptId, bootId, recoveryKind: "import", intent: "restore", runtimeHandleId,
 				original: { kind, duration, frameRate: null, timebase: null, width: null, height: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : null } },
 				requiredSourceEnd: duration, originalFingerprint: contentFingerprint, createdAt: Date.now(), updatedAt: Date.now(),
-			}, env.pageRuntime?.getRootScope() ?? project);
+			}, project);
 			processed += 1; progress(env, project, { taskId: batchRef, stage: "processing", processed, total: entries.length });
 		}
 		progress(env, project, { taskId: batchRef, stage: "done", processed, total: entries.length }); env.tasks.completeTask(task);

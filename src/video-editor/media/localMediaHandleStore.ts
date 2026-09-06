@@ -136,8 +136,9 @@ export const createLocalMediaHandleStore = (
 			const transaction = db.transaction(storeName, mode);
 			const store = transaction.objectStore(storeName);
 			const request = fn(store);
+			const done = transactionDone(transaction);
 			const result = await requestToPromise(request);
-			await transactionDone(transaction);
+			await done;
 			return result;
 		} finally {
 			db.close();
