@@ -273,7 +273,7 @@ export const executeImportFilesTask = async ({
 			let contentFingerprint: string | null = null;
 			let fingerprintVersion: string | null = null;
 			try {
-				if (typeof env.media.fingerprintFile !== "function") throw new Error("Fingerprint unavailable");
+				if (!env.media.fingerprintFile) throw new Error("Fingerprint unavailable");
 				const identity = await env.media.fingerprintFile(file);
 				contentFingerprint = identity.fingerprint;
 				fingerprintVersion = identity.version;
@@ -331,7 +331,7 @@ export const executeImportFilesTask = async ({
 				continue;
 			}
 
-			if (handle) {
+			if (handle && env.mediaHandles) {
 				await env.mediaHandles.put({
 					resourceId,
 					handle,
@@ -379,7 +379,7 @@ export const executeImportFilesTask = async ({
 				);
 			}
 
-			const estimate = typeof env.media.estimateStorage === "function" ? await env.media.estimateStorage() : {};
+			const estimate = env.media.estimateStorage ? await env.media.estimateStorage() : {};
 			const available = typeof estimate.quota !== "number" || typeof estimate.usage !== "number" || estimate.quota - estimate.usage >= file.size;
 			const assetResult = available && env.projectAssets
 				? await env.projectAssets.putFromFile(projectId, resourceId, file, { name: file.name, mime, size: file.size, lastModified: file.lastModified }, { operationId: inputBatchHandleId })

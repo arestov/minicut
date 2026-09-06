@@ -11,6 +11,24 @@ const makeHandle = (name = "clip.webm") =>
 		name,
 	}) as FileSystemFileHandle;
 
+const putLegacyRecord = async (record: Record<string, unknown>): Promise<void> => {
+	const db = await new Promise<IDBDatabase>((resolve, reject) => {
+		const request = indexedDB.open(LOCAL_MEDIA_HANDLE_DB_NAME, 1);
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const transaction = db.transaction("handles", "readwrite");
+			transaction.objectStore("handles").put(record);
+			transaction.oncomplete = () => resolve();
+			transaction.onerror = () => reject(transaction.error);
+		});
+	} finally {
+		db.close();
+	}
+};
+
 describe("local media handle side-channel store", () => {
 	it("stores and reads FileSystemFileHandle records by resource id", async () => {
 		const store = createLocalMediaHandleStore(indexedDB);
@@ -56,6 +74,27 @@ describe("local media handle side-channel store", () => {
 		await expect(
 			store.put({ ...base, bytes: new Uint8Array([1, 2, 3]) } as never),
 		).rejects.toThrow(/must not persist media bytes/i);
+	});
+
+	it("normalizes legacy records with missing or null file metadata", async () => {
+		await putLegacyRecord({
+			resourceId: "resource:legacy",
+			handle: makeHandle("legacy.webm"),
+			name: "legacy.webm",
+			mime: "video/webm",
+			createdAt: 1,
+			updatedAt: 2,
+		});
+
+		const record = await createLocalMediaHandleStore(indexedDB).get(
+			"resource:legacy",
+		);
+
+		expect(record).toMatchObject({
+			resourceId: "resource:legacy",
+			size: null,
+			lastModified: null,
+		});
 	});
 
 	it("exposes diagnostics without reading handle payloads", async () => {

@@ -27,6 +27,10 @@ export interface EditorMediaPort {
 		url: string,
 		kind: Extract<ResourceKind, "video" | "audio" | "image">,
 	): Promise<number>;
+}
+
+/** Optional capabilities used only by durable import/recovery workflows. */
+export interface EditorMediaRecoveryPort {
 	fingerprintFile(file: File): Promise<{ fingerprint: string; version: string }>;
 	estimateStorage(): Promise<{ quota?: number; usage?: number }>;
 }
@@ -82,13 +86,13 @@ export interface EditorDktScopePort {
 export interface EditorActionEnvironment {
 	pageRuntime: PageSyncRuntime | null;
 	dkt: EditorDktScopePort | null;
-	media: EditorMediaPort;
+	media: EditorMediaPort & Partial<EditorMediaRecoveryPort>;
 	export: EditorExportPort;
 	transfers: EditorResourceTransferPort;
 	lifecycle: EditorLifecyclePort;
 	tasks: EditorRuntimeTaskPort;
-	mediaHandles: ReturnType<typeof createLocalMediaHandleStore>;
-	projectAssets: ProjectAssetStore;
+	mediaHandles?: ReturnType<typeof createLocalMediaHandleStore>;
+	projectAssets?: ProjectAssetStore;
 	platform: VideoEditorHarnessPlatform;
 	resourceChunkSize: number;
 }

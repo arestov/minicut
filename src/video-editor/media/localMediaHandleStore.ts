@@ -99,6 +99,18 @@ const validateRecord = (record: LocalMediaHandleRecord): void => {
 	}
 };
 
+const normalizeRecord = (
+	record: LocalMediaHandleRecord | (Omit<LocalMediaHandleRecord, "size" | "lastModified"> & {
+		size?: number | null;
+		lastModified?: number | null;
+	}),
+): LocalMediaHandleRecord => ({
+	...record,
+	size: typeof record.size === "number" ? record.size : null,
+	lastModified:
+		typeof record.lastModified === "number" ? record.lastModified : null,
+});
+
 export const createLocalMediaHandleStore = (
 	indexedDBFactory: IndexedDbFactoryLike = globalThis.indexedDB,
 ) => {
@@ -129,7 +141,7 @@ export const createLocalMediaHandleStore = (
 			const record = (await withStore("readonly", (store) =>
 				store.get(resourceId),
 			)) as LocalMediaHandleRecord | undefined;
-			return record ?? null;
+			return record ? normalizeRecord(record) : null;
 		},
 		async delete(resourceId: string): Promise<void> {
 			if (!resourceId) return;

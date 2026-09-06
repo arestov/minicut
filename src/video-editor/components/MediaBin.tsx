@@ -8,6 +8,7 @@ import { useMany } from "../../dkt-react-sync/hooks/useMany";
 import { useScope } from "../../dkt-react-sync/hooks/useScope";
 import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 import { useVideoEditor } from "../app/VideoEditorContext";
+import type { MediaImportEntry } from "../app/actionRuntimeTypes";
 import type { ResourceAttrs } from "../render/registryTypes";
 import { Button, IconButton } from "./ControlPrimitives";
 
@@ -340,7 +341,7 @@ const useProjectImportFiles = () => {
 	const { actions } = useVideoEditor();
 	const projectScope = useScope();
 	return useCallback(
-		(files: FileList | File[] | Array<{ file: File; handle: FileSystemFileHandle }>) => {
+		(files: FileList | MediaImportEntry[]) => {
 			if (projectScope) {
 				actions.importFilesIntoProject(files, projectScope);
 			}
@@ -360,7 +361,7 @@ const MediaBinPanel = ({
 	viewMode,
 }: {
 	children: React.ReactNode;
-	importFiles?: (files: FileList | File[]) => void;
+	importFiles?: (files: FileList | MediaImportEntry[]) => void;
 	kindFilter: ResourceAttrs["kind"] | "all";
 	query: string;
 	setKindFilter: (value: ResourceAttrs["kind"] | "all") => void;
@@ -376,7 +377,12 @@ const MediaBinPanel = ({
 					<label
 						className="ve-import-button"
 						onClick={async (event) => {
-							const picker = window.showOpenFilePicker;
+							const picker = (window as Window & {
+								showOpenFilePicker?: (options?: {
+									multiple?: boolean;
+									types?: Array<{ description?: string; accept: Record<string, string[]> }>;
+								}) => Promise<FileSystemFileHandle[]>;
+							}).showOpenFilePicker;
 							if (typeof picker !== "function") {
 								return;
 							}

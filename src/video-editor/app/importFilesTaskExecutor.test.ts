@@ -4,7 +4,7 @@ import { executeImportFilesTask } from "./importFilesTaskExecutor";
 import { createRuntimeTaskFacade } from "./runtimeTaskFacade";
 import type { EditorActionEnvironment } from "./editorActionEnvironment";
 
-const makeScope = (id: string): ReactSyncScopeHandle => ({ _nodeId: id });
+const makeScope = (id: string): ReactSyncScopeHandle => ({ kind: "scope", _nodeId: id });
 
 describe("executeImportFilesTask handle-backed imports", () => {
 	it("persists file handles by resource id and writes sourceRef on the resource", async () => {

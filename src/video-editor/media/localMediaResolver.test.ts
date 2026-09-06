@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createLocalMediaResolver } from "./localMediaResolver";
+import { createLocalMediaResolver, type PermissionFileHandle } from "./localMediaResolver";
 
-const createHandleStore = (handle: Partial<FileSystemFileHandle> | null) => ({
+const createHandleStore = (handle: Partial<PermissionFileHandle> | null) => ({
 	get: vi.fn(async () =>
 		handle
 			? {
@@ -26,7 +26,7 @@ describe("createLocalMediaResolver", () => {
 		const setResourceStatus = vi.fn();
 		const resolver = createLocalMediaResolver({
 			handleStore: createHandleStore({
-				queryPermission: vi.fn(async () => "granted"),
+				queryPermission: vi.fn(async () => "granted" as PermissionState),
 				getFile: vi.fn(async () => new File(["video"], "clip.webm")),
 			}),
 			runtime: {
@@ -53,7 +53,7 @@ describe("createLocalMediaResolver", () => {
 		const setResourceStatus = vi.fn();
 		const resolver = createLocalMediaResolver({
 			handleStore: createHandleStore({
-				queryPermission: vi.fn(async () => "prompt"),
+				queryPermission: vi.fn(async () => "prompt" as PermissionState),
 			}),
 			runtime: {
 				createObjectUrl: vi.fn(() => "blob:runtime/clip"),
@@ -117,7 +117,7 @@ describe("createLocalMediaResolver", () => {
 		const createObjectUrl = vi.fn(() => "blob:runtime/clip");
 		const resolver = createLocalMediaResolver({
 			handleStore: createHandleStore({
-				queryPermission: vi.fn(async () => "granted"),
+				queryPermission: vi.fn(async () => "granted" as PermissionState),
 				getFile: vi.fn(async () => new File(["video"], "clip.webm")),
 			}),
 			runtime: {

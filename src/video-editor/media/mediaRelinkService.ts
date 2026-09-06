@@ -1,6 +1,7 @@
 import { evaluateRelinkCandidate, type MediaTechnicalMetadata, type RelinkPolicyResult } from "./mediaRelinkPolicy";
 import type { ProjectAssetStore } from "./projectAssetStore";
 import type { PermissionFileHandle } from "./localMediaResolver";
+import type { LocalMediaHandleRecord } from "./localMediaHandleStore";
 
 export type RelinkIntent = "locate-original" | "replace-source";
 export type RelinkInspection = {
@@ -14,12 +15,11 @@ export type RelinkCommitResult =
 	| { ok: true }
 	| { ok: false; reason: "stale-operation" | "confirmation-required" | "incompatible" | "storage-error" | "completion-error" };
 
-type HandleRecord = { resourceId: string; handle: FileSystemFileHandle; name: string; size: number; lastModified: number; mime: string; createdAt: number; updatedAt: number };
 type RelinkCandidate = { handle: PermissionFileHandle; file: File };
 type Pending = RelinkInspection & { resourceId: string; projectId: string; candidateValue: RelinkCandidate; fingerprint: string | null; fingerprintVersion: string | null };
 
 export const createMediaRelinkService = (deps: {
-	handles: { get(id: string): Promise<HandleRecord | null>; put(record: HandleRecord): Promise<void>; delete(id: string): Promise<void> };
+	handles: { get(id: string): Promise<LocalMediaHandleRecord | null>; put(record: LocalMediaHandleRecord): Promise<void>; delete(id: string): Promise<void> };
 	assets: ProjectAssetStore;
 	probe(file: File): Promise<MediaTechnicalMetadata>;
 	fingerprint(file: File): Promise<{ fingerprint: string; version: string }>;

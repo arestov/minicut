@@ -332,8 +332,6 @@ export const createVideoEditorHarness = (
 						assetRef: (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef,
 						sourceKind: (attrs as { sourceKind?: unknown }).sourceKind,
 						sourceRef: (attrs as { sourceRef?: unknown }).sourceRef,
-						status: (attrs as { status?: unknown }).status,
-						url: (attrs as { url?: unknown }).url,
 					}) satisfies LocalMediaResourceSnapshot),
 				);
 			};
