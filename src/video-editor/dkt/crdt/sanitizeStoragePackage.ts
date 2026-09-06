@@ -180,10 +180,12 @@ export const sanitizeDktCrdtStoragePackage = <Package extends StoragePackage>(
 				dktStorage.createExpectedRel as (key: string, data: unknown) => unknown
 			)?.(key, sanitized);
 		},
-		commitChanges(meta?: unknown) {
+		commitChanges(done: unknown, meta?: unknown) {
 			const sanitized = sanitizeStorageValue(meta);
 			cloneAssert(sanitized, "dkt.commitChanges.meta");
-			return (dktStorage.commitChanges as (meta?: unknown) => unknown)?.(sanitized);
+			return (
+				dktStorage.commitChanges as (done: unknown, meta?: unknown) => unknown
+			)?.(done, sanitized);
 		},
 	};
 	return {

@@ -43,4 +43,21 @@ describe("sanitizeDktCrdtStoragePackage", () => {
 			{ status: "ready" },
 		]);
 	});
+
+	it("preserves the callback-first commitChanges request contract", () => {
+		const commitChanges = vi.fn();
+		const storagePackage = sanitizeDktCrdtStoragePackage({
+			dktStorage: { commitChanges },
+			crdtStorage: {},
+		});
+		const done = vi.fn();
+
+		(
+			storagePackage.dktStorage as {
+				commitChanges: (done: typeof done, meta: unknown) => void;
+			}
+		).commitChanges(done, { reason: "test", callback: () => null });
+
+		expect(commitChanges).toHaveBeenCalledWith(done, { reason: "test" });
+	});
 });

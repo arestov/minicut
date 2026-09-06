@@ -4,6 +4,7 @@ import { createTestWorkerCrdtTransport } from "../crdt/createTestWorkerCrdtTrans
 import { bootDktModels, type DktTestContext } from "../testingInit";
 import type { DktCrdtTransport } from "../crdt/testRelayContracts";
 import { waitForRuntimeIdle } from "./waitForRuntimeIdle";
+import { runDktStorageRequest, type DktStorageRequest } from "../storage/dktStorageRequest";
 
 type RuntimeModel = DktTestContext["sessionRoot"];
 type PeerId = "A" | "B";
@@ -79,9 +80,14 @@ const bindPeerProject = async (ctx: DktTestContext, project: RuntimeModel) => {
 };
 
 const readDurableOrLiveSnapshot = async (ctx: DktTestContext): Promise<unknown> => {
-	const durableSnapshot = await (
-		ctx.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
-	)?.getSnapshot?.();
+	const request = (
+		ctx.storagePackage?.dktStorage as {
+			getSnapshot?: DktStorageRequest<unknown>;
+		}
+	)?.getSnapshot;
+	const durableSnapshot = request
+		? await runDktStorageRequest(request)
+		: null;
 	return durableSnapshot ?? await toReinitableData(ctx.runtime);
 };
 

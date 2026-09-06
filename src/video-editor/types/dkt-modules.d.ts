@@ -118,3 +118,13 @@ declare module "dkt-all/libs/provoda/crdt/storage/atomic/dktStorageOpenPolicy.js
 		expected?: unknown,
 	) => Promise<{ manifest: unknown; record: unknown }>;
 }
+
+declare module "dkt-all/libs/provoda/crdt/storage/atomic/requestor.js" {
+	export const requestToPromise: <Result, Args extends unknown[]>(
+		request: (
+			done: (error: unknown, value?: Result) => void,
+			...args: Args
+		) => void,
+		...args: Args
+	) => Promise<Result>;
+}

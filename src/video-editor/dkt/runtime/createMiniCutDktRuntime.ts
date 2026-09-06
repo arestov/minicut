@@ -25,6 +25,10 @@ import {
 	stageMiniCutWorkspaceManifest,
 	type MiniCutWorkspaceOpenResult,
 } from "../storage/minicutWorkspaceManifest";
+import {
+	runDktStorageRequest,
+	type DktStorageRequest,
+} from "../storage/dktStorageRequest";
 import { dumpWorkerAppState } from "./workerStateDump";
 import { createMiniCutDktTestRuntimeProtocol } from "./createMiniCutDktTestRuntimeProtocol";
 import {
@@ -134,8 +138,9 @@ const readDktStorageSnapshot = async (
 	}
 
 	return (
-		(await (dktStorage as { getSnapshot: () => Promise<unknown> | unknown })
-			.getSnapshot()) ?? null
+		(await runDktStorageRequest(
+			(dktStorage as { getSnapshot: DktStorageRequest<unknown> }).getSnapshot,
+		)) ?? null
 	);
 };
 
