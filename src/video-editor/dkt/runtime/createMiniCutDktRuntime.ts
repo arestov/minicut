@@ -307,6 +307,16 @@ const createCrdtRuntime = async (
 				? "memory"
 				: defaultProductionCrdtStorage(peerId)),
 	);
+	const prepareDictionaryNames = (
+		storagePackage.dktStorage as {
+			prepareDictionaryNames?: (names: string[]) => unknown;
+		}
+	).prepareDictionaryNames;
+	prepareDictionaryNames?.([
+		"$meta$apis$time$used",
+		"$meta$apis$exportRuntime$used",
+		"$meta$apis$importRuntime$used",
+	]);
 	const workspaceId = normalized.workspaceIdForSessionKey?.(openPolicySessionKey);
 	const storageOpen = workspaceId
 		? await openMiniCutWorkspaceStorage({

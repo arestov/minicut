@@ -12,6 +12,10 @@ import {
 	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 	createMiniCutStoredDktManifest,
 } from "../storage/minicutWorkspaceManifest";
+import {
+	runDktStorageRequest,
+	type DktStorageRequest,
+} from "../storage/dktStorageRequest";
 import { createMiniCutDktRuntime } from "./createMiniCutDktRuntime";
 import {
 	WORKSPACE_OPEN_FAILURE,
@@ -164,7 +168,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 
 	it("stages a workspace manifest for empty room-backed storage", async () => {
 		const storagePackage = makeDktCrdtMemoryStorage() as MemoryStoragePackage & {
-			dktStorage: { getManifest?: () => Promise<unknown> };
+			dktStorage: { getManifest?: DktStorageRequest<unknown> };
 			commitChanges?: (meta?: unknown) => Promise<void>;
 			close?: () => Promise<void>;
 		};
@@ -182,7 +186,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 		await runtime.debugDumpState();
 		await storagePackage.commitChanges?.({ reason: "test-stage-manifest" });
 
-		await expect(storagePackage.dktStorage.getManifest?.()).resolves.toMatchObject({
+		await expect(runDktStorageRequest(storagePackage.dktStorage.getManifest!)).resolves.toMatchObject({
 			workspaceId: "harness:room:minicut-local",
 			storageVersion: 1,
 			schemaVersion: 1,
@@ -192,7 +196,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 
 	it("uses the bootstrapped session key when opening room-backed storage", async () => {
 		const storagePackage = makeDktCrdtMemoryStorage() as MemoryStoragePackage & {
-			dktStorage: { getManifest?: () => Promise<unknown> };
+			dktStorage: { getManifest?: DktStorageRequest<unknown> };
 			commitChanges?: (meta?: unknown) => Promise<void>;
 			close?: () => Promise<void>;
 		};
@@ -219,7 +223,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 		await waitForIdle(memory);
 		await storagePackage.commitChanges?.({ reason: "test-bootstrap-session-key" });
 
-		await expect(storagePackage.dktStorage.getManifest?.()).resolves.toMatchObject({
+		await expect(runDktStorageRequest(storagePackage.dktStorage.getManifest!)).resolves.toMatchObject({
 			workspaceId: "harness:room:room-from-bootstrap",
 			storageVersion: 1,
 			schemaVersion: 1,
@@ -232,7 +236,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 	it("does not create a default project or rewrite the manifest for ready room-backed storage", async () => {
 		const storagePackage = makeDktCrdtMemoryStorage() as MemoryStoragePackage & {
 			dktStorage: {
-				getManifest?: () => Promise<unknown>;
+				getManifest?: DktStorageRequest<unknown>;
 				putManifest?: (value: unknown) => void;
 			};
 			commitChanges?: (meta?: unknown) => Promise<void>;
@@ -288,7 +292,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 		expect(
 			dump.runtimeModels?.filter((model) => model.modelName === "project") ?? [],
 		).toHaveLength(0);
-		await expect(storagePackage.dktStorage.getManifest?.()).resolves.toEqual(
+		await expect(runDktStorageRequest(storagePackage.dktStorage.getManifest!)).resolves.toEqual(
 			seededManifest,
 		);
 
