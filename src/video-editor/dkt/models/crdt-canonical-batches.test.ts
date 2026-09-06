@@ -61,6 +61,17 @@ const expectRelOp = (
 	);
 };
 
+const expectNoRelOp = (
+	batches: readonly CanonicalBatch[],
+	partial: { model_name?: string; name: string; node_id?: string },
+) => {
+	expect(allOps(batches)).not.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ kind: "rel", ...partial }),
+		]),
+	);
+};
+
 const expectAttrOp = (
 	batches: readonly CanonicalBatch[],
 	partial: { model_name?: string; name: string; value?: unknown },
@@ -179,7 +190,7 @@ describe("MiniCut canonical CRDT batches", () => {
 		expectRelOp(batches, { model_name: "project", name: "tracks", node_id: String(project._node_id) });
 		expectRelOp(batches, { model_name: "project", name: "primaryVideoTrack", node_id: String(project._node_id) });
 		expectRelOp(batches, { model_name: "project", name: "primaryAudioTrack", node_id: String(project._node_id) });
-		expectRelOp(batches, { model_name: "track", name: "project" });
+		expectNoRelOp(batches, { model_name: "track", name: "project" });
 		expect(batches.some((batch) => batch.action_trace)).toBe(true);
 		expect(JSON.stringify(batches)).not.toContain("read_fingerprints");
 
@@ -226,8 +237,8 @@ describe("MiniCut canonical CRDT batches", () => {
 		expect(createdIds(timelineBatches, "clip")).toHaveLength(2);
 		expectRelOp(timelineBatches, { model_name: "track", name: "clips" });
 		expectRelOp(timelineBatches, { model_name: "clip", name: "resource" });
-		expectRelOp(timelineBatches, { model_name: "clip", name: "track" });
-		expectRelOp(timelineBatches, { model_name: "clip", name: "project" });
+		expectNoRelOp(timelineBatches, { model_name: "clip", name: "track" });
+		expectNoRelOp(timelineBatches, { model_name: "clip", name: "project" });
 		expectAttrOp(timelineBatches, { model_name: "clip", name: "mediaKind", value: "audio" });
 
 		const receiver = await bootCrdtModels("canonical-video-b");
@@ -302,7 +313,7 @@ describe("MiniCut canonical CRDT batches", () => {
 		expect(createdIds(textBatches, "clip")).toHaveLength(1);
 		expect(createdIds(textBatches, "text")).toHaveLength(1);
 		expectRelOp(textBatches, { model_name: "clip", name: "text" });
-		expectRelOp(textBatches, { model_name: "text", name: "clip" });
+		expectNoRelOp(textBatches, { model_name: "text", name: "clip" });
 		expectRelOp(textBatches, { model_name: "track", name: "clips" });
 		expectAttrOp(textBatches, { model_name: "text", name: "content", value: "Canonical text" });
 
