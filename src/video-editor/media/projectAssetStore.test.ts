@@ -47,7 +47,7 @@ describe("projectAssetStore", () => {
 	it("puts, detects, and reads a committed asset", async () => {
 		const { store } = rootAndStore();
 		const result = await store.putFromFile("p1", "r1", new File(["media"], "clip.mp4"), { mime: "video/mp4" }, { operationId: "op1" });
-		expect(result).toEqual({ ok: true, assetRef: "p1/r1" });
+		expect(result).toEqual({ ok: true, assetRef: "project/p1/resource/r1/asset/op1" });
 		expect(await store.has("p1", "r1")).toBe(true);
 		expect(await (await store.getFile("p1", "r1"))?.text()).toBe("media");
 	});
@@ -67,7 +67,9 @@ describe("projectAssetStore", () => {
 		await store.putFromFile("p1", "r1", new File(["old"], "old.mp4"), {}, { operationId: "old" });
 		const projects = await root.getDirectoryHandle("projects");
 		const resource = await (await (await projects.getDirectoryHandle("p1")).getDirectoryHandle("assets")).getDirectoryHandle("r1");
-		const failing = await resource.getFileHandle("original-new", { create: true });
+		const versions = await resource.getDirectoryHandle("versions", { create: true });
+		const next = await versions.getDirectoryHandle("new", { create: true });
+		const failing = await next.getFileHandle("original", { create: true });
 		failing.failure = new Error("write failed");
 		const result = await store.putFromFile("p1", "r1", new File(["new"], "new.mp4"), {}, { operationId: "new" });
 		expect(result).toMatchObject({ ok: false, reason: "storage-error" });
@@ -78,7 +80,7 @@ describe("projectAssetStore", () => {
 		const { root, store } = rootAndStore();
 		const projects = await root.getDirectoryHandle("projects", { create: true });
 		const project = await projects.getDirectoryHandle("p1", { create: true });
-		const tmp = await project.getDirectoryHandle("tmp", { create: true });
+		const tmp = await project.getDirectoryHandle("staging", { create: true });
 		const file = await tmp.getFileHandle("r1-quota", { create: true });
 		file.failure = new DOMException("quota", "QuotaExceededError");
 		expect(await store.putFromFile("p1", "r1", new File(["x"], "x"), {}, { operationId: "quota" })).toMatchObject({ ok: false, reason: "quota-exceeded" });
@@ -101,8 +103,29 @@ describe("projectAssetStore", () => {
 		await store.putFromFile("p1", "r1", new File(["bytes"], "x"), {}, { operationId: "op" });
 		const projects = await root.getDirectoryHandle("projects");
 		const resource = await (await (await projects.getDirectoryHandle("p1")).getDirectoryHandle("assets")).getDirectoryHandle("r1");
-		const data = await resource.getFileHandle("original-op");
+		const data = await (await (await resource.getDirectoryHandle("versions")).getDirectoryHandle("op")).getFileHandle("original");
 		data.getFile = async () => { throw new Error("bytes must not be read"); };
 		expect(await store.diagnostics()).toEqual({ available: true, committedAssets: 1, staleTemporaryEntries: 0 });
+	});
+
+	it("stages immutable versions and reconciles only against the published DKT pointer", async () => {
+		const { store } = rootAndStore();
+		const old = await store.stage("p1", "r1", "old", new File(["old"], "old.mp4"), {});
+		const next = await store.stage("p1", "r1", "next", new File(["next"], "next.mp4"), {});
+		expect(old.ok && await store.validate(old.assetRef)).toBe(true);
+		expect(next.ok && await store.validate(next.assetRef)).toBe(true);
+		const outcome = await store.reconcile("p1", "r1", old.ok ? old.assetRef : null);
+		expect(outcome.kept).toEqual(["project/p1/resource/r1/asset/old"]);
+		expect(outcome.removed).toEqual(["project/p1/resource/r1/asset/next"]);
+		expect(next.ok && await store.getFileByRef(next.assetRef)).toBeNull();
+	});
+
+	it("rolls back an unpublished version without changing the published version", async () => {
+		const { store } = rootAndStore();
+		const published = await store.putFromFile("p1", "r1", new File(["old"], "old.mp4"), {}, { operationId: "old" });
+		const staged = await store.stage("p1", "r1", "failed", new File(["new"], "new.mp4"), {});
+		if (staged.ok) await store.rollback(staged.assetRef);
+		expect(await (await store.getFile("p1", "r1"))?.text()).toBe("old");
+		expect(published.ok && await store.validate(published.assetRef)).toBe(true);
 	});
 });

@@ -13,7 +13,7 @@ const makeHandle = (name = "clip.webm") =>
 
 const putLegacyRecord = async (record: Record<string, unknown>): Promise<void> => {
 	const db = await new Promise<IDBDatabase>((resolve, reject) => {
-		const request = indexedDB.open(LOCAL_MEDIA_HANDLE_DB_NAME, 1);
+		const request = indexedDB.open(LOCAL_MEDIA_HANDLE_DB_NAME);
 		request.onsuccess = () => resolve(request.result);
 		request.onerror = () => reject(request.error);
 	});
@@ -104,5 +104,25 @@ describe("local media handle side-channel store", () => {
 		expect(diagnostics.dbName).toBe(LOCAL_MEDIA_HANDLE_DB_NAME);
 		expect(diagnostics.storeName).toBe("handles");
 		expect(diagnostics.handleCount).toBeGreaterThanOrEqual(1);
+	});
+
+	it("stages immutable handle versions and removes only unpublished versions", async () => {
+		const store = createLocalMediaHandleStore(indexedDB);
+		const base = { resourceId: "resource:versioned", handle: makeHandle(), name: "clip.webm", size: 1, lastModified: 2, mime: "video/webm", createdAt: 1, updatedAt: 1 };
+		const oldRef = await store.stage("project:1", base.resourceId, "old", base);
+		const nextRef = await store.stage("project:1", base.resourceId, "next", { ...base, updatedAt: 2 });
+		expect(await store.validate(nextRef)).toBe(true);
+		expect(await store.reconcile(base.resourceId, oldRef)).toEqual({ kept: [oldRef], removed: [nextRef] });
+		expect(await store.getByRef(nextRef)).toBeNull();
+		expect(await store.getByRef(oldRef)).not.toBeNull();
+	});
+
+	it("migrates a legacy resource key idempotently to a version ref", async () => {
+		const store = createLocalMediaHandleStore(indexedDB);
+		const record = { resourceId: "resource:migrate", handle: makeHandle(), name: "clip.webm", size: null, lastModified: null, mime: "video/webm", createdAt: 1, updatedAt: 1 };
+		await store.put(record);
+		const ref = await store.migrateLegacy("project:1", record.resourceId, "migration");
+		expect(ref).toBe("project/project:1/resource/resource:migrate/handle/migration");
+		expect(ref && await store.validate(ref)).toBe(true);
 	});
 });

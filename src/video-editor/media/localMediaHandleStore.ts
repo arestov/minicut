@@ -1,5 +1,7 @@
 export const LOCAL_MEDIA_HANDLE_DB_NAME = "minicut-local-media-handles-v1";
 export const LOCAL_MEDIA_HANDLE_STORE_NAME = "handles";
+export const LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME = "handleVersions";
+export type LocalMediaHandleVersionRef = `project/${string}/resource/${string}/handle/${string}`;
 
 export type LocalMediaHandleRecord = {
 	resourceId: string;
@@ -10,6 +12,12 @@ export type LocalMediaHandleRecord = {
 	mime: string;
 	createdAt: number;
 	updatedAt: number;
+};
+
+export type LocalMediaHandleVersionRecord = LocalMediaHandleRecord & {
+	handleRef: LocalMediaHandleVersionRef;
+	projectId: string;
+	operationId: string;
 };
 
 export type LocalMediaHandleDiagnostics = {
@@ -44,13 +52,17 @@ const openDb = (
 			reject(new Error("IndexedDB is unavailable"));
 			return;
 		}
-		const request = indexedDBFactory.open(LOCAL_MEDIA_HANDLE_DB_NAME, 1);
+		const request = indexedDBFactory.open(LOCAL_MEDIA_HANDLE_DB_NAME, 2);
 		request.onupgradeneeded = () => {
 			const db = request.result;
 			if (!db.objectStoreNames.contains(LOCAL_MEDIA_HANDLE_STORE_NAME)) {
 				db.createObjectStore(LOCAL_MEDIA_HANDLE_STORE_NAME, {
 					keyPath: "resourceId",
 				});
+			}
+			if (!db.objectStoreNames.contains(LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME)) {
+				const versions = db.createObjectStore(LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME, { keyPath: "handleRef" });
+				versions.createIndex("resourceId", "resourceId", { unique: false });
 			}
 		};
 		request.onsuccess = () => resolve(request.result);
@@ -117,11 +129,12 @@ export const createLocalMediaHandleStore = (
 	const withStore = async <Value>(
 		mode: IDBTransactionMode,
 		fn: (store: IDBObjectStore) => IDBRequest<Value>,
+		storeName = LOCAL_MEDIA_HANDLE_STORE_NAME,
 	): Promise<Value> => {
 		const db = await openDb(indexedDBFactory);
 		try {
-			const transaction = db.transaction(LOCAL_MEDIA_HANDLE_STORE_NAME, mode);
-			const store = transaction.objectStore(LOCAL_MEDIA_HANDLE_STORE_NAME);
+			const transaction = db.transaction(storeName, mode);
+			const store = transaction.objectStore(storeName);
 			const request = fn(store);
 			const result = await requestToPromise(request);
 			await transactionDone(transaction);
@@ -131,7 +144,13 @@ export const createLocalMediaHandleStore = (
 		}
 	};
 
-	return {
+	const safeSegment = (value: string) => {
+		if (!value || value === "." || value === ".." || /[\\/]/.test(value)) throw new Error("Invalid local media handle key");
+		return value;
+	};
+	const makeRef = (projectId: string, resourceId: string, operationId: string): LocalMediaHandleVersionRef =>
+		`project/${safeSegment(projectId)}/resource/${safeSegment(resourceId)}/handle/${safeSegment(operationId)}`;
+	const api = {
 		async put(record: LocalMediaHandleRecord): Promise<void> {
 			validateRecord(record);
 			await withStore("readwrite", (store) => store.put(record));
@@ -148,12 +167,40 @@ export const createLocalMediaHandleStore = (
 			await withStore("readwrite", (store) => store.delete(resourceId));
 		},
 		async diagnostics(): Promise<LocalMediaHandleDiagnostics> {
-			const handleCount = await withStore("readonly", (store) => store.count());
+			const legacyCount = await withStore("readonly", (store) => store.count());
+			const versionCount = await withStore("readonly", (store) => store.count(), LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME);
 			return {
 				dbName: LOCAL_MEDIA_HANDLE_DB_NAME,
 				storeName: LOCAL_MEDIA_HANDLE_STORE_NAME,
-				handleCount,
+				handleCount: legacyCount + versionCount,
 			};
 		},
+		async stage(projectId: string, resourceId: string, operationId: string, record: LocalMediaHandleRecord): Promise<LocalMediaHandleVersionRef> {
+			validateRecord(record);
+			const handleRef = makeRef(projectId, resourceId, operationId);
+			const version: LocalMediaHandleVersionRecord = { ...normalizeRecord(record), resourceId, projectId, operationId, handleRef };
+			await withStore("readwrite", (store) => store.put(version), LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME);
+			return handleRef;
+		},
+		async getByRef(handleRef: string): Promise<LocalMediaHandleVersionRecord | null> {
+			const record = await withStore("readonly", (store) => store.get(handleRef), LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME) as LocalMediaHandleVersionRecord | undefined;
+			return record ? { ...normalizeRecord(record), handleRef: record.handleRef, projectId: record.projectId, operationId: record.operationId } : null;
+		},
+		async validate(handleRef: string): Promise<boolean> { return (await api.getByRef(handleRef)) !== null; },
+		async publishOutcome(handleRef: string): Promise<boolean> { return api.validate(handleRef); },
+		async rollback(handleRef: string): Promise<void> { await withStore("readwrite", (store) => store.delete(handleRef), LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME); },
+		async reconcile(resourceId: string, publishedHandleRef: string | null): Promise<{ kept: string[]; removed: string[] }> {
+			const records = await withStore("readonly", (store) => store.index("resourceId").getAll(resourceId), LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME) as LocalMediaHandleVersionRecord[];
+			const result = { kept: [] as string[], removed: [] as string[] };
+			for (const record of records) { if (record.handleRef === publishedHandleRef) result.kept.push(record.handleRef); else { await api.rollback(record.handleRef); result.removed.push(record.handleRef); } }
+			return result;
+		},
+		async cleanup(resourceId: string, publishedHandleRef: string): Promise<number> { return (await api.reconcile(resourceId, publishedHandleRef)).removed.length; },
+		async migrateLegacy(projectId: string, resourceId: string, operationId: string): Promise<LocalMediaHandleVersionRef | null> {
+			const legacy = await api.get(resourceId); if (!legacy) return null;
+			const ref = await api.stage(projectId, resourceId, operationId, legacy);
+			return await api.validate(ref) ? ref : null;
+		},
 	};
+	return api;
 };
