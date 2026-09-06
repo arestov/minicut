@@ -112,6 +112,7 @@ export type MiniCutDktCrdtStorageOptions =
 			dbName: string;
 			version?: number;
 			indexedDB?: unknown;
+			keyRange?: unknown;
 	  };
 
 type FlowErrorsCatcher = {
@@ -333,6 +334,7 @@ const createStoragePackage = async (
 				dbName: storage.dbName,
 				version: storage.version ?? MINICUT_INDEXEDDB_SCHEMA_VERSION,
 				indexedDB: storage.indexedDB,
+				keyRange: storage.keyRange,
 			})) as MiniCutDktCrdtStoragePackage,
 		);
 	}

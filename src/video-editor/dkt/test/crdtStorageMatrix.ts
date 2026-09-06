@@ -1,4 +1,4 @@
-import { indexedDB } from "fake-indexeddb";
+import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 import type { MiniCutDktCrdtStorageOptions } from "../testingInit";
 
 let nextIndexedDbId = 0;
@@ -27,6 +27,7 @@ export const createMiniCutCrdtStorageProfiles =
 					type: "indexeddb",
 					dbName: indexedDbName("indexeddb"),
 					indexedDB,
+					keyRange: IDBKeyRange,
 				},
 			},
 			{
@@ -36,6 +37,7 @@ export const createMiniCutCrdtStorageProfiles =
 					type: "indexeddb",
 					dbName: indexedDbName("lazy-indexeddb"),
 					indexedDB,
+					keyRange: IDBKeyRange,
 				},
 			},
 		];

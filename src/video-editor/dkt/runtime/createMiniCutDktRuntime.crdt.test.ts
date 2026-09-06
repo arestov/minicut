@@ -1,5 +1,5 @@
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
-import { indexedDB } from "fake-indexeddb";
+import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { describe, expect, it } from "vitest";
 import { bootDktModels } from "../testingInit";
@@ -390,6 +390,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 					type: "indexeddb",
 					dbName: `minicut-worker-crdt-${Date.now()}`,
 					indexedDB,
+					keyRange: IDBKeyRange,
 				},
 				transport: null,
 			},
@@ -418,6 +419,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 					type: "indexeddb",
 					dbName,
 					indexedDB,
+					keyRange: IDBKeyRange,
 				},
 				workspaceIdForSessionKey: (sessionKey) => `harness:room:${sessionKey}`,
 				transport: null,
@@ -453,6 +455,7 @@ describe("createMiniCutDktRuntime CRDT bootstrap", () => {
 					type: "indexeddb",
 					dbName: `minicut-worker-crdt-production-${Date.now()}`,
 					indexedDB,
+					keyRange: IDBKeyRange,
 				},
 				transport: null,
 			},

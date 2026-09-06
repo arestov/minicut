@@ -1,4 +1,4 @@
-import { indexedDB } from "fake-indexeddb";
+import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 import type { MiniCutDktCrdtStorageOptions } from "../../testingInit";
 import {
 	createMiniCutHarnessWorkspaceId,
@@ -37,6 +37,7 @@ export const createMiniCutMaelstromProfiles = (): MiniCutMaelstromProfile[] => {
 				type: "indexeddb",
 				dbName: indexedDbName("lazy-indexeddb", peerId),
 				indexedDB,
+				keyRange: IDBKeyRange,
 			}),
 		},
 		{
@@ -53,6 +54,7 @@ export const createMiniCutMaelstromProfiles = (): MiniCutMaelstromProfile[] => {
 					type: "indexeddb",
 					dbName: roomWorkspaceDbName(peerId),
 					indexedDB,
+					keyRange: IDBKeyRange,
 				};
 			},
 		},
