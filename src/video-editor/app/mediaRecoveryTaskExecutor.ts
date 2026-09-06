@@ -86,10 +86,7 @@ export const executeMediaRecoveryInspectionTask = async ({
 				? "fingerprint-match"
 				: "mismatch"
 			: "metadata-only";
-		let policy = evaluateRelinkCandidate({ original: request.original, candidate, requiredSourceEnd: request.requiredSourceEnd, identity });
-		if (request.intent === "locate-original" && policy.classification !== "exact-match") {
-			policy = { ...policy, classification: "incompatible", requiresConfirmation: false };
-		}
+		const policy = evaluateRelinkCandidate({ intent: request.intent === "locate-original" ? "locate-original" : "replace-source", original: request.original, candidate, requiredSourceEnd: request.requiredSourceEnd, identity });
 		const outcome = { operationId: request.operationId, policy, candidate, fingerprint: identityFingerprint, fingerprintVersion: identityVersion };
 		dispatch("recordInspection", {
 			operationId: request.operationId,

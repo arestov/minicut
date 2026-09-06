@@ -50,4 +50,18 @@ describe("evaluateRelinkCandidate", () => {
 	it.each([NaN, Infinity, -1])("fails closed for invalid duration %s", (duration) => {
 		expect(evaluateRelinkCandidate({ original: video(), candidate: video({ duration }), requiredSourceEnd: 1, identity: "same-entry" })).toMatchObject({ classification: "incompatible", reasons: ["invalid-metadata"] });
 	});
+
+	it("requires strong identity for locate-original but allows a confirmed replacement", () => {
+		const input = { original: video(), candidate: video(), requiredSourceEnd: 8, identity: "metadata-only" as const };
+		expect(evaluateRelinkCandidate({ ...input, intent: "locate-original" })).toMatchObject({ classification: "incompatible", reasons: ["identity-not-proven"], requiresConfirmation: false });
+		expect(evaluateRelinkCandidate({ ...input, intent: "replace-source" })).toMatchObject({ classification: "compatible-replacement", requiresConfirmation: true });
+	});
+
+	it("does not invent a topology mismatch when the browser reports unknown", () => {
+		expect(evaluateRelinkCandidate({ intent: "replace-source", original: video(), candidate: video({ streams: { videoStreams: 1, audioStreams: null } }), requiredSourceEnd: 8, identity: "mismatch" })).toMatchObject({ classification: "compatible-replacement" });
+	});
+
+	it("returns a structured diff for UI confirmation", () => {
+		expect(evaluateRelinkCandidate({ intent: "replace-source", original: video(), candidate: video({ duration: 12 }), requiredSourceEnd: 8, identity: "mismatch" }).diff).toEqual({ "duration-differs": { original: 10, candidate: 12 } });
+	});
 });

@@ -8,6 +8,11 @@ describe("fingerprintMediaFile", () => {
 		const different = await fingerprintMediaFile(new File(["abcdefgi"], "a"), 3);
 		expect(first).toEqual(same);
 		expect(first.fingerprint).not.toBe(different.fingerprint);
-		expect(first.version).toBe("sha256-tree-3-v1");
+		expect(first.version).toBe("sha256-chain-3-v2");
+	});
+
+	it("supports cancellation", async () => {
+		const controller = new AbortController(); controller.abort();
+		await expect(fingerprintMediaFile(new File(["abcdefgh"], "a"), 2, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
 	});
 });

@@ -48,8 +48,7 @@ export const createMediaRelinkService = (deps: {
 		let sameEntry = false;
 		try { sameEntry = Boolean(old?.handle && input.candidateHandle.isSameEntry && await input.candidateHandle.isSameEntry(old.handle)); } catch { /* no evidence */ }
 		const identity = sameEntry ? "same-entry" : fingerprint && input.originalFingerprint && fingerprintVersion === input.fingerprintVersion && fingerprint === input.originalFingerprint ? "fingerprint-match" : fingerprint && input.originalFingerprint ? "mismatch" : "metadata-only";
-		let policy = evaluateRelinkCandidate({ original: input.original, candidate, requiredSourceEnd: input.requiredSourceEnd, identity });
-		if (input.intent === "locate-original" && policy.classification !== "exact-match") policy = { ...policy, classification: "incompatible", requiresConfirmation: false };
+		const policy = evaluateRelinkCandidate({ intent: input.intent, original: input.original, candidate, requiredSourceEnd: input.requiredSourceEnd, identity });
 		const confirmationToken = policy.classification === "compatible-replacement" ? crypto.randomUUID() : null;
 		const inspection = { operationId, intent: input.intent, policy, candidate, confirmationToken };
 		pending.set(operationId, { ...inspection, resourceId: input.resourceId, projectId: input.projectId, candidateValue: { handle: input.candidateHandle, file }, fingerprint, fingerprintVersion });
