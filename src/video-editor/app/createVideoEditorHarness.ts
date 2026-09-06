@@ -211,15 +211,16 @@ export const createVideoEditorHarness = (
 	};
 	const localMediaResolver = createLocalMediaResolver({
 		handleStore: mediaHandleStore,
+		projectAssets,
 		runtime: {
 			createObjectUrl: (blob) => platform.createObjectUrl(blob),
 			revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
-			setResourceStatus: (resourceId, status) => {
+			setLocalMediaStatus: (resourceId, status) => {
 				const resourceScope = readActiveProjectResourceScopes().find(
 					(scope) => scope._nodeId === resourceId,
 				);
 				if (resourceScope) {
-					pageRuntime?.dispatch("setResourceStatus", status, resourceScope);
+					pageRuntime?.dispatch("setLocalMediaStatus", status, resourceScope);
 				}
 			},
 		},
@@ -278,6 +279,8 @@ export const createVideoEditorHarness = (
 							"source",
 							"status",
 							"data",
+							"assetStorageKind",
+							"assetRef",
 						]) as unknown as ResourceAttrs;
 
 						return {
@@ -294,6 +297,9 @@ export const createVideoEditorHarness = (
 				void localMediaResolver.restoreResources(
 					resources.map(({ resourceId, attrs }) => ({
 						resourceId,
+						projectId: activeProjectScope._nodeId,
+						assetStorageKind: (attrs as { assetStorageKind?: unknown }).assetStorageKind,
+						assetRef: (attrs as { assetRef?: unknown }).assetRef,
 						sourceKind: (attrs as { sourceKind?: unknown }).sourceKind,
 						sourceRef: (attrs as { sourceRef?: unknown }).sourceRef,
 						status: (attrs as { status?: unknown }).status,
@@ -326,6 +332,8 @@ export const createVideoEditorHarness = (
 							"source",
 							"status",
 							"data",
+							"assetStorageKind",
+							"assetRef",
 						],
 						syncResources,
 					),

@@ -140,4 +140,36 @@ describe("createLocalMediaResolver", () => {
 			"blob:runtime/clip",
 		);
 	});
+
+	it("prefers a project copy even when the original handle is denied", async () => {
+		const setLocalMediaStatus = vi.fn();
+		const queryPermission = vi.fn(async () => "denied" as PermissionState);
+		const resolver = createLocalMediaResolver({
+			handleStore: createHandleStore({ queryPermission }),
+			projectAssets: { getFile: vi.fn(async () => new File(["copy"], "clip.webm")) } as never,
+			runtime: { createObjectUrl: () => "blob:project-copy", revokeObjectUrl: vi.fn(), setLocalMediaStatus },
+		});
+		await expect(resolver.restoreResource({ resourceId: "resource:1", projectId: "project:1", assetStorageKind: "project-copy", assetRef: "project:1/resource:1", sourceKind: "file-handle" })).resolves.toBe("blob:project-copy");
+		expect(setLocalMediaStatus).toHaveBeenLastCalledWith("resource:1", "ready-project-copy");
+		expect(queryPermission).not.toHaveBeenCalled();
+	});
+
+	it("distinguishes denied and retries permission on the cached handle", async () => {
+		const setLocalMediaStatus = vi.fn();
+		const requestPermission = vi.fn(async () => "granted" as PermissionState);
+		const handle = {
+			queryPermission: vi.fn(async () => "denied" as PermissionState),
+			requestPermission,
+			getFile: vi.fn(async () => new File(["video"], "clip.webm")),
+		};
+		const resolver = createLocalMediaResolver({
+			handleStore: createHandleStore(handle),
+			runtime: { createObjectUrl: () => "blob:granted", revokeObjectUrl: vi.fn(), setLocalMediaStatus },
+		});
+		await resolver.restoreResource({ resourceId: "resource:1", sourceKind: "file-handle" });
+		expect(setLocalMediaStatus).toHaveBeenLastCalledWith("resource:1", "permission-denied");
+		await expect(resolver.requestResourceAccess("resource:1")).resolves.toBe("blob:granted");
+		expect(requestPermission).toHaveBeenCalledOnce();
+		expect(setLocalMediaStatus).toHaveBeenLastCalledWith("resource:1", "ready-file-handle");
+	});
 });
