@@ -5,6 +5,7 @@ import type { ExportRenderer } from "../render/exportRenderer";
 import type { ResourceKind } from "../render/registryTypes";
 import type { VideoEditorHarnessPlatform } from "./platform";
 import type { createLocalMediaHandleStore } from "./mediaHandleStore";
+import type { ProjectAssetStore } from "../media/projectAssetStore";
 import type {
 	DispatchRuntimeTaskOptions,
 	DispatchRuntimeTaskPayload,
@@ -26,6 +27,8 @@ export interface EditorMediaPort {
 		url: string,
 		kind: Extract<ResourceKind, "video" | "audio" | "image">,
 	): Promise<number>;
+	fingerprintFile(file: File): Promise<{ fingerprint: string; version: string }>;
+	estimateStorage(): Promise<{ quota?: number; usage?: number }>;
 }
 
 export interface EditorExportPort {
@@ -85,6 +88,7 @@ export interface EditorActionEnvironment {
 	lifecycle: EditorLifecyclePort;
 	tasks: EditorRuntimeTaskPort;
 	mediaHandles: ReturnType<typeof createLocalMediaHandleStore>;
+	projectAssets: ProjectAssetStore;
 	platform: VideoEditorHarnessPlatform;
 	resourceChunkSize: number;
 }

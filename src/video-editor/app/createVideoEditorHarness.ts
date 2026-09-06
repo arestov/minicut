@@ -2,6 +2,7 @@ import { createMiniCutPageSyncRuntime } from "../dkt/runtime/createMiniCutPageSy
 import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
 import { createResourceTransferManager } from "../media/resourceTransferManager";
+import { browserProjectAssetRoot, createProjectAssetStore, type ProjectAssetStore } from "../media/projectAssetStore";
 import {
 	createLocalMediaResolver,
 	type LocalMediaResourceSnapshot,
@@ -123,6 +124,7 @@ const createMiniCutPageRuntime = (authorityClient: EditorAuthorityClient) => {
 interface CreateVideoEditorHarnessOptions {
 	exportRenderer?: ExportRenderer;
 	platform?: VideoEditorHarnessPlatform;
+	projectAssets?: ProjectAssetStore;
 	mediaTransferOptions?: {
 		chunkSize?: number;
 		chunkSendDelayMs?: number;
@@ -196,6 +198,7 @@ export const createVideoEditorHarness = (
 	const exportObjectUrls = new Set<string>();
 	const startedImportHandles = new Set<string>();
 	const mediaHandleStore = createLocalMediaHandleStore();
+	const projectAssets = options.projectAssets ?? createProjectAssetStore(browserProjectAssetRoot);
 	const readActiveProjectResourceScopes = (): ReactSyncScopeHandle[] => {
 		const rootScope = pageRuntime?.getRootScope();
 		if (!pageRuntime || !rootScope) {
@@ -435,6 +438,13 @@ export const createVideoEditorHarness = (
 			revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
 			getImportedResourceDuration: (url, kind) =>
 				platform.getImportedResourceDuration(url, kind),
+			fingerprintFile: async (file) => {
+				const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+				return { fingerprint: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""), version: "sha256-v1" };
+			},
+			estimateStorage: async () => {
+				try { return await navigator.storage?.estimate?.() ?? {}; } catch { return {}; }
+			},
 		},
 		export: {
 			renderer: exportRenderer,
@@ -475,6 +485,7 @@ export const createVideoEditorHarness = (
 		},
 		tasks: runtimeTasks,
 		mediaHandles: mediaHandleStore,
+		projectAssets,
 		platform,
 		resourceChunkSize,
 	};

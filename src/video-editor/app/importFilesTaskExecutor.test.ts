@@ -26,6 +26,7 @@ describe("executeImportFilesTask handle-backed imports", () => {
 			data: { inputBatchHandleId },
 		});
 		const putHandle = vi.fn(async () => undefined);
+		const putAsset = vi.fn(async () => ({ ok: true as const, assetRef: "project:1/resource:1" }));
 		const dispatch = vi.fn((actionName: string, payload: unknown, scope) => {
 			if (actionName === "importResourceIntoActiveProject") {
 				Object.assign(resourceAttrs, payload, { url: (payload as { url: string }).url });
@@ -51,6 +52,8 @@ describe("executeImportFilesTask handle-backed imports", () => {
 				createObjectUrl: () => "blob:http://localhost/handle-video",
 				revokeObjectUrl: () => undefined,
 				getImportedResourceDuration: async () => 1,
+				fingerprintFile: async () => ({ fingerprint: "abc", version: "sha256-v1" }),
+				estimateStorage: async () => ({ quota: 10_000, usage: 0 }),
 			},
 			export: { renderer: null, cachedResults: new Map() },
 			transfers: {
@@ -74,6 +77,7 @@ describe("executeImportFilesTask handle-backed imports", () => {
 				delete: vi.fn(),
 				diagnostics: vi.fn(),
 			},
+			projectAssets: { putFromFile: putAsset },
 			platform: null,
 			resourceChunkSize: 1024,
 		} as unknown as EditorActionEnvironment;
@@ -91,7 +95,12 @@ describe("executeImportFilesTask handle-backed imports", () => {
 			sourceKind: "file-handle",
 			sourceRef: "resource:1",
 			status: "ready",
+			assetStorageKind: "project-copy",
+			assetRef: "project:1/resource:1",
+			contentFingerprint: "abc",
+			localMediaStatus: "ready-project-copy",
 		});
+		expect(putAsset).toHaveBeenCalledOnce();
 		expect(resources).toHaveLength(1);
 	});
 

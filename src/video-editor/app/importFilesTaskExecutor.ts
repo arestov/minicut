@@ -39,6 +39,33 @@ const normalizeMediaImportEntry = (
 	return null;
 };
 
+const resourceAttrsForImport = (
+	file: File,
+	kind: "video" | "audio" | "image",
+	objectUrl: string,
+	mime: string,
+	duration: number,
+	ownerPeerId: string | null,
+	chunkSize: number,
+) => ({
+	name: file.name,
+	kind,
+	url: objectUrl,
+	mime,
+	duration,
+	size: file.size,
+	lastModified: file.lastModified,
+	source: { kind: "local", ownerPeerId },
+	status: "ready",
+	data: {
+		status: "ready",
+		chunkSize,
+		chunks: {},
+		ranges: { loaded: [[0, file.size]], requested: [] },
+		loadedBytes: file.size,
+	},
+});
+
 const getActiveProjectScope = (
 	env: EditorActionEnvironment,
 ): ReactSyncScopeHandle | null => {
@@ -198,6 +225,7 @@ export const executeImportFilesTask = async ({
 	}
 
 	const ownerPeerId = env.transfers.getPeerId();
+	const projectId = typeof projectScope._nodeId === "string" && projectScope._nodeId ? projectScope._nodeId : "active-project";
 	let processed = 0;
 
 	try {
@@ -242,6 +270,14 @@ export const executeImportFilesTask = async ({
 			}
 
 			const mime = file.type || "application/octet-stream";
+			let contentFingerprint: string | null = null;
+			let fingerprintVersion: string | null = null;
+			try {
+				if (typeof env.media.fingerprintFile !== "function") throw new Error("Fingerprint unavailable");
+				const identity = await env.media.fingerprintFile(file);
+				contentFingerprint = identity.fingerprint;
+				fingerprintVersion = identity.version;
+			} catch { /* degraded identity is allowed */ }
 
 			env.dkt.dispatch(
 				"importResourceIntoActiveProject",
@@ -270,6 +306,11 @@ export const executeImportFilesTask = async ({
 						ranges: { loaded: [[0, file.size]], requested: [] },
 						loadedBytes: file.size,
 					},
+					assetStorageKind: "linked",
+					assetRef: null,
+					contentFingerprint,
+					fingerprintVersion,
+					localMediaStatus: handle ? "ready-file-handle" : "unknown",
 				},
 				env.pageRuntime?.getRootScope() ?? projectScope,
 			);
@@ -336,6 +377,25 @@ export const executeImportFilesTask = async ({
 					},
 					resourceScope,
 				);
+			}
+
+			const estimate = typeof env.media.estimateStorage === "function" ? await env.media.estimateStorage() : {};
+			const available = typeof estimate.quota !== "number" || typeof estimate.usage !== "number" || estimate.quota - estimate.usage >= file.size;
+			const assetResult = available && env.projectAssets
+				? await env.projectAssets.putFromFile(projectId, resourceId, file, { name: file.name, mime, size: file.size, lastModified: file.lastModified }, { operationId: inputBatchHandleId })
+				: { ok: false as const, reason: available ? "unavailable" as const : "quota-exceeded" as const };
+			if (assetResult.ok) {
+				const resourceScope = resolveImportedResourceScope(env, projectScope, resourceId);
+				env.dkt.dispatch("setResourceAttrs", {
+					...resourceAttrsForImport(file, kind, objectUrl, mime, duration, ownerPeerId, env.resourceChunkSize),
+					sourceKind: handle ? "file-handle" : "object-url",
+					sourceRef: handle ? resourceId : null,
+					assetStorageKind: "project-copy",
+					assetRef: assetResult.assetRef,
+					contentFingerprint,
+					fingerprintVersion,
+					localMediaStatus: "ready-project-copy",
+				}, resourceScope);
 			}
 
 			if (!projectTimelineHasClips(env, projectScope)) {
