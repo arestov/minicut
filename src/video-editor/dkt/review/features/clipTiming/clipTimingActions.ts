@@ -281,7 +281,6 @@ export const reduceCreateParkedIncomingVariant = (
 			},
 			hold_ref_id: "incomingReviewTrack",
 		},
-		reviewTracks: { use_ref_id: "incomingReviewTrack" },
 		parkedClip: {
 			attrs: payload.parkedClipAttrs,
 			rels: isRecord(payload.parkedClipRels) ? payload.parkedClipRels : {},

@@ -351,31 +351,14 @@ export const Project = model({
 		handleInit: [
 			{
 				to: {
-					videoTrack: [
-						"<< track << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							can_use_refs: true,
-							creation_shape: TRACK_CREATION_SHAPE,
-						},
-					],
-					audioTrack: [
-						"<< track << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							can_use_refs: true,
-							creation_shape: TRACK_CREATION_SHAPE,
-						},
-					],
 					tracks: [
 						"<< tracks",
 						{
-							method: "set_many",
+							method: "at_end",
+							can_create: true,
+							can_hold_refs: true,
 							can_use_refs: true,
+							creation_shape: TRACK_CREATION_SHAPE,
 						},
 					],
 					primaryVideoTrack: [
@@ -402,13 +385,6 @@ export const Project = model({
 						tracks: unknown,
 					) =>
 						reduceHandleInit(payload, autoCreateDefaultTracks, tracks) ?? noop,
-				],
-			},
-			{
-				to: ["<< tracks", { action: "setProject", sub_flow: true }],
-				fn: [
-					["<<<<"] as const,
-					(_payload: unknown, self: unknown) => ({ project: self }),
 				],
 			},
 		],
@@ -476,7 +452,7 @@ export const Project = model({
 			{
 				to: {
 					track: [
-						"<< track << #",
+						"<< tracks",
 						{
 							method: "at_end",
 							can_create: true,
@@ -484,41 +460,20 @@ export const Project = model({
 							creation_shape: TRACK_CREATION_SHAPE,
 						},
 					],
-					tracks: [
-						"<< tracks",
-						{
-							method: "at_end",
-							can_use_refs: true,
-						},
-					],
 				},
 				fn: reduceAddTrack,
-			},
-			{
-				to: ["<< tracks", { action: "setProject", sub_flow: true }],
-				fn: [
-					["<<<<"] as const,
-					(_payload: unknown, self: unknown) => ({ project: self }),
-				],
 			},
 		],
 		createReviewTrack: [
 			{
 				to: {
 					track: [
-						"<< track << #",
+						"<< tracks",
 						{
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
 							creation_shape: TRACK_CREATION_SHAPE,
-						},
-					],
-					tracks: [
-						"<< tracks",
-						{
-							method: "at_end",
-							can_use_refs: true,
 						},
 					],
 				},
@@ -528,31 +483,17 @@ export const Project = model({
 						reduceCreateReviewTrack(payload) ?? noop,
 				],
 			},
-			{
-				to: ["<< tracks", { action: "setProject", sub_flow: true }],
-				fn: [
-					["<<<<"] as const,
-					(_payload: unknown, self: unknown) => ({ project: self }),
-				],
-			},
 		],
 		ensureIncomingReviewTrack: [
 			{
 				to: {
 					track: [
-						"<< track << #",
+						"<< tracks",
 						{
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
 							creation_shape: TRACK_CREATION_SHAPE,
-						},
-					],
-					tracks: [
-						"<< tracks",
-						{
-							method: "at_end",
-							can_use_refs: true,
 						},
 					],
 				},
@@ -567,31 +508,17 @@ export const Project = model({
 						),
 				],
 			},
-			{
-				to: ["<< tracks", { action: "setProject", sub_flow: true }],
-				fn: [
-					["<<<<"] as const,
-					(_payload: unknown, self: unknown) => ({ project: self }),
-				],
-			},
 		],
 		ensureCurrentReviewTrack: [
 			{
 				to: {
 					track: [
-						"<< track << #",
+						"<< tracks",
 						{
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
 							creation_shape: TRACK_CREATION_SHAPE,
-						},
-					],
-					tracks: [
-						"<< tracks",
-						{
-							method: "at_end",
-							can_use_refs: true,
 						},
 					],
 				},
@@ -604,13 +531,6 @@ export const Project = model({
 							tracks,
 							REVIEW_TRACK_ROLES.current,
 						),
-				],
-			},
-			{
-				to: ["<< tracks", { action: "setProject", sub_flow: true }],
-				fn: [
-					["<<<<"] as const,
-					(_payload: unknown, self: unknown) => ({ project: self }),
 				],
 			},
 		],
@@ -662,7 +582,7 @@ export const Project = model({
 			{
 				to: {
 					resource: [
-						"<< resource << #",
+						"<< resources",
 						{
 							method: "at_end",
 							can_create: true,
@@ -670,22 +590,8 @@ export const Project = model({
 							creation_shape: RESOURCE_CREATION_SHAPE,
 						},
 					],
-					resources: [
-						"<< resources",
-						{
-							method: "at_end",
-							can_use_refs: true,
-						},
-					],
 				},
 				fn: reduceImportResourceCreateOnly,
-			},
-			{
-				to: ["<< resources", { action: "setProject", sub_flow: true }],
-				fn: [
-					["<<<<"] as const,
-					(_payload: unknown, self: unknown) => ({ project: self }),
-				],
 			},
 		],
 		setTracks: {
@@ -800,7 +706,6 @@ export const Project = model({
 			{
 				input_base_rel_shape: MOVE_CLIP_INPUT_BASE_REL_SHAPE,
 				to: {
-					clip: ["*"],
 					tracks: ["<< tracks", { action: "removeClip", sub_flow: true }],
 					$output: ["$output"],
 				},
@@ -822,37 +727,13 @@ export const Project = model({
 			{
 				input_base_rel_shape: RESOURCE_INPUT_BASE_REL_SHAPE,
 				to: {
-					clip: [
-						"<< clip << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: CLIP_CREATION_SHAPE,
-						},
+					videoClip: [
+						"<< primaryVideoTrack",
+						{ action: "addClip", sub_flow: true },
 					],
 					audioClip: [
-						"<< clip << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: CLIP_CREATION_SHAPE,
-						},
-					],
-					videoClips: [
-						"<< primaryVideoTrack.clips",
-						{
-							method: "at_end",
-							can_use_refs: true,
-						},
-					],
-					audioClips: [
-						"<< primaryAudioTrack.clips",
-						{
-							method: "at_end",
-							can_use_refs: true,
-						},
+						"<< primaryAudioTrack",
+						{ action: "addClip", sub_flow: true },
 					],
 				},
 				fn: [
@@ -964,19 +845,12 @@ export const Project = model({
 				to: {
 					sourceClip: ["*"],
 					reviewTrack: [
-						"<< track << #",
+						"<< tracks",
 						{
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
 							creation_shape: TRACK_CREATION_SHAPE,
-						},
-					],
-					reviewTracks: [
-						"<< tracks",
-						{
-							method: "at_end",
-							can_use_refs: true,
 						},
 					],
 					parkedClip: [
@@ -1104,19 +978,12 @@ export const Project = model({
 			{
 				to: {
 					reviewTrack: [
-						"<< track << #",
+						"<< tracks",
 						{
 							method: "at_end",
 							can_create: true,
 							can_hold_refs: true,
 							creation_shape: TRACK_CREATION_SHAPE,
-						},
-					],
-					reviewTracks: [
-						"<< tracks",
-						{
-							method: "at_end",
-							can_use_refs: true,
 						},
 					],
 					parkedClip: [

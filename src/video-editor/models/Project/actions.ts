@@ -505,29 +505,27 @@ export const reduceHandleInit = (
 	}
 
 	return {
-		videoTrack: {
-			attrs: {
-				kind: "video",
-				name: "V1",
-				muted: false,
-				locked: false,
-				height: 72,
-			},
-			hold_ref_id: "defaultVideoTrack",
-		},
-		audioTrack: {
-			attrs: {
-				kind: "audio",
-				name: "A1",
-				muted: false,
-				locked: false,
-				height: 64,
-			},
-			hold_ref_id: "defaultAudioTrack",
-		},
 		tracks: [
-			{ use_ref_id: "defaultVideoTrack" },
-			{ use_ref_id: "defaultAudioTrack" },
+			{
+				attrs: {
+					kind: "video",
+					name: "V1",
+					muted: false,
+					locked: false,
+					height: 72,
+				},
+				hold_ref_id: "defaultVideoTrack",
+			},
+			{
+				attrs: {
+					kind: "audio",
+					name: "A1",
+					muted: false,
+					locked: false,
+					height: 64,
+				},
+				hold_ref_id: "defaultAudioTrack",
+			},
 		],
 		primaryVideoTrack: { use_ref_id: "defaultVideoTrack" },
 		primaryAudioTrack: { use_ref_id: "defaultAudioTrack" },
@@ -655,7 +653,6 @@ export const reduceAddTrack = (payload: unknown) => {
 			attrs,
 			hold_ref_id: "newTrack",
 		},
-		tracks: { use_ref_id: "newTrack" },
 		$output: {
 			rels: {
 				track: { use_ref_id: "newTrack" },
@@ -868,7 +865,6 @@ export const reduceParkEditedVariantOnReviewTrack = (
 						},
 						hold_ref_id: "deleteVsEditReviewTrack",
 					},
-					reviewTracks: { use_ref_id: "deleteVsEditReviewTrack" },
 				}),
 		parkedClip: {
 			attrs: {
@@ -999,7 +995,6 @@ export const reduceCreateReviewTrack = (payload: unknown) => {
 			},
 			hold_ref_id: "newReviewTrack",
 		},
-		tracks: { use_ref_id: "newReviewTrack" },
 		$output: {
 			rels: {
 				track: { use_ref_id: "newReviewTrack" },
@@ -1066,7 +1061,6 @@ export const reduceImportResourceCreate = (
 
 	return {
 		resource: { attrs, hold_ref_id: "newResource" },
-		resources: { use_ref_id: "newResource" },
 		$output: {
 			rels: {
 				resource: { use_ref_id: "newResource" },
@@ -1086,7 +1080,6 @@ export const reduceImportResourceCreateOnly = (
 			attrs,
 			hold_ref_id: "newResource",
 		},
-		resources: { use_ref_id: "newResource" },
 	};
 };
 
@@ -1539,9 +1532,6 @@ export const reduceMoveClipToTrackContext = (
 	}
 
 	return {
-		clip: {
-			[clipId]: { rels: { track: targetTrack } },
-		},
 		tracks: { clip },
 		$output: { clip, targetTrack },
 	};
@@ -1564,7 +1554,6 @@ export const reduceAddResourceToTimeline = (
 	}
 	const resolvedResource = resource as ResourceLike;
 	const kind = getResourceKind(resolvedResource);
-	const targetTrack = kind === "audio" ? audioTrack : videoTrack;
 	const start =
 		kind === "audio"
 			? typeof audioTrackAppendStart === "number"
@@ -1577,35 +1566,29 @@ export const reduceAddResourceToTimeline = (
 	if (!getNodeId(resolvedResource)) {
 		return noop;
 	}
-	const result = {
-		clip: {
-			attrs: createTimelineClipAttrs(resolvedResource, {}, start),
-			rels: { track: targetTrack, resource: resolvedResource, project },
-			hold_ref_id: "timelineClip",
-		},
+	const videoClip = {
+		...createTimelineClipAttrs(resolvedResource, {}, start),
+		resource: resolvedResource,
 	};
 
 	if (kind === "audio") {
-		return { ...result, audioClips: { use_ref_id: "timelineClip" } };
+		return { audioClip: videoClip };
 	}
 
 	if (kind !== "video") {
-		return { ...result, videoClips: { use_ref_id: "timelineClip" } };
+		return { videoClip };
 	}
 
 	return {
-		...result,
+		videoClip,
 		audioClip: {
-			attrs: createTimelineClipAttrs(
+			...createTimelineClipAttrs(
 				resolvedResource,
 				{ name: "Embedded audio", mediaKind: "audio" },
 				start,
 			),
-			rels: { track: audioTrack, resource: resolvedResource, project },
-			hold_ref_id: "timelineEmbeddedAudioClip",
+			resource: resolvedResource,
 		},
-		videoClips: { use_ref_id: "timelineClip" },
-		audioClips: { use_ref_id: "timelineEmbeddedAudioClip" },
 	};
 };
 

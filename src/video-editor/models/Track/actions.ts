@@ -71,11 +71,6 @@ const getModelAttr = (model: unknown, key: string): unknown => {
 	return (model as Record<string, unknown>)[key];
 };
 
-const resolveOutputRelModel = (payload: unknown, relName: string): unknown => {
-	const rels = asRecord((payload as { rels?: unknown } | null)?.rels);
-	return rels?.[relName] ?? null;
-};
-
 export const removeClipRef = (
 	clips: unknown[],
 	clipId: unknown,
@@ -159,20 +154,16 @@ const resolveResourceRef = (payload: unknown): unknown => {
 	return value?.resource ?? null;
 };
 
-export const reduceAddClip = (payload: unknown, self: unknown) => {
+export const reduceAddClip = (payload: unknown) => {
 	const attrs = normalizeClipCreationAttrs(payload);
 	const resource = resolveResourceRef(payload);
 	return {
-		clip: {
-			attrs,
-			rels: { track: self, resource: resource ?? null },
-			hold_ref_id: "newClip",
-		},
-		clips: { use_ref_id: "newClip" },
+		attrs,
+		rels: { resource: resource ?? null },
 	};
 };
 
-export const reduceAddTextClip = (payload: unknown, self: unknown) => {
+export const reduceAddTextClip = (payload: unknown) => {
 	const value = payload as { text?: unknown } | null;
 	const clipAttrs = normalizeClipCreationAttrs(payload);
 	const textAttrs = normalizeTextCreationAttrs(value?.text);
@@ -181,36 +172,15 @@ export const reduceAddTextClip = (payload: unknown, self: unknown) => {
 			? (value as { project?: unknown }).project
 			: null;
 	return {
-		clip: {
+		createdClip: {
 			attrs: { ...clipAttrs, mediaKind: "text" },
-			rels: { track: self, resource: null, project },
+			rels: { resource: null, project },
 			hold_ref_id: "newTextClip",
 		},
-		text: {
-			attrs: textAttrs,
-			hold_ref_id: "newTextNode",
+		forwarded: {
+			clip: { use_ref_id: "newTextClip" },
+			textAttrs,
 		},
-		clips: { use_ref_id: "newTextClip" },
-		$output: {
-			rels: {
-				clip: { use_ref_id: "newTextClip" },
-				text: { use_ref_id: "newTextNode" },
-			},
-		},
-	};
-};
-
-export const reduceLinkClipAndTextFromOutput = (payload: unknown) => {
-	const clip = resolveOutputRelModel(payload, "clip");
-	const text = resolveOutputRelModel(payload, "text");
-	const clipId = getNodeId(clip);
-	const textId = getNodeId(text);
-	if (!clipId || !textId) {
-		return null;
-	}
-	return {
-		[clipId]: { rels: { text } },
-		[textId]: { rels: { clip } },
 	};
 };
 
@@ -223,7 +193,7 @@ const cloneTextAttrs = (
 		box: getModelAttr(textModel, "box"),
 	});
 
-export const reduceSplitClipAt = (payload: unknown, self: unknown) => {
+export const reduceSplitClipAt = (payload: unknown) => {
 	const attrs = normalizeRightSplitClipAttrs(payload);
 	if (!attrs) {
 		return null;
@@ -232,30 +202,21 @@ export const reduceSplitClipAt = (payload: unknown, self: unknown) => {
 	const text = (payload as { text?: unknown } | null)?.text ?? null;
 	const clonedTextAttrs = text ? cloneTextAttrs(text) : null;
 	return {
-		clip: {
+		createdClip: {
 			attrs,
-			rels: {
-				track: self,
-				resource: resource ?? null,
-			},
+			rels: { resource: resource ?? null },
 			hold_ref_id: "rightSplitClip",
 		},
-		...(clonedTextAttrs
-			? {
-					text: {
-						attrs: clonedTextAttrs,
-						hold_ref_id: "rightSplitText",
-					},
-				}
-			: {}),
-		clips: { use_ref_id: "rightSplitClip" },
-		$output: {
-			rels: {
-				clip: { use_ref_id: "rightSplitClip" },
-				...(clonedTextAttrs ? { text: { use_ref_id: "rightSplitText" } } : {}),
-			},
+		forwarded: {
+			clip: { use_ref_id: "rightSplitClip" },
+			textAttrs: clonedTextAttrs,
 		},
 	};
+};
+
+export const reduceCreateTextOnClipFromOutput = (payload: unknown) => {
+	const textAttrs = asRecord((payload as { textAttrs?: unknown } | null)?.textAttrs);
+	return textAttrs ? { attrs: textAttrs } : null;
 };
 
 export const reduceSetClips = (payload: unknown) => {
@@ -286,10 +247,6 @@ export const reduceMoveClipWithinTrack = (
 		},
 	};
 };
-
-export const reduceSetTrackProject = (payload: unknown) => ({
-	project: (payload as { project?: unknown } | null)?.project ?? null,
-});
 
 export const reduceAcceptClipIfTarget = (
 	payload: unknown,
@@ -333,9 +290,6 @@ export const reduceAcceptClipIfTarget = (
 		return noop;
 	}
 	return {
-		clip: {
-			[clipId]: { rels: { track: self } },
-		},
 		clips: clip,
 	};
 };

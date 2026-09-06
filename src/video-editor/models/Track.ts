@@ -1,22 +1,21 @@
 import { model } from "dkt/model.js";
 import { CLIP_CREATION_SHAPE } from "./Clip";
-import { TEXT_CREATION_SHAPE } from "./Text";
 import {
 	reduceAcceptClipIfTarget,
 	reduceAddClip,
 	reduceAddTextClip,
-	reduceLinkClipAndTextFromOutput,
+	reduceCreateTextOnClipFromOutput,
 	reduceMoveClipWithinTrack,
 	reduceRemoveClip,
 	reduceRenameTrack,
 	reduceSetClips,
-	reduceSetTrackProject,
 	reduceSetTrackLocked,
 	reduceSetTrackMuted,
 	reduceSetTrackPreviewEnabled,
 	reduceSplitClipAt,
 } from "./Track/actions";
 import { reduceTrackAppendStart } from "./Track/comps";
+import { TEXT_CREATION_SHAPE } from "./Text";
 
 export const TRACK_CREATION_SHAPE = {
 	attrs: [
@@ -183,118 +182,79 @@ export const Track = model({
 			],
 		},
 		addClip: {
-			to: {
-				clip: [
-					"<< clip << #",
-					{
-						method: "at_end",
-						can_create: true,
-						can_hold_refs: true,
-						creation_shape: CLIP_CREATION_SHAPE,
-					},
-				],
-				clips: [
-					"<< clips",
-					{
-						method: "at_end",
-						can_use_refs: true,
-					},
-				],
-			},
-			fn: [["<<<<"] as const, reduceAddClip],
+			to: [
+				"<< clips",
+				{
+					method: "at_end",
+					can_create: true,
+					creation_shape: CLIP_CREATION_SHAPE,
+				},
+			],
+			fn: reduceAddClip,
 		},
 		addTextClip: [
 			{
 				to: {
-					clip: [
-						"<< clip << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							can_use_refs: true,
-							creation_shape: CLIP_CREATION_SHAPE,
-						},
-					],
-					text: [
-						"<< text << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							can_use_refs: true,
-							creation_shape: TEXT_CREATION_SHAPE,
-						},
-					],
-					clips: [
+					createdClip: [
 						"<< clips",
 						{
 							method: "at_end",
-							can_use_refs: true,
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
-					$output: ["$output"],
+					forwarded: ["$output"],
 				},
-				fn: [
-					["$noop", "<<<<"] as const,
-					(payload: unknown, noop: unknown, self: unknown) =>
-						reduceAddTextClip(payload, self) ?? noop,
-				],
+				output_base_rel_shape: {
+					clip: { linking: "<< clips", many: false },
+				},
+				fn: reduceAddTextClip,
 			},
 			{
-				to: ["*"],
-				fn: [
-					["$noop"] as const,
-					(payload: unknown, noop: unknown) =>
-						reduceLinkClipAndTextFromOutput(payload) ?? noop,
+				input_base_rel_shape: {
+					clip: { linking: "<< clips", many: false },
+				},
+				to: [
+					"<< text << $input:clip",
+					{ method: "set_one", can_create: true, creation_shape: TEXT_CREATION_SHAPE },
 				],
+				fn: reduceCreateTextOnClipFromOutput,
 			},
 		],
 		splitClipAt: [
 			{
 				to: {
-					clip: [
-						"<< clip << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							can_use_refs: true,
-							creation_shape: CLIP_CREATION_SHAPE,
-						},
-					],
-					text: [
-						"<< text << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							can_use_refs: true,
-							creation_shape: TEXT_CREATION_SHAPE,
-						},
-					],
-					clips: [
+					createdClip: [
 						"<< clips",
 						{
 							method: "at_end",
-							can_use_refs: true,
+							can_create: true,
+							can_hold_refs: true,
+							creation_shape: CLIP_CREATION_SHAPE,
 						},
 					],
-					$output: ["$output"],
+					forwarded: ["$output"],
 				},
-				fn: [
-					["$noop", "<<<<"] as const,
-					(payload: unknown, noop: unknown, self: unknown) =>
-						reduceSplitClipAt(payload, self) ?? noop,
-				],
+				output_base_rel_shape: {
+					clip: { linking: "<< clips", many: false },
+				},
+				fn: reduceSplitClipAt,
 			},
 			{
-				to: ["*"],
-				fn: [
-					["$noop"] as const,
-					(payload: unknown, noop: unknown) =>
-						reduceLinkClipAndTextFromOutput(payload) ?? noop,
+				input_base_rel_shape: {
+					clip: { linking: "<< clips", many: false },
+				},
+				when: [
+					[] as const,
+					(payload: unknown) =>
+						Boolean((payload as { textAttrs?: unknown } | null)?.textAttrs),
 				],
+				to: [
+					"<< text << $input:clip",
+					{ method: "set_one", can_create: true, creation_shape: TEXT_CREATION_SHAPE },
+				],
+				fn: reduceCreateTextOnClipFromOutput,
 			},
 		],
 		setClips: {
@@ -309,15 +269,8 @@ export const Track = model({
 			},
 			fn: [["$noop", "<< @all:clips"] as const, reduceMoveClipWithinTrack],
 		},
-		setProject: {
-			to: {
-				project: ["<< project", { method: "set_one" }],
-			},
-			fn: reduceSetTrackProject,
-		},
 		acceptClipIfTarget: {
 			to: {
-				clip: ["*"],
 				clips: ["<< clips", { method: "at_end", can_use_refs: true }],
 			},
 			fn: [["$noop", "<<<<", "<< @all:clips"] as const, reduceAcceptClipIfTarget],

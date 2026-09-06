@@ -316,7 +316,7 @@ describe("Project action contracts", () => {
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 
-	it("addTextClipToVideoTrack creates a text clip and a text node in the root graph", async () => {
+	it("addTextClipToVideoTrack creates text through the clip owner relation", async () => {
 		const harness = await createActionContractHarness();
 		const beforeClipIds = await readNodeIds(
 			harness.ctx,
@@ -386,12 +386,6 @@ describe("Project action contracts", () => {
 			height: 0.2,
 		});
 
-		const textModels = await harness.ctx.queryRel(harness.ctx.appModel, "text");
-		expect(
-			textModels.some(
-				(text) => harness.ctx.getAttr(text, "content") === "Project text",
-			),
-		).toBe(true);
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 });

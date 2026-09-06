@@ -27,6 +27,7 @@ import {
 } from "./Clip/actions";
 import { reduceClipRenderData } from "./Clip/comps";
 import { EFFECT_CREATION_SHAPE } from "./Effect";
+import { TEXT_CREATION_SHAPE } from "./Text";
 import { numberOr, objectOr, objectOrNull, stringOr } from "./valueGuards";
 
 const roundToTenths = (value: number): number => Math.round(value * 10) / 10;
@@ -792,7 +793,7 @@ export const CLIP_CREATION_SHAPE = {
 		track: {},
 		resource: {},
 		project: {},
-		text: {},
+		text: TEXT_CREATION_SHAPE,
 		effects: {},
 	},
 } as const;
