@@ -254,6 +254,50 @@ describe("MiniCut canonical CRDT batches", () => {
 		await receiver.close();
 	});
 
+	it("creates clips through a project owner received from another replica", async () => {
+		const sender = await bootCrdtModels("canonical-remote-owner-a");
+		const projectSetup = await createProject(sender, "Remote owner project");
+		const importBatches = await dispatchAndDrain(
+			sender,
+			projectSetup.project,
+			"importResource",
+			{
+				name: "Remote owner video",
+				kind: "video",
+				url: "https://example.invalid/remote-owner.webm",
+				mime: "video/webm",
+				duration: 5,
+				size: 500,
+				source: { kind: "local" },
+				status: "ready",
+				data: { status: "ready" },
+			},
+		);
+
+		const receiver = await bootCrdtModels("canonical-remote-owner-b");
+		await receiveBatches(receiver, [...projectSetup.batches, ...importBatches]);
+		const receivedProject = getReceivedModel(
+			receiver,
+			projectSetup.project._node_id,
+		);
+		const [receivedResource] = await receiver.queryRel(
+			receivedProject,
+			"resources",
+		);
+		if (!receivedResource) throw new Error("Expected received resource");
+
+		const timelineBatches = await dispatchAndDrain(
+			receiver,
+			receivedProject,
+			"addResourceToTimeline",
+			receivedResource._node_id,
+		);
+		expect(createdIds(timelineBatches, "clip")).toHaveLength(2);
+
+		await sender.close();
+		await receiver.close();
+	});
+
 	it("keeps imported resource byte payloads out of canonical CRDT graph batches", async () => {
 		const sender = await bootCrdtModels("canonical-resource-bytes-a");
 		const projectSetup = await createProject(sender, "Canonical resource bytes project");

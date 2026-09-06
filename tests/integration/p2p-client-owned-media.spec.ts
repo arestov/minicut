@@ -34,7 +34,15 @@ test('client-owned media imports transfer to main without sticking in error', as
 		const clientRow = clientPeer.page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'fixture-video.webm' })
 		await expect(clientRow).toBeVisible()
 		await clientRow.getByRole('button', { name: 'Add to timeline' }).click()
-		await expect(clientPeer.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+		try {
+			await expect(clientPeer.page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
+		} catch (error) {
+			const artifactPath = await writeP2PDebugArtifactsMany('client-owned-media-add-timeout', [
+				{ label: 'server', page: serverPeer.page },
+				{ label: 'client', page: clientPeer.page },
+			])
+			throw new Error(`Timed out adding client-owned media to the timeline. Debug artifact: ${artifactPath}`, { cause: error })
+		}
 		await expect(serverPeer.page.getByRole('region', { name: 'Preview panel' })).toContainText('fixture-video.webm')
 	} finally {
 		await closePeerHandles(first, second)
