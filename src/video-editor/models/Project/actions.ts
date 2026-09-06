@@ -753,7 +753,7 @@ export const reduceResolveDeleteVsEditByRestoreVariant = (
 		return noop;
 	}
 	const restoredAttrs = normalizeRestoredClipAttrs(clipAttrs);
-	const resourceRef = asObject(value?.editedVariant)?.resource;
+	const resourceRef = asObject<Record<string, unknown>>(value?.editedVariant)?.resource;
 	return {
 		clip: {
 			attrs: restoredAttrs,
@@ -841,7 +841,7 @@ export const reduceParkEditedVariantOnReviewTrack = (
 	const restoredAttrs = normalizeRestoredClipAttrs(clipAttrs);
 	const reviewTrack = existingReviewTrack(tracks, REVIEW_TRACK_ROLES.incoming);
 	const trackRef = reviewTrack || { use_ref_id: "deleteVsEditReviewTrack" };
-	const resourceRef = asObject(value?.editedVariant)?.resource;
+	const resourceRef = asObject<Record<string, unknown>>(value?.editedVariant)?.resource;
 	const parkedClipRels = {
 		...(reviewTrack ? { track: reviewTrack } : null),
 		resource: resourceRef ?? null,
@@ -941,19 +941,24 @@ export const reducePrepareParkEditedVariantOnReviewTrack = (
 	if (!asObject(prepared) || !asObject(prepared.parkedClip) || !asObject(prepared.next)) {
 		return noop;
 	}
-	const reviewTrack = asObject<Record<string, unknown>>(prepared.reviewTrack)
+	const preparedReviewTrack = asObject<Record<string, unknown>>(
+		prepared.reviewTrack,
+	);
+	const preparedNext = asObject<Record<string, unknown>>(prepared.next);
+	if (!preparedNext) return noop;
+	const reviewTrack = preparedReviewTrack
 		? {
-				attrs: prepared.reviewTrack.attrs,
-				hold_ref_id: prepared.reviewTrack.hold_ref_id,
+				attrs: preparedReviewTrack.attrs,
+				hold_ref_id: preparedReviewTrack.hold_ref_id,
 			}
 		: prepared.reviewTrack;
-	const preparedNext = Object.fromEntries(
-		Object.entries(prepared.next).filter(([name]) => name !== "clip"),
+	const nextWithoutClip = Object.fromEntries(
+		Object.entries(preparedNext).filter(([name]) => name !== "clip"),
 	);
 	return {
 		reviewTrack,
 		next: {
-			...preparedNext,
+			...nextWithoutClip,
 			parkedClip: prepared.parkedClip,
 		},
 	};
@@ -1138,68 +1143,6 @@ export const reduceImportResourceCreateOnly = (
 			hold_ref_id: "newResource",
 		},
 	};
-};
-
-export const reduceImportResource = (
-	payload: unknown,
-	_noop: unknown,
-	clips: unknown[],
-	videoTrack: unknown,
-	audioTrack: unknown,
-	videoTrackAppendStart: unknown,
-	audioTrackAppendStart: unknown,
-) => {
-	const attrs = normalizeResourceCreationAttrs(payload);
-	const hasTimelineClips =
-		Array.isArray(clips) &&
-		clips.some((entry) => {
-			if (Array.isArray(entry)) {
-				return entry.length > 0;
-			}
-			return Boolean(entry);
-		});
-	const shouldAddToTimeline = !hasTimelineClips;
-	const kind = getResourceKind(attrs);
-	const result: Record<string, unknown> = {
-		resource: { attrs, hold_ref_id: "newResource" },
-		resources: { use_ref_id: "newResource" },
-	};
-
-	if (!shouldAddToTimeline) {
-		return result;
-	}
-
-	if (kind !== "audio" && videoTrack && typeof videoTrack === "object") {
-		result.videoClip = {
-			attrs: createTimelineClipAttrs(
-				attrs,
-				{},
-				typeof videoTrackAppendStart === "number" ? videoTrackAppendStart : 0,
-			),
-			rels: { track: videoTrack, resource: { use_ref_id: "newResource" } },
-			hold_ref_id: "importVideoClip",
-		};
-		result.videoClips = { use_ref_id: "importVideoClip" };
-	}
-
-	if (
-		(kind === "audio" || kind === "video") &&
-		audioTrack &&
-		typeof audioTrack === "object"
-	) {
-		result.audioClip = {
-			attrs: createTimelineClipAttrs(
-				attrs,
-				kind === "video" ? { name: "Embedded audio", mediaKind: "audio" } : {},
-				typeof audioTrackAppendStart === "number" ? audioTrackAppendStart : 0,
-			),
-			rels: { track: audioTrack, resource: { use_ref_id: "newResource" } },
-			hold_ref_id: "importAudioClip",
-		};
-		result.audioClips = { use_ref_id: "importAudioClip" };
-	}
-
-	return result;
 };
 
 const resolveOutputResource = (payload: unknown): ResourceLike | null => {

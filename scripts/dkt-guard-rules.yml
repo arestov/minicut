@@ -1,0 +1,26 @@
+id: dkt-nested-use-ref-in-creation-rels
+language: TypeScript
+severity: error
+message: use_ref_id must not be nested inside a creation rels payload
+rule:
+  pattern: "{ use_ref_id: $REF }"
+  inside:
+    kind: pair
+    has:
+      field: key
+      regex: ^rels$
+    stopBy: end
+  not:
+    inside:
+      kind: pair
+      has:
+        field: key
+        regex: ^\$output$
+      stopBy: end
+---
+id: dkt-positional-session-root-bootstrap
+language: TypeScript
+severity: error
+message: hookSessionRoot must use the current two-argument { rel, attrs } contract
+rule:
+  pattern: "hookSessionRoot($ROOT, $OPTIONS, $LEGACY_STATES)"

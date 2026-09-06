@@ -43,9 +43,10 @@
     "structure:view": "npm --prefix ./dev/structure-graph-viewer run dev",
     "structure": "npm run structure:snapshot && npm run structure:view",
     "bench:color-scopes": "node --import tsx ./scripts/bench-color-scopes.ts",
-    "guard:dkt-hard": "node ./scripts/check-dkt-hard-guardrails.mjs",
-    "node:headless:run": "node --import tsx ./src/video-editor/node/cli.ts --scenario ./tests/fixtures/headless/sample-scenario.json",
-    "node:headless:scenario": "node --import tsx ./src/video-editor/node/cli.ts",
+		"guard:dkt-hard": "node ./scripts/check-dkt-hard-guardrails.mjs",
+		"typecheck:dkt-compat": "tsc -p tsconfig.dkt-compat.json --noEmit",
+		"node:headless:run": "node --import ./test/repl/register-dkt-alias-loader.mjs --import tsx ./src/video-editor/node/cli.ts --scenario ./tests/fixtures/headless/sample-scenario.json",
+		"node:headless:scenario": "node --import ./test/repl/register-dkt-alias-loader.mjs --import tsx ./src/video-editor/node/cli.ts",
     "deploy:frontend": "node ./scripts/deploy-frontend.mjs",
     "deploy": "npm run deploy:frontend"
   },

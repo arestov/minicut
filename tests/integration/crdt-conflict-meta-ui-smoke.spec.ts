@@ -181,7 +181,12 @@ const readIndexedDbManifest = async (page: Page, dbName: string) =>
 				getRequest.onerror = () => reject(getRequest.error)
 				getRequest.onsuccess = () => {
 					db.close()
-					resolve(getRequest.result ?? null)
+					const value = getRequest.result
+					if (value instanceof Uint8Array && value[0] === 1) {
+						resolve(JSON.parse(new TextDecoder().decode(value.subarray(1))))
+						return
+					}
+					resolve(value ?? null)
 				}
 			}
 		})

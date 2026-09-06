@@ -152,8 +152,8 @@ export const createNaturalDanglingResourceConflict = async (
 
 	return {
 		pair,
-		resourceId: resourceA._node_id,
-		clipId: clipA._node_id,
+		resourceId: String(resourceA._node_id),
+		clipId: String(clipA._node_id),
 		item: await pair.waitForReviewItem("dangling_resource"),
 	};
 };
@@ -184,7 +184,7 @@ export const createNaturalDeleteVsEditConflict = async (
 
 	return {
 		pair,
-		clipId: clipA._node_id,
+		clipId: String(clipA._node_id),
 		item: await pair.waitForReviewItem("delete_vs_edit"),
 	};
 };

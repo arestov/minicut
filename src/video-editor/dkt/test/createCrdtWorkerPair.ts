@@ -220,8 +220,8 @@ export const createCrdtWorkerPair = async (options: Options) => {
 			await waitForTransport();
 		},
 		close() {
-			transportA.close();
-			transportB.close();
+			transportA.close?.();
+			transportB.close?.();
 		},
 	};
 };

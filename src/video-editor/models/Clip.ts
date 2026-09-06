@@ -76,7 +76,9 @@ export const Clip = model({
 					if (
 						ctx.summary?.staged_ops?.length ||
 						Object.values(ctx.members).some(
-							(member) => member.value == null || member.status === "missing",
+								(member) =>
+									member.value == null ||
+									(member as { status?: unknown }).status === "missing",
 						)
 					) {
 						return { ok: true };

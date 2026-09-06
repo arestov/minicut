@@ -17,6 +17,7 @@ import {
 	type MiniCutCrdtTransport,
 } from "./createMiniCutDktRuntime";
 import { WORKSPACE_OPEN_STATUS } from "./workspaceOpenState";
+import type { WorkspaceOpenState } from "./workspaceOpenState";
 import {
 	describeP2PPacket,
 	ensureP2PMessageId,

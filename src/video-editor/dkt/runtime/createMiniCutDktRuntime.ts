@@ -325,6 +325,14 @@ const createCrdtRuntime = async (
 			prepareDictionaryNames?: (names: string[]) => unknown;
 		}
 	).prepareDictionaryNames;
+	const getNameDictionary = (
+		storagePackage.dktStorage as {
+			getNameDictionary?: DktStorageRequest<unknown>;
+		}
+	).getNameDictionary;
+	if (getNameDictionary) {
+		await runDktStorageRequest(getNameDictionary);
+	}
 	prepareDictionaryNames?.([
 		"$meta$apis$time$used",
 		"$meta$apis$exportRuntime$used",
@@ -614,7 +622,7 @@ export const createMiniCutDktRuntime = (
 
 	const bootstrapApp = async (
 		sessionKey = "minicut-local",
-		sessionId = sessionKey,
+		sessionId: string | null = sessionKey,
 	) => {
 		if (!enabled) {
 			return null;
@@ -625,7 +633,7 @@ export const createMiniCutDktRuntime = (
 				crdtPromise = createCrdtRuntimeForSession(
 					options.crdt,
 					sessionKey,
-					sessionId,
+					sessionId ?? sessionKey,
 				);
 				const crdt = await crdtPromise;
 				if (crdt.workspaceOpenState) {

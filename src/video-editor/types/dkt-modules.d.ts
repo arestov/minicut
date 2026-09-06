@@ -109,6 +109,7 @@ declare module "dkt-all/libs/provoda/crdt/index.js" {
 }
 
 declare module "dkt-all/libs/provoda/crdt/storage/atomic/dktStorageOpenPolicy.js" {
+	export const createDktStorageV2Manifest: (expected?: Record<string, unknown>) => Record<string, unknown>;
 	export const inspectDktStorageForOpen: (
 		storage: unknown,
 		expected?: unknown,
@@ -117,6 +118,10 @@ declare module "dkt-all/libs/provoda/crdt/storage/atomic/dktStorageOpenPolicy.js
 		storage: unknown,
 		expected?: unknown,
 	) => Promise<{ manifest: unknown; record: unknown }>;
+}
+
+declare module "dkt-all/libs/provoda/SyncR_U_TYPES.js" {
+	export const SYRU_PRUNE_MODEL: number;
 }
 
 declare module "dkt-all/libs/provoda/crdt/storage/atomic/requestor.js" {

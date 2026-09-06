@@ -78,6 +78,9 @@ export const createMiniCutRoomCrdtTransport = (
 		onMessage(message) {
 			received.push(message);
 			options.onRelayMessage?.(message);
+			if (message.type !== "crdt-ops" && message.type !== "crdt-sync-response") {
+				return;
+			}
 			const payload = message.packet?.payload;
 			if (!payload) {
 				return;

@@ -187,7 +187,46 @@ export const migrateMiniCutIndexedDbStorageV1ToV2 = async ({
 		return null;
 	}
 	if (!snapshot.schema) {
-		throw new Error("MiniCut storage-v2 migration requires the persisted v1 schema");
+		const isEmptyWorkspace =
+			snapshot.meta == null &&
+			snapshot.models.length === 0 &&
+			snapshot.removedModelIds.size === 0 &&
+			snapshot.attrs.length === 0 &&
+			snapshot.rels.length === 0 &&
+			snapshot.mentions.length === 0 &&
+			snapshot.expectedRels.length === 0;
+		if (!isEmptyWorkspace) {
+			throw new Error("MiniCut storage-v2 migration requires the persisted v1 schema");
+		}
+		const migrationId = "minicut-indexeddb-storage-v2";
+		const createdAt = new Date().toISOString();
+		const manifest = {
+			...createDktStorageV2Manifest({
+				createdAt,
+				lastExtendedByMigration: migrationId,
+				appId: "minicut",
+				profileId: "minicut-crdt-v1",
+				schemaVersion: 1,
+			}),
+			kind: "dkt-workspace",
+			workspaceId,
+			dktStorageVersion: 2,
+			appSchemaVersion: 1,
+			derivedSchemaVersion: 1,
+		};
+		const record = {
+			id: migrationId,
+			fromStorageVersion: 1,
+			toStorageVersion: 2,
+			createdAt,
+			modelCount: 0,
+		};
+		storage.putManifest(manifest);
+		if (storage.appendMigrationRecord) {
+			await runDktStorageRequest(storage.appendMigrationRecord, record);
+		}
+		await runDktStorageRequest(storage.commitChanges, { migrationId });
+		return { manifest, record };
 	}
 
 	// Compile and validate the complete rewrite against a disposable storage first.

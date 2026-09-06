@@ -41,6 +41,9 @@ type AnyModel = {
 	getNesting: (name: string) => unknown;
 	input?: (callback: () => void | Promise<void>) => unknown;
 	app?: AnyModel;
+	_highway?: {
+		getCurrentStateTransaction?: (strict?: boolean) => unknown;
+	};
 	whenReady?: (fn?: () => void) => Promise<void> | void;
 	queryRel?: (relName: string) => Promise<unknown> | unknown;
 	queryAttr?: (attrName: string) => Promise<unknown> | unknown;
@@ -186,7 +189,7 @@ export const queryRel = async (
 	relName: string,
 ): Promise<AnyModel[]> => {
 	if (!model) return [];
-	const read = async () => await queryDktRel(model, relName);
+	const read = async () => await queryDktRel(model as never, relName);
 	const isInsideTransaction =
 		typeof model._highway?.getCurrentStateTransaction === "function" &&
 		model._highway.getCurrentStateTransaction(false) != null;
@@ -219,7 +222,7 @@ export const queryAttr = async (
 	attrName: string,
 ): Promise<unknown> => {
 	if (!model) return null;
-	const read = async () => (await queryDktAttr(model, attrName)) ?? null;
+	const read = async () => (await queryDktAttr(model as never, attrName)) ?? null;
 	const isInsideTransaction =
 		typeof model._highway?.getCurrentStateTransaction === "function" &&
 		model._highway.getCurrentStateTransaction(false) != null;

@@ -1,0 +1,17 @@
+{
+	"extends": "./tsconfig.video-editor.json",
+	"compilerOptions": {
+		"types": ["vite/client", "node"]
+	},
+	"include": [
+		"src/dkt-react-sync/**/*.ts",
+		"src/video-editor/dkt/**/*.ts",
+		"src/video-editor/models/**/*.ts",
+		"src/video-editor/types/**/*.d.ts"
+	],
+	"exclude": [
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.bench.ts"
+	]
+}
