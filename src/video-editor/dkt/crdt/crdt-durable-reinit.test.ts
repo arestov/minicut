@@ -1,4 +1,4 @@
-import { indexedDB } from "fake-indexeddb";
+import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { describe, expect, it } from "vitest";
 import { bootDktModels, type DktTestContext } from "../testingInit";
@@ -6,6 +6,7 @@ import { drainCrdtOutbox, drainCrdtOutboxBatches } from "../test/crdtAssertions"
 import { createInMemoryCrdtRelay } from "./createInMemoryCrdtRelay";
 import { createMiniCutRoomCrdtTransport } from "./createMiniCutRoomCrdtTransport";
 import type { DktCrdtTransport } from "./testRelayContracts";
+import { runDktStorageRequest, type DktStorageRequest } from "../storage/dktStorageRequest";
 
 type Model = DktTestContext["sessionRoot"];
 
@@ -13,6 +14,7 @@ const createIndexedDbStorage = () => ({
 	type: "indexeddb" as const,
 	dbName: `minicut-crdt-reinit-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 	indexedDB,
+	keyRange: IDBKeyRange,
 });
 
 const createProjectWithClip = async (ctx: DktTestContext) => {
@@ -52,9 +54,11 @@ const reinitContext = async (
 	transport: DktCrdtTransport | null = null,
 ): Promise<DktTestContext> => {
 	const dktStorage = ctx.storagePackage?.dktStorage as {
-		getSnapshot?: () => Promise<unknown>;
+		getSnapshot?: DktStorageRequest<unknown>;
 	};
-	const snapshot = await dktStorage.getSnapshot?.();
+	const snapshot = dktStorage.getSnapshot
+		? await runDktStorageRequest(dktStorage.getSnapshot)
+		: null;
 	if (!snapshot) throw new Error("Expected DKT storage snapshot");
 	return bootDktModels({
 		reinitFromSnapshot: snapshot,
@@ -170,9 +174,14 @@ describe("MiniCut CRDT durable reinit", () => {
 			profileId: "minicut-crdt-v1",
 			profileVersion: 1,
 		});
-		const targetSnapshot = await (
-			target.storagePackage?.dktStorage as { getSnapshot?: () => Promise<unknown> }
-		)?.getSnapshot?.();
+		const getTargetSnapshot = (
+			target.storagePackage?.dktStorage as {
+				getSnapshot?: DktStorageRequest<unknown>;
+			}
+		)?.getSnapshot;
+		const targetSnapshot = getTargetSnapshot
+			? await runDktStorageRequest(getTargetSnapshot)
+			: null;
 		if (!targetSnapshot) throw new Error("Expected target snapshot");
 		const sourceFromTarget = await bootDktModels({
 			reinitFromSnapshot: targetSnapshot,

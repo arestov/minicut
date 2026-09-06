@@ -8,6 +8,7 @@ import type { MiniCutCrdtStorageProfile } from "../test/crdtStorageMatrix";
 import { createInMemoryCrdtRelay } from "./createInMemoryCrdtRelay";
 import { createMiniCutRoomCrdtTransport } from "./createMiniCutRoomCrdtTransport";
 import type { DktCrdtTransport } from "./testRelayContracts";
+import { runDktStorageRequest, type DktStorageRequest } from "../storage/dktStorageRequest";
 
 type Model = DktTestContext["sessionRoot"];
 
@@ -135,7 +136,7 @@ const seedDktSnapshot = async (ctx: DktTestContext, snapshot: unknown) => {
 					key: string,
 					data: unknown,
 				) => Promise<unknown> | unknown;
-				commitChanges?: (meta?: unknown) => Promise<unknown> | unknown;
+				commitChanges?: DktStorageRequest<unknown, [unknown]>;
 			}
 		| undefined;
 	if (!dktStorage) return;
@@ -190,7 +191,11 @@ const seedDktSnapshot = async (ctx: DktTestContext, snapshot: unknown) => {
 	for (const [key, value] of Object.entries(data.expected_rels_to_chains ?? {})) {
 		await dktStorage.createExpectedRel?.(key, value);
 	}
-	await dktStorage.commitChanges?.({ reason: "minicut-storage-matrix-snapshot" });
+	if (dktStorage.commitChanges) {
+		await runDktStorageRequest(dktStorage.commitChanges, {
+			reason: "minicut-storage-matrix-snapshot",
+		});
+	}
 };
 
 const addClip = async (ctx: DktTestContext, videoTrack: Model) => {
