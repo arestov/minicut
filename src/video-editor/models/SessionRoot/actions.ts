@@ -3,7 +3,6 @@ import { clampProgressPercent } from "../../app/exportProgressState";
 import type { ExportRequestState } from "../../app/exportRequestState";
 import {
 	buildPreviewBuffer,
-	PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS,
 	type PreviewBuffer,
 	type PreviewClipSource,
 	type PreviewStructure,
@@ -18,7 +17,12 @@ type SessionStateFields = {
 	pendingProjectInit: Record<string, unknown> | null;
 	selectedEntityId: string | null;
 	cursor: number;
-	isPlaying: boolean;
+	playbackIntent: "paused" | "playing";
+	playbackRunId: number;
+	playStartCursor: number;
+	playStartedAt: number;
+	playbackRate: number;
+	playbackBoundaryCursor: number;
 	exportRequest: ExportRequestState | null;
 	exportProgress: ExportProgressState | null;
 	timelineZoom: number;
@@ -48,9 +52,12 @@ export type DktSessionActionName =
 	| "syncSelectedClipSummary"
 	| "setActiveInspectorTab"
 	| "setCursor"
-	| "setPlaying"
+	| "play"
+	| "pausePlayback"
+	| "commitSeek"
+	| "setPlaybackRate"
+	| "completePlayback"
 	| "setTimelineZoom"
-	| "tickPlayback"
 	| "addTextClipToTimeline"
 	| "requestImportFiles"
 	| "setActiveProjectImportProgress"
@@ -58,7 +65,7 @@ export type DktSessionActionName =
 	| "addActiveProjectResourceToTimeline"
 	| "addActiveProjectEmbeddedAudioToTimeline"
 	| "syncSelectedClipRel"
-	| "togglePlayback"
+	| "handleAttr:isPlaying"
 	| "zoomTimeline"
 	| "nudgeSelectedClip"
 	| "deleteSelectedClip"
@@ -78,7 +85,7 @@ export type DktSessionActionPatch = Partial<
 		| "activeProjectId"
 		| "selectedEntityId"
 		| "cursor"
-		| "isPlaying"
+		| "playbackIntent"
 		| "timelineZoom"
 		| "activeInspectorTab"
 		| "previewBuffer"
@@ -376,63 +383,11 @@ export const reduceSessionSetActiveInspectorTabAction = (
 		: null;
 };
 
-export const reduceSessionSetPlayingAction = (
-	payload: unknown,
-): Pick<SessionStateFields, "isPlaying"> | null => {
-	return typeof payload === "boolean" ? { isPlaying: payload } : null;
-};
-
 export const reduceSessionSetTimelineZoomAction = (
 	payload: unknown,
 ): Pick<SessionStateFields, "timelineZoom"> | null => {
 	const value = finiteNumber(payload);
 	return value === null ? null : { timelineZoom: clamp(value, 8, 96) };
-};
-
-export const reduceSessionTogglePlaybackAction = (
-	state: Pick<SessionStateFields, "isPlaying">,
-): Pick<SessionStateFields, "isPlaying"> => ({
-	isPlaying: !state.isPlaying,
-});
-
-export const reduceSessionTickPlaybackAction = (
-	payload: unknown,
-	state: Pick<SessionStateFields, "cursor" | "isPlaying"> &
-		Partial<
-			Pick<SessionStateFields, "previewBuffer"> & {
-				previewStructure: PreviewStructure;
-			}
-		>,
-): Partial<Pick<SessionStateFields, "cursor" | "previewBuffer">> | null => {
-	if (!state.isPlaying) {
-		return null;
-	}
-
-	const deltaSeconds = finiteNumber(
-		(payload as { deltaSeconds?: unknown } | null)?.deltaSeconds,
-	);
-	if (deltaSeconds === null) {
-		return null;
-	}
-
-	const cursor = Math.max(0, roundToHundredths(state.cursor + deltaSeconds));
-	if (
-		!state.previewBuffer ||
-		cursor + PREVIEW_BUFFER_REFILL_THRESHOLD_SECONDS >=
-			state.previewBuffer.endCursor
-	) {
-		const previewStructure =
-			state.previewStructure &&
-			Array.isArray(state.previewStructure.clipSources)
-				? state.previewStructure
-				: { clipSources: [] };
-		return {
-			cursor,
-			previewBuffer: buildPreviewBuffer(previewStructure, cursor),
-		};
-	}
-
-	return { cursor };
 };
 
 export const reduceSessionZoomTimelineAction = (
@@ -749,23 +704,256 @@ export const sessionSetCursorAction = {
 	],
 } as const satisfies DktActionDescriptor;
 
+const playbackRunPatch = ({
+	cursor,
+	now,
+	rate,
+	boundary,
+	runId,
+}: {
+	cursor: number;
+	now: number;
+	rate: number;
+	boundary: number;
+	runId: number;
+}) => ({
+	cursor,
+	playbackIntent: "playing" as const,
+	playbackRunId: runId,
+	playStartCursor: cursor,
+	playStartedAt: now,
+	playbackRate: rate,
+	playbackBoundaryCursor: boundary,
+});
+
+export const sessionPlayAction = {
+	to: {
+		cursor: ["cursor"],
+		playbackIntent: ["playbackIntent"],
+		playbackRunId: ["playbackRunId"],
+		playStartCursor: ["playStartCursor"],
+		playStartedAt: ["playStartedAt"],
+		playbackRate: ["playbackRate"],
+		playbackBoundaryCursor: ["playbackBoundaryCursor"],
+	},
+	fn: [
+		[
+			"$noop",
+			"$now",
+			"cursor",
+			"playbackRunId",
+			"playbackRate",
+			"< @one:timelineDuration < activeProject",
+		] as const,
+		(
+			_payload: unknown,
+			noop: unknown,
+			now: unknown,
+			cursor: unknown,
+			runId: unknown,
+			rate: unknown,
+			boundary: unknown,
+		) => {
+			const start = Math.max(0, asNumber(cursor, 0));
+			const end = Math.max(0, asNumber(boundary, 0));
+			if (end <= start) return noop;
+			return playbackRunPatch({
+				cursor: start,
+				now: asNumber(now, 0),
+				rate: Math.max(0.01, asNumber(rate, 1)),
+				boundary: end,
+				runId: Math.max(0, asNumber(runId, 0)) + 1,
+			});
+		},
+	],
+} as const satisfies DktActionDescriptor;
+
+export const sessionPausePlaybackAction = {
+	to: {
+		cursor: ["cursor"],
+		playbackIntent: ["playbackIntent"],
+	},
+	fn: [
+		["$noop", "playbackRunId", "playbackBoundaryCursor"] as const,
+		(payload: unknown, noop: unknown, currentRunId: unknown, boundary: unknown) => {
+			const value = asObject(payload);
+			const requestedRunId = finiteNumber(value?.runId);
+			if (
+				requestedRunId !== null &&
+				requestedRunId !== asNumber(currentRunId, 0)
+			) {
+				return noop;
+			}
+			const requestedCursor = finiteNumber(value?.cursor);
+			if (requestedCursor === null) return noop;
+			return {
+				cursor: clamp(requestedCursor, 0, Math.max(0, asNumber(boundary, 0))),
+				playbackIntent: "paused" as const,
+			};
+		},
+	],
+} as const satisfies DktActionDescriptor;
+
+export const sessionCommitSeekAction = {
+	to: {
+		cursor: ["cursor"],
+		playbackIntent: ["playbackIntent"],
+		playbackRunId: ["playbackRunId"],
+		playStartCursor: ["playStartCursor"],
+		playStartedAt: ["playStartedAt"],
+		playbackRate: ["playbackRate"],
+		playbackBoundaryCursor: ["playbackBoundaryCursor"],
+	},
+	fn: [
+		[
+			"$noop",
+			"$now",
+			"isPlaying",
+			"playbackRunId",
+			"playbackRate",
+			"< @one:timelineDuration < activeProject",
+		] as const,
+		(
+			payload: unknown,
+			noop: unknown,
+			now: unknown,
+			isPlaying: unknown,
+			runId: unknown,
+			rate: unknown,
+			boundary: unknown,
+		) => {
+			const requested = finiteNumber(
+				asObject(payload)?.cursor ?? payload,
+			);
+			if (requested === null) return noop;
+			const end = Math.max(0, asNumber(boundary, 0));
+			const cursor = clamp(requested, 0, end);
+			if (!isPlaying || cursor >= end) {
+				return { cursor, playbackIntent: "paused" as const };
+			}
+			return playbackRunPatch({
+				cursor,
+				now: asNumber(now, 0),
+				rate: Math.max(0.01, asNumber(rate, 1)),
+				boundary: end,
+				runId: Math.max(0, asNumber(runId, 0)) + 1,
+			});
+		},
+	],
+} as const satisfies DktActionDescriptor;
+
+export const sessionSetPlaybackRateAction = {
+	to: {
+		cursor: ["cursor"],
+		playbackIntent: ["playbackIntent"],
+		playbackRunId: ["playbackRunId"],
+		playStartCursor: ["playStartCursor"],
+		playStartedAt: ["playStartedAt"],
+		playbackRate: ["playbackRate"],
+		playbackBoundaryCursor: ["playbackBoundaryCursor"],
+	},
+	fn: [
+		[
+			"$noop",
+			"$now",
+			"isPlaying",
+			"cursor",
+			"playbackRunId",
+			"< @one:timelineDuration < activeProject",
+		] as const,
+		(
+			payload: unknown,
+			noop: unknown,
+			now: unknown,
+			isPlaying: unknown,
+			cursor: unknown,
+			runId: unknown,
+			boundary: unknown,
+		) => {
+			const value = finiteNumber(asObject(payload)?.rate ?? payload);
+			if (value === null || value <= 0) return noop;
+			const rate = clamp(value, 0.1, 16);
+			if (!isPlaying) return { playbackRate: rate };
+			return playbackRunPatch({
+				cursor: Math.max(0, asNumber(asObject(payload)?.cursor, asNumber(cursor, 0))),
+				now: asNumber(now, 0),
+				rate,
+				boundary: Math.max(0, asNumber(boundary, 0)),
+				runId: Math.max(0, asNumber(runId, 0)) + 1,
+			});
+		},
+	],
+} as const satisfies DktActionDescriptor;
+
+export const sessionCompletePlaybackAction = {
+	to: {
+		cursor: ["cursor"],
+		playbackIntent: ["playbackIntent"],
+	},
+	fn: [
+		["$noop", "playbackRunId", "playbackBoundaryCursor"] as const,
+		(payload: unknown, noop: unknown, currentRunId: unknown, boundary: unknown) => {
+			const value = asObject(payload);
+			const runId = finiteNumber(value?.runId);
+			if (runId === null || runId !== asNumber(currentRunId, 0)) return noop;
+			return {
+				cursor: clamp(
+					asNumber(value?.cursor, asNumber(boundary, 0)),
+					0,
+					Math.max(0, asNumber(boundary, 0)),
+				),
+				playbackIntent: "paused" as const,
+			};
+		},
+	],
+} as const satisfies DktActionDescriptor;
+
+export const sessionHandleIsPlayingAction = {
+	to: [
+		"$fx_applyPlaybackRun",
+		{ intent: "call", drop_when_api_not_ready: false },
+	],
+	fn: [
+		[
+			"playbackRunId",
+			"playStartCursor",
+			"playStartedAt",
+			"playbackRate",
+			"playbackBoundaryCursor",
+			"cursor",
+		] as const,
+		(
+			payload: unknown,
+			runId: unknown,
+			startCursor: unknown,
+			startedAt: unknown,
+			rate: unknown,
+			boundaryCursor: unknown,
+			cursor: unknown,
+		) => {
+			const isPlaying =
+				(payload as { next_value?: unknown } | null)?.next_value === true;
+			return isPlaying
+				? {
+						run: {
+							runId: asNumber(runId, 0),
+							startCursorSeconds: asNumber(startCursor, 0),
+							startedAtEpochMs: asNumber(startedAt, 0),
+							playbackRate: asNumber(rate, 1),
+							boundaryCursorSeconds: asNumber(boundaryCursor, 0),
+						},
+					}
+				: { run: null, committedCursor: asNumber(cursor, 0) };
+		},
+	],
+} as const satisfies DktActionDescriptor;
+
 export const sessionSetActiveInspectorTabAction = {
 	to: {
 		activeInspectorTab: ["activeInspectorTab"],
 	},
 	fn: (payload: unknown) =>
 		reduceSessionSetActiveInspectorTabAction(payload) ?? {},
-} as const satisfies DktActionDescriptor;
-
-export const sessionSetPlayingAction = {
-	to: {
-		isPlaying: ["isPlaying"],
-	},
-	fn: [
-		["$noop"] as const,
-		(payload: unknown, noop: unknown) =>
-			reduceSessionSetPlayingAction(payload) ?? noop,
-	],
 } as const satisfies DktActionDescriptor;
 
 export const sessionSetTimelineZoomAction = {
@@ -776,51 +964,6 @@ export const sessionSetTimelineZoomAction = {
 		["$noop"] as const,
 		(payload: unknown, noop: unknown) =>
 			reduceSessionSetTimelineZoomAction(payload) ?? noop,
-	],
-} as const satisfies DktActionDescriptor;
-
-export const sessionTogglePlaybackAction = {
-	to: {
-		isPlaying: ["isPlaying"],
-	},
-	fn: [
-		["isPlaying"] as const,
-		(_payload: unknown, isPlaying: unknown) =>
-			reduceSessionTogglePlaybackAction({ isPlaying: Boolean(isPlaying) }),
-	],
-} as const satisfies DktActionDescriptor;
-
-export const sessionTickPlaybackAction = {
-	to: {
-		cursor: ["cursor"],
-		previewBuffer: ["previewBuffer"],
-	},
-	fn: [
-		["$noop", "cursor", "isPlaying", "previewBuffer", "previewStructure"] as const,
-		(
-			payload: unknown,
-			noop: unknown,
-			cursor: unknown,
-			isPlaying: unknown,
-			previewBuffer: unknown,
-			previewStructure: unknown,
-		) =>
-			reduceSessionTickPlaybackAction(payload, {
-				cursor: typeof cursor === "number" ? cursor : 0,
-				isPlaying: Boolean(isPlaying),
-				previewBuffer:
-					previewBuffer && typeof previewBuffer === "object"
-						? (previewBuffer as PreviewBuffer)
-						: null,
-				previewStructure:
-					previewStructure &&
-					typeof previewStructure === "object" &&
-					Array.isArray(
-						(previewStructure as { clipSources?: unknown }).clipSources,
-					)
-						? (previewStructure as PreviewStructure)
-						: { clipSources: [] },
-			}) ?? noop,
 	],
 } as const satisfies DktActionDescriptor;
 
@@ -1305,10 +1448,13 @@ export const dktSessionActions = {
 	syncSelectedClipSummary: sessionSyncSelectedClipSummaryAction,
 	setActiveInspectorTab: sessionSetActiveInspectorTabAction,
 	setCursor: sessionSetCursorAction,
-	setPlaying: sessionSetPlayingAction,
+	play: sessionPlayAction,
+	pausePlayback: sessionPausePlaybackAction,
+	commitSeek: sessionCommitSeekAction,
+	setPlaybackRate: sessionSetPlaybackRateAction,
+	completePlayback: sessionCompletePlaybackAction,
+	"handleAttr:isPlaying": sessionHandleIsPlayingAction,
 	setTimelineZoom: sessionSetTimelineZoomAction,
-	tickPlayback: sessionTickPlaybackAction,
-	togglePlayback: sessionTogglePlaybackAction,
 	zoomTimeline: sessionZoomTimelineAction,
 	nudgeSelectedClip: sessionNudgeSelectedClipAction,
 	requestImportFiles: sessionRequestImportFilesAction,

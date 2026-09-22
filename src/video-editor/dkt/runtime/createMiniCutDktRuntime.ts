@@ -353,6 +353,7 @@ const createCrdtRuntime = async (
 		"$meta$apis$exportRuntime$used",
 		"$meta$apis$importRuntime$used",
 		"$meta$apis$mediaRecoveryRuntime$used",
+		"$meta$apis$playbackRuntime$used",
 	]);
 	const workspaceId = normalized.workspaceIdForSessionKey?.(openPolicySessionKey);
 	const storageOpen = workspaceId
@@ -625,6 +626,12 @@ export const createMiniCutDktRuntime = (
 		}
 	};
 
+	const publishPlaybackRunRequest = (payload: unknown) => {
+		for (const transport of activeTransports) {
+			transport.send({ type: DKT_MSG.PLAYBACK_RUN_REQUEST, payload });
+		}
+	};
+
 	const clearExportProgressInAllSessions = async () => {
 		logRuntime("clearExportProgressInAllSessions:start", {
 			sessionCount: sessionRootPromises.size,
@@ -715,6 +722,11 @@ export const createMiniCutDktRuntime = (
 						mediaRecoveryRuntime: {
 							requestMediaRecovery: (payload: unknown) => {
 								publishMediaRecoveryRequest(payload);
+							},
+						},
+						playbackRuntime: {
+							applyPlaybackRun: (payload: unknown) => {
+								publishPlaybackRunRequest(payload);
 							},
 						},
 					};

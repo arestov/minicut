@@ -2,12 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
 	reduceSessionSelectEntityAction,
 	reduceSessionSetCursorAction,
-	reduceSessionTogglePlaybackAction,
 	reduceSessionZoomTimelineAction,
 } from "../models/SessionRoot/actions";
 
 const sessionState = {
-	isPlaying: true,
 	timelineZoom: 16,
 };
 
@@ -27,10 +25,7 @@ describe("DKT session actions", () => {
 		expect(reduceSessionSetCursorAction(Number.NaN)).toBeNull();
 	});
 
-	it("uses declared deps for playback and zoom actions", () => {
-		expect(reduceSessionTogglePlaybackAction(sessionState)).toEqual({
-			isPlaying: false,
-		});
+	it("uses declared deps for zoom actions", () => {
 		expect(reduceSessionZoomTimelineAction(90, sessionState)).toEqual({
 			timelineZoom: 96,
 		});

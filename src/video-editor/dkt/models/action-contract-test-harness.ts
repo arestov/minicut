@@ -16,6 +16,7 @@ export type ActionContractHarness = {
 	audioClip: ModelHandle;
 	exportRequests: unknown[];
 	importRequests: unknown[];
+	playbackRequests: unknown[];
 };
 
 type HarnessOptions = {
@@ -71,6 +72,7 @@ export const createActionContractHarness = async (
 ): Promise<ActionContractHarness> => {
 	const exportRequests: unknown[] = [];
 	const importRequests: unknown[] = [];
+	const playbackRequests: unknown[] = [];
 	const userInterfaces = options.interfaces ?? {};
 	const userExportRuntime = (
 		userInterfaces as {
@@ -82,6 +84,11 @@ export const createActionContractHarness = async (
 			importRuntime?: { requestImportFiles?: (payload: unknown) => unknown };
 		}
 	).importRuntime;
+	const userPlaybackRuntime = (
+		userInterfaces as {
+			playbackRuntime?: { applyPlaybackRun?: (payload: unknown) => unknown };
+		}
+	).playbackRuntime;
 
 	const ctx = await bootDktModels({
 		interfaces: {
@@ -98,6 +105,13 @@ export const createActionContractHarness = async (
 				requestImportFiles(payload: unknown) {
 					importRequests.push(payload);
 					return userImportRuntime?.requestImportFiles?.(payload);
+				},
+			},
+			playbackRuntime: {
+				...userPlaybackRuntime,
+				applyPlaybackRun(payload: unknown) {
+					playbackRequests.push(payload);
+					return userPlaybackRuntime?.applyPlaybackRun?.(payload);
 				},
 			},
 		},
@@ -239,5 +253,6 @@ export const createActionContractHarness = async (
 		),
 		exportRequests,
 		importRequests,
+		playbackRequests,
 	};
 };

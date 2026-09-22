@@ -403,6 +403,10 @@ export const createMiniCutPageSyncRuntime = ({
 				emitRuntimeTaskRequest("$fx_mediaRecovery", message.payload);
 				return;
 			}
+			case DKT_MSG.PLAYBACK_RUN_REQUEST: {
+				emitRuntimeTaskRequest("$fx_applyPlaybackRun", message.payload);
+				return;
+			}
 			case DKT_MSG.SYNC_HANDLE: {
 				handleSyncMessage(message);
 				return;

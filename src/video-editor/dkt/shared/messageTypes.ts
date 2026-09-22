@@ -9,6 +9,7 @@ export const DKT_MSG = {
 	EXPORT_REQUEST: "dkt:export-request",
 	IMPORT_FILES_REQUEST: "dkt:import-files-request",
 	MEDIA_RECOVERY_REQUEST: "dkt:media-recovery-request",
+	PLAYBACK_RUN_REQUEST: "dkt:playback-run-request",
 	P2P_SESSION_LOST: "dkt:p2p-session-lost",
 	RUNTIME_READY: "dkt:runtime-ready",
 	RUNTIME_ERROR: "dkt:runtime-error",
@@ -117,6 +118,11 @@ export type DktMediaRecoveryRequestMessage = {
 	payload: unknown;
 };
 
+export type DktPlaybackRunRequestMessage = {
+	type: typeof DKT_MSG.PLAYBACK_RUN_REQUEST;
+	payload: unknown;
+};
+
 export type DktP2PSessionLostMessage = {
 	type: typeof DKT_MSG.P2P_SESSION_LOST;
 	reason: string;
@@ -162,6 +168,7 @@ export type MiniCutDktTransportMessage =
 	| DktExportRequestMessage
 	| DktImportFilesRequestMessage
 	| DktMediaRecoveryRequestMessage
+	| DktPlaybackRunRequestMessage
 	| DktP2PSessionLostMessage
 	| DktRuntimeReadyMessage
 	| DktRuntimeErrorMessage

@@ -124,16 +124,70 @@ export const EditorSessionRoot = model({
 			0,
 			{ aggregate: { name: "sessionProjection", role: "projection", as: "cursor" } },
 		],
-		isPlaying: [
+		playbackIntent: [
 			"input",
-			false,
+			"paused",
 			{
 				aggregate: {
 					name: "sessionProjection",
 					role: "projection",
-					as: "isPlaying",
+					as: "playbackIntent",
 				},
 			},
+		],
+		playbackRunId: ["input", 0],
+		playStartCursor: ["input", 0],
+		playStartedAt: ["input", 0],
+		playbackRate: ["input", 1],
+		playbackBoundaryCursor: ["input", 0],
+		playShouldCompleteAt: [
+			"comp",
+			[
+				"playbackIntent",
+				"playStartCursor",
+				"playStartedAt",
+				"playbackRate",
+				"playbackBoundaryCursor",
+			] as const,
+			(
+				intent: unknown,
+				startCursor: unknown,
+				startedAt: unknown,
+				rate: unknown,
+				boundaryCursor: unknown,
+			) => {
+				if (intent !== "playing") return 0;
+				const start = typeof startCursor === "number" ? startCursor : 0;
+				const boundary = typeof boundaryCursor === "number" ? boundaryCursor : start;
+				const started = typeof startedAt === "number" ? startedAt : 0;
+				const speed = typeof rate === "number" && rate > 0 ? rate : 1;
+				return started + (Math.max(0, boundary - start) / speed) * 1000;
+			},
+		],
+		playbackDeadlineReached: [
+			"comp",
+			["$meta$time/instant/[:playShouldCompleteAt]"] as const,
+			(occurred: unknown) => occurred === true,
+		],
+		isPlaying: [
+			"comp",
+			[
+				"playbackIntent",
+				"playStartCursor",
+				"playbackBoundaryCursor",
+				"playbackDeadlineReached",
+			] as const,
+			(
+				intent: unknown,
+				startCursor: unknown,
+				boundaryCursor: unknown,
+				deadlineReached: unknown,
+			) =>
+				intent === "playing" &&
+				typeof startCursor === "number" &&
+				typeof boundaryCursor === "number" &&
+				boundaryCursor > startCursor &&
+				deadlineReached !== true,
 		],
 		previewBuffer: [
 			"input",
@@ -259,6 +313,11 @@ export const EditorSessionRoot = model({
 	},
 	effects: {
 		api: {
+			playbackRuntime: [
+				["_node_id"] as const,
+				["#playbackRuntime"] as const,
+				(playbackRuntime: unknown) => playbackRuntime,
+			],
 			exportRuntime: [
 				["_node_id"] as const,
 				["#exportRuntime"] as const,
@@ -271,6 +330,19 @@ export const EditorSessionRoot = model({
 			],
 		},
 		out: {
+			$fx_applyPlaybackRun: {
+				api: ["playbackRuntime"],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as {
+						applyPlaybackRun?: (payload: unknown) => void;
+					} | null;
+					if (typeof runtime?.applyPlaybackRun !== "function") return;
+					runtime.applyPlaybackRun(
+						(state as { payload?: unknown } | null)?.payload,
+					);
+				},
+			},
 			$fx_handleInputFiles: {
 				api: ["importRuntime"],
 				create_when: { api_inits: true },

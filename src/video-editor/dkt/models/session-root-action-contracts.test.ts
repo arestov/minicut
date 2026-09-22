@@ -203,12 +203,6 @@ describe("SessionRoot action contracts", () => {
 			"setTimelineZoom",
 			24,
 		);
-		await dispatchAndSettle(
-			harness.ctx,
-			harness.sessionRoot,
-			"setPlaying",
-			true,
-		);
 
 		await dispatchAndSettle(
 			harness.ctx,
@@ -222,36 +216,68 @@ describe("SessionRoot action contracts", () => {
 			"setTimelineZoom",
 			{ zoom: 10 },
 		);
-		await dispatchAndSettle(
-			harness.ctx,
-			harness.sessionRoot,
-			"setPlaying",
-			"bad",
-		);
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "setPlaybackRate", "bad");
 
 		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(2.5);
 		expect(harness.ctx.getAttr(harness.sessionRoot, "timelineZoom")).toBe(24);
-		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(true);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "playbackRate")).toBe(1);
 	});
 
-	it("playback actions toggle state and tick when playing", async () => {
+	it("playback actions create one run and commit pause without frame ticks", async () => {
 		const harness = await createActionContractHarness();
 
-		await dispatchAndSettle(
-			harness.ctx,
-			harness.sessionRoot,
-			"setPlaying",
-			true,
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "play");
+		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(true);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(0);
+		const runId = Number(
+			harness.ctx.getAttr(harness.sessionRoot, "playbackRunId"),
 		);
+		expect(runId).toBe(1);
+		expect(
+			Number(harness.ctx.getAttr(harness.sessionRoot, "playShouldCompleteAt")),
+		).toBeGreaterThan(
+			Number(harness.ctx.getAttr(harness.sessionRoot, "playStartedAt")),
+		);
+		expect(
+			harness.ctx.getAttr(harness.sessionRoot, "playbackDeadlineReached"),
+		).toBe(false);
+		expect(harness.playbackRequests.at(-1)).toMatchObject({
+			run: {
+				runId,
+				startCursorSeconds: 0,
+				playbackRate: 1,
+				boundaryCursorSeconds: 12,
+			},
+		});
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "pausePlayback", {
+			runId,
+			cursor: 0.5,
+		});
+		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(false);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(0.5);
+		expect(harness.playbackRequests.at(-1)).toEqual({
+			run: null,
+			committedCursor: 0.5,
+		});
+	});
+
+	it("ignores stale completion and accepts completion for the current run", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "play");
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "completePlayback", {
+			runId: 0,
+			cursor: 12,
+		});
 		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(true);
 
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "tickPlayback", {
-			deltaSeconds: 0.5,
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "completePlayback", {
+			runId: 1,
+			cursor: 12,
 		});
-		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(0.5);
-
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "togglePlayback");
 		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(false);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(12);
 	});
 
 	it("preview buffer actions create, advance, and clear buffer", async () => {
@@ -267,20 +293,6 @@ describe("SessionRoot action contracts", () => {
 			"previewBuffer",
 		) as { startCursor?: number } | null;
 		expect(previewBuffer).toBeTruthy();
-
-		await dispatchAndSettle(
-			harness.ctx,
-			harness.sessionRoot,
-			"setPlaying",
-			true,
-		);
-		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "tickPlayback", {
-			deltaSeconds: 0.5,
-		});
-		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(0.5);
-		expect(
-			harness.ctx.getAttr(harness.sessionRoot, "previewBuffer"),
-		).toBeTruthy();
 
 		await dispatchAndSettle(
 			harness.ctx,
