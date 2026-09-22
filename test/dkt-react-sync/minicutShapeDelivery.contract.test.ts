@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { MemoryWorkerAuthority } from "../../worker/memoryWorker";
-import { miniCutEditorRootShape } from "../../ui/dkt/shapes";
-import { createMiniCutPageSyncRuntime } from "./createMiniCutPageSyncRuntime";
+import { MemoryWorkerAuthority } from "../../src/video-editor/worker/memoryWorker";
+import { miniCutEditorRootShape } from "../../src/video-editor/ui/dkt/shapes";
+import { createMiniCutPageSyncRuntime } from "../../src/video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
 	for (let attempt = 0; attempt < 500; attempt += 1) {
