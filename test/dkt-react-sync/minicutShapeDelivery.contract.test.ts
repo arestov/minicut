@@ -2,16 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MemoryWorkerAuthority } from "../../src/video-editor/worker/memoryWorker";
 import { miniCutEditorRootShape } from "../../src/video-editor/ui/dkt/shapes";
 import { createMiniCutPageSyncRuntime } from "../../src/video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
-
-const waitFor = async (predicate: () => boolean): Promise<void> => {
-	for (let attempt = 0; attempt < 500; attempt += 1) {
-		if (predicate()) {
-			return;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 0));
-	}
-	throw new Error("Timed out waiting for React sync state");
-};
+import { waitFor } from "./testUtils";
 
 describe("MiniCut DKT to React dynamic shape delivery", () => {
 	it("delivers root and newly created project/track attrs through the real sync sender", async () => {
@@ -42,8 +33,16 @@ describe("MiniCut DKT to React dynamic shape delivery", () => {
 							.timelineZoom === "number",
 				);
 				expect(
-					pageRuntime.readAttrs(rootScope, ["timelineZoom"]).timelineZoom,
-				).toBe(56);
+					pageRuntime.readAttrs(rootScope, [
+						"timelineZoom",
+						"cursor",
+						"isPlaying",
+					]),
+				).toMatchObject({
+					timelineZoom: 56,
+					cursor: 0,
+					isPlaying: false,
+				});
 
 				await pageRuntime.dispatchAndWait(
 					"createProject",
@@ -92,6 +91,46 @@ describe("MiniCut DKT to React dynamic shape delivery", () => {
 							typeof pageRuntime.readAttrs(track, ["name"]).name === "string",
 					),
 				).toBe(true);
+
+				await pageRuntime.dispatchAndWait(
+					"addTextClipToTimeline",
+					{
+						name: "Text contract clip",
+						mediaKind: "text",
+						start: 0,
+						in: 0,
+						duration: 3,
+						text: { content: "Contract" },
+					},
+					rootScope,
+				);
+				await pageRuntime.waitForRuntimeSettled?.();
+				await waitFor(() =>
+					tracks.some((track) =>
+						pageRuntime.readMany(track, "clips").some(
+							(clip) =>
+								pageRuntime.readAttrs(clip, ["name"]).name ===
+								"Text contract clip",
+						),
+					),
+				);
+				const clip = tracks
+					.flatMap((track) => pageRuntime.readMany(track, "clips"))
+					.find(
+						(candidate) =>
+							pageRuntime.readAttrs(candidate, ["name"]).name ===
+							"Text contract clip",
+					);
+				if (!clip) {
+					throw new Error("Expected dynamically created clip scope");
+				}
+				expect(
+					pageRuntime.readAttrs(clip, ["name", "mediaKind", "duration"]),
+				).toMatchObject({
+					name: "Text contract clip",
+					mediaKind: "text",
+					duration: 3,
+				});
 			} finally {
 				stopShape();
 			}
