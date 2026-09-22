@@ -156,7 +156,11 @@ export const createMiniCutPageSyncRuntime = ({
 			syncReceiver.updateStructureUsage({ graph });
 		},
 		requireNodeShapes(nodeId: string, shapeIds: readonly string[]) {
-			syncReceiver.requireShapeForModel([nodeId, ...shapeIds]);
+			syncReceiver.requireShapeForModel({
+				node_id: nodeId,
+				activation_id: `react-shape-registry:${nodeId}`,
+				shape_ids: shapeIds,
+			});
 		},
 		readOne(scope: ReactSyncScopeHandle, relName: string) {
 			return syncReceiver.readOneScope(scope, relName);

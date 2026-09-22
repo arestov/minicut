@@ -1,5 +1,6 @@
 import {
 	DKT_MSG,
+	type DktSyncShapeRequest,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 
@@ -41,7 +42,7 @@ export const createSyncUpdateStructureUsageMessage = (
 });
 
 export const createSyncRequireShapeMessage = (
-	data: unknown,
+	data: DktSyncShapeRequest,
 ): MiniCutDktTransportMessage => ({
 	type: DKT_MSG.SYNC_REQUIRE_SHAPE,
 	data,

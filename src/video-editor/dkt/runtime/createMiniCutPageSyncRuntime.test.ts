@@ -208,7 +208,11 @@ describe("createMiniCutPageSyncRuntime", () => {
 		});
 		expect(memory.sent).toContainEqual({
 			type: DKT_MSG.SYNC_REQUIRE_SHAPE,
-			data: ["root", shape.id],
+			data: {
+				node_id: "root",
+				activation_id: "react-shape-registry:root",
+				shape_ids: [shape.id],
+			},
 		});
 		expect(memory.sent).toContainEqual({
 			type: DKT_MSG.DISPATCH_ACTION,

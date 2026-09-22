@@ -17,6 +17,7 @@ import {
 import type { DktCrdtTransport } from "../crdt/testRelayContracts";
 import {
 	DKT_MSG,
+	type DktSyncShapeRequest,
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import {
@@ -211,8 +212,22 @@ type RuntimeLike = {
 	debug_flow_write_trace?: unknown[];
 };
 
-const getSyncShapeRequestNodeId = (data: unknown): string | null =>
-	Array.isArray(data) && typeof data[0] === "string" ? data[0] : null;
+const validateSyncShapeRequest = (data: unknown): DktSyncShapeRequest => {
+	if (
+		!data ||
+		typeof data !== "object" ||
+		typeof (data as { node_id?: unknown }).node_id !== "string" ||
+		typeof (data as { activation_id?: unknown }).activation_id !== "string" ||
+		!Array.isArray((data as { shape_ids?: unknown }).shape_ids) ||
+		!(data as { shape_ids: unknown[] }).shape_ids.every(
+			(shapeId) => typeof shapeId === "string",
+		)
+	) {
+		throw new Error("Invalid DKT sync shape request payload");
+	}
+
+	return data as DktSyncShapeRequest;
+};
 
 const isStoragePackage = (
 	value: MiniCutCrdtStorageOptions | undefined,
@@ -1010,15 +1025,15 @@ export const createMiniCutDktRuntime = (
 					if (!app || !stream) {
 						throw new Error("MiniCut DKT sync stream is not bootstrapped");
 					}
-					const nodeId = getSyncShapeRequestNodeId(message.data);
-					if (nodeId && !app.runtime.models?.[nodeId]) {
+					const request = validateSyncShapeRequest(message.data);
+					if (!app.runtime.models?.[request.node_id]) {
 						logRuntime("ignore shape request for unknown model", {
-							nodeId,
+							nodeId: request.node_id,
 							sessionKey: activeSessionKey,
 						});
 						return;
 					}
-					app.runtime.sync_sender.requireShapeForModel(stream.id, message.data);
+					app.runtime.sync_sender.requireShapeForModel(stream.id, request);
 					return;
 				}
 				case DKT_MSG.CRDT_TRANSPORT_RECEIVE: {

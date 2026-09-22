@@ -86,9 +86,15 @@ export type DktSyncUpdateStructureUsageMessage = {
 	data: unknown;
 };
 
+export type DktSyncShapeRequest = {
+	node_id: string;
+	activation_id: string;
+	shape_ids: readonly string[];
+};
+
 export type DktSyncRequireShapeMessage = {
 	type: typeof DKT_MSG.SYNC_REQUIRE_SHAPE;
-	data: unknown;
+	data: DktSyncShapeRequest;
 };
 
 export type DktRuntimeLogMessage = {

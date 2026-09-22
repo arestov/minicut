@@ -12,6 +12,12 @@ type Listener = () => void;
 type NodeRef = string;
 type RelValue = NodeRef | NodeRef[] | null;
 
+export type ReactSyncShapeRequest = {
+	node_id: string;
+	activation_id: string;
+	shape_ids: readonly string[];
+};
+
 export type ReactSyncDebugNode = {
 	nodeId: string;
 	modelName: string | null;
@@ -68,7 +74,7 @@ const SYNC_TREE_COMPLETE_LENGTH = 1;
 export interface ReactSyncBridge {
 	RPCLegacy(nodeId: string, args: unknown[]): void;
 	updateStructureUsage(data: unknown): void;
-	requireShapeForModel(data: unknown): void;
+	requireShapeForModel(data: ReactSyncShapeRequest): void;
 }
 
 export interface ReactSyncNode {
@@ -502,7 +508,7 @@ export class ReactSyncReceiver {
 		this.bridge?.updateStructureUsage(data);
 	}
 
-	requireShapeForModel(data: unknown) {
+	requireShapeForModel(data: ReactSyncShapeRequest) {
 		this.bridge?.requireShapeForModel(data);
 	}
 
