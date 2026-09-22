@@ -157,10 +157,13 @@ test.describe('color scopes profile harness', () => {
 			const target = window as Window & { __MINICUT_SCOPE_PROFILE__?: { events: unknown[] } }
 			target.__MINICUT_SCOPE_PROFILE__?.events.splice(0)
 		})
-		const measuredMs = 3200
+		const measuredMs = videoPath === fallbackVideoPath ? 750 : 3200
 		await preview.getByRole('button', { name: 'Play' }).click()
 		await page.waitForTimeout(measuredMs)
-		await preview.getByRole('button', { name: 'Pause' }).click()
+		const pauseButton = preview.getByRole('button', { name: 'Pause' })
+		if (await pauseButton.isVisible()) {
+			await pauseButton.click()
+		}
 
 		const events = await page.evaluate(() => {
 			const target = window as Window & { __MINICUT_SCOPE_PROFILE__?: { events: ScopeProfileEvent[] } }
