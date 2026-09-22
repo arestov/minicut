@@ -969,10 +969,12 @@ button:disabled {
 
 .ve-timeline-playhead {
 	position: absolute;
+	left: 0;
 	top: 0;
 	height: max(100%, calc(28px + var(--ve-track-count, 0) * 102px));
-	width: 2px;
-	background: #dc2626;
+	width: 12px;
+	contain: layout paint style;
+	will-change: transform;
 	pointer-events: none;
 	z-index: 4;
 }
@@ -986,6 +988,16 @@ button:disabled {
 	height: 10px;
 	transform: translateX(-50%);
 	border-radius: 0 0 999px 999px;
+	background: #dc2626;
+}
+
+.ve-timeline-playhead::after {
+	content: "";
+	position: absolute;
+	left: 5px;
+	top: 0;
+	width: 2px;
+	height: 100%;
 	background: #dc2626;
 }
 

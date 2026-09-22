@@ -34,8 +34,10 @@ import {
 	TIMELINE_ZOOM_MIN,
 	TIMELINE_ZOOM_STEP,
 } from "../models/sessionZoom";
+import { useVideoEditor } from "../app/VideoEditorContext";
 import { IconButton } from "./ControlPrimitives";
 import { TrackLabel, TrackLane } from "./TrackRow";
+import { usePlaybackSnapshot } from "./usePlaybackSnapshot";
 
 type TimelineTool = "select" | "trim" | "split" | "hand";
 
@@ -70,7 +72,6 @@ interface TimelineHeaderProps {
 	snappingEnabled: boolean;
 	setActiveTool: Dispatch<SetStateAction<TimelineTool>>;
 	setSnappingEnabled: Dispatch<SetStateAction<boolean>>;
-	cursorSeconds: number;
 	timelineZoom: number;
 	trackCount: number;
 }
@@ -84,33 +85,35 @@ interface TimelineBodyProps {
 	onSplitToolCommit: () => void;
 	snappingEnabled: boolean;
 	stopPlayheadDrag: (event: ReactPointerEvent<HTMLDivElement>) => void;
-	cursorSeconds: number;
 	selectedEntityId: string | null;
 	timelineZoom: number;
 	trackItems: readonly ReactSyncScopeHandle[];
 	updateCursorFromPointer: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }
 
-const CurrentTimeLabel = ({ cursorSeconds }: { cursorSeconds: number }) => {
+
+const CurrentTimeLabel = () => {
+	const { presentationTime } = usePlaybackSnapshot();
 	return (
 		<span className="ve-timeline__time" aria-label="Current time">
-			{cursorSeconds.toFixed(2)}s
+			{presentationTime.toFixed(2)}s
 		</span>
 	);
 };
 
 const TimelinePlayhead = ({
-	cursorSeconds,
 	timelineZoom,
 }: {
-	cursorSeconds: number;
 	timelineZoom: number;
 }) => {
+	const { presentationTime } = usePlaybackSnapshot();
 	return (
 		<div
 			className="ve-timeline-playhead"
 			aria-label="Current step"
-			style={{ left: `${cursorSeconds * timelineZoom}px` }}
+			style={{
+				transform: `translate3d(${presentationTime * timelineZoom - 6}px, 0, 0)`,
+			}}
 		/>
 	);
 };
@@ -127,7 +130,6 @@ const TimelineHeader = ({
 	snappingEnabled,
 	setActiveTool,
 	setSnappingEnabled,
-	cursorSeconds,
 	timelineZoom,
 	trackCount,
 }: TimelineHeaderProps) => {
@@ -206,7 +208,7 @@ const TimelineHeader = ({
 						/>
 					))}
 				</div>
-				<CurrentTimeLabel cursorSeconds={cursorSeconds} />
+				<CurrentTimeLabel />
 				<span>{trackCount} tracks</span>
 				<IconButton
 					type="button"
@@ -247,7 +249,6 @@ const TimelineBody = ({
 	onSplitToolCommit,
 	snappingEnabled,
 	stopPlayheadDrag,
-	cursorSeconds,
 	selectedEntityId,
 	timelineZoom,
 	trackItems,
@@ -329,10 +330,7 @@ const TimelineBody = ({
 					}}
 				>
 					<div className="ve-track-lane-column">
-						<TimelinePlayhead
-							cursorSeconds={cursorSeconds}
-							timelineZoom={timelineZoom}
-						/>
+						<TimelinePlayhead timelineZoom={timelineZoom} />
 						<div className="ve-track-lane-list">
 							{trackItems.map((trackScope) => (
 								<ScopeContext.Provider
@@ -365,7 +363,6 @@ const ResolvedProjectTimeline = ({
 	renderHeader,
 	snappingEnabled,
 	stopPlayheadDrag,
-	cursorSeconds,
 	selectedEntityId,
 	timelineZoom,
 	updateCursorFromPointer,
@@ -386,7 +383,6 @@ const ResolvedProjectTimeline = ({
 				onSplitToolCommit={onSplitToolCommit}
 				snappingEnabled={snappingEnabled}
 				stopPlayheadDrag={stopPlayheadDrag}
-				cursorSeconds={cursorSeconds}
 				selectedEntityId={selectedEntityId}
 				timelineZoom={timelineZoom}
 				trackItems={trackItems}
@@ -402,6 +398,8 @@ export const TimelineView = () => {
 	const [snappingEnabled, setSnappingEnabled] = useState(true);
 	const panState = useRef<{ x: number; scrollLeft: number } | null>(null);
 	const playheadDragPointerId = useRef<number | null>(null);
+	const playheadDragCursor = useRef<number | null>(null);
+	const { playback } = useVideoEditor();
 	// session-scope attrs read via root hooks (we're inside ActiveProjectScope)
 	const rootAttrs = useRootAttrs([
 		"activeProjectId",
@@ -448,6 +446,15 @@ export const TimelineView = () => {
 		);
 	};
 
+	const cursorFromPointer = (
+		event: ReactPointerEvent<HTMLDivElement>,
+	): number => {
+		const rect = event.currentTarget.getBoundingClientRect();
+		const timelineX =
+			event.clientX - rect.left + event.currentTarget.scrollLeft;
+		return Math.max(0, timelineX / timelineZoom);
+	};
+
 	const updateCursorFromPointer = (
 		event: ReactPointerEvent<HTMLDivElement>,
 	): void => {
@@ -457,13 +464,14 @@ export const TimelineView = () => {
 
 		if ((event.buttons & 1) === 0) {
 			playheadDragPointerId.current = null;
+			playheadDragCursor.current = null;
+			playback.endScrub(cursorSeconds);
 			return;
 		}
 
-		const rect = event.currentTarget.getBoundingClientRect();
-		const timelineX =
-			event.clientX - rect.left + event.currentTarget.scrollLeft;
-		sessionDispatch("setCursor", Math.max(0, timelineX / timelineZoom));
+		const cursor = cursorFromPointer(event);
+		playheadDragCursor.current = cursor;
+		playback.updateScrub(cursor);
 		event.preventDefault();
 	};
 
@@ -476,7 +484,10 @@ export const TimelineView = () => {
 
 		playheadDragPointerId.current = event.pointerId;
 		event.currentTarget.setPointerCapture?.(event.pointerId);
-		updateCursorFromPointer(event);
+		const cursor = cursorFromPointer(event);
+		playheadDragCursor.current = cursor;
+		playback.beginScrub(cursor);
+		event.preventDefault();
 	};
 
 	const stopPlayheadDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -485,7 +496,15 @@ export const TimelineView = () => {
 		}
 
 		playheadDragPointerId.current = null;
+		const cursor = playheadDragCursor.current;
+		playheadDragCursor.current = null;
 		event.currentTarget.releasePointerCapture?.(event.pointerId);
+		if (event.type === "pointerup" && cursor !== null) {
+			playback.endScrub(cursor);
+			sessionDispatch("commitSeek", { cursor });
+			return;
+		}
+		playback.endScrub(cursorSeconds);
 	};
 
 	const handleHandPan = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -534,7 +553,6 @@ export const TimelineView = () => {
 			snappingEnabled={snappingEnabled}
 			setActiveTool={setActiveTool}
 			setSnappingEnabled={setSnappingEnabled}
-			cursorSeconds={cursorSeconds}
 			timelineZoom={timelineZoom}
 			trackCount={trackCount}
 		/>
@@ -560,7 +578,6 @@ export const TimelineView = () => {
 					renderHeader={renderHeader}
 					snappingEnabled={snappingEnabled}
 					stopPlayheadDrag={stopPlayheadDrag}
-					cursorSeconds={cursorSeconds}
 					selectedEntityId={selectedEntityId}
 					timelineZoom={timelineZoom}
 					updateCursorFromPointer={updateCursorFromPointer}

@@ -653,14 +653,7 @@ test('video resources add linked audio clips that play, inspect, and expose expo
 	await expect.poll(async () => page.evaluate(() => document.querySelector('audio')?.volume ?? 0), { timeout: 10_000 }).toBeCloseTo(0.65, 2)
 	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Play' }).click()
 	await expect.poll(async () => page.evaluate(() => document.querySelector('audio')?.currentTime ?? 0), { timeout: 10_000 }).toBeGreaterThan(0.5)
-	await page.evaluate(() => {
-		const debug = (window as Window & {
-			__MINICUT_P2P_DEBUG__?: {
-				dispatchRootAction?: (actionName: string, payload?: unknown) => Promise<void>
-			}
-		}).__MINICUT_P2P_DEBUG__
-		void debug?.dispatchRootAction?.('setPlaying', false)
-	})
+	await page.getByRole('region', { name: 'Preview panel' }).getByRole('button', { name: 'Pause' }).click()
 	await expect(page.getByRole('button', { name: 'Export project' })).toBeEnabled()
 })
 
@@ -1204,11 +1197,25 @@ test('timeline zoom controls and inspector trim boundary states behave correctly
 	if (!laneBox) {
 		throw new Error('Timeline lane scroll area is unavailable')
 	}
+	const readSeekCommitCount = () => page.evaluate(() => {
+		const messages = window.__MINICUT_P2P_DEBUG__?.getRuntimeMessages?.() as Array<{
+			direction?: unknown
+			message?: { type?: unknown; actionName?: unknown }
+		}> | undefined
+		return (messages ?? []).filter((entry) =>
+			entry.direction === 'out' &&
+			entry.message?.type === 'dkt:dispatch-action' &&
+			(entry.message.actionName === 'commitSeek' || entry.message.actionName === 'setCursor'),
+		).length
+	})
+	const seekCommitsBeforeDrag = await readSeekCommitCount()
 	await page.mouse.move(laneBox.x + 24, laneBox.y + Math.min(80, laneBox.height - 20))
 	await page.mouse.down()
-	await page.mouse.move(laneBox.x + laneBox.width + 160, laneBox.y + Math.min(80, laneBox.height - 20))
+	await page.mouse.move(laneBox.x + laneBox.width + 160, laneBox.y + Math.min(80, laneBox.height - 20), { steps: 20 })
 	await expect.poll(async () => Number((await timeline.getByLabel('Current time').textContent() ?? '0').replace('s', ''))).toBeGreaterThan(1)
+	expect(await readSeekCommitCount()).toBe(seekCommitsBeforeDrag)
 	await page.mouse.up()
+	await expect.poll(readSeekCommitCount).toBe(seekCommitsBeforeDrag + 1)
 	const releasedTime = Number((await timeline.getByLabel('Current time').textContent() ?? '0').replace('s', ''))
 	await page.mouse.move(laneBox.x + 8, laneBox.y + Math.min(80, laneBox.height - 20))
 	await expect.poll(async () => Number((await timeline.getByLabel('Current time').textContent() ?? '0').replace('s', ''))).toBe(releasedTime)
@@ -1533,7 +1540,7 @@ test('timeline clip boxes align to the ruler and playhead origin', async ({ page
 	}
 
 	expect(Math.abs(clipBox.x - rulerBox.x)).toBeLessThanOrEqual(2)
-	expect(Math.abs(playheadBox.x - rulerBox.x)).toBeLessThanOrEqual(2)
+	expect(Math.abs(playheadBox.x + playheadBox.width / 2 - rulerBox.x)).toBeLessThanOrEqual(2)
 	const zoomText = await timeline.getByText(/px\/s$/i).first().textContent()
 	const zoom = Number.parseFloat((zoomText ?? '56').replace(/[^0-9.]/g, '')) || 56
 	expect(Math.abs(clipBox.width - zoom)).toBeLessThanOrEqual(2)
