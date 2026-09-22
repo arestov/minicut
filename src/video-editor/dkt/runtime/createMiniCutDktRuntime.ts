@@ -41,6 +41,7 @@ import {
 	getWorkspaceOpenStatusLabel,
 	type WorkspaceOpenState,
 } from "./workspaceOpenState";
+import { prepareMiniCutRuntimeDictionary } from "./runtimeDictionaryNames";
 import {
 	formatRuntimeErrorForConsole,
 	serializeRuntimeError,
@@ -335,11 +336,6 @@ const createCrdtRuntime = async (
 				? "memory"
 				: defaultProductionCrdtStorage(peerId)),
 	);
-	const prepareDictionaryNames = (
-		storagePackage.dktStorage as {
-			prepareDictionaryNames?: (names: string[]) => unknown;
-		}
-	).prepareDictionaryNames;
 	const getNameDictionary = (
 		storagePackage.dktStorage as {
 			getNameDictionary?: DktStorageRequest<unknown>;
@@ -348,14 +344,7 @@ const createCrdtRuntime = async (
 	if (getNameDictionary) {
 		await runDktStorageRequest(getNameDictionary);
 	}
-	prepareDictionaryNames?.([
-		"$meta$time/instant/[:playShouldCompleteAt]",
-		"$meta$apis$time$used",
-		"$meta$apis$exportRuntime$used",
-		"$meta$apis$importRuntime$used",
-		"$meta$apis$mediaRecoveryRuntime$used",
-		"$meta$apis$playbackRuntime$used",
-	]);
+	prepareMiniCutRuntimeDictionary(storagePackage.dktStorage);
 	const workspaceId = normalized.workspaceIdForSessionKey?.(openPolicySessionKey);
 	const storageOpen = workspaceId
 		? await openMiniCutWorkspaceStorage({

@@ -25,6 +25,7 @@ import {
 	WORKSPACE_LOCAL_EMPTY_READY_STATE,
 	WORKSPACE_OPEN_STATUS,
 } from "./runtime/workspaceOpenState";
+import { prepareMiniCutRuntimeDictionary } from "./runtime/runtimeDictionaryNames";
 import {
 	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 	type MiniCutWorkspaceOpenResult,
@@ -372,6 +373,7 @@ const createCrdtRuntimeForTests = async (
 		};
 	}
 	const storagePackage = await createStoragePackage(options.storage);
+	prepareMiniCutRuntimeDictionary(storagePackage.dktStorage);
 	const workspaceId =
 		options.workspaceId ?? options.workspaceIdForSessionKey?.(TEST_SESSION_KEY);
 	const storageOpen = workspaceId
