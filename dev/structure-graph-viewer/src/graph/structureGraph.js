@@ -372,20 +372,103 @@ function buildGraphContext(snapshot, modelsById, idsByName) {
     snapshot.models[0] ||
     null
   const relTargetsCache = new Map()
+  const relsByModelId = new Map()
+
+  for (const model of snapshot.models) {
+    const modelId = text(model.id)
+    if (!modelsById.has(modelId)) {
+      continue
+    }
+
+    const relsByName = new Map()
+    for (const rel of model.rels || []) {
+      relsByName.set(rel.name, [rel])
+    }
+    relsByModelId.set(modelId, relsByName)
+  }
 
   return {
     rootId: rootModel ? text(rootModel.id) : null,
     modelsById,
     idsByName,
     relTargetsCache,
+    relsByModelId,
   }
+}
+
+function addResolverSnapshot(context, snapshot) {
+  const normalized = normalizeSnapshot(snapshot)
+
+  for (const model of normalized.models) {
+    const modelId = text(model.id)
+    if (!context.modelsById.has(modelId)) {
+      continue
+    }
+
+    let relsByName = context.relsByModelId.get(modelId)
+    if (!relsByName) {
+      relsByName = new Map()
+      context.relsByModelId.set(modelId, relsByName)
+    }
+
+    for (const rel of model.rels || []) {
+      const rels = relsByName.get(rel.name) || []
+      if (!rels.includes(rel)) {
+        rels.push(rel)
+      }
+      relsByName.set(rel.name, rels)
+    }
+  }
+}
+
+function collectDirectLinkModelNames(linking, result = new Set()) {
+  if (linking == null) {
+    return result
+  }
+
+  if (Array.isArray(linking)) {
+    for (const item of linking) {
+      collectDirectLinkModelNames(item, result)
+    }
+    return result
+  }
+
+  if (typeof linking !== 'object') {
+    return result
+  }
+
+  if (linking.type === 'model_name' && typeof linking.value === 'string') {
+    result.add(linking.value)
+    return result
+  }
+
+  if (linking.type === 'model_ref' && typeof linking.model_name === 'string') {
+    result.add(linking.model_name)
+    return result
+  }
+
+  if (
+    (linking.type === 'model_constructor' || linking.type === 'constr') &&
+    linking.value
+  ) {
+    collectDirectLinkModelNames(linking.value, result)
+  }
+
+  return result
 }
 
 function directRelTargetModelIds(rel, idsByName, modelsById = null) {
   const result = new Set()
+  const modelNames = new Set(
+    (rel.child_model_refs || [])
+      .map((ref) => ref?.model_name)
+      .filter(Boolean),
+  )
 
-  for (const ref of rel.child_model_refs || []) {
-    const ids = idsByName.get(ref?.model_name) || []
+  collectDirectLinkModelNames(rel.linking, modelNames)
+
+  for (const modelName of modelNames) {
+    const ids = idsByName.get(modelName) || []
     for (const id of ids) {
       const stringId = text(id)
       if (modelsById && !modelsById.has(stringId)) {
@@ -461,6 +544,16 @@ function getModelRel(model, relName) {
   return (model?.rels || []).find((rel) => rel.name === relName) || null
 }
 
+function getContextModelRels(context, modelId, relName) {
+  const rels = context.relsByModelId.get(text(modelId))?.get(relName)
+  if (rels?.length) {
+    return rels
+  }
+
+  const rel = getModelRel(context.modelsById.get(text(modelId)), relName)
+  return rel ? [rel] : []
+}
+
 function resolveRelTargetModelIds(modelId, relName, context, visited = new Set()) {
   const key = `${modelId}:${relName}`
   if (visited.has(key)) {
@@ -474,28 +567,35 @@ function resolveRelTargetModelIds(modelId, relName, context, visited = new Set()
   visited.add(key)
 
   const model = context.modelsById.get(text(modelId))
-  const rel = getModelRel(model, relName)
-  if (!rel) {
+  const rels = getContextModelRels(context, modelId, relName)
+  if (!model || !rels.length) {
     visited.delete(key)
     context.relTargetsCache.set(key, [])
     return []
   }
 
-  const directTargets = directRelTargetModelIds(
-    rel,
-    context.idsByName,
-    context.modelsById,
-  )
-  if (directTargets.length) {
-    visited.delete(key)
-    context.relTargetsCache.set(key, directTargets)
-    return directTargets
-  }
-
   const targets = new Set()
-  for (const path of collectLinkingValues(rel.linking).map(normalizeLinkPath).filter(Boolean)) {
-    for (const target of resolvePathTargetModelIds(model, path, context, visited)) {
-      targets.add(target)
+  for (const rel of rels) {
+    const directTargets = directRelTargetModelIds(
+      rel,
+      context.idsByName,
+      context.modelsById,
+    )
+
+    if (directTargets.length) {
+      for (const target of directTargets) {
+        targets.add(target)
+      }
+      continue
+    }
+
+    const paths = collectLinkingValues(rel.linking)
+      .map(normalizeLinkPath)
+      .filter(Boolean)
+    for (const path of paths) {
+      for (const target of resolvePathTargetModelIds(model, path, context, visited)) {
+        targets.add(target)
+      }
     }
   }
 
@@ -1044,6 +1144,11 @@ async function buildFlowGraph(snapshot, options = {}) {
   const visibleModels = filterVisibleModels(normalized.models, options)
   const { byId: modelsById, idsByName } = buildModelIndexes(visibleModels)
   const context = buildGraphContext(normalized, modelsById, idsByName)
+  for (const resolverSnapshot of options.resolverSnapshots || []) {
+    if (resolverSnapshot) {
+      addResolverSnapshot(context, resolverSnapshot)
+    }
+  }
   const actionFlowsByKey = new Map(
     (normalized.action_flows || []).map((flow) => [flow.id, flow]),
   )

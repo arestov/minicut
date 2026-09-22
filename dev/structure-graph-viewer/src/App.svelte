@@ -33,7 +33,9 @@
     routed: RoutedEdge,
   }
   const FOCUS_HOPS = 1
-  const snapshotBaseUrl = `${import.meta.env.BASE_URL}snapshot/`
+  const snapshotBaseUrl = import.meta.env.DEV
+    ? '/snapshot/'
+    : `${import.meta.env.BASE_URL}snapshot/`
 
   let snapshots = $state({
     core: null,
@@ -812,6 +814,7 @@
     const options = {
       selectedModelId: layoutAnchorModelId,
       showInfra,
+      resolverSnapshots: [snapshots.core, snapshots.derived].filter(Boolean),
       layers: {
         hierarchy: layers.hierarchy,
         rel_schema: layers.rel_schema,
