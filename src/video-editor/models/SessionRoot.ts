@@ -141,11 +141,24 @@ export const EditorSessionRoot = model({
 		playbackRate: ["input", 1],
 		playbackBoundaryCursor: [
 			"comp",
-			["< @one:timelineDuration < activeProject"] as const,
-			(timelineDuration: unknown) =>
-				typeof timelineDuration === "number" && Number.isFinite(timelineDuration)
-					? Math.max(0, timelineDuration)
-					: 0,
+			["< @one:duration < activeProject", "previewStructure"] as const,
+			(projectDuration: unknown, previewStructure: unknown) => {
+				const explicitDuration =
+					typeof projectDuration === "number" && Number.isFinite(projectDuration)
+						? Math.max(0, projectDuration)
+						: 0;
+				const sources =
+					previewStructure &&
+					typeof previewStructure === "object" &&
+					Array.isArray((previewStructure as PreviewStructure).clipSources)
+						? (previewStructure as PreviewStructure).clipSources
+						: [];
+				return sources.reduce(
+					(maximum, source) =>
+						Math.max(maximum, Math.max(0, source.start + source.duration)),
+					explicitDuration,
+				);
+			},
 		],
 		playShouldCompleteAt: [
 			"comp",

@@ -740,7 +740,7 @@ export const sessionPlayAction = {
 			"cursor",
 			"playbackRunId",
 			"playbackRate",
-			"< @one:timelineDuration < activeProject",
+			"playbackBoundaryCursor",
 		] as const,
 		(
 			_payload: unknown,
@@ -806,7 +806,7 @@ export const sessionCommitSeekAction = {
 			"isPlaying",
 			"playbackRunId",
 			"playbackRate",
-			"< @one:timelineDuration < activeProject",
+			"playbackBoundaryCursor",
 		] as const,
 		(
 			payload: unknown,
@@ -852,7 +852,7 @@ export const sessionSetPlaybackRateAction = {
 			"isPlaying",
 			"cursor",
 			"playbackRunId",
-			"< @one:timelineDuration < activeProject",
+			"playbackBoundaryCursor",
 		] as const,
 		(
 			payload: unknown,

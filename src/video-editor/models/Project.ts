@@ -157,21 +157,8 @@ export const Project = model({
 		duration: ["input", 0],
 		timelineDuration: [
 			"comp",
-			["duration", "< @all:appendStart < tracks"] as const,
-			(duration: unknown, trackEnds: unknown) => {
-				const explicitDuration =
-					typeof duration === "number" && Number.isFinite(duration)
-						? Math.max(0, duration)
-						: 0;
-				const ends = Array.isArray(trackEnds) ? trackEnds : [];
-				return ends.reduce<number>(
-					(maximum, value) =>
-						typeof value === "number" && Number.isFinite(value)
-							? Math.max(maximum, value)
-							: maximum,
-					explicitDuration,
-				);
-			},
+			["duration"],
+			(duration: number) => duration,
 		],
 		importProgress: [
 			"input",
