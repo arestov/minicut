@@ -91,7 +91,20 @@ beforeEach(() => {
 	useManyMock.mockReturnValue([]);
 	useOneMock.mockReturnValue(null);
 	useAttrsMock.mockReturnValue({});
+	const playbackSnapshot = {
+		runId: null,
+		presentationTime: 4,
+		isPlaying: false,
+		isScrubbing: false,
+	};
 	useVideoEditorMock.mockReturnValue({
+		playback: {
+			subscribe: () => () => {},
+			getSnapshot: () => playbackSnapshot,
+			beginScrub: vi.fn(),
+			updateScrub: vi.fn(),
+			endScrub: vi.fn(),
+		},
 		actions: {
 			createProject: vi.fn(),
 			requestProjectExport: vi.fn(),
