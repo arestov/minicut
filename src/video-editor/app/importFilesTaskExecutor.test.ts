@@ -46,7 +46,12 @@ describe("executeImportFilesTask handle-backed imports", () => {
 				readAttrs: (scope: ReactSyncScopeHandle) =>
 					scope === resourceScope ? resourceAttrs : {},
 			},
-			dkt: { dispatch },
+			dkt: {
+				dispatch,
+				dispatchAndWait: async (...args: Parameters<typeof dispatch>) => {
+					dispatch(...args);
+				},
+			},
 			media: {
 				getFileKind: () => "video",
 				createObjectUrl: () => "blob:http://localhost/handle-video",
@@ -86,6 +91,7 @@ describe("executeImportFilesTask handle-backed imports", () => {
 
 		expect(putHandle).not.toHaveBeenCalled();
 		expect(resourceAttrs).toMatchObject({
+			addToTimelineWhenEmpty: true,
 			sourceKind: "file-handle",
 			sourceRef: null,
 			status: "ready",
@@ -128,14 +134,20 @@ describe("executeImportFilesTask handle-backed imports", () => {
 				readAttrs: (scope: ReactSyncScopeHandle) =>
 					scope === resourceScope ? resourceAttrs : {},
 			},
-			dkt: {
-				dispatch: vi.fn((actionName: string, payload: unknown) => {
+			dkt: (() => {
+				const dispatch = vi.fn((actionName: string, payload: unknown) => {
 					if (actionName === "importResource") {
 						Object.assign(resourceAttrs, payload);
 						resources.push(resourceScope);
 					}
-				}),
-			},
+				});
+				return {
+					dispatch,
+					dispatchAndWait: async (...args: Parameters<typeof dispatch>) => {
+						dispatch(...args);
+					},
+				};
+			})(),
 			media: {
 				getFileKind: () => "video",
 				createObjectUrl: () => "blob:http://localhost/injected-video",
@@ -172,6 +184,7 @@ describe("executeImportFilesTask handle-backed imports", () => {
 
 		expect(putHandle).not.toHaveBeenCalled();
 		expect(resourceAttrs).toMatchObject({
+			addToTimelineWhenEmpty: true,
 			sourceKind: "object-url",
 			sourceRef: null,
 			status: "ready",

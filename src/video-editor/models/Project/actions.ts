@@ -1118,6 +1118,9 @@ export const reduceImportResourceCreate = (
 	clips: unknown[],
 ) => {
 	const attrs = normalizeResourceCreationAttrs(payload);
+	const addToTimelineWhenEmpty =
+		(payload as { addToTimelineWhenEmpty?: unknown } | null)
+			?.addToTimelineWhenEmpty === true;
 	const hasTimelineClips =
 		Array.isArray(clips) &&
 		clips.some((entry) => {
@@ -1126,32 +1129,17 @@ export const reduceImportResourceCreate = (
 			}
 			return Boolean(entry);
 		});
-	const shouldAddToTimeline = !hasTimelineClips;
+	const shouldAddToTimeline = addToTimelineWhenEmpty && !hasTimelineClips;
 
 	return {
 		resource: { attrs, hold_ref_id: "newResource" },
-		$output: {
-			rels: {
-				resource: { use_ref_id: "newResource" },
-			},
+		forwarded: {
+			...(payload && typeof payload === "object"
+				? (payload as Record<string, unknown>)
+				: {}),
+			resource: { use_ref_id: "newResource" },
 			shouldAddToTimeline,
 			shouldAddEmbeddedAudio: shouldAddToTimeline && attrs.kind === "video",
-		},
-	};
-};
-
-export const reduceImportResourceCreateOnly = (
-	payload: unknown,
-) => {
-	const attrs = normalizeResourceCreationAttrs(payload);
-	return {
-		resource: {
-			attrs,
-			hold_ref_id: "newResource",
-		},
-		forwarded: {
-			resource: { use_ref_id: "newResource" },
-			...(payload && typeof payload === "object" ? payload as Record<string, unknown> : {}),
 		},
 	};
 };
@@ -1168,6 +1156,27 @@ const resolveOutputResource = (payload: unknown): ResourceLike | null => {
 	return null;
 };
 
+const createImportedTimelineClipPayload = (
+	payload: unknown,
+	noop: unknown,
+	appendStart: unknown,
+	overrides: Partial<{ name: string; mediaKind: string }> = {},
+) => {
+	const resource = resolveOutputResource(payload);
+	const resourceId = resource ? getNodeId(resource) : null;
+	if (!resource || !resourceId) return noop;
+	const attrs = normalizeResourceCreationAttrs(payload);
+	return {
+		resource,
+		resourceId,
+		name: overrides.name ?? attrs.name,
+		mediaKind: overrides.mediaKind ?? attrs.kind,
+		start: typeof appendStart === "number" ? appendStart : 0,
+		in: 0,
+		duration: attrs.duration,
+	};
+};
+
 export const reduceImportResourceToVideo = (
 	payload: unknown,
 	noop: unknown,
@@ -1178,15 +1187,14 @@ export const reduceImportResourceToVideo = (
 	if (value?.shouldAddToTimeline !== true) {
 		return noop;
 	}
-	const resource = resolveOutputResource(payload);
-	if (!resource || getResourceKind(resource) === "audio") {
+	const attrs = normalizeResourceCreationAttrs(payload);
+	if (attrs.kind === "audio") {
 		return noop;
 	}
-	return createTimelineClipPayload(
+	return createImportedTimelineClipPayload(
+		payload,
 		noop,
-		resource,
-		{},
-		typeof appendStart === "number" ? appendStart : 0,
+		appendStart,
 	);
 };
 
@@ -1200,15 +1208,14 @@ export const reduceImportResourceToAudio = (
 	if (value?.shouldAddToTimeline !== true) {
 		return noop;
 	}
-	const resource = resolveOutputResource(payload);
-	if (!resource || getResourceKind(resource) !== "audio") {
+	const attrs = normalizeResourceCreationAttrs(payload);
+	if (attrs.kind !== "audio") {
 		return noop;
 	}
-	return createTimelineClipPayload(
+	return createImportedTimelineClipPayload(
+		payload,
 		noop,
-		resource,
-		{},
-		typeof appendStart === "number" ? appendStart : 0,
+		appendStart,
 	);
 };
 
@@ -1222,14 +1229,15 @@ export const reduceImportResourceToEmbeddedAudio = (
 	if (value?.shouldAddEmbeddedAudio !== true) {
 		return noop;
 	}
-	const resource = resolveOutputResource(payload);
-	if (!resource) {
+	const attrs = normalizeResourceCreationAttrs(payload);
+	if (attrs.kind !== "video") {
 		return noop;
 	}
-	return createEmbeddedAudioClipPayload(
+	return createImportedTimelineClipPayload(
+		payload,
 		noop,
-		resource,
-		typeof audioTrackAppendStart === "number" ? audioTrackAppendStart : 0,
+		audioTrackAppendStart,
+		{ name: "Embedded audio", mediaKind: "audio" },
 	);
 };
 

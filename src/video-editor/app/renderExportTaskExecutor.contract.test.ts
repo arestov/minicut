@@ -45,6 +45,9 @@ const createTestEnv = ({
 		dispatch(actionName: string, payload?: unknown) {
 			dktDispatches.push({ actionName, payload: payload ?? null });
 		},
+		async dispatchAndWait(actionName: string, payload?: unknown) {
+			dktDispatches.push({ actionName, payload: payload ?? null });
+		},
 	},
 	media: {
 		getFileKind: () => null,

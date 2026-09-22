@@ -469,6 +469,8 @@ export const createVideoEditorHarness = (
 		? {
 				dispatch: (actionName, payload, scope) =>
 					pageRuntime.dispatch(actionName, payload, scope ?? null),
+				dispatchAndWait: (actionName, payload, scope) =>
+					pageRuntime.dispatchAndWait(actionName, payload, scope ?? null),
 			}
 		: null;
 
@@ -634,10 +636,10 @@ export const createVideoEditorHarness = (
 					const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId); const root = pageRuntime.getRootScope(); const project = root ? pageRuntime.readOne(root, "activeProject") : null;
 					if (!resourceScope || !project) return;
 					const runtime = runtimeTasks.getRuntimeRef(String(request.runtimeHandleId ?? "")) as { file?: File; handle?: FileSystemFileHandle } | null;
-					if (!(runtime?.file instanceof File) || !runtime.handle) { pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: "runtime-ref-expired", errorMessage: "Choose the file again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); return; }
+					if (!(runtime?.file instanceof File)) { pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: "runtime-ref-expired", errorMessage: "Choose the file again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); return; }
 					const url = platform.createObjectUrl(runtime.file); if (!url) return;
 					const now = Date.now();
-					const result = await commitRecoveryStorage({ projectId: project._nodeId, resourceId, operationId, file: runtime.file, handleRecord: { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now }, assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore, fault: async (point) => {
+					const result = await commitRecoveryStorage({ projectId: project._nodeId, resourceId, operationId, file: runtime.file, handleRecord: runtime.handle ? { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now } : null, assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore, fault: async (point) => {
 						const testWindow = globalThis as typeof globalThis & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean; __MINICUT_MEDIA_RECOVERY_FAULT_POINT__?: string };
 						if (testWindow.__MINICUT_ENABLE_DEBUG_BRIDGE__ === true && testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__ === point) {
 							delete testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__;
@@ -646,11 +648,11 @@ export const createVideoEditorHarness = (
 					}, publish: async (refs) => {
 						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return "noop";
 						const metadata = request.candidateMetadata as Record<string, unknown> | null;
-						const completion = { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: "file-handle", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, ...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}), ...(typeof metadata?.width === "number" ? { width: metadata.width } : {}), ...(typeof metadata?.height === "number" ? { height: metadata.height } : {}), localMediaAvailability: refs.assetRef ? "ready-project-copy" : "ready-file-handle", originalAccessStatus: "granted", updatedAt: Date.now() };
+						const completion = { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: refs.handleRef ? "file-handle" : "object-url", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, ...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}), ...(typeof metadata?.width === "number" ? { width: metadata.width } : {}), ...(typeof metadata?.height === "number" ? { height: metadata.height } : {}), localMediaAvailability: refs.assetRef ? "ready-project-copy" : refs.handleRef ? "ready-file-handle" : "unknown", originalAccessStatus: refs.handleRef ? "granted" : "missing", updatedAt: Date.now() };
 						await pageRuntime.dispatchAndWait("completePublication", completion, { kind: "scope", _nodeId: taskId });
 						return "applied";
 					} });
-					if (result.ok) { localMediaResolver.activateObjectUrl(resourceId, url, result.assetRef ? "ready-project-copy" : "ready-file-handle"); runtimeTasks.deleteRuntimeRef(String(request.runtimeHandleId ?? "")); }
+					if (result.ok) { localMediaResolver.activateObjectUrl(resourceId, url, result.assetRef ? "ready-project-copy" : result.handleRef ? "ready-file-handle" : "unknown"); runtimeTasks.deleteRuntimeRef(String(request.runtimeHandleId ?? "")); }
 					else { platform.revokeObjectUrl(url); if (result.reason !== "stale") pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: result.reason, errorMessage: "Could not save the selected source. Try again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); }
 		};
 		return pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {

@@ -17,7 +17,10 @@ import {
 	reduceCreateReviewTrack,
 	reduceHandleInit,
 	reduceEnsureReviewTrack,
-	reduceImportResourceCreateOnly,
+	reduceImportResourceCreate,
+	reduceImportResourceToAudio,
+	reduceImportResourceToEmbeddedAudio,
+	reduceImportResourceToVideo,
 	reduceEnsureProjectReviewSession,
 	reduceMaterializeProjectCRDTConflictReview,
 	reduceMoveClipToTrackContext,
@@ -602,7 +605,64 @@ export const Project = model({
 					forwarded: ["$output"],
 				},
 				output_base_rel_shape: { resource: { linking: "<< resources", many: false } },
-				fn: reduceImportResourceCreateOnly,
+				fn: [
+					["<< @all:tracks.clips"] as const,
+					(payload: unknown, clips: unknown) =>
+						reduceImportResourceCreate(
+							payload,
+							Array.isArray(clips) ? clips : [],
+						),
+				],
+			},
+			{
+				input_base_rel_shape: { resource: { linking: "<< resources", many: false } },
+				to: {
+					videoClip: ["<< primaryVideoTrack", { action: "addClip", sub_flow: true }],
+					forwarded: ["$output"],
+				},
+				output_base_rel_shape: { resource: { linking: "<< resources", many: false } },
+				fn: [
+					["$noop", "<<<< $input:resource", "< @one:appendStart < primaryVideoTrack"] as const,
+					(payload: unknown, noop: unknown, resource: unknown, appendStart: unknown) => ({
+						videoClip: reduceImportResourceToVideo({ ...(payload as Record<string, unknown>), resource }, noop, [], appendStart),
+						forwarded: payload,
+					}),
+				],
+			},
+			{
+				input_base_rel_shape: { resource: { linking: "<< resources", many: false } },
+				to: {
+					audioClip: ["<< primaryAudioTrack", { action: "addClip", sub_flow: true }],
+					forwarded: ["$output"],
+				},
+				output_base_rel_shape: { resource: { linking: "<< resources", many: false } },
+				fn: [
+					["$noop", "<<<< $input:resource", "< @one:appendStart < primaryAudioTrack"] as const,
+					(payload: unknown, noop: unknown, resource: unknown, appendStart: unknown) => ({
+						audioClip: reduceImportResourceToAudio({ ...(payload as Record<string, unknown>), resource }, noop, [], appendStart),
+						forwarded: payload,
+					}),
+				],
+			},
+			{
+				input_base_rel_shape: { resource: { linking: "<< resources", many: false } },
+				to: {
+					embeddedAudioClip: ["<< primaryAudioTrack", { action: "addClip", sub_flow: true }],
+					forwarded: ["$output"],
+				},
+				output_base_rel_shape: { resource: { linking: "<< resources", many: false } },
+				fn: [
+					["$noop", "<<<< $input:resource", "< @one:appendStart < primaryAudioTrack"] as const,
+					(payload: unknown, noop: unknown, resource: unknown, appendStart: unknown) => ({
+						embeddedAudioClip: reduceImportResourceToEmbeddedAudio(
+							{ ...(payload as Record<string, unknown>), resource },
+							noop,
+							[],
+							appendStart,
+						),
+						forwarded: payload,
+					}),
+				],
 			},
 			{
 				input_base_rel_shape: { resource: { linking: "<< resources", many: false } },

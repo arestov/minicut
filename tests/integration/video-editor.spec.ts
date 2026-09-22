@@ -36,8 +36,82 @@ const importFixtureMedia = async (page: import('@playwright/test').Page) => {
 	])
 }
 
+const waitForImportedVideoSemanticState = async (
+	page: import('@playwright/test').Page,
+	resourceName: string,
+) => {
+	await expect.poll(async () => page.evaluate(() => {
+		const dump = window.__MINICUT_P2P_DEBUG__?.dumpRuntimeTasks?.() as {
+			active?: Array<{ fxName?: unknown }>
+			byFxName?: Record<string, number>
+		} | null
+		return (dump?.byFxName?.$fx_handleInputFiles ?? 0) > 0 &&
+			!(dump?.active ?? []).some((task) => task.fxName === '$fx_handleInputFiles')
+	})).toBe(true)
+
+	await expect.poll(async () => page.evaluate((name) => {
+		const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() as {
+			resources?: Array<{ name?: unknown; kind?: unknown }>
+		} | null
+		return details?.resources?.some(
+			(resource) => resource.name === name && resource.kind === 'video',
+		) ?? false
+	}, resourceName)).toBe(true)
+
+	await expect.poll(async () => page.evaluate((name) => {
+		const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() as {
+			tracks?: Array<{
+				kind?: unknown
+				clips?: Array<{ name?: unknown; mediaKind?: unknown }>
+			}>
+		} | null
+		return details?.tracks?.some(
+			(track) => track.kind === 'video' && track.clips?.some(
+				(clip) => clip.name === name && clip.mediaKind === 'video',
+			),
+		) ?? false
+	}, resourceName)).toBe(true)
+
+	await expect.poll(async () => page.evaluate((name) => {
+		const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() as {
+			tracks?: Array<{
+				kind?: unknown
+				clips?: Array<{ name?: unknown; start?: unknown }>
+			}>
+		} | null
+		const clip = details?.tracks
+			?.find((track) => track.kind === 'video')
+			?.clips?.find((candidate) => candidate.name === name)
+		return typeof clip?.start === 'number' && Number.isFinite(clip.start)
+	}, resourceName)).toBe(true)
+
+	await expect.poll(async () => page.evaluate(async (name) => {
+		const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() as {
+			resources?: Array<{ name?: unknown; url?: unknown }>
+		} | null
+		const url = details?.resources?.find((resource) => resource.name === name)?.url
+		if (typeof url !== 'string' || !url.startsWith('blob:')) return false
+		try {
+			const response = await fetch(url)
+			return response.ok && (await response.blob()).size > 0
+		} catch {
+			return false
+		}
+	}, resourceName)).toBe(true)
+
+	const rendererVideo = page
+		.getByRole('region', { name: 'Renderer stage' })
+		.locator(`video[data-resource-name="${resourceName}"]`)
+	await expect(rendererVideo).toHaveCount(1)
+	await expect.poll(async () => rendererVideo.evaluate((element) => {
+		const video = element as HTMLVideoElement
+		return video.readyState >= HTMLMediaElement.HAVE_METADATA && video.currentSrc.startsWith('blob:')
+	})).toBe(true)
+}
+
 const importFixtureVideo = async (page: import('@playwright/test').Page) => {
 	await page.getByLabel('Import media files').setInputFiles(path.resolve('tests/fixtures/media/fixture-video.webm'))
+	await waitForImportedVideoSemanticState(page, 'fixture-video.webm')
 }
 
 const importFixtureImage = async (page: import('@playwright/test').Page) => {

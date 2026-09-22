@@ -62,6 +62,92 @@ describe("Project action contracts", () => {
 		await expectProjectGraphInvariants(ctx);
 	});
 
+	it("importResource adds the imported video to an empty timeline when requested", async () => {
+		const ctx = await bootDktModels();
+
+		await ctx.lockToRead(async () => {
+			await ctx.sessionRoot.dispatch("createProject", {
+				title: "Import To Timeline",
+			});
+		});
+
+		const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
+		if (!project) throw new Error("Expected project");
+		const tracks = await ctx.queryRel(project, "tracks");
+		const videoTrack = tracks.find(
+			(track) => ctx.getAttr(track, "kind") === "video",
+		);
+		const audioTrack = tracks.find(
+			(track) => ctx.getAttr(track, "kind") === "audio",
+		);
+		if (!videoTrack || !audioTrack) throw new Error("Expected default tracks");
+
+		await dispatchAndSettle(ctx, project, "importResource", {
+			name: "Timeline Video",
+			kind: "video",
+			url: "blob:https://example.invalid/timeline-video",
+			mime: "video/webm",
+			duration: 5,
+			size: 500,
+			sourceKind: "object-url",
+			source: { kind: "local" },
+			status: "ready",
+			data: { status: "ready" },
+			addToTimelineWhenEmpty: true,
+		});
+
+		const resources = await ctx.queryRel(project, "resources");
+		const resource = resources.find(
+			(candidate) => ctx.getAttr(candidate, "name") === "Timeline Video",
+		);
+		if (!resource) throw new Error("Expected imported resource");
+		const videoClips = await ctx.queryRel(videoTrack, "clips");
+		const audioClips = await ctx.queryRel(audioTrack, "clips");
+		expect(videoClips).toHaveLength(1);
+		expect(audioClips).toHaveLength(1);
+		expect(ctx.getAttr(videoClips[0], "start")).toBe(0);
+		expect(ctx.getAttr(audioClips[0], "start")).toBe(0);
+		expect((await ctx.queryRel(videoClips[0], "resource"))[0]?._node_id).toBe(
+			resource._node_id,
+		);
+		expect((await ctx.queryRel(audioClips[0], "resource"))[0]?._node_id).toBe(
+			resource._node_id,
+		);
+		await expectProjectGraphInvariants(ctx);
+	});
+
+	it("importResource does not auto-add another clip when the timeline is not empty", async () => {
+		const harness = await createActionContractHarness();
+		const videoClipIdsBefore = await readNodeIds(
+			harness.ctx,
+			harness.videoTrack,
+			"clips",
+		);
+		const audioClipIdsBefore = await readNodeIds(
+			harness.ctx,
+			harness.audioTrack,
+			"clips",
+		);
+
+		await dispatchAndSettle(harness.ctx, harness.project, "importResource", {
+			name: "Second Video",
+			kind: "video",
+			url: "blob:https://example.invalid/second-video",
+			mime: "video/webm",
+			duration: 3,
+			sourceKind: "object-url",
+			status: "ready",
+			addToTimelineWhenEmpty: true,
+		});
+
+		expect(
+			await readNodeIds(harness.ctx, harness.videoTrack, "clips"),
+		).toEqual(videoClipIdsBefore);
+		expect(
+			await readNodeIds(harness.ctx, harness.audioTrack, "clips"),
+		).toEqual(audioClipIdsBefore);
+	});
+
 	it("renameProject, setProjectFormat, and setProjectDuration update project attrs", async () => {
 		const harness = await createActionContractHarness();
 

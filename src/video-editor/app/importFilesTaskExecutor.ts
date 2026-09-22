@@ -13,8 +13,16 @@ const normalize = (value: MediaImportEntry | unknown): { file: File; handle: Fil
 	return null;
 };
 const payloadOf = (task: RuntimeTaskDescriptor) => {
-	const id = (task.payload.data as { inputBatchHandleId?: unknown } | null)?.inputBatchHandleId;
-	return typeof id === "string" && id ? id : null;
+	const data = task.payload.data as {
+		inputBatchHandleId?: unknown;
+		addToTimelineWhenEmpty?: unknown;
+	} | null;
+	return typeof data?.inputBatchHandleId === "string" && data.inputBatchHandleId
+		? {
+				inputBatchHandleId: data.inputBatchHandleId,
+				addToTimelineWhenEmpty: data.addToTimelineWhenEmpty !== false,
+			}
+		: null;
 };
 const activeProject = (env: EditorActionEnvironment) => {
 	const root = env.pageRuntime?.getRootScope(); return root ? env.pageRuntime?.readOne(root, "activeProject") ?? null : null;
@@ -27,7 +35,8 @@ const progress = (env: EditorActionEnvironment, project: ReactSyncScopeHandle, v
  */
 export const executeImportFilesTask = async ({ task, env, projectScope: supplied }: { task: RuntimeTaskDescriptor; env: EditorActionEnvironment; projectScope?: ReactSyncScopeHandle | null }): Promise<void> => {
 	if (task.dropped) return;
-	const batchRef = payloadOf(task); if (!batchRef) return;
+	const importPayload = payloadOf(task); if (!importPayload) return;
+	const { inputBatchHandleId: batchRef, addToTimelineWhenEmpty } = importPayload;
 	const raw = env.tasks.consumeRuntimeRef(batchRef);
 	const entries = Array.isArray(raw) ? raw.flatMap((entry) => { const item = normalize(entry); return item ? [item] : []; }) : [];
 	if (!entries.length) { env.tasks.completeTask(task); return; }
@@ -45,8 +54,9 @@ export const executeImportFilesTask = async ({ task, env, projectScope: supplied
 			const operationId = crypto.randomUUID(); const attemptId = crypto.randomUUID(); const bootId = `import:${batchRef}`;
 			const runtimeHandleId = env.tasks.putRuntimeRef({ file, handle });
 			const ownerPeerId = env.transfers.getPeerId(); const mime = file.type || "application/octet-stream";
-			env.dkt.dispatch("importResource", {
+			await env.dkt.dispatchAndWait("importResource", {
 				name: file.name, kind, url: objectUrl, mime, duration, size: file.size, lastModified: file.lastModified,
+				addToTimelineWhenEmpty,
 				sourceKind: handle ? "file-handle" : "object-url", sourceRef: null, source: { kind: "local", ownerPeerId }, status: "ready",
 				data: { status: "ready", chunkSize: env.resourceChunkSize, chunks: {}, ranges: { loaded: [[0, file.size]], requested: [] }, loadedBytes: file.size },
 				assetStorageKind: "linked", assetRef: null, contentFingerprint, fingerprintVersion, localMediaStatus: handle ? "ready-file-handle" : "unknown",

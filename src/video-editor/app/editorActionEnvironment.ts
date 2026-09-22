@@ -81,6 +81,11 @@ export interface EditorDktScopePort {
 		payload?: unknown,
 		scope?: ReactSyncScopeHandle | null,
 	): void;
+	dispatchAndWait(
+		actionName: string,
+		payload?: unknown,
+		scope?: ReactSyncScopeHandle | null,
+	): Promise<void>;
 }
 
 export interface EditorActionEnvironment {
