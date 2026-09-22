@@ -139,7 +139,14 @@ export const EditorSessionRoot = model({
 		playStartCursor: ["input", 0],
 		playStartedAt: ["input", 0],
 		playbackRate: ["input", 1],
-		playbackBoundaryCursor: ["input", 0],
+		playbackBoundaryCursor: [
+			"comp",
+			["< @one:timelineDuration < activeProject"] as const,
+			(timelineDuration: unknown) =>
+				typeof timelineDuration === "number" && Number.isFinite(timelineDuration)
+					? Math.max(0, timelineDuration)
+					: 0,
+		],
 		playShouldCompleteAt: [
 			"comp",
 			[

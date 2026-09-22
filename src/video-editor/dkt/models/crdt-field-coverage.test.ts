@@ -259,7 +259,6 @@ const MODEL_CASES: ModelCase[] = [
 				playStartCursor: "projection",
 				playStartedAt: "projection",
 				playbackRate: "projection",
-				playbackBoundaryCursor: "projection",
 				previewBuffer: "projection",
 				exportRequest: "projection",
 				exportProgress: "projection",

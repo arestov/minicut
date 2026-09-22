@@ -39,6 +39,11 @@ import {
 } from "./platform";
 import { executeRenderExportTask } from "./renderExportTaskExecutor";
 import { createRuntimeTaskFacade } from "./runtimeTaskFacade";
+import {
+	browserPlaybackClock,
+	PlaybackRuntime,
+	type PlaybackRun,
+} from "../playback/playbackRuntime";
 
 const EMPTY_CLEANUP = () => {};
 
@@ -201,6 +206,12 @@ export const createVideoEditorHarness = (
 	const exportRenderer =
 		options.exportRenderer ?? platform.createExportRenderer();
 	const pageRuntime = createMiniCutPageRuntime(authorityClient);
+	const playback = new PlaybackRuntime({
+		clock: browserPlaybackClock,
+		onComplete(completion) {
+			pageRuntime?.dispatch("completePlayback", completion);
+		},
+	});
 	const runtimeTasks = createRuntimeTaskFacade();
 	const extensionBus = createAuthorityExtensionBus();
 
@@ -683,6 +694,59 @@ export const createVideoEditorHarness = (
 		}) ?? EMPTY_CLEANUP;
 	};
 
+	const subscribeToPlaybackTasks = (): (() => void) => {
+		if (!pageRuntime || !dktPort) return EMPTY_CLEANUP;
+		return (
+			pageRuntime.subscribeRuntimeTaskRequests?.(
+				"$fx_applyPlaybackRun",
+				(payload) => {
+					const value =
+						payload && typeof payload === "object"
+							? (payload as {
+									run?: PlaybackRun | null;
+									committedCursor?: unknown;
+								})
+							: null;
+					const committedCursor =
+						typeof value?.committedCursor === "number"
+							? value.committedCursor
+							: playback.getSnapshot().presentationTime;
+					playback.applyRun(value?.run ?? null, committedCursor);
+				},
+			) ?? EMPTY_CLEANUP
+		);
+	};
+
+	const subscribeToCanonicalPlaybackCursor = (): (() => void) => {
+		if (!pageRuntime) return EMPTY_CLEANUP;
+		let disposeAttrs = EMPTY_CLEANUP;
+		const attach = () => {
+			disposeAttrs();
+			const root = pageRuntime.getRootScope();
+			if (!root) return;
+			const sync = () => {
+				const attrs = pageRuntime.readAttrs(root, ["cursor", "isPlaying"]);
+				if (attrs.isPlaying === true || playback.getSnapshot().isScrubbing) return;
+				playback.applyRun(
+					null,
+					typeof attrs.cursor === "number" ? attrs.cursor : 0,
+				);
+			};
+			disposeAttrs = pageRuntime.subscribeAttrs(
+				root,
+				["cursor", "isPlaying"],
+				sync,
+			);
+			sync();
+		};
+		const disposeRoot = pageRuntime.subscribeRootScope(attach);
+		attach();
+		return () => {
+			disposeAttrs();
+			disposeRoot();
+		};
+	};
+
 	const subscribeToImportProgressRequests = (): (() => void) => {
 		if (!pageRuntime || !dktPort) {
 			return EMPTY_CLEANUP;
@@ -773,6 +837,9 @@ export const createVideoEditorHarness = (
 	const unsubscribeRenderExportTasks = subscribeToRenderExportTasks();
 	const unsubscribeHandleInputFilesTasks = subscribeToHandleInputFilesTasks();
 	const unsubscribeMediaRecoveryTasks = subscribeToMediaRecoveryTasks();
+	const unsubscribePlaybackTasks = subscribeToPlaybackTasks();
+	const unsubscribeCanonicalPlaybackCursor =
+		subscribeToCanonicalPlaybackCursor();
 	const unsubscribeImportProgressRequests = subscribeToImportProgressRequests();
 
 	return {
@@ -781,6 +848,7 @@ export const createVideoEditorHarness = (
 		pageRuntime,
 		actions,
 		resourceTransfers$: resourceTransferManager.transfers$,
+		playback,
 		resourceChunkSize,
 		media: env.media,
 		transfers: env.transfers,
@@ -824,7 +892,7 @@ export const createVideoEditorHarness = (
 			return { operationId };
 		},
 
-		destroy(): void {
+			destroy(): void {
 			isDestroyed = true;
 			runtimeTasks.clear();
 			unsubscribe();
@@ -832,6 +900,9 @@ export const createVideoEditorHarness = (
 			unsubscribeRenderExportTasks();
 			unsubscribeHandleInputFilesTasks();
 			unsubscribeMediaRecoveryTasks();
+			unsubscribePlaybackTasks();
+			unsubscribeCanonicalPlaybackCursor();
+			playback.dispose();
 			unsubscribeImportProgressRequests();
 			for (const url of importedObjectUrls) {
 				platform.revokeObjectUrl(url);

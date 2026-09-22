@@ -349,6 +349,7 @@ const createCrdtRuntime = async (
 		await runDktStorageRequest(getNameDictionary);
 	}
 	prepareDictionaryNames?.([
+		"$meta$time/instant/[:playShouldCompleteAt]",
 		"$meta$apis$time$used",
 		"$meta$apis$exportRuntime$used",
 		"$meta$apis$importRuntime$used",

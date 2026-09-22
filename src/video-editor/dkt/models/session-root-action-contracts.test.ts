@@ -280,6 +280,30 @@ describe("SessionRoot action contracts", () => {
 		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(12);
 	});
 
+	it("rebinds the current run when the timeline boundary changes", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "play");
+		const runId = Number(
+			harness.ctx.getAttr(harness.sessionRoot, "playbackRunId"),
+		);
+
+		await dispatchAndSettle(harness.ctx, harness.project, "setProjectDuration", 20);
+		expect(
+			harness.ctx.getAttr(harness.sessionRoot, "playbackBoundaryCursor"),
+		).toBe(20);
+		expect(harness.playbackRequests.at(-1)).toMatchObject({
+			run: { runId, boundaryCursorSeconds: 20 },
+		});
+
+		await dispatchAndSettle(harness.ctx, harness.project, "setProjectDuration", 0);
+		expect(
+			harness.ctx.getAttr(harness.sessionRoot, "playbackBoundaryCursor"),
+		).toBe(5);
+		expect(harness.playbackRequests.at(-1)).toMatchObject({
+			run: { runId, boundaryCursorSeconds: 5 },
+		});
+	});
+
 	it("preview buffer actions create, advance, and clear buffer", async () => {
 		const harness = await createActionContractHarness();
 

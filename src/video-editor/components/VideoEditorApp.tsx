@@ -2,13 +2,11 @@ import {
 	type CSSProperties,
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
-	useEffect,
 	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
-import { useActions } from "../../dkt-react-sync/hooks/useActions";
 import { useAttrs } from "../../dkt-react-sync/hooks/useAttrs";
 import { useReactScopeRuntime } from "../../dkt-react-sync/hooks/useReactScopeRuntime";
 import { useScope } from "../../dkt-react-sync/hooks/useScope";
@@ -20,7 +18,6 @@ import { PreviewPanel } from "./PreviewPanel";
 import { TimelineView } from "./TimelineView";
 import { Toolbar } from "./Toolbar";
 
-const playbackUiFrameMs = 1000 / 30;
 const inspectorWidthMin = 240;
 const inspectorWidthMax = 460;
 const previewWidthMin = 360;
@@ -53,40 +50,6 @@ const ActiveProjectScope = ({ children }: { children: React.ReactNode }) => {
 	return (
 		<ScopeContext.Provider value={projectScope}>{children}</ScopeContext.Provider>
 	);
-};
-
-const PlaybackLoop = () => {
-	const sessionDispatch = useActions();
-	const { isPlaying } = useAttrs(["isPlaying"]) as { isPlaying?: unknown };
-
-	useEffect(() => {
-		if (!isPlaying) {
-			return;
-		}
-
-		// Fill buffer immediately when playback starts
-		sessionDispatch("startPreviewBuffer");
-
-		let lastTime = performance.now();
-		let accumulatedMs = 0;
-		let frameId = 0;
-		const tick = (time: number) => {
-			const elapsedMs = time - lastTime;
-			lastTime = time;
-			accumulatedMs += elapsedMs;
-			if (accumulatedMs >= playbackUiFrameMs) {
-				const deltaSeconds = Math.min(accumulatedMs / 1000, 0.25);
-				accumulatedMs = 0;
-				sessionDispatch("tickPlayback", { deltaSeconds });
-			}
-			frameId = requestAnimationFrame(tick);
-		};
-
-		frameId = requestAnimationFrame(tick);
-		return () => cancelAnimationFrame(frameId);
-	}, [sessionDispatch, isPlaying]);
-
-	return null;
 };
 
 export const VideoEditorApp = () => {
@@ -196,7 +159,6 @@ export const VideoEditorApp = () => {
 
 	return (
 		<div className="ve-shell">
-			<PlaybackLoop />
 			{showCrdtDebugHarnessPanel ? <CrdtDebugPanel /> : null}
 			<Toolbar />
 			<main className="ve-main">

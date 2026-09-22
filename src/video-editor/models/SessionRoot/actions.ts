@@ -66,6 +66,7 @@ export type DktSessionActionName =
 	| "addActiveProjectEmbeddedAudioToTimeline"
 	| "syncSelectedClipRel"
 	| "handleAttr:isPlaying"
+	| "handleAttr:playbackBoundaryCursor"
 	| "zoomTimeline"
 	| "nudgeSelectedClip"
 	| "deleteSelectedClip"
@@ -708,13 +709,11 @@ const playbackRunPatch = ({
 	cursor,
 	now,
 	rate,
-	boundary,
 	runId,
 }: {
 	cursor: number;
 	now: number;
 	rate: number;
-	boundary: number;
 	runId: number;
 }) => ({
 	cursor,
@@ -723,7 +722,6 @@ const playbackRunPatch = ({
 	playStartCursor: cursor,
 	playStartedAt: now,
 	playbackRate: rate,
-	playbackBoundaryCursor: boundary,
 });
 
 export const sessionPlayAction = {
@@ -734,7 +732,6 @@ export const sessionPlayAction = {
 		playStartCursor: ["playStartCursor"],
 		playStartedAt: ["playStartedAt"],
 		playbackRate: ["playbackRate"],
-		playbackBoundaryCursor: ["playbackBoundaryCursor"],
 	},
 	fn: [
 		[
@@ -761,7 +758,6 @@ export const sessionPlayAction = {
 				cursor: start,
 				now: asNumber(now, 0),
 				rate: Math.max(0.01, asNumber(rate, 1)),
-				boundary: end,
 				runId: Math.max(0, asNumber(runId, 0)) + 1,
 			});
 		},
@@ -802,7 +798,6 @@ export const sessionCommitSeekAction = {
 		playStartCursor: ["playStartCursor"],
 		playStartedAt: ["playStartedAt"],
 		playbackRate: ["playbackRate"],
-		playbackBoundaryCursor: ["playbackBoundaryCursor"],
 	},
 	fn: [
 		[
@@ -835,7 +830,6 @@ export const sessionCommitSeekAction = {
 				cursor,
 				now: asNumber(now, 0),
 				rate: Math.max(0.01, asNumber(rate, 1)),
-				boundary: end,
 				runId: Math.max(0, asNumber(runId, 0)) + 1,
 			});
 		},
@@ -850,7 +844,6 @@ export const sessionSetPlaybackRateAction = {
 		playStartCursor: ["playStartCursor"],
 		playStartedAt: ["playStartedAt"],
 		playbackRate: ["playbackRate"],
-		playbackBoundaryCursor: ["playbackBoundaryCursor"],
 	},
 	fn: [
 		[
@@ -878,7 +871,6 @@ export const sessionSetPlaybackRateAction = {
 				cursor: Math.max(0, asNumber(asObject(payload)?.cursor, asNumber(cursor, 0))),
 				now: asNumber(now, 0),
 				rate,
-				boundary: Math.max(0, asNumber(boundary, 0)),
 				runId: Math.max(0, asNumber(runId, 0)) + 1,
 			});
 		},
@@ -945,6 +937,45 @@ export const sessionHandleIsPlayingAction = {
 					}
 				: { run: null, committedCursor: asNumber(cursor, 0) };
 		},
+	],
+} as const satisfies DktActionDescriptor;
+
+export const sessionHandlePlaybackBoundaryAction = {
+	to: [
+		"$fx_applyPlaybackRun",
+		{ intent: "call", drop_when_api_not_ready: false },
+	],
+	fn: [
+		[
+			"$noop",
+			"isPlaying",
+			"playbackRunId",
+			"playStartCursor",
+			"playStartedAt",
+			"playbackRate",
+			"playbackBoundaryCursor",
+		] as const,
+		(
+			_payload: unknown,
+			noop: unknown,
+			isPlaying: unknown,
+			runId: unknown,
+			startCursor: unknown,
+			startedAt: unknown,
+			rate: unknown,
+			boundaryCursor: unknown,
+		) =>
+			isPlaying === true
+				? {
+						run: {
+							runId: asNumber(runId, 0),
+							startCursorSeconds: asNumber(startCursor, 0),
+							startedAtEpochMs: asNumber(startedAt, 0),
+							playbackRate: asNumber(rate, 1),
+							boundaryCursorSeconds: asNumber(boundaryCursor, 0),
+						},
+					}
+				: noop,
 	],
 } as const satisfies DktActionDescriptor;
 
@@ -1454,6 +1485,7 @@ export const dktSessionActions = {
 	setPlaybackRate: sessionSetPlaybackRateAction,
 	completePlayback: sessionCompletePlaybackAction,
 	"handleAttr:isPlaying": sessionHandleIsPlayingAction,
+	"handleAttr:playbackBoundaryCursor": sessionHandlePlaybackBoundaryAction,
 	setTimelineZoom: sessionSetTimelineZoomAction,
 	zoomTimeline: sessionZoomTimelineAction,
 	nudgeSelectedClip: sessionNudgeSelectedClipAction,

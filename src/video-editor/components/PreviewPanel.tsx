@@ -1,5 +1,5 @@
 import { Gauge, Pause, Play, Timer } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRootAttrs } from "../../dkt-react-sync/hooks/useRootAttrs";
 import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
 import { useVideoEditor } from "../app/VideoEditorContext";
@@ -8,22 +8,16 @@ import type {
 	PreviewStructure,
 	RenderedClip,
 } from "../read-model/previewReadModel";
+import { createPreviewFrame } from "../read-model/previewReadModel";
 import { ColorScopesPanel, type ScopeMode } from "./ColorScopesPanel";
 import { Button, IconButton } from "./ControlPrimitives";
 import { formatSeconds } from "./format";
 import type { PreviewMediaElementRegistry } from "./mediaElementRegistry";
 import { RendererStage } from "./RendererStage";
+import { usePlaybackSnapshot } from "./usePlaybackSnapshot";
 
 const previewWindowRequestIntervalMs = 200;
 const emptyPreviewStructure: PreviewStructure = { clipSources: [] };
-const emptyPreviewFrame: PreviewFrame = {
-	cursor: 0,
-	renderedClips: [],
-	visualRenderedClips: [],
-	audioRenderedClips: [],
-	activeClipNames: [],
-};
-
 const PreviewStage = ({
 	frame,
 	structure,
@@ -185,19 +179,19 @@ export const PreviewPanel = ({
 		resourceTransfers$.get,
 	);
 	const sessionDispatch = useRootDispatch();
+	const playback = usePlaybackSnapshot();
 	const attrs = useRootAttrs([
 		"activeInspectorTab",
-		"isPlaying",
-		"previewFrame",
 		"previewStructure",
 	]) as {
 		activeInspectorTab?: unknown;
-		isPlaying?: unknown;
-		previewFrame?: PreviewFrame;
 		previewStructure?: PreviewStructure;
 	};
-	const frame = attrs.previewFrame ?? emptyPreviewFrame;
 	const structure = attrs.previewStructure ?? emptyPreviewStructure;
+	const frame = useMemo(
+		() => createPreviewFrame(structure, playback.presentationTime),
+		[structure, playback.presentationTime],
+	);
 	const [compareMode, setCompareMode] = useState<"off" | "split">("off");
 	const [scopeMode, setScopeMode] = useState<ScopeMode>("waveform");
 	const showColorScopes = attrs.activeInspectorTab === "color";
@@ -221,7 +215,7 @@ export const PreviewPanel = ({
 			<PreviewStage
 				frame={frame}
 				structure={structure}
-				isPlaying={attrs.isPlaying === true}
+				isPlaying={playback.isPlaying}
 				resolveResourceUrl={resolveResourceUrl}
 				requestResourcePlayheadWindow={requestResourcePlayheadWindow}
 				noteResourcePreviewError={noteResourcePreviewError}
@@ -239,8 +233,17 @@ export const PreviewPanel = ({
 			) : null}
 			<PreviewTransport
 				frame={frame}
-				isPlaying={attrs.isPlaying === true}
-				onTogglePlayback={() => sessionDispatch("togglePlayback")}
+				isPlaying={playback.isPlaying}
+				onTogglePlayback={() => {
+					if (playback.isPlaying && playback.runId !== null) {
+						sessionDispatch("pausePlayback", {
+							runId: playback.runId,
+							cursor: playback.presentationTime,
+						});
+						return;
+					}
+					sessionDispatch("play");
+				}}
 			/>
 		</section>
 	);
