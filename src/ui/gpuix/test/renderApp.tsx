@@ -63,6 +63,21 @@ export const renderWithScenario = async (
 			rel: string,
 			predicate: (count: number) => boolean,
 		) => waitForMany(dkt.pageRuntime, scope, rel, predicate),
+		/** Every element carrying the test id, in tree order. */
+		findAll: (testId: string) =>
+			root.renderer
+				.findByType("div")
+				.filter((candidate) => candidate.testId === testId),
+		/** Window-space center of the n-th element with the test id. */
+		centerOf: (testId: string, index = 0) => {
+			const element = root.renderer
+				.findByType("div")
+				.filter((candidate) => candidate.testId === testId)[index];
+			if (!element) throw new Error(`No element ${index} with testId "${testId}"`);
+			const bounds = root.renderer.getElementBounds(element.id);
+			if (!bounds) throw new Error(`Element "${testId}" has no bounds`);
+			return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, bounds };
+		},
 		/**
 		 * Clicks the center of the n-th element (default first) with the test
 		 * id, through native hit testing.
