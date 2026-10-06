@@ -10,9 +10,27 @@ import {
 type Message = MiniCutDktTransportMessage;
 
 // Wire dictionary of the fixture: the index is the key used in sync updates.
-const DICT = [undefined, "title", "tracks", "name", "kind"] as const;
-const KEY = { title: 1, tracks: 2, name: 3, kind: 4 } as const;
-type FixtureAttr = Exclude<keyof typeof KEY, "tracks">;
+const DICT = [
+	undefined,
+	"title",
+	"tracks",
+	"name",
+	"kind",
+	"clips",
+	"start",
+	"duration",
+] as const;
+const KEY = {
+	title: 1,
+	tracks: 2,
+	name: 3,
+	kind: 4,
+	clips: 5,
+	start: 6,
+	duration: 7,
+} as const;
+type FixtureAttr = Exclude<keyof typeof KEY, "tracks" | "clips">;
+type FixtureAttrs = Partial<Record<FixtureAttr, string | number>>;
 
 const ROOT_NODE_ID = "root";
 
@@ -23,11 +41,15 @@ export type SkeletonRaceFixture = {
 	/** Delivers the attrs of one track, which until now had none. */
 	deliverTrackAttrs(
 		nodeId: string,
-		attrs: Partial<Record<FixtureAttr, string>>,
+		attrs: FixtureAttrs,
 	): void;
+	/** Delivers the `clips` rel of a track: node ids only, no clip attrs. */
+	deliverClipsRel(trackNodeId: string, clipNodeIds: readonly string[]): void;
+	/** Delivers attrs of any node (for example a clip) that had none. */
+	deliverAttrs(nodeId: string, attrs: FixtureAttrs): void;
 	/** Delivers attrs of every track in one sync update. */
 	deliverAllTrackAttrs(
-		attrsByNodeId: Record<string, Partial<Record<FixtureAttr, string>>>,
+		attrsByNodeId: Record<string, FixtureAttrs>,
 	): void;
 	destroy(): void;
 };
@@ -65,7 +87,7 @@ export const createSkeletonRaceFixture = (
 	};
 	const attrsUpdate = (
 		nodeId: string,
-		attrs: Partial<Record<FixtureAttr, string>>,
+		attrs: FixtureAttrs,
 	): unknown[] => {
 		const flat = Object.entries(attrs).flatMap(([name, value]) => [
 			KEY[name as FixtureAttr],
@@ -100,6 +122,12 @@ export const createSkeletonRaceFixture = (
 		runtime,
 		trackNodeIds,
 		deliverTrackAttrs(nodeId, attrs) {
+			emitSync(SYNCR_TYPES.UPDATE, attrsUpdate(nodeId, attrs));
+		},
+		deliverClipsRel(trackNodeId, clipNodeIds) {
+			emitSync(SYNCR_TYPES.UPDATE, [1, trackNodeId, KEY.clips, [...clipNodeIds]]);
+		},
+		deliverAttrs(nodeId, attrs) {
 			emitSync(SYNCR_TYPES.UPDATE, attrsUpdate(nodeId, attrs));
 		},
 		deliverAllTrackAttrs(attrsByNodeId) {

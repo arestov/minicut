@@ -26,5 +26,7 @@ render(
 		title: `MiniCut GPUIX (fixture: ${selection.name})`,
 		width: 1280,
 		height: 800,
+		// GPUIX_BACKGROUND=1 (window smoke test) keeps the user's focus.
+		focus: process.env.GPUIX_BACKGROUND !== "1",
 	},
 );
