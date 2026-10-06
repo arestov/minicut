@@ -6,6 +6,13 @@ import {
 	type CreateAuthorityClientOptions,
 	createAuthorityClient,
 } from "../../worker/createAuthorityClient";
+import {
+	browserProjectAssetRoot,
+	createProjectAssetStore,
+} from "../../media/projectAssetStore";
+import { probeBrowserMediaFile } from "../../media/browserMediaProbe";
+import { browserPlaybackClock } from "../../playback/playbackRuntime";
+import type { MiniCutCrdtPageBridgeSender } from "../../dkt/runtime/createMiniCutPageSyncRuntime";
 import type { VideoEditorHarnessPlatform } from "./types";
 
 const fallbackMediaDuration = 6;
@@ -98,6 +105,33 @@ export const createBrowserHarnessPlatform = (
 	createExportRenderer: () =>
 		options.exportRenderer ?? createBrowserVideoExportRenderer(),
 	getImportedResourceDuration,
+	probeMediaFile: (file, signal) => probeBrowserMediaFile(file, signal),
+	createProjectAssetStore: () => createProjectAssetStore(browserProjectAssetRoot),
+	playbackClock: browserPlaybackClock,
+	async estimateStorage() {
+		try {
+			return (await navigator.storage?.estimate?.()) ?? {};
+		} catch {
+			return {};
+		}
+	},
+	downloadFile(url, fileName) {
+		if (typeof document === "undefined") {
+			return;
+		}
+		const anchor = document.createElement("a");
+		anchor.href = url;
+		anchor.download = fileName;
+		document.body.appendChild(anchor);
+		anchor.click();
+		document.body.removeChild(anchor);
+	},
+	resolveCrdtBridgeSender: () =>
+		(
+			window as Window & {
+				__MINICUT_CRDT_PAGE_BRIDGE_SEND__?: MiniCutCrdtPageBridgeSender;
+			}
+		).__MINICUT_CRDT_PAGE_BRIDGE_SEND__,
 	createObjectUrl(source) {
 		if (typeof URL.createObjectURL !== "function") {
 			return null;

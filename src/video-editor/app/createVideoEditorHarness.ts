@@ -1,14 +1,13 @@
 import {
 	createMiniCutPageSyncRuntime,
-	type MiniCutCrdtPageBridgeSender,
 } from "../dkt/runtime/createMiniCutPageSyncRuntime";
 import { WORKSPACE_OPEN_STATUS } from "../dkt/runtime/workspaceOpenState";
 import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
 import { createResourceTransferManager } from "../media/resourceTransferManager";
-import { browserProjectAssetRoot, createProjectAssetStore, type ProjectAssetStore } from "../media/projectAssetStore";
+import type { ProjectAssetStore } from "../media/projectAssetStore";
 import { fingerprintMediaFile } from "../media/mediaContentFingerprint";
-import { probeBrowserMediaFile } from "../media/browserMediaProbe";
+import type { HarnessMediaProbeResult } from "./platform/types";
 import { commitRecoveryStorage } from "../media/mediaRecoveryStorageCommit";
 import {
 	createLocalMediaResolver,
@@ -43,7 +42,6 @@ import {
 import { executeRenderExportTask } from "./renderExportTaskExecutor";
 import { createRuntimeTaskFacade } from "./runtimeTaskFacade";
 import {
-	browserPlaybackClock,
 	PlaybackRuntime,
 	type PlaybackRun,
 } from "../playback/playbackRuntime";
@@ -124,19 +122,17 @@ const getFileKind = (file: File): "video" | "audio" | "image" | null => {
 	return null;
 };
 
-const createMiniCutPageRuntime = (authorityClient: EditorAuthorityClient) => {
+const createMiniCutPageRuntime = (
+	authorityClient: EditorAuthorityClient,
+	platform: VideoEditorHarnessPlatform,
+) => {
 	if (typeof authorityClient.openDktTransport !== "function") {
 		return null;
 	}
 
 	return createMiniCutPageSyncRuntime({
 		transport: authorityClient.openDktTransport(),
-		resolveCrdtBridgeSender: () =>
-			(
-				window as Window & {
-					__MINICUT_CRDT_PAGE_BRIDGE_SEND__?: MiniCutCrdtPageBridgeSender;
-				}
-			).__MINICUT_CRDT_PAGE_BRIDGE_SEND__,
+		resolveCrdtBridgeSender: () => platform.resolveCrdtBridgeSender(),
 	});
 };
 
@@ -214,9 +210,9 @@ export const createVideoEditorHarness = (
 
 	const exportRenderer =
 		options.exportRenderer ?? platform.createExportRenderer();
-	const pageRuntime = createMiniCutPageRuntime(authorityClient);
+	const pageRuntime = createMiniCutPageRuntime(authorityClient, platform);
 	const playback = new PlaybackRuntime({
-		clock: browserPlaybackClock,
+		clock: platform.playbackClock,
 		onComplete(completion) {
 			pageRuntime?.dispatch("completePlayback", completion);
 		},
@@ -229,7 +225,7 @@ export const createVideoEditorHarness = (
 	const exportObjectUrls = new Set<string>();
 	const startedImportHandles = new Set<string>();
 	const mediaHandleStore = createLocalMediaHandleStore();
-	const projectAssets = options.projectAssets ?? createProjectAssetStore(browserProjectAssetRoot);
+	const projectAssets = options.projectAssets ?? platform.createProjectAssetStore();
 	const readActiveProjectResourceScopes = (): ReactSyncScopeHandle[] => {
 		const rootScope = pageRuntime?.getRootScope();
 		if (!pageRuntime || !rootScope) {
@@ -455,9 +451,6 @@ export const createVideoEditorHarness = (
 			if (!payload || typeof payload !== "object") {
 				return;
 			}
-			if (typeof document === "undefined") {
-				return;
-			}
 			const downloadUrl =
 				typeof payload.downloadUrl === "string" ? payload.downloadUrl : null;
 			if (!downloadUrl) {
@@ -477,12 +470,7 @@ export const createVideoEditorHarness = (
 				typeof payload.fileName === "string" && payload.fileName
 					? payload.fileName
 					: "export.webm";
-			const anchor = document.createElement("a");
-			anchor.href = downloadUrl;
-			anchor.download = fileName;
-			document.body.appendChild(anchor);
-			anchor.click();
-			document.body.removeChild(anchor);
+			platform.downloadFile(downloadUrl, fileName);
 		});
 
 	const dktPort: EditorDktScopePort | null = pageRuntime
@@ -505,7 +493,7 @@ export const createVideoEditorHarness = (
 				platform.getImportedResourceDuration(url, kind),
 			fingerprintFile,
 			estimateStorage: async () => {
-				try { return await navigator.storage?.estimate?.() ?? {}; } catch { return {}; }
+				return platform.estimateStorage();
 			},
 		},
 		export: {
@@ -691,10 +679,10 @@ export const createVideoEditorHarness = (
 				request: payload,
 				consumeRuntimeRef: (id) => runtimeTasks.getRuntimeRef(id),
 				probe: (file, signal) => {
-					const testWindow = globalThis as typeof globalThis & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean; __MINICUT_MEDIA_PROBE_OVERRIDE__?: Awaited<ReturnType<typeof probeBrowserMediaFile>> };
+					const testWindow = globalThis as typeof globalThis & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean; __MINICUT_MEDIA_PROBE_OVERRIDE__?: HarnessMediaProbeResult };
 					return testWindow.__MINICUT_ENABLE_DEBUG_BRIDGE__ === true && testWindow.__MINICUT_MEDIA_PROBE_OVERRIDE__
 						? Promise.resolve(testWindow.__MINICUT_MEDIA_PROBE_OVERRIDE__)
-						: probeBrowserMediaFile(file, signal);
+						: platform.probeMediaFile(file, signal);
 				},
 				fingerprint: (file, signal) => fingerprintFile(file, undefined, signal),
 				dispatch: (action, value, target) => pageRuntime.dispatch(action, value, target),
