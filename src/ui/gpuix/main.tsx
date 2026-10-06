@@ -1,9 +1,18 @@
 import { render } from "@gpuix/solid";
 import { RootScope } from "../../dkt-solid-sync";
-import { createInProcessDkt } from "./host/createInProcessDkt";
 import { AppShell } from "./AppShell";
+import { createScenarioDriver } from "./fixtures/scenarioDriver";
+import { resolveScenarioSelection, seedScenario } from "./fixtures/scenarios";
+import { createInProcessDkt } from "./host/createInProcessDkt";
 
+// Scenario: --scenario=<empty|timeline|large|unavailable-resource> [--clips=N]
+// or MINICUT_GPUIX_SCENARIO / MINICUT_GPUIX_CLIPS.
+const selection = resolveScenarioSelection(process.argv.slice(2), process.env);
 const dkt = createInProcessDkt();
+
+const driver = createScenarioDriver(dkt.pageRuntime);
+await seedScenario(selection.name, driver, selection.options);
+driver.destroy();
 
 render(
 	() => (
@@ -12,7 +21,7 @@ render(
 		</RootScope>
 	),
 	{
-		title: "MiniCut GPUIX (fixtures)",
+		title: `MiniCut GPUIX (fixture: ${selection.name})`,
 		width: 1280,
 		height: 800,
 	},
