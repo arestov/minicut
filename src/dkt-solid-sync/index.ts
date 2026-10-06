@@ -17,3 +17,9 @@ export { Path } from "./components/Path";
 export { ReadyGate } from "./components/ReadyGate";
 export { createOneFor, useOne } from "./hooks/useOne";
 export { createManyFor, useMany } from "./hooks/useMany";
+export {
+	createDispatchFor,
+	useActions,
+	useRootDispatch,
+} from "./hooks/useActions";
+export type { ScopeDispatch } from "./hooks/useActions";
