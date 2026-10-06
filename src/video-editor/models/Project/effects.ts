@@ -1,4 +1,4 @@
-import type { DispatchRuntimeTaskPayload } from "../../app/runtimeTaskFacade";
+import type { DispatchRuntimeTaskPayload } from "../../core/contracts/runtimeTask";
 
 export const PROJECT_IMPORT_FILES_FX = "$fx_handleInputFiles" as const;
 export const PROJECT_RENDER_EXPORT_FX = "$fx_renderExport" as const;

@@ -1,4 +1,4 @@
-import type { DispatchRuntimeTaskPayload } from "../../app/runtimeTaskFacade";
+import type { DispatchRuntimeTaskPayload } from "../../core/contracts/runtimeTask";
 
 export const RESOURCE_TRANSFER_STATUS_FX =
 	"$fx_resourceTransferStatus" as const;
