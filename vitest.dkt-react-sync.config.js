@@ -1,10 +1,9 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+import { dktViteAliases } from './scripts/dktAliases.mjs'
 
 const repoRoot = path.dirname(fileURLToPath(import.meta.url))
-const dktRoot = path.resolve(repoRoot, 'tmp/dkt/js')
-const dktProvodaRoot = path.resolve(repoRoot, 'tmp/dkt/js/libs/provoda/provoda')
 
 export default defineConfig({
 	resolve: {
@@ -12,8 +11,7 @@ export default defineConfig({
 			'@dkt-react-sync': path.resolve(repoRoot, 'src/dkt-react-sync'),
 			'@dkt-ui-sync': path.resolve(repoRoot, 'src/dkt-ui-sync'),
 			'@video-editor': path.resolve(repoRoot, 'src/video-editor'),
-			dkt: dktProvodaRoot,
-			'dkt-all': dktRoot,
+			...dktViteAliases,
 		},
 	},
 	test: {

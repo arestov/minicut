@@ -2,18 +2,16 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
+import { dktViteAliases } from './scripts/dktAliases.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const dktRoot = path.resolve(__dirname, 'tmp/dkt/js')
-const dktProvodaRoot = path.resolve(__dirname, 'tmp/dkt/js/libs/provoda/provoda')
 
 export default defineConfig({
 	plugins: [react()],
 	resolve: {
 		alias: {
 			'@video-editor': path.resolve(__dirname, 'src/video-editor'),
-			dkt: dktProvodaRoot,
-			'dkt-all': dktRoot,
+			...dktViteAliases,
 		},
 	},
 	test: {
