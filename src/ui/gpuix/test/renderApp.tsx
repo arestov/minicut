@@ -3,7 +3,7 @@ import { createTestRoot } from "@gpuix/solid/testing";
 import { RootScope } from "../../../dkt-solid-sync";
 import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
 import { createScenarioDriver } from "../fixtures/scenarioDriver";
-import { waitForAttr, waitForOne } from "../fixtures/scopeWait";
+import { waitForAttr, waitForMany, waitForOne } from "../fixtures/scopeWait";
 import {
 	seedScenario,
 	type ScenarioName,
@@ -35,6 +35,7 @@ export const renderWithScenario = async (
 	));
 
 	const rootScope = dkt.pageRuntime.getRootScope() as ReactSyncScopeHandle;
+	let verifier: ReturnType<typeof createScenarioDriver> | null = null;
 
 	return {
 		runtime: dkt.pageRuntime,
@@ -56,10 +57,21 @@ export const renderWithScenario = async (
 			rel: string,
 			predicate: (target: ReactSyncScopeHandle | null) => boolean,
 		) => waitForOne(dkt.pageRuntime, scope, rel, predicate),
-		/** Clicks the center of the element with the test id, through native hit testing. */
-		click: (testId: string) => {
-			const element = root.renderer.findByTestId(testId);
-			if (!element) throw new Error(`No element with testId "${testId}"`);
+		/** Resolves once the many-rel member count satisfies the predicate. */
+		untilMany: (
+			scope: ReactSyncScopeHandle,
+			rel: string,
+			predicate: (count: number) => boolean,
+		) => waitForMany(dkt.pageRuntime, scope, rel, predicate),
+		/**
+		 * Clicks the center of the n-th element (default first) with the test
+		 * id, through native hit testing.
+		 */
+		click: (testId: string, index = 0) => {
+			const element = root.renderer
+				.findByType("div")
+				.filter((candidate) => candidate.testId === testId)[index];
+			if (!element) throw new Error(`No element ${index} with testId "${testId}"`);
 			const bounds = root.renderer.getElementBounds(element.id);
 			if (!bounds) throw new Error(`Element "${testId}" has no bounds`);
 			root.renderer.nativeSimulateClick(
@@ -67,7 +79,14 @@ export const renderWithScenario = async (
 				bounds.y + bounds.height / 2,
 			);
 		},
+		/**
+		 * A driver for reading nodes the rendered components do not demand
+		 * (for example clips). Created on first use so it cannot hide missing
+		 * shape demand of the components under test.
+		 */
+		verifier: () => (verifier ??= createScenarioDriver(dkt.pageRuntime)),
 		destroy() {
+			verifier?.destroy();
 			root.unmount();
 			dkt.destroy();
 		},

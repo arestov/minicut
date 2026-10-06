@@ -4,6 +4,7 @@ import { AppShell } from "./AppShell";
 import { createScenarioDriver } from "./fixtures/scenarioDriver";
 import { resolveScenarioSelection, seedScenario } from "./fixtures/scenarios";
 import { createInProcessDkt } from "./host/createInProcessDkt";
+import { Sidebar } from "./panels/Sidebar";
 
 // Scenario: --scenario=<empty|timeline|large|unavailable-resource> [--clips=N]
 // or MINICUT_GPUIX_SCENARIO / MINICUT_GPUIX_CLIPS.
@@ -17,7 +18,7 @@ driver.destroy();
 render(
 	() => (
 		<RootScope runtime={dkt.pageRuntime}>
-			<AppShell />
+			<AppShell sidebar={<Sidebar />} />
 		</RootScope>
 	),
 	{
