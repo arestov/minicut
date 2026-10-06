@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { getRelShape } from "../shape/autoShapes";
+import { getRelShape } from "../../dkt-ui-sync/shape/autoShapes";
 import { useReactScopeRuntime } from "./useReactScopeRuntime";
 import { useScope } from "./useScope";
 import { useShape } from "./useShape";

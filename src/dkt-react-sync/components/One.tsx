@@ -4,7 +4,7 @@ import { useAttrs } from "../hooks/useAttrs";
 import { useReactScopeRuntime } from "../hooks/useReactScopeRuntime";
 import { useScope } from "../hooks/useScope";
 import { useShape } from "../hooks/useShape";
-import { getRelShape } from "../shape/autoShapes";
+import { getRelShape } from "../../dkt-ui-sync/shape/autoShapes";
 
 /**
  * Gates rendering of the child until a specific attr arrives on the child scope.

@@ -4,8 +4,8 @@
  * Runtime state inspection helpers for jsdom REPL scenarios.
  */
 
-import type { PageSyncRuntime } from '../../src/dkt-react-sync/runtime/PageSyncRuntime'
-import type { ReactSyncScopeHandle } from '../../src/dkt-react-sync/scope/ScopeHandle'
+import type { PageSyncRuntime } from '../../src/dkt-ui-sync/runtime/PageSyncRuntime'
+import type { ReactSyncScopeHandle } from '../../src/dkt-ui-sync/scope/ScopeHandle'
 
 const waitTick = () => new Promise<void>((resolve) => {
 	setTimeout(resolve, 0)

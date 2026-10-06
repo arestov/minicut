@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReactScopeRuntimeContext } from "../../dkt-react-sync/context/ReactScopeRuntimeContext";
 import { ScopeContext } from "../../dkt-react-sync/context/ScopeContext";
-import type { ReactScopeRuntime } from "../../dkt-react-sync/runtime/ReactScopeRuntime";
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactScopeRuntime } from "../../dkt-ui-sync/runtime/ReactScopeRuntime";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 
 const useVideoEditorMock = vi.fn();
 const useRootAttrsMock = vi.fn();

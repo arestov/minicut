@@ -1,4 +1,4 @@
-import type { ReactSyncScopeHandle } from "../../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
 import type { VideoEditorHarness } from "../createVideoEditorHarness";
 
 type MiniCutDebugBridge = {

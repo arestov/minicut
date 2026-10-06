@@ -28,7 +28,7 @@ import { useActions } from "../../dkt-react-sync/hooks/useActions";
 import { useMany } from "../../dkt-react-sync/hooks/useMany";
 import { useRootAttrs } from "../../dkt-react-sync/hooks/useRootAttrs";
 import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,

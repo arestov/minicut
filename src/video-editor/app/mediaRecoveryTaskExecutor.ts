@@ -1,4 +1,4 @@
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { evaluateRelinkCandidate, type MediaTechnicalMetadata, type RelinkPolicyResult } from "../media/mediaRelinkPolicy";
 import type { PermissionFileHandle } from "../media/localMediaResolver";
 

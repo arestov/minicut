@@ -2,9 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useActions } from "../hooks/useActions";
 import { useAttrs } from "../hooks/useAttrs";
-import type { ReactScopeRuntime } from "../runtime/ReactScopeRuntime";
+import type { ReactScopeRuntime } from "../../dkt-ui-sync/runtime/ReactScopeRuntime";
 import { RootScope } from "../scope/RootScope";
-import type { ReactSyncScopeHandle } from "../scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { Path } from "./Path";
 
 const createScope = (nodeId: string): ReactSyncScopeHandle => ({

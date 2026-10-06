@@ -1,8 +1,8 @@
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ReactScopeRuntime } from "../runtime/ReactScopeRuntime";
+import type { ReactScopeRuntime } from "../../dkt-ui-sync/runtime/ReactScopeRuntime";
 import { RootScope } from "../scope/RootScope";
-import type { ReactSyncScopeHandle } from "../scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { createTestReactScopeRuntime } from "../test/createTestReactScopeRuntime";
 import { useAttrs } from "./useAttrs";
 

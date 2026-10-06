@@ -1,4 +1,4 @@
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { PROJECT_IMPORT_FILES_FX } from "../models/Project/effects";
 import type {
 	MediaImportEntry,

@@ -2,7 +2,7 @@ import type React from "react";
 import { useSyncExternalStore } from "react";
 import { ReactScopeRuntimeContext } from "../context/ReactScopeRuntimeContext";
 import { ScopeContext } from "../context/ScopeContext";
-import type { ReactScopeRuntime } from "../runtime/ReactScopeRuntime";
+import type { ReactScopeRuntime } from "../../dkt-ui-sync/runtime/ReactScopeRuntime";
 
 export const RootScope = ({
 	runtime,

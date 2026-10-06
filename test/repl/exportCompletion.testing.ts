@@ -25,7 +25,7 @@
  *   tracker.destroy()
  */
 
-import type { PageSyncRuntime } from '../../src/dkt-react-sync/runtime/PageSyncRuntime'
+import type { PageSyncRuntime } from '../../src/dkt-ui-sync/runtime/PageSyncRuntime'
 import type { ExportProgressState } from '../../src/video-editor/app/exportProgressState'
 import type { ExportRequestState } from '../../src/video-editor/app/exportRequestState'
 import { parseExportRequest } from '../../src/video-editor/app/exportRequestState'

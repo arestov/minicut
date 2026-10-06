@@ -30,6 +30,7 @@ export default defineConfig({
 			'src/video-editor/**/*.test.tsx',
 			'src/dkt-react-sync/**/*.test.ts',
 			'src/dkt-react-sync/**/*.test.tsx',
+			'src/dkt-ui-sync/**/*.test.ts',
 		],
 		exclude: [
 			'node_modules/**',

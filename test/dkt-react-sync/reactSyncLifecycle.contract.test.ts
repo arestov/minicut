@@ -6,13 +6,13 @@ import {
 	SYRU_UPDATE_RELS,
 } from "dkt-all/libs/provoda/SyncR_U_TYPES.js";
 import { describe, expect, it, vi } from "vitest";
-import { ReactSyncReceiver } from "@dkt-react-sync/receiver/ReactSyncReceiver";
-import type { ReactSyncScopeHandle } from "@dkt-react-sync/scope/ScopeHandle";
+import { ReactSyncReceiver } from "@dkt-ui-sync/receiver/ReactSyncReceiver";
+import type { ReactSyncScopeHandle } from "@dkt-ui-sync/scope/ScopeHandle";
 import { defineShape } from "@dkt-react-sync/shape/defineShape";
 import {
 	ShapeRegistry,
 	type ShapeRegistryRuntime,
-} from "@dkt-react-sync/shape/ShapeRegistry";
+} from "@dkt-ui-sync/shape/ShapeRegistry";
 
 const scope = (nodeId: string): ReactSyncScopeHandle => ({
 	kind: "scope",

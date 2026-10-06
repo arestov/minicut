@@ -1,5 +1,5 @@
-import type { ReactScopeRuntime } from "../runtime/ReactScopeRuntime";
-import type { ReactSyncScopeHandle } from "../scope/ScopeHandle";
+import type { ReactScopeRuntime } from "../../dkt-ui-sync/runtime/ReactScopeRuntime";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 
 export const createTestScope = (nodeId: string): ReactSyncScopeHandle => ({
 	kind: "scope",

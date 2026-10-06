@@ -1,4 +1,4 @@
-import type { ReactSyncScopeHandle } from "../../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
 import type { MiniCutReviewItem } from "../../dkt/review/types";
 
 export const reviewActionScopeForItem = (

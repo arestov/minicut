@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import { getAttrsShape } from "../shape/autoShapes";
+import { getAttrsShape } from "../../dkt-ui-sync/shape/autoShapes";
 import { useReactScopeRuntime } from "./useReactScopeRuntime";
 
 const normalizeFields = (fields: readonly string[]) =>

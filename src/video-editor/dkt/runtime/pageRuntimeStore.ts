@@ -1,4 +1,4 @@
-import type { PageRootSnapshot } from "../../../dkt-react-sync/runtime/PageSyncRuntime";
+import type { PageRootSnapshot } from "../../../dkt-ui-sync/runtime/PageSyncRuntime";
 
 export const createEmptyPageRuntimeSnapshot = (): PageRootSnapshot => ({
 	booted: false,

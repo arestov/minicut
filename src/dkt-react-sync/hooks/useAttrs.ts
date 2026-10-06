@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { getAttrsShape } from "../shape/autoShapes";
+import { getAttrsShape } from "../../dkt-ui-sync/shape/autoShapes";
 import { useReactScopeRuntime } from "./useReactScopeRuntime";
 import { useScope } from "./useScope";
 import { useShape } from "./useShape";

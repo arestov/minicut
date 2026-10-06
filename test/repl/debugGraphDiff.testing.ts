@@ -13,7 +13,7 @@
  *   console.log(diffGraph(before, after))
  */
 
-import type { ReactSyncDebugGraph, ReactSyncDebugNode } from '../../src/dkt-react-sync/receiver/ReactSyncReceiver'
+import type { ReactSyncDebugGraph, ReactSyncDebugNode } from '../../src/dkt-ui-sync/receiver/ReactSyncReceiver'
 
 export interface GraphDiffAttrChange {
 	oldValue: unknown

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { executeImportFilesTask } from "./importFilesTaskExecutor";
 import { createRuntimeTaskFacade } from "./runtimeTaskFacade";
 import type { EditorActionEnvironment } from "./editorActionEnvironment";

@@ -1,5 +1,5 @@
-import type { PageSyncRuntime } from "../../dkt-react-sync/runtime/PageSyncRuntime";
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { PageSyncRuntime } from "../../dkt-ui-sync/runtime/PageSyncRuntime";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import {
 	createVideoEditorHarness,
 	type VideoEditorHarness,

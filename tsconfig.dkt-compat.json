@@ -5,6 +5,7 @@
 	},
 	"include": [
 		"src/dkt-react-sync/**/*.ts",
+		"src/dkt-ui-sync/**/*.ts",
 		"src/video-editor/dkt/**/*.ts",
 		"src/video-editor/models/**/*.ts",
 		"src/video-editor/types/**/*.d.ts"

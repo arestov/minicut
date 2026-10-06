@@ -1,4 +1,4 @@
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import type { MediaImportEntry } from "./actionRuntimeTypes";
 import type { EditorActionEnvironment } from "./editorActionEnvironment";
 import type { RuntimeTaskDescriptor } from "./runtimeTaskFacade";

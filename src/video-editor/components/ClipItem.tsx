@@ -13,9 +13,9 @@ import { useMany } from "../../dkt-react-sync/hooks/useMany";
 import { useOne } from "../../dkt-react-sync/hooks/useOne";
 import { useReactScopeRuntime } from "../../dkt-react-sync/hooks/useReactScopeRuntime";
 import { useRootDispatch } from "../../dkt-react-sync/hooks/useRootDispatch";
-import { getAttrsShape } from "../../dkt-react-sync/shape/autoShapes";
+import { getAttrsShape } from "../../dkt-ui-sync/shape/autoShapes";
 import { useShape } from "../../dkt-react-sync/hooks/useShape";
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import type { AnimatedScalar } from "../render/registryTypes";
 import { formatPercent, formatSeconds } from "./format";
 

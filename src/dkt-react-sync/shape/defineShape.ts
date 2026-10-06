@@ -4,37 +4,20 @@ import {
 	type ReactNode,
 	createElement,
 } from "react";
+import {
+	type DefinedReactShape,
+	type ReactShapeSpec,
+	defineShape,
+} from "../../dkt-ui-sync/shape/defineShape";
 import { MountedShape } from "./MountedShape";
+
+export { defineShape };
+export type { DefinedReactShape, ReactShapeSpec };
 
 const SHAPE_META = Symbol.for("dkt.react_sync.shape");
 
-let nextShapeId = 1;
-
-export type ReactShapeSpec = {
-	attrs?: readonly string[];
-	rels?: readonly string[];
-	one?: Record<string, DefinedReactShape>;
-	many?: Record<string, DefinedReactShape>;
-};
-
-export type DefinedReactShape = Readonly<ReactShapeSpec> & {
-	readonly id: string;
-};
-
 type ShapeMetaComponent<P = object> = ComponentType<P> & {
 	[SHAPE_META]?: DefinedReactShape;
-};
-
-export const defineShape = (shape: ReactShapeSpec): DefinedReactShape => {
-	const normalized: DefinedReactShape = Object.freeze({
-		attrs: Object.freeze([...(shape.attrs ?? [])]),
-		rels: Object.freeze([...(shape.rels ?? [])]),
-		one: Object.freeze({ ...(shape.one ?? {}) }),
-		many: Object.freeze({ ...(shape.many ?? {}) }),
-		id: `shape-${nextShapeId++}`,
-	});
-
-	return normalized;
 };
 
 export const shapeOf = <P, T extends ComponentType<P>>(

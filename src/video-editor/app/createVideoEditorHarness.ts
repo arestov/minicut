@@ -1,6 +1,6 @@
 import { createMiniCutPageSyncRuntime } from "../dkt/runtime/createMiniCutPageSyncRuntime";
 import { WORKSPACE_OPEN_STATUS } from "../dkt/runtime/workspaceOpenState";
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
 import { createResourceTransferManager } from "../media/resourceTransferManager";
 import { browserProjectAssetRoot, createProjectAssetStore, type ProjectAssetStore } from "../media/projectAssetStore";

@@ -1,14 +1,14 @@
 import type { DomSyncTransportLike } from "dkt/dom-sync/transport.js";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
-import { ReactSyncReceiver } from "../../../dkt-react-sync/receiver/ReactSyncReceiver";
-import { createSyncStore } from "../../../dkt-react-sync/runtime/createSyncStore";
-import type { PageSyncRuntime } from "../../../dkt-react-sync/runtime/PageSyncRuntime";
-import type { ReactSyncScopeHandle } from "../../../dkt-react-sync/scope/ScopeHandle";
+import { ReactSyncReceiver } from "../../../dkt-ui-sync/receiver/ReactSyncReceiver";
+import { createSyncStore } from "../../../dkt-ui-sync/runtime/createSyncStore";
+import type { PageSyncRuntime } from "../../../dkt-ui-sync/runtime/PageSyncRuntime";
+import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
 import {
 	type ReactTransportShape,
 	ShapeRegistry,
 	type ShapeRegistryRuntime,
-} from "../../../dkt-react-sync/shape/ShapeRegistry";
+} from "../../../dkt-ui-sync/shape/ShapeRegistry";
 import {
 	DKT_MSG,
 	DKT_TEST_MSG,

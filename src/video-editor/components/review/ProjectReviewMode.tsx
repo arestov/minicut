@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ScopeContext } from "../../../dkt-react-sync/context/ScopeContext";
-import type { ReactSyncScopeHandle } from "../../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
 import { useMany } from "../../../dkt-react-sync/hooks/useMany";
 import { useOne } from "../../../dkt-react-sync/hooks/useOne";
 import { useReactScopeRuntime } from "../../../dkt-react-sync/hooks/useReactScopeRuntime";

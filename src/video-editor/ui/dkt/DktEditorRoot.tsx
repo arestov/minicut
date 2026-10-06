@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useSyncExternalStore } from "react";
-import type { PageSyncRuntime } from "../../../dkt-react-sync/runtime/PageSyncRuntime";
+import type { PageSyncRuntime } from "../../../dkt-ui-sync/runtime/PageSyncRuntime";
 import { RootScope } from "../../../dkt-react-sync/scope/RootScope";
 import {
 	WORKSPACE_OPEN_STATUS,

@@ -6,7 +6,7 @@ import { useActions } from "../../dkt-react-sync/hooks/useActions";
 import { useAttrs } from "../../dkt-react-sync/hooks/useAttrs";
 import { useMany } from "../../dkt-react-sync/hooks/useMany";
 import { useScope } from "../../dkt-react-sync/hooks/useScope";
-import type { ReactSyncScopeHandle } from "../../dkt-react-sync/scope/ScopeHandle";
+import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { useVideoEditor } from "../app/VideoEditorContext";
 import type { MediaImportEntry } from "../app/actionRuntimeTypes";
 import type { ResourceAttrs } from "../render/registryTypes";

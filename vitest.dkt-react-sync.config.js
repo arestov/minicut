@@ -10,6 +10,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@dkt-react-sync': path.resolve(repoRoot, 'src/dkt-react-sync'),
+			'@dkt-ui-sync': path.resolve(repoRoot, 'src/dkt-ui-sync'),
 			'@video-editor': path.resolve(repoRoot, 'src/video-editor'),
 			dkt: dktProvodaRoot,
 			'dkt-all': dktRoot,
