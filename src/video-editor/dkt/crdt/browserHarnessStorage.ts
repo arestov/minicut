@@ -1,7 +1,9 @@
 import {
-	createMiniCutHarnessDbName,
 	createMiniCutHarnessWorkspaceId,
 } from "../storage/minicutWorkspaceManifest";
+import {
+	createMiniCutHarnessDbName,
+} from "../../adapters/web/minicutIndexedDbWorkspace";
 
 export const CRDT_HARNESS_INDEXEDDB_NAME = createMiniCutHarnessDbName(null);
 

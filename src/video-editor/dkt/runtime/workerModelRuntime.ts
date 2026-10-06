@@ -9,9 +9,13 @@ import type { DktCrdtTransport, DktCrdtWireMessage } from "../crdt/testRelayCont
 import {
 	createMiniCutHarnessWorkspaceId,
 	createMiniCutRoomPeerId,
-	createMiniCutWorkspaceDbName,
-	getOrCreateMiniCutLocalPeerIdentity,
 } from "../storage/minicutWorkspaceManifest";
+import {
+	createMiniCutWorkspaceDbName,
+} from "../../adapters/web/minicutIndexedDbWorkspace";
+import {
+	getOrCreateMiniCutLocalPeerIdentity,
+} from "../../adapters/web/browserLocalIdentity";
 import {
 	createMiniCutDktRuntime,
 	type MiniCutCrdtTransport,

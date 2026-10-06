@@ -9,9 +9,11 @@ import {
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import {
-	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 	createMiniCutStoredDktManifest,
 } from "../storage/minicutWorkspaceManifest";
+import {
+	MINICUT_INDEXEDDB_SCHEMA_VERSION,
+} from "../../adapters/web/minicutIndexedDbWorkspace";
 import {
 	runDktStorageRequest,
 	type DktStorageRequest,

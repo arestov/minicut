@@ -27,11 +27,13 @@ import {
 } from "./runtime/workspaceOpenState";
 import { prepareMiniCutRuntimeDictionary } from "./runtime/runtimeDictionaryNames";
 import {
-	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 	type MiniCutWorkspaceOpenResult,
 	openMiniCutWorkspaceStorage,
 	stageMiniCutWorkspaceManifest,
 } from "./storage/minicutWorkspaceManifest";
+import {
+	MINICUT_INDEXEDDB_SCHEMA_VERSION,
+} from "../adapters/web/minicutIndexedDbWorkspace";
 import { migrateMiniCutIndexedDbStorageV1ToV2 } from "./storage/migrateMiniCutIndexedDbStorageV2";
 
 type AnyModel = {

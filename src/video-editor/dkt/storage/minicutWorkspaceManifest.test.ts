@@ -5,15 +5,17 @@ import {
 } from "../runtime/workspaceOpenState";
 import {
 	createMiniCutExpectedManifest,
-	createMiniCutHarnessDbName,
 	createMiniCutHarnessWorkspaceId,
 	createMiniCutRoomPeerId,
 	createMiniCutStoredDktManifest,
-	createMiniCutWorkspaceDbName,
 	openMiniCutWorkspaceStorage,
 	readRoomIdFromMiniCutHarnessWorkspaceId,
 	stageMiniCutWorkspaceManifest,
 } from "./minicutWorkspaceManifest";
+import {
+	createMiniCutHarnessDbName,
+	createMiniCutWorkspaceDbName,
+} from "../../adapters/web/minicutIndexedDbWorkspace";
 
 const createMemoryDktStorage = (initial: {
 	manifest?: unknown;

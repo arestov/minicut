@@ -24,11 +24,13 @@ import {
 	type MiniCutDktTransportMessage,
 } from "../shared/messageTypes";
 import {
-	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 	openMiniCutWorkspaceStorage,
 	stageMiniCutWorkspaceManifest,
 	type MiniCutWorkspaceOpenResult,
 } from "../storage/minicutWorkspaceManifest";
+import {
+	MINICUT_INDEXEDDB_SCHEMA_VERSION,
+} from "../../adapters/web/minicutIndexedDbWorkspace";
 import { migrateMiniCutIndexedDbStorageV1ToV2 } from "../storage/migrateMiniCutIndexedDbStorageV2";
 import {
 	runDktStorageRequest,

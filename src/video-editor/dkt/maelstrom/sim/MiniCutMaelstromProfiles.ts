@@ -2,8 +2,10 @@ import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 import type { MiniCutDktCrdtStorageOptions } from "../../testingInit";
 import {
 	createMiniCutHarnessWorkspaceId,
-	createMiniCutWorkspaceDbName,
 } from "../../storage/minicutWorkspaceManifest";
+import {
+	createMiniCutWorkspaceDbName,
+} from "../../../adapters/web/minicutIndexedDbWorkspace";
 
 let nextIndexedDbId = 0;
 
