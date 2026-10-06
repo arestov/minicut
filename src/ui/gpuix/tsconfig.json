@@ -1,0 +1,50 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"useDefineForClassFields": true,
+		"lib": [
+			"ES2022",
+			"DOM",
+			"DOM.Iterable"
+		],
+		"baseUrl": "../../..",
+		"paths": {
+			"dkt": [
+				"tmp/dkt/js/libs/provoda/provoda"
+			],
+			"dkt/*": [
+				"tmp/dkt/js/libs/provoda/provoda/*"
+			],
+			"dkt-all": [
+				"tmp/dkt/js"
+			],
+			"dkt-all/*": [
+				"tmp/dkt/js/*"
+			]
+		},
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"jsx": "preserve",
+		"jsxImportSource": "@gpuix/solid",
+		"strict": true,
+		"skipLibCheck": true,
+		"types": [
+			"node",
+			"bun"
+		]
+	},
+	"include": [
+		"./**/*.ts",
+		"./**/*.tsx",
+		"../../dkt-solid-sync/**/*.ts",
+		"../../dkt-solid-sync/**/*.tsx",
+		"../../dkt-ui-sync/**/*.ts",
+		"../../video-editor/types/**/*.d.ts"
+	],
+	"exclude": [
+		"../../dkt-ui-sync/**/*.test.ts"
+	]
+}

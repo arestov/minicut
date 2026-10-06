@@ -1,0 +1,8 @@
+# Bun config scoped to the GPUIX host (src/ui/gpuix). Bun reads bunfig.toml
+# only from cwd, so GPUIX scripts and tests must run from this directory.
+# The Solid preload compiles every non-node_modules .tsx it loads; it must
+# never be applied to the React sources of the repo.
+preload = ["../../dkt-solid-sync/test/dktAliasPreload.ts", "@gpuix/solid/preload"]
+
+[test]
+preload = ["../../dkt-solid-sync/test/dktAliasPreload.ts", "@gpuix/solid/preload"]
