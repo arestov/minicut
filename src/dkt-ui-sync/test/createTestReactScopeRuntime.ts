@@ -21,6 +21,18 @@ export const createTestReactScopeRuntime = ({
 		scopeNodeId: string | null;
 		meta: unknown;
 	}>;
+	shapeMounts: Array<{
+		scopeNodeId: string;
+		shapeId: string;
+		attrs: readonly string[];
+		rels: readonly string[];
+		released: boolean;
+	}>;
+	attrSubscriptions: Array<{
+		scopeNodeId: string;
+		attrNames: readonly string[];
+		active: boolean;
+	}>;
 	updateAttrs(nodeId: string, patch: Record<string, unknown>): void;
 	updateOne(nodeId: string, relName: string, nodeIdOrNull: string | null): void;
 	updateMany(nodeId: string, relName: string, nodeIds: string[]): void;
@@ -39,6 +51,18 @@ export const createTestReactScopeRuntime = ({
 		payload: unknown;
 		scopeNodeId: string | null;
 		meta: unknown;
+	}> = [];
+	const shapeMounts: Array<{
+		scopeNodeId: string;
+		shapeId: string;
+		attrs: readonly string[];
+		rels: readonly string[];
+		released: boolean;
+	}> = [];
+	const attrSubscriptions: Array<{
+		scopeNodeId: string;
+		attrNames: readonly string[];
+		active: boolean;
 	}> = [];
 	const scopeDispatchCache = new WeakMap<
 		ReactSyncScopeHandle,
@@ -73,6 +97,8 @@ export const createTestReactScopeRuntime = ({
 
 	return {
 		dispatchCalls,
+		shapeMounts,
+		attrSubscriptions,
 		getRootScope() {
 			return rootScope;
 		},
@@ -99,8 +125,22 @@ export const createTestReactScopeRuntime = ({
 			attrsCache.set(cacheKey, nextSnapshot);
 			return nextSnapshot;
 		},
-		subscribeAttrs(scope, _attrNames, listener) {
-			return subscribeByNode(attrListenersByNodeId, scope._nodeId, listener);
+		subscribeAttrs(scope, attrNames, listener) {
+			const record = {
+				scopeNodeId: scope._nodeId,
+				attrNames: [...attrNames],
+				active: true,
+			};
+			attrSubscriptions.push(record);
+			const unsubscribe = subscribeByNode(
+				attrListenersByNodeId,
+				scope._nodeId,
+				listener,
+			);
+			return () => {
+				record.active = false;
+				return unsubscribe();
+			};
 		},
 		readOne(scope, relName) {
 			const rel = relsByNodeId[scope._nodeId]?.[relName];
@@ -132,8 +172,18 @@ export const createTestReactScopeRuntime = ({
 		subscribeMany(scope, _relName, listener) {
 			return subscribeByNode(manyListenersByNodeId, scope._nodeId, listener);
 		},
-		mountShape() {
-			return () => {};
+		mountShape(scope, shape) {
+			const record = {
+				scopeNodeId: scope._nodeId,
+				shapeId: shape.id,
+				attrs: shape.attrs ?? [],
+				rels: shape.rels ?? [],
+				released: false,
+			};
+			shapeMounts.push(record);
+			return () => {
+				record.released = true;
+			};
 		},
 		dispatch(actionName, payload, scope, meta) {
 			dispatchCalls.push({
