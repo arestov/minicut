@@ -50,6 +50,7 @@
 		"typecheck:dkt-solid-sync": "tsc -p src/dkt-solid-sync/tsconfig.json --noEmit",
 		"test:dkt-solid-sync": "node ./scripts/run-dkt-solid-sync-tests.mjs",
 		"test:gpuix": "node ./scripts/run-gpuix-tests.mjs",
+		"test:gpuix:window": "node ./scripts/run-gpuix-window-smoke.mjs",
 		"typecheck:gpuix": "tsc -p src/ui/gpuix/tsconfig.json --noEmit",
 		"gpuix:dev": "node ./scripts/run-gpuix.mjs",
 		"node:headless:run": "node --import ./test/repl/register-dkt-alias-loader.mjs --import tsx ./src/video-editor/node/cli.ts --scenario ./tests/fixtures/headless/sample-scenario.json",
