@@ -276,4 +276,28 @@ describe("createMiniCutDktRuntime injected effect interfaces", () => {
 
 		connection.destroy();
 	});
+
+	it("fails host composition when the injected set is incomplete", () => {
+		const { interfaces } = createRecordingInterfaces();
+		const { playbackRuntime: _omitted, ...withoutPlayback } = interfaces;
+		expect(() =>
+			createMiniCutDktRuntime({
+				enabled: true,
+				effectInterfaces: withoutPlayback as unknown as MiniCutEffectInterfaces,
+			}),
+		).toThrow("Incomplete MiniCut effect interfaces: playbackRuntime (missing interface)");
+
+		expect(() =>
+			createMiniCutDktRuntime({
+				enabled: true,
+				effectInterfaces: {
+					...interfaces,
+					exportRuntime: {},
+					mediaRecoveryRuntime: { requestMediaRecovery: "nope" },
+				} as unknown as MiniCutEffectInterfaces,
+			}),
+		).toThrow(
+			"exportRuntime.requestExport, mediaRecoveryRuntime.requestMediaRecovery",
+		);
+	});
 });

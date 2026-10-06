@@ -10,6 +10,7 @@ import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
+import { assertEffectInterfacesComplete } from "../../core/bootstrap/assertEffectInterfaces";
 import type { MiniCutEffectInterfaces } from "../../core/contracts/effectInterfaces";
 import { createBrowserEffectInterfaces } from "../../adapters/web/createBrowserEffectInterfaces";
 import { MiniCutAppRoot } from "../../models/AppRoot";
@@ -532,6 +533,9 @@ const crdtResolutionAttemptMeta = (
 export const createMiniCutDktRuntime = (
 	options: CreateMiniCutDktRuntimeOptions = {},
 ) => {
+	if (options.effectInterfaces !== undefined) {
+		assertEffectInterfacesComplete(options.effectInterfaces);
+	}
 	let crdtPromise: ReturnType<typeof createCrdtRuntime> | null = null;
 	let crdtTransportCleanup: (() => void) | null = null;
 	let bootPromise: Promise<{
