@@ -34,7 +34,7 @@ export interface TimeInterface {
 }
 
 export interface MiniCutEffectInterfaces {
-	time: TimeInterface;
+	time?: TimeInterface;
 	exportRuntime: ExportRuntimeInterface;
 	importRuntime: ImportRuntimeInterface;
 	mediaRecoveryRuntime: MediaRecoveryRuntimeInterface;

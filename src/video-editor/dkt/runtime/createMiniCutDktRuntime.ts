@@ -191,6 +191,13 @@ type CreateMiniCutDktRuntimeOptions = {
 	enabled?: boolean;
 	crdt?: MiniCutCrdtOptions;
 	unloadModels?: boolean;
+	/**
+	 * Host-provided effect implementations. When present, they are used as is
+	 * and nothing falls back to publishing tasks to connected pages. When
+	 * absent, the browser default (page publishing) is used. The same set is
+	 * passed to both `start` and `reinit`.
+	 */
+	effectInterfaces?: MiniCutEffectInterfaces;
 };
 
 type RuntimeLike = {
@@ -644,10 +651,12 @@ export const createMiniCutDktRuntime = (
 						}
 					},
 				}) as RuntimeLike;
-				const interfaces = createBrowserEffectInterfaces({
-					pages: activeTransports,
-					log: logRuntime,
-				});
+				const interfaces =
+					options.effectInterfaces ??
+					createBrowserEffectInterfaces({
+						pages: activeTransports,
+						log: logRuntime,
+					});
 				const storageSnapshot =
 					crdt.storageOpen?.ok === true &&
 					crdt.storageOpen.status === WORKSPACE_OPEN_STATUS.READY
