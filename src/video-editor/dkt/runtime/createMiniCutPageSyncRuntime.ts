@@ -33,23 +33,25 @@ type RootAttrsCacheEntry = {
 	values: Record<string, unknown>;
 };
 
-declare global {
-	interface Window {
-		__MINICUT_CRDT_PAGE_BRIDGE_SEND__?: (
-			message: unknown,
-			meta: {
-				peerId?: string;
-				profileId?: string;
-				profileVersion?: number;
-			},
-		) => Promise<void> | void;
-	}
-}
+export type MiniCutCrdtPageBridgeSender = (
+	message: unknown,
+	meta: {
+		peerId?: string;
+		profileId?: string;
+		profileVersion?: number;
+	},
+) => Promise<void> | void;
 
 export const createMiniCutPageSyncRuntime = ({
 	transport,
+	resolveCrdtBridgeSender,
 }: {
 	transport: DomSyncTransportLike<MiniCutDktTransportMessage>;
+	/**
+	 * Resolved on every CRDT transport message; returns the host function that
+	 * forwards CRDT messages to the node side, or undefined when none is attached.
+	 */
+	resolveCrdtBridgeSender?: () => MiniCutCrdtPageBridgeSender | undefined;
 }): PageSyncRuntime => {
 	const store = createSyncStore(createEmptyPageRuntimeSnapshot());
 	const rootAttrsCache = new Map<string, RootAttrsCacheEntry>();
@@ -461,7 +463,7 @@ export const createMiniCutPageSyncRuntime = ({
 				return;
 			}
 			case DKT_MSG.CRDT_TRANSPORT_SEND: {
-				const sendToNode = window.__MINICUT_CRDT_PAGE_BRIDGE_SEND__;
+				const sendToNode = resolveCrdtBridgeSender?.();
 				if (typeof sendToNode === "function") {
 					const record =
 						message.message && typeof message.message === "object"

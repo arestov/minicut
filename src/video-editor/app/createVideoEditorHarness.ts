@@ -1,4 +1,7 @@
-import { createMiniCutPageSyncRuntime } from "../dkt/runtime/createMiniCutPageSyncRuntime";
+import {
+	createMiniCutPageSyncRuntime,
+	type MiniCutCrdtPageBridgeSender,
+} from "../dkt/runtime/createMiniCutPageSyncRuntime";
 import { WORKSPACE_OPEN_STATUS } from "../dkt/runtime/workspaceOpenState";
 import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import { DEFAULT_RESOURCE_CHUNK_SIZE } from "../domain/resourceData";
@@ -128,6 +131,12 @@ const createMiniCutPageRuntime = (authorityClient: EditorAuthorityClient) => {
 
 	return createMiniCutPageSyncRuntime({
 		transport: authorityClient.openDktTransport(),
+		resolveCrdtBridgeSender: () =>
+			(
+				window as Window & {
+					__MINICUT_CRDT_PAGE_BRIDGE_SEND__?: MiniCutCrdtPageBridgeSender;
+				}
+			).__MINICUT_CRDT_PAGE_BRIDGE_SEND__,
 	});
 };
 

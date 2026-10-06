@@ -320,4 +320,47 @@ describe("createMiniCutPageSyncRuntime", () => {
 			runtimeError: "CRDT harness storage open failed: unsupported newer version",
 		});
 	});
+
+	it("forwards CRDT transport messages to the injected bridge sender", () => {
+		const memory = createMemoryTransport();
+		const forwarded: { message: unknown; meta: unknown }[] = [];
+		const runtime = createMiniCutPageSyncRuntime({
+			transport: memory.transport,
+			resolveCrdtBridgeSender: () => (message, meta) => {
+				forwarded.push({ message, meta });
+			},
+		});
+
+		memory.emit({
+			type: DKT_MSG.CRDT_TRANSPORT_SEND,
+			message: { kind: "op" },
+			peerId: "peer-1",
+			profileId: "profile-1",
+			profileVersion: 2,
+		});
+
+		expect(forwarded).toHaveLength(1);
+		expect(forwarded[0]?.message).toMatchObject({ kind: "op" });
+		expect(forwarded[0]?.meta).toEqual({
+			peerId: "peer-1",
+			profileId: "profile-1",
+			profileVersion: 2,
+		});
+
+		runtime.destroy();
+	});
+
+	it("drops CRDT transport messages when no bridge sender is provided", () => {
+		const memory = createMemoryTransport();
+		const runtime = createMiniCutPageSyncRuntime({ transport: memory.transport });
+
+		expect(() =>
+			memory.emit({
+				type: DKT_MSG.CRDT_TRANSPORT_SEND,
+				message: { kind: "op" },
+			}),
+		).not.toThrow();
+
+		runtime.destroy();
+	});
 });
