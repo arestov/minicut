@@ -10,6 +10,8 @@ import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
 import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
+import type { MiniCutEffectInterfaces } from "../../core/contracts/effectInterfaces";
+import { createBrowserEffectInterfaces } from "../../adapters/web/createBrowserEffectInterfaces";
 import { MiniCutAppRoot } from "../../models/AppRoot";
 import {
 	sanitizeDktCrdtStoragePackage,
@@ -194,7 +196,7 @@ type CreateMiniCutDktRuntimeOptions = {
 type RuntimeLike = {
 	start(options: {
 		App: typeof MiniCutAppRoot;
-		interfaces: Record<string, unknown>;
+		interfaces: MiniCutEffectInterfaces;
 	}): Promise<{ app_model: RuntimeModelLike }>;
 	whenAllReady?: (fn: () => void) => void;
 	sync_sender: {
@@ -578,50 +580,6 @@ export const createMiniCutDktRuntime = (
 		}
 	};
 
-	const publishExportRequest = (payload: unknown) => {
-		const requestPayload =
-			payload && typeof payload === "object"
-				? ((payload as { request?: unknown }).request ?? payload)
-				: payload;
-		const requestId = (requestPayload as { id?: unknown } | null)?.id;
-		logRuntime("publishExportRequest:attempt", {
-			requestId,
-			transports: activeTransports.size,
-		});
-
-		for (const transport of activeTransports) {
-			transport.send({
-				type: DKT_MSG.EXPORT_REQUEST,
-				payload,
-			});
-		}
-		logRuntime("publishExportRequest:sent", {
-			requestId,
-			transports: activeTransports.size,
-		});
-	};
-
-	const publishImportFilesRequest = (payload: unknown) => {
-		for (const transport of activeTransports) {
-			transport.send({
-				type: DKT_MSG.IMPORT_FILES_REQUEST,
-				payload,
-			});
-		}
-	};
-
-	const publishMediaRecoveryRequest = (payload: unknown) => {
-		for (const transport of activeTransports) {
-			transport.send({ type: DKT_MSG.MEDIA_RECOVERY_REQUEST, payload });
-		}
-	};
-
-	const publishPlaybackRunRequest = (payload: unknown) => {
-		for (const transport of activeTransports) {
-			transport.send({ type: DKT_MSG.PLAYBACK_RUN_REQUEST, payload });
-		}
-	};
-
 	const clearExportProgressInAllSessions = async () => {
 		logRuntime("clearExportProgressInAllSessions:start", {
 			sessionCount: sessionRootPromises.size,
@@ -686,40 +644,10 @@ export const createMiniCutDktRuntime = (
 						}
 					},
 				}) as RuntimeLike;
-				const interfaces = {
-						time: {
-							setTimeout: globalThis.setTimeout.bind(globalThis),
-							clearTimeout: globalThis.clearTimeout.bind(globalThis),
-							Date: globalThis.Date,
-						},
-						exportRuntime: {
-							requestExport: (payload: unknown) => {
-								const requestPayload =
-									payload && typeof payload === "object"
-										? ((payload as { request?: unknown }).request ?? payload)
-										: payload;
-								logRuntime("exportRuntime.requestExport", {
-									requestId: (requestPayload as { id?: unknown } | null)?.id,
-								});
-								publishExportRequest(payload);
-							},
-						},
-						importRuntime: {
-							requestImportFiles: (payload: unknown) => {
-								publishImportFilesRequest(payload);
-							},
-						},
-						mediaRecoveryRuntime: {
-							requestMediaRecovery: (payload: unknown) => {
-								publishMediaRecoveryRequest(payload);
-							},
-						},
-						playbackRuntime: {
-							applyPlaybackRun: (payload: unknown) => {
-								publishPlaybackRunRequest(payload);
-							},
-						},
-					};
+				const interfaces = createBrowserEffectInterfaces({
+					pages: activeTransports,
+					log: logRuntime,
+				});
 				const storageSnapshot =
 					crdt.storageOpen?.ok === true &&
 					crdt.storageOpen.status === WORKSPACE_OPEN_STATUS.READY
