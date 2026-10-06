@@ -125,7 +125,7 @@ type MiniCutCrdtRuntimeLike = {
 	projectCRDTMeta?: (model: RuntimeModelLike) => Promise<void> | void;
 };
 
-type MiniCutCrdtStoragePackage = {
+export type MiniCutCrdtStoragePackage = {
 	dktStorage: unknown;
 	crdtStorage: unknown;
 	commitChanges?: (meta?: unknown) => Promise<void> | void;
@@ -201,6 +201,13 @@ type CreateMiniCutDktRuntimeOptions = {
 	 * passed to both `start` and `reinit`.
 	 */
 	effectInterfaces?: MiniCutEffectInterfaces;
+	/**
+	 * Keep the storage package open when the last connection is destroyed.
+	 * Hosts that own the runtime for the whole process (Node/Electron/GPUIX)
+	 * set this and close storage through `dispose()`. Defaults to the
+	 * browser worker behaviour: close storage with the last connection.
+	 */
+	keepStorageOpenOnDisconnect?: boolean;
 };
 
 type RuntimeLike = {
@@ -539,6 +546,10 @@ export const createMiniCutDktRuntime = (
 		assertEffectInterfacesComplete(options.effectInterfaces);
 	}
 	let crdtPromise: ReturnType<typeof createCrdtRuntime> | null = null;
+	let disposed = false;
+	let disposePromise: Promise<void> | null = null;
+	let closeStoragePromise: Promise<void> | null = null;
+	const connectionDestroyers = new Set<() => void>();
 	let crdtTransportCleanup: (() => void) | null = null;
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
@@ -616,6 +627,9 @@ export const createMiniCutDktRuntime = (
 	) => {
 		if (!enabled) {
 			return null;
+		}
+		if (disposed) {
+			throw new Error("MiniCut DKT runtime is disposed");
 		}
 
 		if (!bootPromise) {
@@ -805,6 +819,51 @@ export const createMiniCutDktRuntime = (
 		target.dispatch(actionName, payload, null, resolutionMeta ?? meta);
 	};
 
+	const closeStorageOnce = (): Promise<void> => {
+		closeStoragePromise ||= (async () => {
+			const crdt = crdtPromise ? await crdtPromise.catch(() => null) : null;
+			await crdt?.storagePackage?.whenReady?.();
+			await crdt?.storagePackage?.close?.();
+		})();
+		return closeStoragePromise;
+	};
+
+	/**
+	 * Explicit start of the app runtime (prepare, then start or reinit from the
+	 * stored snapshot). Rejects with the workspace open failure; a storage
+	 * error never falls back to an empty project.
+	 */
+	const start = async (
+		sessionKey = "minicut-local",
+		sessionId: string | null = sessionKey,
+	): Promise<void> => {
+		await bootstrapApp(sessionKey, sessionId);
+	};
+
+	/**
+	 * Idempotent shutdown: destroys connections, detaches the CRDT transport,
+	 * waits for the flow to settle and closes the storage package once.
+	 */
+	const dispose = (): Promise<void> => {
+		disposePromise ||= (async () => {
+			disposed = true;
+			for (const destroyConnection of [...connectionDestroyers]) {
+				destroyConnection();
+			}
+			const booted = bootPromise ? await bootPromise.catch(() => null) : null;
+			crdtTransportCleanup?.();
+			crdtTransportCleanup = null;
+			const whenAllReady = booted?.runtime.whenAllReady;
+			if (whenAllReady) {
+				await new Promise<void>((resolve) =>
+					whenAllReady.call(booted.runtime, () => resolve()),
+				);
+			}
+			await closeStorageOnce();
+		})();
+		return disposePromise;
+	};
+
 	const testProtocol = createMiniCutDktTestRuntimeProtocol({
 		bootstrapApp,
 		enqueueScopedAction,
@@ -814,6 +873,9 @@ export const createMiniCutDktRuntime = (
 	const connect = (
 		transport: DomSyncTransportLike<MiniCutDktTransportMessage>,
 	) => {
+		if (disposed) {
+			throw new Error("MiniCut DKT runtime is disposed");
+		}
 		let destroyed = false;
 		let stream: ReturnType<typeof createWorkerStream> | null = null;
 		let activeSessionKey = "minicut-local";
@@ -1013,6 +1075,7 @@ export const createMiniCutDktRuntime = (
 				return;
 			}
 			destroyed = true;
+			connectionDestroyers.delete(destroy);
 			activeTransports.delete(transport);
 			unlisten();
 			unlistenDisconnect();
@@ -1030,7 +1093,11 @@ export const createMiniCutDktRuntime = (
 					}
 				})
 				.then(async () => {
-					if (shouldCloseSharedCrdt && activeTransports.size === 0) {
+					if (
+						shouldCloseSharedCrdt &&
+						activeTransports.size === 0 &&
+						options.keepStorageOpenOnDisconnect !== true
+					) {
 						const crdt = crdtPromise ? await crdtPromise : null;
 						await crdt?.storagePackage?.close?.();
 					}
@@ -1041,6 +1108,7 @@ export const createMiniCutDktRuntime = (
 				});
 		};
 
+		connectionDestroyers.add(destroy);
 		return { destroy };
 	};
 
@@ -1117,5 +1185,5 @@ export const createMiniCutDktRuntime = (
 		};
 	};
 
-	return { connect, debugDumpState };
+	return { connect, debugDumpState, start, dispose };
 };
