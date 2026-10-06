@@ -42,6 +42,14 @@ declare module "dkt/crdt/storage/memory.js" {
 	) => DktCrdtStoragePackageLike;
 }
 
+declare module "dkt/crdt/storage/leveldb.js" {
+	import type { DktCrdtStoragePackageLike } from "dkt/crdt/storage/indexeddb.js";
+	export const makeDktCrdtLevelDBStorage: (options: {
+		storagePath: string;
+		Level?: unknown;
+	}) => Promise<DktCrdtStoragePackageLike>;
+}
+
 declare module "dkt/dom-sync/transport.js" {
 	export interface DomSyncTransportLike<Message = unknown> {
 		send(message: Message, transferList?: Transferable[]): void;

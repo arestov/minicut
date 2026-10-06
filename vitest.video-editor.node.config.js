@@ -22,6 +22,7 @@ export default defineConfig({
 		testTimeout: 30_000,
 		include: [
 			'src/video-editor/node/**/*.test.ts',
+			'src/video-editor/adapters/node/**/*.test.ts',
 			'src/video-editor/worker/*contract.test.ts',
 			'src/video-editor/worker/authorityRuntimeParity.test.ts',
 			'src/video-editor/domain/protocolCompatibility.test.ts',
