@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useAttrs } from "../hooks/useAttrs";
 import { RootScope } from "../scope/RootScope";
-import { createTestReactScopeRuntime } from "../test/createTestReactScopeRuntime";
+import { createTestReactScopeRuntime } from "../../dkt-ui-sync/test/createTestReactScopeRuntime";
 import { Many } from "./Many";
 
 describe("Many", () => {

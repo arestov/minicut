@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ReactScopeRuntimeContext } from "../../../dkt-react-sync/context/ReactScopeRuntimeContext";
 import { ScopeContext } from "../../../dkt-react-sync/context/ScopeContext";
-import { createTestReactScopeRuntime } from "../../../dkt-react-sync/test/createTestReactScopeRuntime";
+import { createTestReactScopeRuntime } from "../../../dkt-ui-sync/test/createTestReactScopeRuntime";
 import { materializeClipTimingReviewItem } from "../../dkt/review/features/clipTiming";
 import { clipTimingConflictFixture } from "../../dkt/review/features/clipTiming/fixtures";
 import { materializeDanglingResourceReviewItem } from "../../dkt/review/features/danglingResource";

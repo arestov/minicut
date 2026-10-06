@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { One } from "../components/One";
 import { useActions } from "../hooks/useActions";
 import { RootScope } from "../scope/RootScope";
-import { createTestReactScopeRuntime } from "../test/createTestReactScopeRuntime";
+import { createTestReactScopeRuntime } from "../../dkt-ui-sync/test/createTestReactScopeRuntime";
 
 describe("useActions", () => {
 	it("dispatches actions to the current scope", () => {
