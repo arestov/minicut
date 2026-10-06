@@ -19,6 +19,7 @@
 11. Декларативность DKT = framework-visible intent. Не прячь важные зависимости, rel traversal, writes, side-effect triggers и cross-model transitions в adapter/helper code. Описывай их в model attrs/rels/comp/actions/effects, чтобы DKT мог оптимизировать, доставлять compact diff, lazy-load-ить graph state, реплицировать/persist-ить нужный подграф, а также поддерживать статический анализ и визуализацию.
 12. `Date.now()` и `new Date()` запрещены внутри DKT `comp` attrs и `action.fn`: это скрытый wall-clock side effect внутри pure state primitive. Для derived time conditions используй `$meta$time` в `comp`; для timestamp writes используй `$now` или текущий DKT time action-dep; для реальных timers/schedulers держи side effect на `effects`/runtime boundary и возвращай результат в DKT явным action/event payload. См. [$meta$time в comp attrs](</D:/code/linkcraft/dkt/docs/State/meta-time-comp-reference-ru.md>) и [Meta Resource Schema Groups](</D:/code/linkcraft/dkt/docs/internal/meta-resource-schema-groups.md>).
 13. UI не строит domain read-model. Dynamic model sets выражай через `comp rel`; per-model state/detail/flags - через маленькие `comp attrs` на owning model. Renderer может выбирать layout, labels и DOM structure, но не должен искать latest/active, фильтровать domain statuses, агрегировать child state или собирать большой synthetic view-model.
+14. Model instance в DKT production code - это identity/scope/ref, а не object API для чтения state. Не приводить instance к `{ getAttr }`, `{ attrs }`, `queryAttr`, `_states` или другим runtime/debug shapes, чтобы достать данные. Если `comp`, `action.fn`, reducer, production effect orchestration или renderer domain logic нужен attr/rel, он должен прийти через declared deps: `comp attr` deps, `comp rel` deps, action deps, effect deps/payload или scoped renderer attrs/rels. Нельзя делать `model.getAttr("status")`, `model.attrs.status`, `model.attrs?.[name]`, fallback `getAttr ?? attrs[...]`, сканировать model instances и читать из каждого attrs, чтобы найти latest/active/visible/owned item. Если значения не хватает в функции, это сигнал добавить нужный attr dep, rel dep, comp projection, action dep или effect boundary. Исключение: tests/debug/inspect code может читать через `queryAttr`, `queryRel`, serialized `.attrs` или inspect DTO, если это явно диагностика, assertion или debug dump; это не production pattern.
 
 
 ## Сводная таблица замечаний
@@ -333,6 +334,17 @@ npm run node:headless:run
 - Debug helpers надо держать в test/debug surface, не превращая их в production data API.
 
 ## DKT reference docs для MiniCut workers
+
+### 14. Хранить связи между nodes/models как rels
+
+А не как id внутри атрибутов. использовать $input_id (saga action) если нужно взаимодействовать с id (node_id) пришедшим извне. Использовать id -> $input_id вместо, models_list.find() {match by id}, стараться не хранить и не использовать id Для внутреннего использования
+
+
+### 15 Demux в DI interface -> много effect in subscribe
+Когда данные проходят через границу (мир side effects => pure data {dkt}) то в этих случаях универстальные сообщения с параметром вроде event_name нужно дробить на уровне interface DI (вне dkt state), вместо того чтобы создавать огромный action со множеством `if (event_name == '...') {}`
+
+### 16 Не делать microtask, delay и прочей магии с отложенными исполнением (ни в коде ни в тестах). Вместо этого разбираться в чем дело, правильно строить ожидания (но dkt код не должен строиться на await), проверять flow-step-read-write-testing.md
+
 
 ### Читать первым
 
