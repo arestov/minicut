@@ -1,0 +1,7 @@
+# Bun config scoped to dkt-solid-sync (and later ui/gpuix). The Solid preload
+# compiles every non-node_modules .tsx it loads, so it must not be used for
+# the React sources of the repo.
+preload = ["./test/dktAliasPreload.ts", "@gpuix/solid/preload"]
+
+[test]
+preload = ["./test/dktAliasPreload.ts", "@gpuix/solid/preload"]

@@ -46,6 +46,8 @@
     "bench:color-scopes": "node --import tsx ./scripts/bench-color-scopes.ts",
 		"guard:dkt-hard": "node ./scripts/check-dkt-hard-guardrails.mjs",
 		"typecheck:dkt-compat": "tsc -p tsconfig.dkt-compat.json --noEmit",
+		"typecheck:dkt-solid-sync": "tsc -p src/dkt-solid-sync/tsconfig.json --noEmit",
+		"test:dkt-solid-sync": "node ./scripts/run-dkt-solid-sync-tests.mjs",
 		"node:headless:run": "node --import ./test/repl/register-dkt-alias-loader.mjs --import tsx ./src/video-editor/node/cli.ts --scenario ./tests/fixtures/headless/sample-scenario.json",
 		"node:headless:scenario": "node --import ./test/repl/register-dkt-alias-loader.mjs --import tsx ./src/video-editor/node/cli.ts",
     "deploy:frontend": "node ./scripts/deploy-frontend.mjs",
