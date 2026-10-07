@@ -400,6 +400,124 @@ describe("Electron window connector", () => {
 		});
 	});
 
+	describe("host actions", () => {
+		const connectedWindow = (webContentsId: number) => {
+			const found = startConnector()
+				.connector.getConnectedWindows()
+				.find((window) => window.webContentsId === webContentsId);
+			if (!found) throw new Error(`window ${webContentsId} is not connected`);
+			return found;
+		};
+		type Model = { modelName: string | null; attrs: Record<string, unknown> };
+		let dumpSequence = 0;
+		const modelsOf = async (window: Awaited<ReturnType<typeof bootstrapWindow>>) => {
+			// A separate read step: wait until the runtime has applied what was enqueued.
+			dumpSequence += 1;
+			const idleId = `idle-${dumpSequence}`;
+			window.transport.send({ type: DKT_TEST_MSG.WAIT_IDLE, requestId: idleId });
+			await window.waitFor((m) => m.type === DKT_TEST_MSG.IDLE && m.requestId === idleId);
+			const requestId = `dump-${dumpSequence}`;
+			window.transport.send({ type: DKT_TEST_MSG.DEBUG_DUMP_REQUEST, requestId });
+			const reply = (await window.waitFor(
+				(m) => m.type === DKT_TEST_MSG.DEBUG_DUMP_RESPONSE && m.requestId === requestId,
+			)) as unknown as { dump: { runtimeModels?: Model[] } };
+			return reply.dump.runtimeModels ?? [];
+		};
+
+		it("runs an action as the window's own session and keeps the reply to itself", async () => {
+			const window = await bootstrapWindow(5);
+			const projectsBefore = (await modelsOf(window)).filter((m) => m.modelName === "project");
+
+			await connectedWindow(5).dispatchAndWait({ actionName: "createProject" });
+
+			const projectsAfter = (await modelsOf(window)).filter((m) => m.modelName === "project");
+			expect(projectsAfter).toHaveLength(projectsBefore.length + 1);
+			expect(
+				window.received.filter(
+					(m) => (m as { requestId?: string }).requestId?.startsWith("minicut-host:"),
+				),
+			).toEqual([]);
+		});
+
+		it("adds no session of its own", async () => {
+			const window = await bootstrapWindow(5);
+			const before = (await modelsOf(window)).filter((m) => m.modelName === "session_root");
+
+			await connectedWindow(5).dispatchAndWait({
+				actionName: "createProject",
+				payload: { title: "Another" },
+			});
+
+			const after = (await modelsOf(window)).filter((m) => m.modelName === "session_root");
+			expect(after).toHaveLength(before.length);
+		});
+
+		it("rejects with the runtime's error and does not show it to the window", async () => {
+			const window = await bootstrapWindow(5);
+
+			await expect(
+				connectedWindow(5).dispatchAndWait({
+					actionName: "createProject",
+					scopeNodeId: "no-such-node",
+				}),
+			).rejects.toThrow(/scope was not found/);
+
+			expect(window.received.filter((m) => m.type === DKT_MSG.RUNTIME_ERROR)).toEqual([]);
+		});
+
+		it("reports a failed fire-and-forget action to the host, not to the window", async () => {
+			const errors: string[] = [];
+			let signalFailed: () => void = () => undefined;
+			const failed = new Promise<void>((resolve) => {
+				signalFailed = resolve;
+			});
+			const { ipc } = (() => {
+				const ipc = createFakeIpc();
+				const connector = createWindowConnector({
+					runtime: host.runtime,
+					sessionKey: host.identity.roomId,
+					createMessageChannel: createFakeMessageChannelMain,
+					ipcMain: ipc,
+					isTrustedRendererUrl: (url) => url.startsWith("minicut-test://renderer/"),
+					onHostActionError: (_window, action, error) => {
+						errors.push(`${action.actionName}: ${error.message}`);
+						signalFailed();
+					},
+				});
+				connectorDispose = () => connector.dispose();
+				current = { ipc, connector };
+				return current;
+			})();
+			const connected = connectWindow(ipc, createFakeWindow(6));
+			if (connected.handshake.error !== undefined) throw new Error(connected.handshake.error);
+			connected.transport.send({
+				type: DKT_MSG.BOOTSTRAP,
+				sessionKey: connected.handshake.sessionKey,
+				sessionId: connected.handshake.sessionId,
+			});
+			await connected.waitFor((m) => m.type === DKT_MSG.RUNTIME_READY);
+			current.connector.getConnectedWindows()[0].dispatch({
+				actionName: "createProject",
+				scopeNodeId: "no-such-node",
+			});
+			await failed;
+
+			expect(errors).toEqual([expect.stringMatching(/^createProject: [^]*scope was not found/)]);
+			expect(connected.received.filter((m) => m.type === DKT_MSG.RUNTIME_ERROR)).toEqual([]);
+		});
+
+		it("rejects an action for a window whose connection is gone", async () => {
+			const fakeWindow = createFakeWindow(5);
+			await bootstrapWindow(5, fakeWindow);
+			const window = connectedWindow(5);
+			fakeWindow.sender.emit("destroyed");
+
+			await expect(
+				window.dispatchAndWait({ actionName: "createProject" }),
+			).rejects.toThrow();
+		});
+	});
+
 	describe("trusted URL prefixes", () => {
 		it("matches the prefix only at a path, query or hash boundary", () => {
 			const dev = "http://localhost:5173";

@@ -5,7 +5,7 @@ import {
 	type ElectronMainPortTransport,
 } from "../../../adapters/transport/electron/createElectronMainPortTransport";
 import type { NodeMiniCutHost } from "../../../adapters/node/startNodeMiniCutHost";
-import { DKT_MSG } from "../../../dkt/shared/messageTypes";
+import { DKT_MSG, type MiniCutDktTransportMessage } from "../../../dkt/shared/messageTypes";
 import {
 	ELECTRON_IPC,
 	type DesktopHandshakeReply,
@@ -39,6 +39,16 @@ export type WindowConnectorOptions = {
 	};
 	/** Only pages that return true may open a DKT channel. */
 	isTrustedRendererUrl(url: string): boolean;
+	/** A host-dispatched action failed in the runtime. Defaults to a console error. */
+	onHostActionError?(window: { sessionId: string }, action: HostAction, error: Error): void;
+};
+
+/** An action the host dispatches on a window's behalf: it runs as that window's session. */
+export type HostAction = {
+	actionName: string;
+	payload?: unknown;
+	/** `_node_id` the action is scoped to; the session root when absent. */
+	scopeNodeId?: string | null;
 };
 
 export type ConnectedWindow = {
@@ -51,6 +61,13 @@ export type ConnectedWindow = {
 	 * runtime sent it; null until the window has bootstrapped.
 	 */
 	rootNodeId: string | null;
+	/**
+	 * Dispatches an action as this window's session, over its own connection:
+	 * the host adds no session of its own. Failures are reported to `onHostActionError`.
+	 */
+	dispatch(action: HostAction): void;
+	/** Like `dispatch`, resolving when the runtime accepted the action and rejecting on its error. */
+	dispatchAndWait(action: HostAction): Promise<void>;
 };
 
 /**
@@ -81,6 +98,8 @@ type WindowEntry = {
 		transport: ElectronMainPortTransport;
 		rootNodeId: string | null;
 		destroy(): void;
+		dispatch(action: HostAction): void;
+		dispatchAndWait(action: HostAction): Promise<void>;
 	} | null;
 	stopObserving: () => void;
 };
@@ -109,9 +128,12 @@ export const createWindowConnector = ({
 	createMessageChannel,
 	ipcMain,
 	isTrustedRendererUrl,
+	onHostActionError = (window, action, error) =>
+		console.error("[minicut:electron] host action failed", window.sessionId, action.actionName, error),
 }: WindowConnectorOptions) => {
 	const entries = new Map<number, WindowEntry>();
 	let connectSequence = 0;
+	let hostSequence = 0;
 	const changeListeners = new Set<() => void>();
 	/**
 	 * Import batches by runtime handle id, recorded from the window's own
@@ -218,24 +240,85 @@ export const createWindowConnector = ({
 			}
 		});
 		try {
+			// Messages the runtime listens to, so the host can add its own on this
+			// connection; their replies are consumed here, never shown to the window.
+			const inbound = new Set<(message: MiniCutDktTransportMessage) => void>();
+			const hostRequests = new Map<
+				string,
+				{ resolve(): void; reject(error: Error): void }
+			>();
+			const rejectHostRequests = (reason: string): void => {
+				for (const pending of [...hostRequests.values()]) {
+					pending.reject(new Error(reason));
+				}
+				hostRequests.clear();
+			};
 			// The root node id travels in the RUNTIME_READY sent to this window.
 			const observed: typeof transport = {
 				send(message, transferList) {
+					const requestId = (message as { requestId?: unknown }).requestId;
+					const pending =
+						typeof requestId === "string" ? hostRequests.get(requestId) : undefined;
+					if (pending && typeof requestId === "string") {
+						hostRequests.delete(requestId);
+						if (message.type === DKT_MSG.RUNTIME_ERROR) {
+							pending.reject(new Error(String(message.message)));
+						} else {
+							pending.resolve();
+						}
+						return;
+					}
 					if (message.type === DKT_MSG.RUNTIME_READY && owner.live) {
 						owner.live.rootNodeId = message.rootNodeId ?? null;
 					}
 					transport.send(message, transferList);
 				},
-				listen: (listener) => transport.listen(listener),
+				listen(listener) {
+					inbound.add(listener);
+					const stop = transport.listen(listener);
+					return () => {
+						inbound.delete(listener);
+						stop();
+					};
+				},
 				destroy: () => transport.destroy(),
 				onDisconnect: (listener) => transport.onDisconnect(listener),
 			};
 			const connection = runtime.connect(observed);
 			entry.order = connectSequence += 1;
+			let closed = false;
+			const dispatchAndWait = (action: HostAction): Promise<void> =>
+				new Promise<void>((resolve, reject) => {
+					if (closed) {
+						reject(new Error("The window connection closed"));
+						return;
+					}
+					hostSequence += 1;
+					const requestId = `minicut-host:${hostSequence}`;
+					hostRequests.set(requestId, { resolve, reject });
+					const message: MiniCutDktTransportMessage = {
+						type: DKT_MSG.DISPATCH_ACTION,
+						actionName: action.actionName,
+						payload: action.payload,
+						scopeNodeId: action.scopeNodeId ?? null,
+						requestId,
+					};
+					for (const listener of [...inbound]) listener(message);
+				});
 			const live = {
 				transport,
 				rootNodeId: null as string | null,
-				destroy: () => connection.destroy(),
+				destroy: () => {
+					closed = true;
+					rejectHostRequests("The window connection closed");
+					connection.destroy();
+				},
+				dispatchAndWait,
+				dispatch: (action: HostAction) => {
+					dispatchAndWait(action).catch((error: Error) =>
+						onHostActionError({ sessionId: owner.sessionId }, action, error),
+					);
+				},
 			};
 			entry.live = live;
 			notifyChanged();
@@ -267,12 +350,17 @@ export const createWindowConnector = ({
 			return [...entries.values()]
 				.filter((entry) => entry.live)
 				.sort((a, b) => a.order - b.order)
-				.map((entry) => ({
-					sessionId: entry.sessionId,
-					webContentsId: entry.webContentsId,
-					transport: (entry.live as NonNullable<WindowEntry["live"]>).transport,
-					rootNodeId: (entry.live as NonNullable<WindowEntry["live"]>).rootNodeId,
-				}));
+				.map((entry) => {
+					const live = entry.live as NonNullable<WindowEntry["live"]>;
+					return {
+						sessionId: entry.sessionId,
+						webContentsId: entry.webContentsId,
+						transport: live.transport,
+						rootNodeId: live.rootNodeId,
+						dispatch: live.dispatch,
+						dispatchAndWait: live.dispatchAndWait,
+					};
+				});
 		},
 		/**
 		 * The window that staged the import batch, consuming one pending record.
@@ -289,6 +377,8 @@ export const createWindowConnector = ({
 						webContentsId: entry.webContentsId,
 						transport: entry.live.transport,
 						rootNodeId: entry.live.rootNodeId,
+						dispatch: entry.live.dispatch,
+						dispatchAndWait: entry.live.dispatchAndWait,
 					};
 				}
 			}
