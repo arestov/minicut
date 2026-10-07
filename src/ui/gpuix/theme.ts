@@ -17,6 +17,7 @@ export const metrics = {
 	toolbarHeight: 44,
 	statusBarHeight: 26,
 	sidebarWidth: 280,
+	inspectorWidth: 260,
 	timelineHeight: 280,
 	panelHeaderHeight: 30,
 	gap: 8,

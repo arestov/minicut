@@ -4,6 +4,7 @@ import { AppShell } from "./AppShell";
 import { createScenarioDriver } from "./fixtures/scenarioDriver";
 import { resolveScenarioSelection, seedScenario } from "./fixtures/scenarios";
 import { createInProcessDkt } from "./host/createInProcessDkt";
+import { ClipInspector } from "./inspector/ClipInspector";
 import { Sidebar } from "./panels/Sidebar";
 import { Timeline } from "./timeline/Timeline";
 
@@ -19,7 +20,11 @@ driver.destroy();
 render(
 	() => (
 		<RootScope runtime={dkt.pageRuntime}>
-			<AppShell sidebar={<Sidebar />} timeline={<Timeline />} />
+			<AppShell
+				sidebar={<Sidebar />}
+				timeline={<Timeline />}
+				inspector={<ClipInspector />}
+			/>
 		</RootScope>
 	),
 	{

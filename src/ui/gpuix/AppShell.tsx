@@ -52,6 +52,7 @@ const StatusBar = () => {
 export const AppShell = (props: {
 	sidebar?: JSX.Element;
 	timeline?: JSX.Element;
+	inspector?: JSX.Element;
 }) => (
 	<div
 		testId="app-shell"
@@ -101,6 +102,7 @@ export const AppShell = (props: {
 					)}
 				</div>
 				<PreviewPanel />
+				{props.inspector}
 			</div>
 			<div
 				testId="timeline-slot"
