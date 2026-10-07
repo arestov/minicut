@@ -174,11 +174,13 @@ const normalizeExportStage = (
 
 const reduceSessionSetExportProgressAction = (
 	payload: unknown,
+	nowValue: unknown,
 ): Pick<SessionStateFields, "exportProgress"> => {
 	if (payload === null) {
 		return { exportProgress: null };
 	}
 
+	const now = asNumber(nowValue, 0);
 	const value = asObject(payload);
 	const range = normalizeExportRange(value?.range);
 	const stage = normalizeExportStage(value?.stage);
@@ -189,11 +191,11 @@ const reduceSessionSetExportProgressAction = (
 	const progressFallback = stage === "done" ? 100 : 0;
 	return {
 		exportProgress: {
-			id: asString(value.id) ?? `export:${Date.now().toString(36)}`,
+			id: asString(value.id) ?? `export:${now.toString(36)}`,
 			range,
 			stage,
 			progress: clampProgressPercent(value.progress, progressFallback),
-			updatedAt: asNumber(value.updatedAt, Date.now()),
+			updatedAt: asNumber(value.updatedAt, now),
 			initiatedBy: asString(value.initiatedBy),
 			fileName: asString(value.fileName) ?? undefined,
 			size:
@@ -222,9 +224,6 @@ const normalizePreviewClipSources = (value: unknown): PreviewClipSource[] => {
 	});
 };
 
-const createExportRequestId = (): string =>
-	`export:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`;
-
 const buildExportPlan = (
 	projectId: unknown,
 	fps: unknown,
@@ -252,12 +251,13 @@ const createQueuedProgressState = (
 	id: string,
 	range: ExportProgressState["range"],
 	initiatedBy: string | null,
+	now: number,
 ): ExportProgressState => ({
 	id,
 	range,
 	stage: "queued",
 	progress: 0,
-	updatedAt: Date.now(),
+	updatedAt: now,
 	initiatedBy,
 });
 
@@ -326,6 +326,7 @@ const createProjectSeedPayload = (
 	payload: unknown,
 	forcedProjectId?: string,
 	projectTitles?: unknown,
+	nowValue?: unknown,
 ) => {
 	const value = asObject(payload) as CreateProjectPayload | null;
 	const nextSequence = forcedProjectId
@@ -334,7 +335,7 @@ const createProjectSeedPayload = (
 	if (!forcedProjectId) {
 		createdProjectSequence = nextSequence;
 	}
-	const now = Date.now();
+	const now = asNumber(nowValue, 0);
 	return {
 		title: asString(value?.title) ?? `Project ${nextSequence}`,
 		fps: asNumber(value?.fps, 30),
@@ -432,12 +433,13 @@ export const sessionCreateProjectAction = [
 			],
 		},
 		fn: [
-			["< @all:title < pioneer.project"] as const,
-			(payload: unknown, projectTitles: unknown) => {
+			["< @all:title < pioneer.project", "$now"] as const,
+			(payload: unknown, projectTitles: unknown, now: unknown) => {
 				const seed = createProjectSeedPayload(
 					payload,
 					undefined,
 					projectTitles,
+					now,
 				);
 
 				return {
@@ -508,6 +510,7 @@ export const sessionHandleInitAction = [
 				"storageOpenStatus",
 				"<< @all:pioneer.project",
 				"< @all:title < pioneer.project",
+				"$now",
 			] as const,
 			(
 				payload: unknown,
@@ -515,6 +518,7 @@ export const sessionHandleInitAction = [
 				storageOpenStatus: unknown,
 				projects: unknown,
 				projectTitles: unknown,
+				now: unknown,
 			) => {
 				if (typeof activeProjectId === "string" && activeProjectId) {
 					const existingProjects = Array.isArray(projects) ? projects : [];
@@ -553,6 +557,7 @@ export const sessionHandleInitAction = [
 					payload,
 					undefined,
 					projectTitles,
+					now,
 				);
 				return {
 					activeProjectId: null,
@@ -1015,7 +1020,11 @@ export const sessionSetExportProgressAction = {
 	to: {
 		exportProgress: ["exportProgress"],
 	},
-	fn: reduceSessionSetExportProgressAction,
+	fn: [
+		["$now"] as const,
+		(payload: unknown, now: unknown) =>
+			reduceSessionSetExportProgressAction(payload, now),
+	],
 } as const satisfies DktActionDescriptor;
 
 export const sessionClearExportProgressAction = {
@@ -1135,6 +1144,7 @@ export const sessionRequestProjectExportAction = [
 				"< @one:duration < activeProject",
 				"< @all:clipRenderData < activeProject.tracks.clips",
 				"_node_id",
+				"$now",
 			] as const,
 			(
 				payload: unknown,
@@ -1146,6 +1156,7 @@ export const sessionRequestProjectExportAction = [
 				duration: unknown,
 				clipSources: unknown,
 				sessionRootNodeId: unknown,
+				now: unknown,
 			) => {
 				const plan = buildExportPlan(
 					projectId,
@@ -1161,19 +1172,27 @@ export const sessionRequestProjectExportAction = [
 				const value = asObject(payload);
 				const initiatedBy =
 					asString(value?.initiatedBy) ?? asString(sessionRootNodeId);
-				const id = asString(value?.id) ?? createExportRequestId();
+				const id = asString(value?.id);
+				if (!id) {
+					return noop;
+				}
 				const range: ExportProgressState["range"] = { type: "project" };
 				const request = {
 					id,
 					range,
 					format: "video-webm" as const,
 					plan,
-					requestedAt: Date.now(),
+					requestedAt: asNumber(now, 0),
 					initiatedBy,
 				};
 				return {
 					exportRequest: request,
-					exportProgress: createQueuedProgressState(id, range, initiatedBy),
+					exportProgress: createQueuedProgressState(
+						id,
+						range,
+						initiatedBy,
+						asNumber(now, 0),
+					),
 					exportFxPayload: {
 						request,
 						queueKey: "project",
@@ -1217,6 +1236,7 @@ export const sessionRequestClipExportAction = [
 				"< @all:clipRenderData < activeProject.tracks.clips",
 				"< @all:_node_id < activeProject.tracks.clips",
 				"_node_id",
+				"$now",
 			] as const,
 			(
 				payload: unknown,
@@ -1229,6 +1249,7 @@ export const sessionRequestClipExportAction = [
 				clipSources: unknown,
 				clipIds: unknown,
 				sessionRootNodeId: unknown,
+				now: unknown,
 			) => {
 				const plan = buildExportPlan(
 					projectId,
@@ -1258,19 +1279,27 @@ export const sessionRequestClipExportAction = [
 
 				const initiatedBy =
 					asString(value?.initiatedBy) ?? asString(sessionRootNodeId);
-				const id = asString(value?.id) ?? createExportRequestId();
+				const id = asString(value?.id);
+				if (!id) {
+					return noop;
+				}
 				const range: ExportProgressState["range"] = { type: "clip", clipId };
 				const request = {
 					id,
 					range,
 					format: "video-webm" as const,
 					plan,
-					requestedAt: Date.now(),
+					requestedAt: asNumber(now, 0),
 					initiatedBy,
 				};
 				return {
 					exportRequest: request,
-					exportProgress: createQueuedProgressState(id, range, initiatedBy),
+					exportProgress: createQueuedProgressState(
+						id,
+						range,
+						initiatedBy,
+						asNumber(now, 0),
+					),
 					exportFxPayload: {
 						request,
 						queueKey: `clip:${clipId}`,
@@ -1314,6 +1343,7 @@ export const sessionRequestSelectedClipExportAction = [
 				"< @all:clipRenderData < activeProject.tracks.clips",
 				"< @one:_node_id < selectedClip",
 				"_node_id",
+				"$now",
 			] as const,
 			(
 				payload: unknown,
@@ -1326,6 +1356,7 @@ export const sessionRequestSelectedClipExportAction = [
 				clipSources: unknown,
 				selectedClipId: unknown,
 				sessionRootNodeId: unknown,
+				now: unknown,
 			) => {
 				const plan = buildExportPlan(
 					projectId,
@@ -1342,19 +1373,27 @@ export const sessionRequestSelectedClipExportAction = [
 				const value = asObject(payload);
 				const initiatedBy =
 					asString(value?.initiatedBy) ?? asString(sessionRootNodeId);
-				const id = asString(value?.id) ?? createExportRequestId();
+				const id = asString(value?.id);
+				if (!id) {
+					return noop;
+				}
 				const range: ExportProgressState["range"] = { type: "clip", clipId };
 				const request = {
 					id,
 					range,
 					format: "video-webm" as const,
 					plan,
-					requestedAt: Date.now(),
+					requestedAt: asNumber(now, 0),
 					initiatedBy,
 				};
 				return {
 					exportRequest: request,
-					exportProgress: createQueuedProgressState(id, range, initiatedBy),
+					exportProgress: createQueuedProgressState(
+						id,
+						range,
+						initiatedBy,
+						asNumber(now, 0),
+					),
 					exportFxPayload: {
 						request,
 						queueKey: `clip:${clipId}`,
