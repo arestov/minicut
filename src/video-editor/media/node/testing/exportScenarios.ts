@@ -109,3 +109,68 @@ export const webCompareScenario: ExportScenario = {
 		],
 	},
 };
+
+/**
+ * Second shared scenario: overlapping video clips (layer order), a trimmed
+ * clip (in-point) and a mono audio source. The Playwright spec builds the same
+ * timeline through the web UI and asserts the web timeline equals these
+ * numbers before exporting, so both targets render identical inputs.
+ *
+ *   V1: av.webm  start 0.5 in 0.5 dur 1.5   (Start +0.5s trim)
+ *       blue.webm start 1.0 in 0 dur 2.0   (nudged twice, on top of av)
+ *   A1: av embedded audio 0..2.008, mono tone.wav 4.008..7.008
+ * (blue's embedded audio clip is omitted: the source has no audio stream.)
+ */
+export const webLayeringScenario: ExportScenario = {
+	name: "web-layering-trim-mono",
+	resources: {
+		"res-av": "video-av-webm",
+		"res-blue": "video-blue-webm",
+		"res-tone": "audio-tone",
+	},
+	plan: {
+		projectId: "web-layering",
+		fps: 25,
+		width: 320,
+		height: 240,
+		duration: 7.008,
+		clipSources: [
+			clip({
+				id: "av-video",
+				resourceId: "res-av",
+				resourceKind: "video",
+				start: 0.5,
+				duration: 1.5,
+				inPoint: 0.5,
+			}),
+			clip({
+				id: "blue-video",
+				resourceId: "res-blue",
+				resourceKind: "video",
+				start: 1,
+				duration: 2,
+			}),
+			clip({
+				id: "av-audio",
+				resourceId: "res-av",
+				resourceKind: "audio",
+				start: 0,
+				duration: 2.008,
+			}),
+			clip({
+				id: "tone-audio",
+				resourceId: "res-tone",
+				resourceKind: "audio",
+				start: 4.008,
+				duration: 3,
+			}),
+		],
+	},
+};
+
+/** Expected web timeline: [track, clip name, start, in, duration]. */
+export const webLayeringTimeline: Array<[string, string, number, number, number]> = [
+	["V1", "av.webm", 0.5, 0.5, 1.5],
+	["V1", "blue.webm", 1, 0, 2],
+	["A1", "tone.wav", 4.008, 0, 3],
+];

@@ -12,6 +12,7 @@ export type FixtureName =
 	| "video-cfr"
 	| "video-audio"
 	| "video-av-webm"
+	| "video-blue-webm"
 	| "video-vfr"
 	| "video-offset"
 	| "audio-tone"
@@ -89,6 +90,20 @@ export const FIXTURE_SPECS: Record<FixtureName, FixtureSpec> = {
 			"-ac",
 			"2",
 			"-shortest",
+		],
+	},
+	// Solid-colour VP9 clips for layering checks (blue is layered over other clips).
+	"video-blue-webm": {
+		file: "video-blue.webm",
+		args: [
+			"-f",
+			"lavfi",
+			"-i",
+			"color=c=blue:size=320x240:rate=25:duration=2",
+			"-c:v",
+			"libvpx-vp9",
+			"-pix_fmt",
+			"yuv420p",
 		],
 	},
 	// Irregular frame gaps with preserved timestamps -> variable frame rate.

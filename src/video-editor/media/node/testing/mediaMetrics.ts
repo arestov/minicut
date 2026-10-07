@@ -96,6 +96,32 @@ export const meanLumaAt = async (file: string, at: number): Promise<number> => {
 	return result[0];
 };
 
+/** RGB of the frame centre at `at`, via a 1x1 area-scaled rgb24 frame. */
+export const centerRgbAt = async (
+	file: string,
+	at: number,
+): Promise<[number, number, number]> => {
+	const bytes = await new Promise<Buffer>((resolve, reject) => {
+		const child = spawn(
+			FFMPEG,
+			[
+				"-hide_banner", "-v", "error", "-ss", String(at), "-i", file,
+				"-frames:v", "1", "-vf", "crop=iw/4:ih/4:iw*3/8:ih*3/8,scale=1:1:flags=area,format=rgb24",
+				"-f", "rawvideo", "-",
+			],
+			{ windowsHide: true },
+		);
+		const chunks: Buffer[] = [];
+		child.stdout.on("data", (c: Buffer) => chunks.push(c));
+		child.on("error", reject);
+		child.on("close", (code) =>
+			code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`exit ${code}`)),
+		);
+	});
+	if (bytes.length < 3) throw new Error("No frame decoded");
+	return [bytes[0], bytes[1], bytes[2]];
+};
+
 export interface AudioStats {
 	/** Overall RMS level in dBFS. */
 	rmsDb: number;
@@ -103,8 +129,15 @@ export interface AudioStats {
 	peakDb: number;
 }
 
-export const audioStats = async (file: string): Promise<AudioStats> => {
-	const stderr = await runFfmpegStats(["-i", file, "-vn", "-af", "astats=metadata=0:reset=0"]);
+/** Audio level of the whole file, or of `window` (seconds) when given. */
+export const audioStats = async (
+	file: string,
+	window?: { start: number; duration: number },
+): Promise<AudioStats> => {
+	const stderr = await runFfmpegStats([
+		...(window ? ["-ss", String(window.start), "-t", String(window.duration)] : []),
+		"-i", file, "-vn", "-af", "astats=metadata=0:reset=0",
+	]);
 	const overall = stderr.slice(stderr.lastIndexOf("Overall"));
 	return {
 		rmsDb: need(overall, /RMS level dB:\s*(-?[\d.]+|-inf)/, "rms"),
