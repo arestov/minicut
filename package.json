@@ -17,6 +17,8 @@
     "test:video-editor:node": "vitest run --config vitest.video-editor.node.config.js",
     "test:video-editor:crdt": "vitest run --config vitest.video-editor.crdt.config.js",
     "test:dkt-react-sync": "vitest run --config vitest.dkt-react-sync.config.js",
+    "test:bun:node": "node ./scripts/run-vitest-bun.mjs --config vitest.video-editor.node.config.js",
+    "test:bun:crdt": "node ./scripts/run-vitest-bun.mjs --config vitest.video-editor.crdt.config.js",
     "bench:video-editor": "vitest bench --config vitest.video-editor.config.js src/video-editor/worker/renderIndexProjection.bench.ts",
     "test:integration": "npm run test:integration:fast && npm run test:integration:p2p",
     "test:integration:fast": "playwright test",
