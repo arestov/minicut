@@ -230,6 +230,61 @@ const clipToRange = (
 	};
 };
 
+/**
+ * Audio mix graph shared by export and the realtime PCM stream: per clip
+ * `atrim` of the source, resample to 48 kHz stereo (mono duplicated at full
+ * level), gain/pan, `adelay` to the clip start, then `amix` and padding to the
+ * exact output duration. Output label is `[aout]`.
+ */
+const buildAudioMixGraph = (input: {
+	audio: RangedClip[];
+	/** Index of the first audio input in the final ffmpeg command line. */
+	firstInputIndex: number;
+	outputDuration: number;
+	audioChannels?: Record<string, number>;
+	assetPathFor(clip: PreviewClipSource): string;
+}): { inputArgs: string[]; filters: string[] } => {
+	const inputArgs: string[] = [];
+	const filters: string[] = [];
+	const labels: string[] = [];
+	input.audio.forEach((ranged, index) => {
+		const { clip, outStart, duration, sourceStart } = ranged;
+		inputArgs.push("-i", input.assetPathFor(clip));
+		const n = input.firstInputIndex + index;
+		const gain = Math.max(0, Math.min(1.5, Number(clip.audio.gain ?? 1)));
+		const pan = Math.max(-1, Math.min(1, Number(clip.audio.pan ?? 0)));
+		const [left, right] = stereoPanGains(gain, pan);
+		const delayMs = Math.round(outStart * 1000);
+		const mono = input.audioChannels?.[clip.resourceId ?? clip.id] === 1;
+		const chain = [
+			"asetpts=PTS-STARTPTS",
+			`atrim=start=${fmt(sourceStart)}:duration=${fmt(duration)}`,
+			"asetpts=PTS-STARTPTS",
+			`aresample=${AUDIO_SAMPLE_RATE}`,
+			...(mono
+				? [
+						"aformat=sample_fmts=fltp:channel_layouts=mono",
+						`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c0`,
+					]
+				: [
+						"aformat=sample_fmts=fltp:channel_layouts=stereo",
+						`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c1`,
+					]),
+			...(delayMs > 0 ? [`adelay=${delayMs}:all=1`] : []),
+		];
+		const label = `a${index}`;
+		filters.push(`[${n}:a]${chain.join(",")}[${label}]`);
+		labels.push(label);
+	});
+	const mixInput =
+		labels.length === 1
+			? `[${labels[0]}]`
+			: `${labels.map((l) => `[${l}]`).join("")}amix=inputs=${labels.length}:normalize=0:duration=longest,`;
+	const tail = `apad=whole_dur=${fmt(input.outputDuration)},atrim=duration=${fmt(input.outputDuration)}`;
+	filters.push(`${mixInput}${tail}[aout]`);
+	return { inputArgs, filters };
+};
+
 const encoderArgs = (format: MediaExportFormat, hasAudio: boolean): string[] => {
 	if (format === "mp4") {
 		return [
@@ -473,43 +528,16 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 
 	const hasAudio = audio.length > 0;
 	if (hasAudio) {
-		const labels: string[] = [];
-		audio.forEach((ranged, index) => {
-			const { clip, outStart, duration, sourceStart } = ranged;
-			inputArgs.push("-i", assetPathFor(clip));
-			const n = inputIndex;
-			inputIndex += 1;
-			const gain = Math.max(0, Math.min(1.5, Number(clip.audio.gain ?? 1)));
-			const pan = Math.max(-1, Math.min(1, Number(clip.audio.pan ?? 0)));
-			const [left, right] = stereoPanGains(gain, pan);
-			const delayMs = Math.round(outStart * 1000);
-			const mono = input.audioChannels?.[clip.resourceId ?? clip.id] === 1;
-			const chain = [
-				"asetpts=PTS-STARTPTS",
-				`atrim=start=${fmt(sourceStart)}:duration=${fmt(duration)}`,
-				"asetpts=PTS-STARTPTS",
-				`aresample=${AUDIO_SAMPLE_RATE}`,
-				...(mono
-					? [
-							"aformat=sample_fmts=fltp:channel_layouts=mono",
-							`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c0`,
-						]
-					: [
-							"aformat=sample_fmts=fltp:channel_layouts=stereo",
-							`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c1`,
-						]),
-				...(delayMs > 0 ? [`adelay=${delayMs}:all=1`] : []),
-			];
-			const label = `a${index}`;
-			filters.push(`[${n}:a]${chain.join(",")}[${label}]`);
-			labels.push(label);
+		const mix = buildAudioMixGraph({
+			audio,
+			firstInputIndex: inputIndex,
+			outputDuration,
+			audioChannels: input.audioChannels,
+			assetPathFor,
 		});
-		const mixInput =
-			labels.length === 1
-				? `[${labels[0]}]`
-				: `${labels.map((l) => `[${l}]`).join("")}amix=inputs=${labels.length}:normalize=0:duration=longest,`;
-		const tail = `apad=whole_dur=${fmt(outputDuration)},atrim=duration=${fmt(outputDuration)}`;
-		filters.push(`${mixInput}${tail}[aout]`);
+		inputArgs.push(...mix.inputArgs);
+		filters.push(...mix.filters);
+		inputIndex += audio.length;
 	}
 
 	const args = [
