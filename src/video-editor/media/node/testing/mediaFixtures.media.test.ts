@@ -8,6 +8,7 @@ describe("media fixtures", () => {
 			"video-cfr",
 			"video-audio",
 			"video-vfr",
+			"video-vfr-webm",
 			"video-offset",
 			"audio-tone",
 			"image-card",

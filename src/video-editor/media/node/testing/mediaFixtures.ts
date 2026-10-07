@@ -15,6 +15,7 @@ export type FixtureName =
 	| "video-blue-webm"
 	| "video-red-bt709"
 	| "video-vfr"
+	| "video-vfr-webm"
 	| "video-offset"
 	| "audio-tone"
 	| "image-card";
@@ -143,6 +144,24 @@ export const FIXTURE_SPECS: Record<FixtureName, FixtureSpec> = {
 			"passthrough",
 			"-c:v",
 			"libx264",
+			"-pix_fmt",
+			"yuv420p",
+		],
+	},
+	// The same irregular frame gaps in a WebM, decodable by headless Chromium.
+	"video-vfr-webm": {
+		file: "video-vfr.webm",
+		args: [
+			"-f",
+			"lavfi",
+			"-i",
+			"testsrc2=size=320x240:rate=30:duration=3",
+			"-vf",
+			"select='lt(mod(n,7),4)'",
+			"-fps_mode",
+			"passthrough",
+			"-c:v",
+			"libvpx-vp9",
 			"-pix_fmt",
 			"yuv420p",
 		],
