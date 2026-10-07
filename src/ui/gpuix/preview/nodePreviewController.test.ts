@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+import path from "node:path";
 import { createRoot } from "solid-js";
+import { createPreviewProxyCache } from "../../../video-editor/media/node/preview/previewProxyCache";
 import { defineShape } from "../../../dkt-ui-sync/shape/defineShape";
 import { waitForAttr } from "../fixtures/scopeWait";
 import { openRealHostFixture, type RealHostFixture } from "../host/realHostFixture";
@@ -111,3 +113,61 @@ test("a clip whose source file cannot be resolved is reported and previews as bl
 	expect(shown.pixels.slice(0, 4)).toEqual(Uint8Array.from([0, 0, 0, 255]));
 	expect(preview.notice()).toBe("1 source file is missing");
 });
+
+test("with the proxy cache, preview decodes from the scrub proxy once it is ready", async () => {
+	host = await openRealHostFixture();
+	const h = host;
+	const proxies = createPreviewProxyCache({
+		dir: path.join(h.profileDir, "cache", "preview-proxies"),
+		mediaService: h.media,
+	});
+	createRoot((dispose) => {
+		disposeRoot = dispose;
+		controller = createNodePreviewController({
+			ffmpegPath: "ffmpeg",
+			assetIdFor: (id) => h.assetIndex.assetIdFor(id),
+			contentKeyFor: (id) => h.assetIndex.contentKeyFor(id),
+			proxies,
+			assets: h.registry,
+			probe: (filePath) => h.media.probe({ requestId: "p", source: { path: filePath } }),
+		});
+	});
+	const preview = controller!;
+	const importer = h.attachImport();
+	const root = await h.driver.root();
+	const project = await h.driver.waitOne(root, "activeProject");
+	h.page.mountShape(project, projectShape);
+	const video = await gpuixFixture("video-audio");
+	importer.requestImport([video]);
+	const structure = (await waitForAttr(h.page, root, "previewStructure", (value) =>
+		((value as { clipSources?: unknown[] } | null)?.clipSources?.length ?? 0) > 0,
+	)) as { clipSources: Array<{ resourceId: string }> };
+	const resourceId = structure.clipSources[0].resourceId;
+	const key = await new Promise<string>((resolve) => {
+		const check = () => {
+			const value = h.assetIndex.contentKeyFor(resourceId);
+			if (value) {
+				stop();
+				resolve(value);
+			}
+		};
+		const stop = h.assetIndex.subscribe(check);
+		check();
+	});
+
+	const first = nextFrame(preview);
+	preview.updatePlan({ projectId: "p", fps: 25, width: 320, height: 240, duration: 2, clipSources: structure.clipSources as never });
+	preview.source.request(0.5);
+	await first;
+	expect(preview.stats().proxyDecodes).toBe(0);
+
+	// The proxy was requested when the source was set; wait for the same job.
+	await proxies.ensure({ contentKey: key, sourcePath: video });
+	const second = nextFrame(preview);
+	preview.source.request(1.0);
+	const frame = await second;
+
+	expect(preview.stats().proxyDecodes).toBeGreaterThan(0);
+	expect(frame.pixels.some((value, index) => index % 4 !== 3 && value > 20)).toBe(true);
+	await proxies.dispose();
+}, 90_000);

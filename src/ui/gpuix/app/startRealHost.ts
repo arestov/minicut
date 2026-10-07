@@ -5,6 +5,8 @@ import {
 	nodeAssetRegistryPathFor,
 } from "../../../video-editor/adapters/node/nodeAssetRegistry";
 import { fingerprintNodeFile } from "../../../video-editor/adapters/node/nodeFileFingerprint";
+import { resolveNodePreviewProxyDir } from "../../../video-editor/adapters/node/nodeProfileLayout";
+import { createPreviewProxyCache } from "../../../video-editor/media/node/preview/previewProxyCache";
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { resolveMediaBinaries } from "../../../video-editor/media/node/binaries";
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
@@ -137,9 +139,16 @@ export const startRealHost = async ({
 			exportDirectory: exportDir,
 		});
 		cleanups.push(() => exporter.dispose());
+		const proxies = createPreviewProxyCache({
+			dir: resolveNodePreviewProxyDir(profileDir),
+			mediaService: media,
+		});
+		cleanups.push(() => proxies.dispose());
 		const preview = createNodePreviewController({
 			ffmpegPath: binaries.ffmpegPath,
 			assetIdFor,
+			contentKeyFor: (resourceId) => assetIndex.contentKeyFor(resourceId),
+			proxies,
 			assets: registry,
 			probe,
 		});

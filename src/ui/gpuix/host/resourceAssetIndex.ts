@@ -17,6 +17,8 @@ import { defineShape } from "../../../dkt-ui-sync/shape/defineShape";
 export type ResourceAssetIndex = {
 	/** Asset id registered for the resource, or null when it has none. */
 	assetIdFor(resourceId: string): string | null;
+	/** Content key (fingerprint version + fingerprint) of the resource file, or null. */
+	contentKeyFor(resourceId: string): string | null;
 	/** Every resource that currently has an asset (resource node id -> asset id). */
 	entries(): ReadonlyMap<string, string>;
 	/** Called after the map changed (a resource appeared, was relinked, ...). */
@@ -37,7 +39,12 @@ export type ResourceAssetIndexPage = Pick<
 	| "subscribeAttrs"
 >;
 
-const sourceAttrs = ["sourceKind", "sourceRef"] as const;
+const sourceAttrs = [
+	"sourceKind",
+	"sourceRef",
+	"contentFingerprint",
+	"fingerprintVersion",
+] as const;
 
 const indexShape = defineShape({
 	one: {
@@ -51,6 +58,7 @@ export const createResourceAssetIndex = (
 	page: ResourceAssetIndexPage,
 ): ResourceAssetIndex => {
 	let byResource = new Map<string, string>();
+	let contentKeys = new Map<string, string>();
 	const listeners = new Set<() => void>();
 	let disposed = false;
 	let releaseShape = () => {};
@@ -59,11 +67,17 @@ export const createResourceAssetIndex = (
 	let releaseAttrs = () => {};
 	let releaseRootRel = () => {};
 
-	const publish = (next: Map<string, string>): void => {
+	const publish = (
+		next: Map<string, string>,
+		nextKeys: Map<string, string>,
+	): void => {
 		const same =
 			next.size === byResource.size &&
-			[...next].every(([key, value]) => byResource.get(key) === value);
+			[...next].every(([key, value]) => byResource.get(key) === value) &&
+			nextKeys.size === contentKeys.size &&
+			[...nextKeys].every(([key, value]) => contentKeys.get(key) === value);
 		byResource = next;
+		contentKeys = nextKeys;
 		if (same) return;
 		for (const listener of [...listeners]) listener();
 	};
@@ -72,17 +86,29 @@ export const createResourceAssetIndex = (
 		releaseAttrs();
 		releaseAttrs = () => {};
 		if (!project) {
-			publish(new Map());
+			publish(new Map(), new Map());
 			return;
 		}
 		const members = page.readMany(project, "resources"); // guard-ok: model gap, export/preview/recovery payloads lack the resource sourceRef (page-side projection like web transfer manager)
 		const rebuild = (): void => {
 			const next = new Map<string, string>();
+			const nextKeys = new Map<string, string>();
 			for (const member of members) {
-				const value = page.readAttrs(member, [...sourceAttrs]).sourceRef; // guard-ok: same model gap (sourceRef not in effect payloads)
+				const attrs = page.readAttrs(member, [...sourceAttrs]); // guard-ok: same model gap (sourceRef not in effect payloads)
+				const value = attrs.sourceRef;
 				if (typeof value === "string" && value) next.set(member._nodeId, value);
+				if (
+					typeof attrs.contentFingerprint === "string" &&
+					attrs.contentFingerprint &&
+					typeof attrs.fingerprintVersion === "string"
+				) {
+					nextKeys.set(
+						member._nodeId,
+						`${attrs.fingerprintVersion}:${attrs.contentFingerprint}`,
+					);
+				}
 			}
-			publish(next);
+			publish(next, nextKeys);
 		};
 		const stops = members.map((member) =>
 			page.subscribeAttrs(member, [...sourceAttrs], rebuild),
@@ -124,6 +150,7 @@ export const createResourceAssetIndex = (
 
 	return {
 		assetIdFor: (resourceId) => byResource.get(resourceId) ?? null,
+		contentKeyFor: (resourceId) => contentKeys.get(resourceId) ?? null,
 		entries: () => byResource,
 		subscribe(listener) {
 			listeners.add(listener);

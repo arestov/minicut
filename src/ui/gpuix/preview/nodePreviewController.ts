@@ -5,8 +5,10 @@ import {
 	createPreviewProducer,
 	type PreviewProducer,
 	type PreviewProducerOptions,
+	type PreviewProducerStats,
 	type PreviewSource,
 } from "../../../video-editor/media/node/preview/previewProducer";
+import type { PreviewProxyCache } from "../../../video-editor/media/node/preview/previewProxyCache";
 import type { PreviewClipSource } from "../../../video-editor/read-model/previewComps";
 import {
 	type ExportPlan,
@@ -44,6 +46,8 @@ export type NodePreviewController = {
 	readonly notice: Accessor<string | null>;
 	/** Resolves when no decoder process is running (test and shutdown aid). */
 	idle(): Promise<void>;
+	/** Producer counters (decodes from proxies, failures, ...). */
+	stats(): PreviewProducerStats;
 	dispose(): Promise<void>;
 };
 
@@ -52,6 +56,10 @@ export type NodePreviewControllerOptions = {
 	/** Asset id of the local file behind a resource node id (page-side projection). */
 	assetIdFor(resourceId: string): string | null;
 	assets: AssetResolver;
+	/** Content key of a resource file (fingerprint), for the scrub proxy cache; null when unknown. */
+	contentKeyFor?(resourceId: string): string | null;
+	/** Scrub proxy cache; with it, video resources that have a content key decode from proxies once ready. */
+	proxies?: PreviewProxyCache;
 	probe(filePath: string): Promise<ProbeResult>;
 	/** Test seam; defaults to the real producer. */
 	createProducer?: (options: PreviewProducerOptions) => PreviewProducer;
@@ -86,6 +94,7 @@ export const createNodePreviewController = (
 		ffmpegPath: options.ffmpegPath,
 		width: bitmapWidth,
 		height: bitmapHeight,
+		...(options.proxies ? { proxies: options.proxies } : {}),
 		...options.producerOptions,
 	});
 	const [notice, setNotice] = createSignal<string | null>(null);
@@ -154,6 +163,7 @@ export const createNodePreviewController = (
 		}
 		const assetPaths: Record<string, string> = {};
 		const sourceFps: Record<string, number> = {};
+		const contentKeys: Record<string, string> = {};
 		const clipSources: PreviewClipSource[] = [];
 		const unavailable = new Set<string>();
 		for (const source of current.clipSources) {
@@ -173,6 +183,10 @@ export const createNodePreviewController = (
 					continue;
 				}
 				assetPaths[resourceId] = resolution.location.path;
+				const contentKey = options.contentKeyFor?.(resourceId);
+				if (contentKey && source.resourceKind === "video") {
+					contentKeys[resourceId] = contentKey;
+				}
 				if (source.resourceKind === "video") {
 					const fps = await sourceFpsOf(resolution.location.path);
 					if (token !== buildToken) return;
@@ -190,7 +204,7 @@ export const createNodePreviewController = (
 			clipSources,
 		});
 		const visible = clipSources.length > 0 && plan.duration > 0;
-		const signature = JSON.stringify({ visible, plan, assetPaths, sourceFps });
+		const signature = JSON.stringify({ visible, plan, assetPaths, sourceFps, contentKeys });
 		setNotice(
 			unavailable.size > 0
 				? `${unavailable.size} source file${unavailable.size === 1 ? " is" : "s are"} missing`
@@ -206,6 +220,7 @@ export const createNodePreviewController = (
 				plan,
 				assetPaths,
 				sourceFps,
+				contentKeys,
 			};
 			producer.setSource(next);
 			sourceReady = true;
@@ -246,6 +261,7 @@ export const createNodePreviewController = (
 		},
 		notice,
 		idle: () => producer.idle(),
+		stats: () => producer.stats(),
 		async dispose() {
 			disposed = true;
 			buildToken += 1;
