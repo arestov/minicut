@@ -557,6 +557,7 @@ export const createMiniCutDktRuntime = (
 		restoredFromStorage: boolean;
 	}> | null = null;
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>();
+	let storageRestorePromise: Promise<void> | null = null;
 	const activeTransports = new Set<
 		DomSyncTransportLike<MiniCutDktTransportMessage>
 	>();
@@ -760,8 +761,13 @@ export const createMiniCutDktRuntime = (
 						},
 						);
 						if (app.restoredFromStorage) {
-							await crdt?.crdtRuntime?.restoreFromStorage?.();
-							await crdt?.crdtRuntime?.projectCRDTMeta?.(app.appModel);
+							// Once per runtime: a later session root (second window)
+							// must not re-apply stored state over the live graph.
+							storageRestorePromise ||= (async () => {
+								await crdt?.crdtRuntime?.restoreFromStorage?.();
+								await crdt?.crdtRuntime?.projectCRDTMeta?.(app.appModel);
+							})();
+							await storageRestorePromise;
 						}
 						resolve(sessionRoot as RuntimeModelLike);
 					} catch (error) {
