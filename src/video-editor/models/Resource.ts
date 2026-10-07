@@ -476,7 +476,11 @@ export const Resource = model({
 			to: {
 				timelineAddRequest: ["timelineAddRequest"],
 			},
-			fn: reduceRequestAddToTimeline,
+			fn: [
+				["$now"] as const,
+				(payload: unknown, now: unknown) =>
+					reduceRequestAddToTimeline(payload, now),
+			],
 		},
 		setClips: {
 			to: {

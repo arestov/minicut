@@ -56,14 +56,14 @@ export const reduceSetResourceAttrs = (payload: unknown) => {
 	};
 };
 
-export const reduceRequestAddToTimeline = (payload: unknown) => ({
+export const reduceRequestAddToTimeline = (payload: unknown, now: unknown) => ({
 	timelineAddRequest: {
 		resourceId:
 			typeof (payload as { resourceId?: unknown } | null)?.resourceId ===
 			"string"
 				? (payload as { resourceId: string }).resourceId
 				: null,
-		requestedAt: Date.now(),
+		requestedAt: typeof now === "number" && Number.isFinite(now) ? now : 0,
 	},
 });
 
