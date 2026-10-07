@@ -82,7 +82,10 @@ describe("preview decoder", () => {
 		expect(black.stride).toBe(W * 4);
 		expect(black.generation).toBe(7);
 		expect(black.ptsSeconds).toBeCloseTo(0.2, 5);
-		expect(centre(black)).toEqual([0, 0, 0, 255]);
+		// Near-black browser canvas background #09090b (9, 9, 11) after YUV 4:2:0.
+		const [br, bg, bb, ba] = centre(black);
+		expect([br, bg, bb]).toSatisfy((rgb: number[]) => rgb.every((v, i) => Math.abs(v - [9, 9, 11][i]) <= 2));
+		expect(ba).toBe(255);
 		const [r, g, b, a] = centre(blue);
 		expect(b).toBeGreaterThan(200);
 		expect(r).toBeLessThan(40);

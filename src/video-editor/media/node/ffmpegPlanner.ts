@@ -48,6 +48,12 @@ export const UNSUPPORTED_PLAN_OPERATIONS: UnsupportedPlanOperation[] = [
 
 export const AUDIO_SAMPLE_RATE = 48_000;
 
+/**
+ * Canvas background of the browser export (exportRenderer default #09090b), so
+ * gaps and letterboxing are the same near-black instead of pure black.
+ */
+const EXPORT_BACKGROUND = "0x09090b";
+
 interface FfmpegPlanInputBase {
 	plan: ExportPlan;
 	range: ExportRange;
@@ -374,7 +380,7 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 	};
 
 	filters.push(
-		`color=c=black:s=${width}x${height}:r=${fmt(fps)}:d=${fmt(outputDuration)},format=yuv420p[base]`,
+		`color=c=${EXPORT_BACKGROUND}:s=${width}x${height}:r=${fmt(fps)}:d=${fmt(outputDuration)},format=yuv420p[base]`,
 	);
 	let current = "base";
 	visual.forEach((ranged, index) => {

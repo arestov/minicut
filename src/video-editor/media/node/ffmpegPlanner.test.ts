@@ -61,7 +61,7 @@ describe("planFfmpegExport", () => {
 			outputPath: "out.part.webm",
 		});
 		const graph = filterOf(result.args);
-		expect(graph).toContain("color=c=black:s=320x240:r=25:d=4");
+		expect(graph).toContain("color=c=0x09090b:s=320x240:r=25:d=4");
 		expect(graph).toContain("trim=start=1.5:duration=2");
 		expect(graph).toContain("setpts=PTS+2/TB");
 		expect(graph).toContain("scale=320:240:force_original_aspect_ratio=decrease");
