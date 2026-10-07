@@ -1,5 +1,6 @@
-// Builds the three Electron entrypoints into dist-electron/:
+// Builds the Electron entrypoints into dist-electron/:
 //   main     ESM, Node target, bundled (dkt aliases resolved), native deps external
+//   utility  ESM, the media service process (no electron import beyond process.parentPort)
 //   preload  CJS, sandbox-compatible, only `electron` is external
 //   renderer Vite React app (vite.electron.config.js)
 import { builtinModules } from 'node:module'
@@ -46,6 +47,13 @@ export const buildElectron = async ({ renderer = true } = {}) => {
 		format: 'es',
 		fileName: 'main.mjs',
 		external: ['electron', 'classic-level'],
+	})
+	await buildNodeEntry({
+		entry: path.join(hostDir, 'utility/mediaServiceEntry.ts'),
+		outDir: path.join(outRoot, 'utility'),
+		format: 'es',
+		fileName: 'mediaService.mjs',
+		external: [],
 	})
 	await buildNodeEntry({
 		entry: path.join(hostDir, 'preload/preload.ts'),
