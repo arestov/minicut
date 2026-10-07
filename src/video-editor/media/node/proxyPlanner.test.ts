@@ -15,6 +15,12 @@ describe("buildProxyArgs", () => {
 			expect.arrayContaining(["-g", "1"]),
 		);
 	});
+	it("drops audio of a source that has it when videoOnly is set", () => {
+		const args = buildProxyArgs({ ...base, videoOnly: true });
+		expect(args).not.toContain("0:a:0");
+		expect(args).not.toContain("aac");
+		expect(args).toEqual(expect.arrayContaining(["-map", "0:v:0"]));
+	});
 	it("omits audio mapping for silent sources", () => {
 		const args = buildProxyArgs({ ...base, hasAudio: false });
 		expect(args).not.toContain("0:a:0");

@@ -33,7 +33,7 @@ export const DEFAULT_PREVIEW_PROXY_PARAMS: PreviewProxyParams = {
  * Bump when the proxy encoding (buildProxyArgs) changes in a way that makes
  * old files unsuitable.
  */
-const PROXY_FORMAT_VERSION = "h264-v1";
+const PROXY_FORMAT_VERSION = "h264-v2-noaudio";
 
 export const previewProxyParamsKey = (params: PreviewProxyParams): string =>
 	[
@@ -130,6 +130,7 @@ export const createPreviewProxyCache = (
 			height: params.height,
 			allIntra: params.allIntra,
 			gopSize: params.gopSize,
+			videoOnly: true,
 		});
 		const cancel = (): void => job.cancel();
 		cancels.add(cancel);

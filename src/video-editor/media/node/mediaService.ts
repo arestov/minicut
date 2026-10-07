@@ -287,6 +287,7 @@ export const createMediaService = (
 						height: request.height,
 						allIntra: request.allIntra,
 						gopSize: request.gopSize,
+						videoOnly: request.videoOnly,
 						hasAudio: info.audio !== null,
 					}),
 					totalSeconds: info.durationSeconds,

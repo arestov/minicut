@@ -8,11 +8,14 @@ export interface ProxyArgsInput {
 	/** Keyframe interval when not all-intra. Default 12. */
 	gopSize?: number;
 	hasAudio: boolean;
+	/** Drop the audio track even when the source has one (scrub proxies). */
+	videoOnly?: boolean;
 }
 
 /** Pure: ffmpeg arguments for an H.264 preview proxy. */
 export const buildProxyArgs = (input: ProxyArgsInput): string[] => {
 	const height = input.height ?? 540;
+	const withAudio = input.hasAudio && !input.videoOnly;
 	const gop = input.allIntra ? 1 : (input.gopSize ?? 12);
 	return [
 		"-hide_banner",
@@ -27,7 +30,7 @@ export const buildProxyArgs = (input: ProxyArgsInput): string[] => {
 		input.inputPath,
 		"-map",
 		"0:v:0",
-		...(input.hasAudio ? ["-map", "0:a:0"] : []),
+		...(withAudio ? ["-map", "0:a:0"] : []),
 		"-vf",
 		`scale=-2:'min(${height},ih)'`,
 		"-c:v",
@@ -44,7 +47,7 @@ export const buildProxyArgs = (input: ProxyArgsInput): string[] => {
 		String(gop),
 		"-sc_threshold",
 		"0",
-		...(input.hasAudio ? ["-c:a", "aac", "-b:a", "128k"] : []),
+		...(withAudio ? ["-c:a", "aac", "-b:a", "128k"] : []),
 		"-movflags",
 		"+faststart",
 		"-f",

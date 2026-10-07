@@ -57,6 +57,22 @@ describe("media service proxy", () => {
 		expect(await keyframeCount(outputPath)).toBe(50);
 	});
 
+	it("produces no audio stream in video-only mode", async () => {
+		const service = createMediaService();
+		const outputPath = path.join(outDir, "silent.mp4");
+		const outcome = await service.generateProxy({
+			requestId: "silent",
+			source: { path: fixtures["video-audio"] },
+			outputPath,
+			height: 120,
+			videoOnly: true,
+		}).outcome;
+		expect(outcome.status).toBe("done");
+		const info = await service.probe({ requestId: "p2", source: { path: outputPath } });
+		expect(info.video).toMatchObject({ codec: "h264" });
+		expect(info.audio).toBeNull();
+	});
+
 	it("fails typed for sources without video", async () => {
 		const audioOnly = (await ensureFixtures(["audio-tone"]))["audio-tone"];
 		const outcome = await createMediaService().generateProxy({

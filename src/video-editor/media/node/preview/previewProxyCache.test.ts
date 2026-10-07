@@ -12,10 +12,10 @@ import {
 describe("preview proxy cache naming", () => {
 	it("defaults to an all-intra 540p proxy", () => {
 		expect(previewProxyParamsKey(DEFAULT_PREVIEW_PROXY_PARAMS)).toBe(
-			"h264-v1-h540-intra",
+			"h264-v2-noaudio-h540-intra",
 		);
 		expect(previewProxyParamsKey({ height: 360, allIntra: false })).toBe(
-			"h264-v1-h360-gop12",
+			"h264-v2-noaudio-h360-gop12",
 		);
 	});
 

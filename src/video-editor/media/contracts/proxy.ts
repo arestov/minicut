@@ -10,4 +10,6 @@ export interface ProxyRequest {
 	allIntra?: boolean;
 	/** GOP length in frames when not all-intra. Default 12. */
 	gopSize?: number;
+	/** Omit the audio track (scrub proxies need none). Default false. */
+	videoOnly?: boolean;
 }
