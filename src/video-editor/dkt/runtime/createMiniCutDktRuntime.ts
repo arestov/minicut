@@ -554,10 +554,8 @@ export const createMiniCutDktRuntime = (
 	let bootPromise: Promise<{
 		runtime: RuntimeLike;
 		appModel: RuntimeModelLike;
-		restoredFromStorage: boolean;
 	}> | null = null;
 	const sessionRootPromises = new Map<string, Promise<RuntimeModelLike>>();
-	let storageRestorePromise: Promise<void> | null = null;
 	const activeTransports = new Set<
 		DomSyncTransportLike<MiniCutDktTransportMessage>
 	>();
@@ -693,6 +691,12 @@ export const createMiniCutDktRuntime = (
 							App: MiniCutAppRoot,
 							interfaces,
 						});
+				if (storageSnapshot) {
+					// Runtime-level initialization, exactly once per runtime and before
+					// any session root or page sync exists. Sessions never trigger it.
+					await crdt.crdtRuntime?.restoreFromStorage?.();
+					await crdt.crdtRuntime?.projectCRDTMeta?.(inited.app_model);
+				}
 				if (
 					crdt.crdtRuntime &&
 					crdt.transport?.attach &&
@@ -720,7 +724,6 @@ export const createMiniCutDktRuntime = (
 				return {
 					runtime,
 					appModel: inited.app_model,
-					restoredFromStorage: Boolean(storageSnapshot),
 				};
 			})();
 		}
@@ -760,15 +763,6 @@ export const createMiniCutDktRuntime = (
 							},
 						},
 						);
-						if (app.restoredFromStorage) {
-							// Once per runtime: a later session root (second window)
-							// must not re-apply stored state over the live graph.
-							storageRestorePromise ||= (async () => {
-								await crdt?.crdtRuntime?.restoreFromStorage?.();
-								await crdt?.crdtRuntime?.projectCRDTMeta?.(app.appModel);
-							})();
-							await storageRestorePromise;
-						}
 						resolve(sessionRoot as RuntimeModelLike);
 					} catch (error) {
 						reject(error);
