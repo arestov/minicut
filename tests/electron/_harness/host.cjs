@@ -25,6 +25,9 @@ const ctx = JSON.parse(fs.readFileSync(ctxPath, 'utf8'))
 app.setPath('userData', ctx.userDataDir)
 app.setPath('sessionData', path.join(ctx.tmpDir, 'session'))
 
+// Bodies close windows on purpose; the host exits only after it has the result.
+app.on('window-all-closed', () => {})
+
 const sendResult = (payload) => {
 	process.stdout.write(`${RESULT_MARKER}${JSON.stringify(payload)}\n`)
 }
