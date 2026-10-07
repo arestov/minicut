@@ -14,7 +14,7 @@ const outRoot = path.join(repoRoot, 'dist-electron')
 
 const nodeBuiltins = [...builtinModules, ...builtinModules.map((name) => `node:${name}`)]
 
-const buildNodeEntry = ({ entry, outDir, format, fileName, external }) =>
+export const buildNodeEntry = ({ entry, outDir, format, fileName, external }) =>
 	build({
 		configFile: false,
 		logLevel: 'warn',
