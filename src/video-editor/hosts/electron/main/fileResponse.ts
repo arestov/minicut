@@ -145,6 +145,6 @@ export const serveFile = async ({
 	}
 	const body = Readable.toWeb(
 		createReadStream(filePath, { start, end }),
-	) as ReadableStream<Uint8Array>;
+	) as unknown as ReadableStream<Uint8Array>;
 	return new Response(body, { status, headers });
 };
