@@ -80,6 +80,29 @@ describe("project and resource panels", () => {
 		expect(view.texts()).toContain("Music.wav");
 	});
 
+	test("highlights only the active project row after a switch", async () => {
+		view = await renderShell("timeline");
+		const first = await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
+		view.click("new-project");
+		const second = await view.untilOne(
+			view.rootScope,
+			"activeProject",
+			(t) => t !== null && t._nodeId !== first!._nodeId,
+		);
+		await view.untilAttr(view.rootScope, "activeProjectId", (v) => v === second!._nodeId);
+		const pioneer = await view.untilOne(view.rootScope, "pioneer", (t) => t !== null);
+		const projects = await view.untilMany(pioneer!, "project", (n) => n >= 3);
+		for (const project of projects) {
+			await view.untilAttr(project, "title", (v) => typeof v === "string");
+		}
+		view.settle();
+		const selected = view
+			.findAll("project-row")
+			.map((row) => row.customProps?.["aria-selected"] === true);
+		// Rows: the boot project, the scenario project, the new (active) one.
+		expect(selected).toEqual([false, false, true]);
+	});
+
 	test("the add button puts the resource on the timeline through a model action", async () => {
 		view = await renderShell("unavailable-resource");
 		const project = await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
