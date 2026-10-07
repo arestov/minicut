@@ -18,6 +18,7 @@ import type {
  * Web SharedWorker uses: every effect request is published to the connected
  * window (here: the main thread) over the DKT port, where the GPUIX-side
  * executors run it. No domain logic and no media work lives in the worker.
+ * Unlike the Web worker it also provides the optional `mediaRestoreRuntime`.
  */
 if (!parentPort) {
 	throw new Error("dktWorkerEntry must run inside a worker thread");
@@ -49,10 +50,15 @@ const start = async (profileDir: string, port: MessagePort): Promise<void> => {
 	const pages = new Set([transport]);
 	host = await startNodeMiniCutHost({
 		profileDir,
-		effectInterfaces: createBrowserEffectInterfaces({
-			pages,
-			log: () => undefined,
-		}),
+		effectInterfaces: {
+			...createBrowserEffectInterfaces({
+				pages,
+				log: () => undefined,
+			}),
+			// Desktop restores the media of attended projects at boot: the page
+			// executors (media recovery) run the restore requests the model schedules.
+			mediaRestoreRuntime: { restoresMediaAtBoot: true },
+		},
 	});
 	host.runtime.connect(transport);
 	post({ type: "minicut-host:ready", identity: host.identity });

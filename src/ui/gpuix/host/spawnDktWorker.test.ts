@@ -69,3 +69,52 @@ test("a second process-level open of the same profile fails with a clear start e
 	expect(error).toBeInstanceOf(DktWorkerStartError);
 	expect((error as DktWorkerStartError).message).toContain("LevelDB");
 });
+
+test("the desktop worker provides the media restore runtime: the model schedules restore requests for the attended project after a restart", async () => {
+	profileDir = mkdtempSync(path.join(tmpdir(), "minicut-gpuix-host-"));
+
+	const first = await connect(profileDir);
+	const root = await first.driver.root();
+	const project = await first.driver.waitOne(root, "activeProject");
+	await first.driver.run(
+		"importResource",
+		{
+			name: "restore.webm",
+			kind: "video",
+			url: "",
+			mime: "video/webm",
+			duration: 2,
+			status: "ready",
+			operationId: "import:restore.webm",
+			attemptId: "import:restore.webm:attempt",
+			bootId: "import-boot",
+			recoveryKind: "import",
+			intent: "restore",
+			original: { kind: "video", duration: 2, streams: { videoStreams: 1, audioStreams: null } },
+			requiredSourceEnd: 2,
+			createdAt: 1,
+			updatedAt: 1,
+		},
+		project,
+	);
+	const [resource] = await first.driver.waitMany(project, "resources", 1);
+	const resourceId = resource!._nodeId;
+	await close();
+
+	// Second boot: no executor is attached, only the model's own requests are seen.
+	handle = await spawnDktWorker({ profileDir });
+	page = createMiniCutPageSyncRuntime({ transport: handle.transport });
+	const requests: Array<Record<string, unknown>> = [];
+	const arrived = new Promise<void>((resolve) => {
+		page!.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {
+			requests.push(payload as Record<string, unknown>);
+			if (String((payload as { operationId?: unknown }).operationId).startsWith("restore:")) resolve();
+		});
+	});
+	page.bootstrap({ sessionKey: "gpuix-real-host-test" });
+	await arrived;
+
+	const restores = requests.filter((request) => String(request.operationId).startsWith("restore:"));
+	expect(restores).toHaveLength(1);
+	expect(restores[0]).toMatchObject({ resourceId, intent: "restore" });
+});
