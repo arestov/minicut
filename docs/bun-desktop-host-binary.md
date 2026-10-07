@@ -49,3 +49,22 @@ minicut-host media <probe|capabilities|export|proxy ...>      # same surface as 
   `npm run test:bun:media`, which runs the same service code from source),
   macOS/Linux builds, code signing, antivirus behaviour on the unsigned 88 MB exe,
   startup time of the first run (addon extraction).
+
+## GPUIX packages in a compiled executable (no window)
+
+`node scripts/run-bun.mjs scripts/verify-gpuix-compiled-load.ts` (or
+`npm run verify:gpuix-compiled`) compiles two probes and runs them from an empty
+temp dir; both load, no window is opened:
+
+- `require("@gpuix/native")` (CJS entry, `index.cjs`): Bun embeds the
+  `gpuix-native.win32-x64-msvc.node` binding (exe about 109 MB), no sidecar.
+- `import * as solid from "@gpuix/solid"` (ESM, 122 bundled modules): works, but
+  `@gpuix/native`'s ESM entry loads its binding through `createRequire`, which
+  Bun does not bundle. The binding must sit beside the executable (or
+  `NAPI_RS_NATIVE_LIBRARY_PATH` must point to it). Without it the exe throws
+  "Cannot find native binding".
+- Not verified: creating a renderer/window from a compiled exe, `.tsx` UI
+  compiled with the Solid preload (`@gpuix/solid/preload`) under `Bun.build`,
+  other platforms. Decision for the app packaging stage: embed via the CJS
+  entry (needs the UI to avoid `@gpuix/native` ESM imports) or ship the
+  `.node` sidecar.
