@@ -231,7 +231,22 @@ export const createMediaService = (
 						});
 					}
 				}
+				const audioChannels: Record<string, number> = {};
+				for (const source of request.plan.clipSources) {
+					const id = source.resourceId;
+					if (
+						source.resourceKind !== "audio" ||
+						!id ||
+						!assetPaths[id] ||
+						audioChannels[id] !== undefined
+					) {
+						continue;
+					}
+					const info = await probePath(request.requestId, assetPaths[id]);
+					if (info.audio) audioChannels[id] = info.audio.channels;
+				}
 				const plan = planFfmpegExport({
+					audioChannels,
 					plan: request.plan,
 					range: request.range,
 					format: request.format ?? "webm",

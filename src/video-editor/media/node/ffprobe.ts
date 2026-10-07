@@ -23,6 +23,7 @@ interface RawStream {
 	sample_rate?: string;
 	channels?: number;
 	side_data_list?: Array<{ rotation?: number }>;
+	tags?: Record<string, string>;
 }
 
 interface RawFormat {
@@ -79,6 +80,17 @@ export const detectVariableFrameRate = (
 	return false;
 };
 
+/** Matroska/WebM omit stream duration; fall back to the DURATION tag. */
+const streamDuration = (raw: RawStream): number | null => {
+	const direct = num(raw.duration);
+	if (direct !== null) return direct;
+	const tag = raw.tags?.DURATION ?? raw.tags?.duration;
+	const match = tag ? /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(tag) : null;
+	return match
+		? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
+		: null;
+};
+
 const mapStream = (raw: RawStream, packetTimes: number[]): ProbeStream => {
 	const index = raw.index ?? 0;
 	const codec = raw.codec_name ?? "unknown";
@@ -101,7 +113,7 @@ const mapStream = (raw: RawStream, packetTimes: number[]): ProbeStream => {
 				nominalFps,
 				averageFps,
 			),
-			durationSeconds: num(raw.duration),
+			durationSeconds: streamDuration(raw),
 			frameCount: num(raw.nb_read_packets) ?? num(raw.nb_frames),
 			startTimeSeconds: num(raw.start_time) ?? 0,
 			rotation: rotation ?? 0,
@@ -115,7 +127,7 @@ const mapStream = (raw: RawStream, packetTimes: number[]): ProbeStream => {
 			codec,
 			sampleRate: num(raw.sample_rate) ?? 0,
 			channels: raw.channels ?? 0,
-			durationSeconds: num(raw.duration),
+			durationSeconds: streamDuration(raw),
 			startTimeSeconds: num(raw.start_time) ?? 0,
 		};
 		return stream;

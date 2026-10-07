@@ -59,6 +59,13 @@ export interface FfmpegPlanInput {
 	fps?: number;
 	width?: number;
 	height?: number;
+	/**
+	 * Channel count of each audio resource (from probe). Mono sources are
+	 * duplicated to both channels at full level like the browser mixer
+	 * (ffmpeg's own mono->stereo upmix would attenuate by 3 dB). Unknown
+	 * resources are treated as stereo.
+	 */
+	audioChannels?: Record<string, number>;
 }
 
 export interface FfmpegPlan {
@@ -342,13 +349,21 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 			const pan = Math.max(-1, Math.min(1, Number(clip.audio.pan ?? 0)));
 			const [left, right] = stereoPanGains(gain, pan);
 			const delayMs = Math.round(outStart * 1000);
+			const mono = input.audioChannels?.[clip.resourceId ?? clip.id] === 1;
 			const chain = [
 				"asetpts=PTS-STARTPTS",
 				`atrim=start=${fmt(sourceStart)}:duration=${fmt(duration)}`,
 				"asetpts=PTS-STARTPTS",
 				`aresample=${AUDIO_SAMPLE_RATE}`,
-				"aformat=sample_fmts=fltp:channel_layouts=stereo",
-				`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c1`,
+				...(mono
+					? [
+							"aformat=sample_fmts=fltp:channel_layouts=mono",
+							`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c0`,
+						]
+					: [
+							"aformat=sample_fmts=fltp:channel_layouts=stereo",
+							`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c1`,
+						]),
 				...(delayMs > 0 ? [`adelay=${delayMs}:all=1`] : []),
 			];
 			const label = `a${index}`;

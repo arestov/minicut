@@ -243,3 +243,19 @@ describe("planFfmpegExport", () => {
 		).toThrowError(expect.objectContaining({ code }));
 	});
 });
+
+describe("planFfmpegExport mono audio", () => {
+	it("duplicates mono sources to both channels at full level", () => {
+		const result = planFfmpegExport({
+			plan: makePlan([audio("a1", 0, 2)], { duration: 2 }),
+			range: { type: "project" },
+			format: "webm",
+			assetPaths: paths("a1"),
+			outputPath: "o.webm",
+			audioChannels: { "res-a1": 1 },
+		});
+		const graph = filterOf(result.args);
+		expect(graph).toContain("channel_layouts=mono");
+		expect(graph).toContain("pan=stereo|c0=1*c0|c1=1*c0");
+	});
+});
