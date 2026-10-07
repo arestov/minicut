@@ -11,6 +11,7 @@ import { runCaptured } from "../processRunner";
 export type FixtureName =
 	| "video-cfr"
 	| "video-audio"
+	| "video-av-webm"
 	| "video-vfr"
 	| "video-offset"
 	| "audio-tone"
@@ -60,6 +61,31 @@ export const FIXTURE_SPECS: Record<FixtureName, FixtureSpec> = {
 			"yuv420p",
 			"-c:a",
 			"aac",
+			"-ac",
+			"2",
+			"-shortest",
+		],
+	},
+	// VP9/Opus WebM with audio: decodable by headless Chromium (no H.264/AAC).
+	"video-av-webm": {
+		file: "video-av.webm",
+		args: [
+			"-f",
+			"lavfi",
+			"-i",
+			LAVFI_VIDEO,
+			"-f",
+			"lavfi",
+			"-i",
+			"sine=frequency=440:sample_rate=48000:duration=2",
+			"-c:v",
+			"libvpx-vp9",
+			"-pix_fmt",
+			"yuv420p",
+			"-g",
+			"25",
+			"-c:a",
+			"libopus",
 			"-ac",
 			"2",
 			"-shortest",

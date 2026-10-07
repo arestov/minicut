@@ -74,3 +74,38 @@ export const scenarioAssets = (
 			{ path: fixturePaths[fixture] },
 		]),
 	);
+
+/**
+ * Scenario shared by the Web (Playwright, WebCodecs) and Node (FFmpeg) export
+ * targets: one imported VP9/Opus clip with its embedded audio, full length.
+ * The web app derives the equivalent plan itself when the file is imported
+ * (video clip + linked audio clip on one resource), so only the fixture is
+ * shared; the Node half uses this explicit plan.
+ */
+export const webCompareScenario: ExportScenario = {
+	name: "web-compare-av",
+	resources: { "res-av": "video-av-webm" },
+	plan: {
+		projectId: "web-compare",
+		fps: 25,
+		width: 320,
+		height: 240,
+		duration: 2,
+		clipSources: [
+			clip({
+				id: "clip-av-video",
+				resourceId: "res-av",
+				resourceKind: "video",
+				start: 0,
+				duration: 2,
+			}),
+			clip({
+				id: "clip-av-audio",
+				resourceId: "res-av",
+				resourceKind: "audio",
+				start: 0,
+				duration: 2,
+			}),
+		],
+	},
+};
