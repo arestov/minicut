@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { AppShell } from "../AppShell";
 import { HostServicesContext } from "../host/hostServices";
 import { renderWithScenario } from "../test/renderApp";
-import { describeResourceNote } from "./resourceLabels";
 import { Sidebar } from "./Sidebar";
 
 let view: Awaited<ReturnType<typeof renderWithScenario>> | null = null;
@@ -14,26 +13,6 @@ afterEach(() => {
 
 const renderShell = (scenario: Parameters<typeof renderWithScenario>[0]) =>
 	renderWithScenario(scenario, () => <AppShell sidebar={<Sidebar />} />);
-
-describe("describeResourceNote", () => {
-	test("maps one attr value to one label", () => {
-		expect(describeResourceNote({ originalAccessStatus: "missing" })?.label).toBe(
-			"File missing",
-		);
-		expect(describeResourceNote({ originalAccessStatus: "denied" })?.label).toBe(
-			"Access denied",
-		);
-		expect(describeResourceNote({ status: "needs-permission" })?.label).toBe(
-			"Needs permission",
-		);
-		expect(
-			describeResourceNote({ localMediaAvailability: "ready-project-copy" })?.label,
-		).toBe("Using project copy");
-		expect(
-			describeResourceNote({ status: "ready", originalAccessStatus: "unknown" }),
-		).toBeNull();
-	});
-});
 
 describe("project and resource panels", () => {
 	test("list the project and its resources from the timeline scenario", async () => {
@@ -60,6 +39,7 @@ describe("project and resource panels", () => {
 		const project = await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
 		const [resource] = await view.untilMany(project!, "resources", (n) => n >= 1);
 		await view.untilAttr(resource, "originalAccessStatus", (v) => v === "missing");
+		await view.untilAttr(resource, "displayNote", (v) => v !== null && v !== undefined);
 		view.settle();
 
 		expect(view.texts()).toContain("Lost footage.mov");
@@ -122,6 +102,7 @@ describe("project and resource panels", () => {
 		const project = await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
 		const [resource] = await view.untilMany(project!, "resources", (n) => n >= 1);
 		await view.untilAttr(resource, "originalAccessStatus", (v) => v === "missing");
+		await view.untilAttr(resource, "displayNote", (v) => v !== null && v !== undefined);
 		view.settle();
 		expect(view.findAll("resource-locate")).toHaveLength(0);
 		view.destroy();

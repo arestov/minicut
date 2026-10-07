@@ -58,6 +58,25 @@ const portableResourceUrlOrEmpty = (url: unknown): string => {
 	return isPortableResourceUrl(value) ? value : "";
 };
 
+const describeDisplayNote = (
+	status: unknown,
+	localMediaAvailability: unknown,
+	originalAccessStatus: unknown,
+): { label: string; tone: "warning" | "danger" | "info" } | null => {
+	switch (originalAccessStatus) {
+		case "missing":
+			return { label: "File missing", tone: "danger" };
+		case "denied":
+			return { label: "Access denied", tone: "danger" };
+		case "prompt":
+			return { label: "Needs permission", tone: "warning" };
+	}
+	if (status === "needs-permission") return { label: "Needs permission", tone: "warning" };
+	if (status === "missing") return { label: "Source missing", tone: "danger" };
+	if (localMediaAvailability === "ready-project-copy") return { label: "Using project copy", tone: "info" };
+	return null;
+};
+
 export const Resource = model({
 	model_name: "resource",
 	crdt: {
@@ -135,6 +154,11 @@ export const Resource = model({
 			{ aggregate: { name: "importPipeline", as: "timelineAddRequest" } },
 		],
 		isReady: ["comp", ["status"], (status: unknown) => status === "ready"],
+		displayNote: [
+			"comp",
+			["status", "localMediaAvailability", "originalAccessStatus"] as const,
+			describeDisplayNote,
+		],
 		timelineClipSource: [
 			"comp",
 			["_node_id", "name", "kind", "duration", "url", "mime"] as const,

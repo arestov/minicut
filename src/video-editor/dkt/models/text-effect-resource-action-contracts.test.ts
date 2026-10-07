@@ -218,3 +218,39 @@ describe("Resource action contracts", () => {
 		await expectProjectGraphInvariants(harness.ctx);
 	});
 });
+
+describe("Resource displayNote", () => {
+	const noteAfter = async (
+		attrs: { status?: string; availability?: string; originalAccess?: string },
+	) => {
+		const harness = await createActionContractHarness();
+		if (attrs.status) {
+			await dispatchAndSettle(harness.ctx, harness.videoResource, "setResourceStatus", attrs.status);
+		}
+		if (attrs.availability || attrs.originalAccess) {
+			await dispatchAndSettle(harness.ctx, harness.videoResource, "setLocalMediaAxes", {
+				availability: attrs.availability ?? "unknown",
+				originalAccess: attrs.originalAccess ?? "unknown",
+			});
+		}
+		return harness.ctx.queryAttr(harness.videoResource, "displayNote");
+	};
+
+	it("is empty for a ready resource without access problems", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "setResourceStatus", "ready");
+		expect(await harness.ctx.queryAttr(harness.videoResource, "displayNote")).toBeNull();
+	});
+
+	it("reports original access problems before anything else", async () => {
+		expect(await noteAfter({ status: "ready", originalAccess: "missing" })).toEqual({ label: "File missing", tone: "danger" });
+		expect(await noteAfter({ originalAccess: "denied" })).toEqual({ label: "Access denied", tone: "danger" });
+		expect(await noteAfter({ originalAccess: "prompt", availability: "ready-project-copy" })).toEqual({ label: "Needs permission", tone: "warning" });
+	});
+
+	it("falls back to status, then to the project copy hint", async () => {
+		expect(await noteAfter({ status: "needs-permission" })).toEqual({ label: "Needs permission", tone: "warning" });
+		expect(await noteAfter({ status: "missing" })).toEqual({ label: "Source missing", tone: "danger" });
+		expect(await noteAfter({ status: "ready", availability: "ready-project-copy" })).toEqual({ label: "Using project copy", tone: "info" });
+	});
+});

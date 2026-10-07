@@ -12,9 +12,9 @@ import { RecoveryPhase } from "../tasks/TaskProgress";
 import { useHostServices } from "../host/hostServices";
 import { colors, metrics } from "../theme";
 import {
-	describeResourceNote,
 	formatDuration,
 	formatSize,
+	type ResourceNote,
 } from "./resourceLabels";
 
 const toneColor = {
@@ -32,16 +32,12 @@ const ResourceRow = () => {
 		"duration",
 		"size",
 		"status",
-		"localMediaAvailability",
 		"originalAccessStatus",
+		"displayNote",
 	]);
 	const dispatch = useRootDispatch();
 	const note = () =>
-		describeResourceNote({
-			status: attrs.status(),
-			localMediaAvailability: attrs.localMediaAvailability(),
-			originalAccessStatus: attrs.originalAccessStatus(),
-		});
+		attrs.displayNote() as ResourceNote | null | undefined;
 	const size = () => formatSize(attrs.size());
 	const host = useHostServices();
 	const isMissing = () =>
