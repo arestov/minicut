@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import fs from 'node:fs'
 import { fixturePath, launchMiniCut, type LaunchedMiniCut } from './launchMiniCut'
 
 test.describe.configure({ mode: 'serial' })
@@ -37,7 +38,7 @@ const whenMetadataLoaded = (page: Page) =>
 		return { duration: video.duration, src: video.currentSrc }
 	})
 
-test.describe('Electron renderer, configuration A', () => {
+test.describe('Electron renderer, configuration B', () => {
 	let mini: LaunchedMiniCut
 
 	test.beforeEach(async () => {
@@ -79,21 +80,20 @@ test.describe('Electron renderer, configuration A', () => {
 		expect(requests.every((request) => request.range?.startsWith('bytes='))).toBe(true)
 	})
 
-	test('exports the imported clip and yields a WebM file', async () => {
+	test('exports the imported clip in the media service and writes a WebM file', async () => {
 		await importClip(mini.page)
 		await whenMetadataLoaded(mini.page)
 
 		await mini.page.getByRole('banner').getByRole('button', { name: 'Export project' }).click()
 
-		const download = mini.page.getByRole('link', { name: /download/i }).first()
-		await expect(download).toBeVisible({ timeout: 60_000 })
-		const head = await download.evaluate(async (anchor: HTMLAnchorElement) => {
-			const response = await fetch(anchor.href)
-			const bytes = new Uint8Array(await response.arrayBuffer())
-			return { size: bytes.length, magic: Array.from(bytes.slice(0, 4)) }
-		})
-		expect(head.size).toBeGreaterThan(1000)
-		expect(head.magic).toEqual([0x1a, 0x45, 0xdf, 0xa3])
+		// The window only shows the outcome; the file is written by the media service.
+		const status = mini.page.getByRole('banner').getByRole('status')
+		await expect(status).toContainText('Export ready', { timeout: 60_000 })
+		const files = fs.readdirSync(mini.exportDir).filter((name) => name.endsWith('.webm'))
+		expect(files).toHaveLength(1)
+		const bytes = fs.readFileSync(`${mini.exportDir}/${files[0]}`)
+		expect(bytes.length).toBeGreaterThan(1000)
+		expect(Array.from(bytes.subarray(0, 4))).toEqual([0x1a, 0x45, 0xdf, 0xa3])
 	})
 
 	test('serves the renderer under a CSP and denies new windows and foreign navigation', async () => {

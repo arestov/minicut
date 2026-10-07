@@ -20,7 +20,10 @@ export type AssetRequest = { status: number; range: string | null; resourceType:
 export type LaunchedMiniCut = {
 	app: ElectronApplication
 	page: Page
+	/** Root of everything this launch owns: workspace profile, Chromium data, exports. */
 	userDataDir: string
+	/** Where the app writes finished exports. */
+	exportDir: string
 	/** Requests the renderer made to the asset protocol, observed in main. */
 	assetRequests(): Promise<AssetRequest[]>
 	/** Closes the app and removes the profile unless the caller owns it. */
@@ -31,17 +34,27 @@ const removeDir = (dir: string) => {
 	fs.rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 })
 }
 
-/** Starts the built desktop app on a profile directory. */
+/**
+ * Starts the built desktop app on a throwaway profile. The workspace profile
+ * (shared with the GPUIX app), Chromium's data and the export folder all live
+ * under `userDataDir`, so a launch never touches a real profile.
+ */
 export const launchMiniCut = async (
 	options: { userDataDir?: string } = {},
 ): Promise<LaunchedMiniCut> => {
 	const ownsProfile = !options.userDataDir
 	const userDataDir =
 		options.userDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'minicut-electron-ui-'))
+	const exportDir = path.join(userDataDir, 'exports')
 	const app = await electron.launch({
 		args: [path.join(repoRoot, 'dist-electron', 'main', 'main.mjs')],
 		cwd: repoRoot,
-		env: { ...(process.env as Record<string, string>), MINICUT_USER_DATA_DIR: userDataDir },
+		env: {
+			...(process.env as Record<string, string>),
+			MINICUT_PROFILE_DIR: path.join(userDataDir, 'profile'),
+			MINICUT_USER_DATA_DIR: path.join(userDataDir, 'chromium'),
+			MINICUT_EXPORT_DIR: exportDir,
+		},
 	})
 	try {
 		await app.evaluate(({ session }) => {
@@ -74,6 +87,7 @@ export const launchMiniCut = async (
 			app,
 			page,
 			userDataDir,
+			exportDir,
 			assetRequests: () =>
 				app.evaluate(
 					() => (globalThis as unknown as { __assetRequests: AssetRequest[] }).__assetRequests,
