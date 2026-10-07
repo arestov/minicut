@@ -3,6 +3,9 @@ import type { ProbeResult } from "../../media/contracts/probe";
 
 export type ImportedMediaKind = "video" | "audio" | "image";
 
+/** Timeline length of a still image; the web platforms give every imported image the same. */
+export const STILL_IMAGE_DURATION_SECONDS = 1;
+
 const IMAGE_FORMAT = /(_pipe$|^image2$|^png$|^apng$|^webp$|^bmp$|^tiff)/;
 
 /** Resource kind of a probed file, or null when it has neither video nor audio. */

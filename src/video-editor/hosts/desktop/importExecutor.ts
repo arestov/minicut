@@ -7,6 +7,7 @@ import {
 	classifyProbe,
 	type ImportedMediaKind,
 	mimeForPath,
+	STILL_IMAGE_DURATION_SECONDS,
 	technicalMetadataFromProbe,
 } from "./hostMedia";
 import { type HostPage, type RuntimeRefs, scopeFor } from "./hostTypes";
@@ -103,7 +104,7 @@ export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor =
 				kind,
 				url: (deps.assetUrl ?? assetUriFor)(asset.assetId),
 				mime: mimeForPath(filePath),
-				duration: original.duration,
+				duration: kind === "image" ? STILL_IMAGE_DURATION_SECONDS : original.duration,
 				width: original.width,
 				height: original.height,
 				size: file.size,

@@ -23,6 +23,17 @@ const projectShape = defineShape({
 	many: { resources: resourceShape },
 });
 
+const resourceTrackShape = defineShape({
+	attrs: ["importProgress"],
+	many: {
+		resources: resourceShape,
+		tracks: defineShape({
+			attrs: ["kind"],
+			many: { clips: defineShape({ attrs: ["name", "duration"] }) },
+		}),
+	},
+});
+
 test("imports a picked file through the real model: registry id, probe metadata, progress", async () => {
 	host = await openRealHostFixture();
 	const importer = host.attachImport();
@@ -84,4 +95,24 @@ test("a file that is not media is reported as an import error and imports nothin
 	)) as { processed: number; total: number };
 	expect(progress).toMatchObject({ processed: 1, total: 1 });
 	expect(host.page.readMany(project, "resources")).toHaveLength(0);
+});
+
+test("a still image imports with the one second duration the web gives it and can be placed on the timeline", async () => {
+	host = await openRealHostFixture();
+	const importer = host.attachImport();
+	const image = await gpuixFixture("image-card");
+
+	const root = await host.driver.root();
+	const project = await host.driver.waitOne(root, "activeProject");
+	host.page.mountShape(project, resourceTrackShape);
+
+	importer.requestImport([image]);
+
+	const [resource] = await host.driver.waitMany(project, "resources", 1);
+	expect(await waitForAttr(host.page, resource, "kind", (value) => value !== undefined)).toBe("image");
+	expect(await waitForAttr(host.page, resource, "duration", (value) => value !== undefined)).toBe(1);
+	// The first import of an empty timeline places the clip; it must have a length to be shown.
+	const [videoTrack] = await host.driver.waitMany(project, "tracks", 2);
+	const [clip] = await host.driver.waitMany(videoTrack, "clips", 1);
+	expect(await waitForAttr(host.page, clip, "duration", (value) => value !== undefined)).toBe(1);
 });
