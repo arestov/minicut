@@ -711,9 +711,9 @@ export const createMiniCutDktRuntime = (
 							interfaces,
 						});
 				if (storageSnapshot) {
-					// Runtime-level initialization, exactly once per runtime and before
-					// any session root or page sync exists. Sessions never trigger it.
-					await crdt.crdtRuntime?.restoreFromStorage?.();
+					// Storage restore is engine-owned: reinit has already awaited it
+					// (DKT #214/#221) before the first app input. Meta projection is
+					// not a boot step and stays here, once per runtime.
 					await crdt.crdtRuntime?.projectCRDTMeta?.(inited.app_model);
 				}
 				if (
