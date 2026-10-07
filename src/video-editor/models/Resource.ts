@@ -77,6 +77,63 @@ const describeDisplayNote = (
 	return null;
 };
 
+const START_MEDIA_RECOVERY_STEPS = [
+	{
+		to: {
+			oldTask: ["<< activeMediaRecoveryTask", { action: "supersedeForAttempt", sub_flow: true }],
+			forwarded: ["$output"],
+		},
+		fn: (payload: unknown) => ({ oldTask: payload, forwarded: payload }),
+	},
+	{
+		to: {
+			createdTask: ["<< mediaRecoveryTasks", { method: "at_end", can_create: true, can_hold_refs: true, creation_shape: MEDIA_RECOVERY_TASK_CREATION_SHAPE }],
+			forwarded: ["$output"],
+		},
+		output_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+		fn: [
+			["$noop", "< @one:bootId < activeMediaRecoveryTask", "< @one:recoveryKind < activeMediaRecoveryTask"] as const,
+			(payload: unknown, noop: unknown, activeBootId: unknown, activeRecoveryKind: unknown) => {
+				const value = payload as Record<string, unknown> | null;
+				if (!value || typeof value.operationId !== "string" || typeof value.bootId !== "string" || typeof value.recoveryKind !== "string") return noop;
+				if (value.bootId === activeBootId && value.recoveryKind === activeRecoveryKind) return noop;
+				return {
+					createdTask: {
+						attrs: {
+							operationId: value.operationId,
+							attemptId: value.attemptId,
+							bootId: value.bootId,
+							recoveryKind: value.recoveryKind,
+							intent: value.intent,
+							runtimeHandleId: value.runtimeHandleId ?? null,
+							phase: "created",
+							createdAt: value.createdAt,
+							updatedAt: value.updatedAt,
+						},
+						hold_ref_id: "newMediaRecoveryTask",
+					},
+					forwarded: { ...value, task: { use_ref_id: "newMediaRecoveryTask" } },
+				};
+			},
+		],
+	},
+	{
+		input_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+		when: [[] as const, (payload: unknown) => Boolean((payload as { task?: unknown } | null)?.task)],
+		to: {
+			activeMediaRecoveryTask: ["<< activeMediaRecoveryTask", { method: "set_one", can_use_refs: true }],
+			forwarded: ["$output"],
+		},
+		output_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+		fn: (payload: unknown) => ({ activeMediaRecoveryTask: (payload as { task?: unknown } | null)?.task ?? null, forwarded: payload }),
+	},
+	{
+		input_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
+		to: ["<<<< $input:task", { action: "runRecoveryEffect", sub_flow: true }],
+		fn: (payload: unknown) => payload,
+	},
+];
+
 export const Resource = model({
 	model_name: "resource",
 	crdt: {
@@ -324,62 +381,7 @@ export const Resource = model({
 		],
 	},
 	actions: {
-		startMediaRecovery: [
-			{
-				to: {
-					oldTask: ["<< activeMediaRecoveryTask", { action: "supersedeForAttempt", sub_flow: true }],
-					forwarded: ["$output"],
-				},
-				fn: (payload: unknown) => ({ oldTask: payload, forwarded: payload }),
-			},
-			{
-				to: {
-					createdTask: ["<< mediaRecoveryTasks", { method: "at_end", can_create: true, can_hold_refs: true, creation_shape: MEDIA_RECOVERY_TASK_CREATION_SHAPE }],
-					forwarded: ["$output"],
-				},
-				output_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
-				fn: [
-					["$noop", "< @one:bootId < activeMediaRecoveryTask", "< @one:recoveryKind < activeMediaRecoveryTask"] as const,
-					(payload: unknown, noop: unknown, activeBootId: unknown, activeRecoveryKind: unknown) => {
-						const value = payload as Record<string, unknown> | null;
-						if (!value || typeof value.operationId !== "string" || typeof value.bootId !== "string" || typeof value.recoveryKind !== "string") return noop;
-						if (value.bootId === activeBootId && value.recoveryKind === activeRecoveryKind) return noop;
-						return {
-							createdTask: {
-								attrs: {
-									operationId: value.operationId,
-									attemptId: value.attemptId,
-									bootId: value.bootId,
-									recoveryKind: value.recoveryKind,
-									intent: value.intent,
-									runtimeHandleId: value.runtimeHandleId ?? null,
-									phase: "created",
-									createdAt: value.createdAt,
-									updatedAt: value.updatedAt,
-								},
-								hold_ref_id: "newMediaRecoveryTask",
-							},
-							forwarded: { ...value, task: { use_ref_id: "newMediaRecoveryTask" } },
-						};
-					},
-				],
-			},
-			{
-				input_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
-				when: [[] as const, (payload: unknown) => Boolean((payload as { task?: unknown } | null)?.task)],
-				to: {
-					activeMediaRecoveryTask: ["<< activeMediaRecoveryTask", { method: "set_one", can_use_refs: true }],
-					forwarded: ["$output"],
-				},
-				output_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
-				fn: (payload: unknown) => ({ activeMediaRecoveryTask: (payload as { task?: unknown } | null)?.task ?? null, forwarded: payload }),
-			},
-			{
-				input_base_rel_shape: { task: { linking: "<< mediaRecoveryTasks", many: false } },
-				to: ["<<<< $input:task", { action: "runRecoveryEffect", sub_flow: true }],
-				fn: (payload: unknown) => payload,
-			},
-		],
+		startMediaRecovery: START_MEDIA_RECOVERY_STEPS,
 		completeMediaRecovery: {
 			aggregate: {
 				name: "importPipeline",
