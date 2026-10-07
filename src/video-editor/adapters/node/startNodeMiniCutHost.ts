@@ -95,6 +95,10 @@ export const startNodeMiniCutHost = async ({
 		});
 		await runtime.start(NODE_HOST_SESSION_KEY);
 	} catch (error) {
+		// A failed start owns the writes it staged (e.g. the first workspace
+		// manifest): drop them so close() does not persist a workspace that
+		// never started.
+		storagePackage.discard?.();
 		await dispose().catch(() => undefined);
 		throw error;
 	}

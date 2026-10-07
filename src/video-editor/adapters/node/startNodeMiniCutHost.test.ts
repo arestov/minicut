@@ -180,13 +180,7 @@ describe("startNodeMiniCutHost", () => {
 		await reopened.close?.();
 	});
 
-	// SUSPECTED DKT GAP (reported, not worked around): the LevelDB coordinator
-	// (dkt/js/libs/provoda/crdt/storage/leveldb/makeDktCrdtLevelDBStorage.js)
-	// has no discard/rollback for staged writes and `close()` (line 106) always
-	// commits them, so a failed first start leaves the staged workspace
-	// manifest on disk for a workspace that never started.
-	// `it.fails` flips to a failure once DKT can discard staged writes.
-	it.fails("does not persist a workspace manifest when the first start fails", async () => {
+	it("does not persist a workspace manifest when the first start fails", async () => {
 		let storagePath = "";
 		await startNodeMiniCutHost({
 			profileDir,

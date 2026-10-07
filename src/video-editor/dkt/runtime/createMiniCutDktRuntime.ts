@@ -136,6 +136,8 @@ export type MiniCutCrdtStoragePackage = {
 	commitChanges?: (meta?: unknown) => Promise<void> | void;
 	whenReady?: () => Promise<void> | void;
 	close?: () => Promise<void> | void;
+	/** Drops staged, uncommitted writes (DKT storage-discard); call before close() on a failed boot. */
+	discard?: () => void;
 	migrateDktStorageV1?: (workspaceId: string) => Promise<{ manifest: unknown } | null>;
 };
 
