@@ -232,6 +232,7 @@ export const createMediaService = (
 					}
 				}
 				const audioChannels: Record<string, number> = {};
+				const silentAudioResources = new Set<string>();
 				for (const source of request.plan.clipSources) {
 					const id = source.resourceId;
 					if (
@@ -244,9 +245,11 @@ export const createMediaService = (
 					}
 					const info = await probePath(request.requestId, assetPaths[id]);
 					if (info.audio) audioChannels[id] = info.audio.channels;
+					else silentAudioResources.add(id);
 				}
 				const plan = planFfmpegExport({
 					audioChannels,
+					silentAudioResources: [...silentAudioResources],
 					plan: request.plan,
 					range: request.range,
 					format: request.format ?? "webm",

@@ -121,6 +121,19 @@ describe("FFmpeg export against fixtures", () => {
 		expect(info.video?.fps).toBeCloseTo(25, 1);
 	});
 
+	it("exports a silent video with its embedded audio clip as silence", async () => {
+		const plan = planOf(
+			[
+				clip({ id: "v", resourceId: "r", resourceKind: "video", start: 0, duration: 1 }),
+				clip({ id: "a", resourceId: "r", resourceKind: "audio", start: 0, duration: 1 }),
+			],
+			1,
+		);
+		const { info, frames } = await exportPlan("silent-embedded", plan, { r: "video-cfr" });
+		expect(frames).toBe(25);
+		expect(info.audio).toBeNull();
+	});
+
 	it("honours a non-zero source start offset (inPoint is media-relative)", async () => {
 		const plan = planOf(
 			[

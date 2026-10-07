@@ -63,6 +63,12 @@ interface FfmpegPlanInputBase {
 	 * resources are treated as stereo.
 	 */
 	audioChannels?: Record<string, number>;
+	/**
+	 * Resources probed to have no audio stream (e.g. a silent video's
+	 * "Embedded audio" clip). Their audio clips contribute silence, like the
+	 * browser mixer which skips a source without an audio track.
+	 */
+	silentAudioResources?: readonly string[];
 }
 
 export interface FfmpegExportPlanInput extends FfmpegPlanInputBase {
@@ -338,9 +344,14 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 	}
 
 	const visual = selected.filter((r) => r.clip.resourceKind !== "audio");
+	const silent = new Set(input.silentAudioResources ?? []);
 	const audio = input.preview
 		? []
-		: selected.filter((r) => r.clip.resourceKind === "audio");
+		: selected.filter(
+				(r) =>
+					r.clip.resourceKind === "audio" &&
+					!silent.has(r.clip.resourceId ?? r.clip.id),
+			);
 
 	const durationSeconds = resolved.duration;
 	const frameCount = Math.max(1, Math.ceil(durationSeconds * fps));

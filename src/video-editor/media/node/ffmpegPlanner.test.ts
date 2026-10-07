@@ -260,6 +260,22 @@ describe("planFfmpegExport mono audio", () => {
 	});
 });
 
+describe("planFfmpegExport silent audio resources", () => {
+	it("treats an audio clip of a resource without an audio stream as silence", () => {
+		const result = planFfmpegExport({
+			plan: makePlan([video("v", 0, 2), audio("a1", 0, 2)], { duration: 2 }),
+			range: { type: "project" },
+			format: "webm",
+			assetPaths: paths("v", "a1"),
+			outputPath: "o.webm",
+			silentAudioResources: ["res-a1"],
+		});
+		expect(result.hasAudio).toBe(false);
+		expect(result.args).not.toContain("[aout]");
+		expect(filterOf(result.args)).not.toContain("[1:a]");
+	});
+});
+
 describe("planFfmpegExport preview mode", () => {
 	const preview = (extra: Partial<FfmpegPreviewPlanInput> = {}) =>
 		planFfmpegExport({
