@@ -1,0 +1,399 @@
+import type {
+	SupportedPlanOperation,
+	UnsupportedPlanOperation,
+} from "../contracts/capabilities";
+import type { MediaExportFormat } from "../contracts/export";
+import { resolveExportRange } from "../../render/exportRange";
+import type { ExportRange } from "../../render/exportTypes";
+import {
+	type ExportPlan,
+	normalizeExportPlan,
+} from "../../render/renderPlan";
+import { normalizePreviewClipSource } from "../../read-model/previewComps";
+import type { PreviewClipSource } from "../../read-model/previewComps";
+import { MediaError } from "./mediaError";
+
+/**
+ * Pure planner: render plan -> ffmpeg arguments. No filesystem, no processes.
+ *
+ * Reference semantics are the browser renderer: clips are layered in plan
+ * order (later clips on top) over black, video/image are fitted (contain) and
+ * centred in the output frame, only audio-kind clips contribute sound, audio
+ * gain is clamped to [0, 1.5] and pan uses the linear stereo law of
+ * audioExportMixer. Frame count is max(1, ceil(duration * fps)).
+ *
+ * Media timestamps are normalised to the stream's first frame
+ * (`setpts=PTS-STARTPTS`), so a clip's inPoint is relative to the media start
+ * regardless of container start-time offsets.
+ */
+
+export const SUPPORTED_PLAN_OPERATIONS: SupportedPlanOperation[] = [
+	"range",
+	"clip-sequence",
+	"trim",
+	"output-fps",
+	"output-size",
+	"audio-gain",
+	"audio-pan",
+	"audio-mix",
+];
+
+export const UNSUPPORTED_PLAN_OPERATIONS: UnsupportedPlanOperation[] = [
+	"text",
+	"effect",
+	"transform",
+	"opacity",
+	"fade",
+];
+
+export const AUDIO_SAMPLE_RATE = 48_000;
+
+export interface FfmpegPlanInput {
+	plan: ExportPlan;
+	range: ExportRange;
+	format: MediaExportFormat;
+	/** Resolved file path by clip resourceId. */
+	assetPaths: Record<string, string>;
+	/** Where ffmpeg writes (the runner passes a temp path). */
+	outputPath: string;
+	fps?: number;
+	width?: number;
+	height?: number;
+}
+
+export interface FfmpegPlan {
+	args: string[];
+	durationSeconds: number;
+	frameCount: number;
+	fps: number;
+	width: number;
+	height: number;
+	hasAudio: boolean;
+	clipIds: string[];
+}
+
+interface UnsupportedFinding {
+	clipId: string;
+	operation: UnsupportedPlanOperation;
+}
+
+const EPSILON = 1e-6;
+
+const fmt = (value: number): string => {
+	const text = value.toFixed(6);
+	return text.replace(/\.?0+$/, "") || "0";
+};
+
+const isPositiveFinite = (value: unknown): value is number =>
+	typeof value === "number" && Number.isFinite(value) && value > 0;
+
+const hasScalarAnimation = (scalar: {
+	value: number;
+	keyframes?: unknown[];
+}): boolean => Boolean(scalar.keyframes && scalar.keyframes.length > 0);
+
+const findUnsupported = (clip: PreviewClipSource): UnsupportedFinding[] => {
+	const findings: UnsupportedFinding[] = [];
+	const add = (operation: UnsupportedPlanOperation): void => {
+		findings.push({ clipId: clip.id, operation });
+	};
+	if (clip.resourceKind === "text" || clip.text) {
+		add("text");
+		return findings;
+	}
+	if (clip.resourceKind === "audio") {
+		// Audio-clip fades, effects and opacity are ignored on purpose: the browser
+		// audioExportMixer only honours gain and pan. If the web starts honouring
+		// them, report them here as unsupported-operation instead of dropping them.
+		return findings;
+	}
+	if (clip.effects.some((effect) => effect.enabled !== false)) add("effect");
+	const { x, y, scale, rotation } = clip.transform;
+	const identity =
+		!hasScalarAnimation(x) &&
+		!hasScalarAnimation(y) &&
+		!hasScalarAnimation(scale) &&
+		!hasScalarAnimation(rotation) &&
+		x.value === 0 &&
+		y.value === 0 &&
+		scale.value === 1 &&
+		rotation.value === 0;
+	if (!identity) add("transform");
+	if (hasScalarAnimation(clip.opacity) || clip.opacity.value !== 1) {
+		add("opacity");
+	}
+	if (clip.fadeIn > 0 || clip.fadeOut > 0) add("fade");
+	return findings;
+};
+
+const stereoPanGains = (gain: number, pan: number): [number, number] => {
+	const p = Math.max(-1, Math.min(1, pan));
+	return [gain * (p <= 0 ? 1 : 1 - p), gain * (p >= 0 ? 1 : 1 + p)];
+};
+
+interface RangedClip {
+	clip: PreviewClipSource;
+	/** Start on the output timeline (seconds). */
+	outStart: number;
+	duration: number;
+	/** Source offset (seconds, relative to media start). */
+	sourceStart: number;
+}
+
+const clipToRange = (
+	clip: PreviewClipSource,
+	rangeStart: number,
+	rangeEnd: number,
+): RangedClip | null => {
+	const clipEnd = clip.start + clip.duration;
+	const start = Math.max(clip.start, rangeStart);
+	const end = Math.min(clipEnd, rangeEnd);
+	if (end - start <= EPSILON) return null;
+	return {
+		clip,
+		outStart: start - rangeStart,
+		duration: end - start,
+		sourceStart: clip.inPoint + (start - clip.start),
+	};
+};
+
+const encoderArgs = (format: MediaExportFormat, hasAudio: boolean): string[] => {
+	if (format === "mp4") {
+		return [
+			"-c:v",
+			"libx264",
+			"-preset",
+			"veryfast",
+			"-crf",
+			"20",
+			"-pix_fmt",
+			"yuv420p",
+			...(hasAudio ? ["-c:a", "aac", "-b:a", "192k"] : []),
+			"-movflags",
+			"+faststart",
+			"-f",
+			"mp4",
+		];
+	}
+	return [
+		"-c:v",
+		"libvpx-vp9",
+		"-b:v",
+		"0",
+		"-crf",
+		"32",
+		"-row-mt",
+		"1",
+		"-deadline",
+		"good",
+		"-cpu-used",
+		"5",
+		"-pix_fmt",
+		"yuv420p",
+		...(hasAudio ? ["-c:a", "libopus", "-b:a", "128k"] : []),
+		"-f",
+		"webm",
+	];
+};
+
+export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
+	if (input.format !== "webm" && input.format !== "mp4") {
+		throw new MediaError(
+			"unsupported-format",
+			`Unsupported export format: ${String(input.format)}`,
+			{ format: input.format },
+		);
+	}
+	const plan = normalizeExportPlan(input.plan);
+	const fps = input.fps ?? (isPositiveFinite(plan.fps) ? plan.fps : 30);
+	const width = input.width ?? (isPositiveFinite(plan.width) ? plan.width : 1280);
+	const height =
+		input.height ?? (isPositiveFinite(plan.height) ? plan.height : 720);
+	if (!isPositiveFinite(fps) || fps > 240) {
+		throw new MediaError("invalid-request", `Invalid fps: ${fps}`);
+	}
+	if (
+		!Number.isInteger(width) ||
+		!Number.isInteger(height) ||
+		width < 2 ||
+		height < 2 ||
+		width % 2 !== 0 ||
+		height % 2 !== 0
+	) {
+		throw new MediaError(
+			"invalid-request",
+			`Output size must be even integers, got ${width}x${height}`,
+			{ width, height },
+		);
+	}
+
+	let resolved: ReturnType<typeof resolveExportRange>;
+	try {
+		resolved = resolveExportRange(plan, input.range);
+	} catch (error) {
+		throw new MediaError(
+			"invalid-request",
+			error instanceof Error ? error.message : "Invalid export range",
+		);
+	}
+	const rangeStart = resolved.start;
+	const rangeEnd = resolved.start + resolved.duration;
+	if (!isPositiveFinite(resolved.duration)) {
+		throw new MediaError("invalid-request", "Export range has no duration");
+	}
+
+	const selected = plan.clipSources
+		.map((source) => normalizePreviewClipSource(source))
+		.filter((source): source is PreviewClipSource => source !== null)
+		.filter((source) => !resolved.clipIds || resolved.clipIds.has(source.id))
+		.map((source) => clipToRange(source, rangeStart, rangeEnd))
+		.filter((ranged): ranged is RangedClip => ranged !== null);
+
+	const findings = selected.flatMap((ranged) => findUnsupported(ranged.clip));
+	if (findings.length > 0) {
+		const operations = [...new Set(findings.map((f) => f.operation))];
+		throw new MediaError(
+			"unsupported-operation",
+			`FFmpeg export does not support: ${operations.join(", ")}`,
+			{ operations, findings },
+		);
+	}
+
+	const visual = selected.filter((r) => r.clip.resourceKind !== "audio");
+	const audio = selected.filter((r) => r.clip.resourceKind === "audio");
+
+	const durationSeconds = resolved.duration;
+	const frameCount = Math.max(1, Math.ceil(durationSeconds * fps));
+	const outputDuration = frameCount / fps;
+
+	const inputArgs: string[] = [];
+	const filters: string[] = [];
+	let inputIndex = 0;
+	const assetPathFor = (clip: PreviewClipSource): string => {
+		const key = clip.resourceId ?? clip.id;
+		const found = input.assetPaths[key];
+		if (!found) {
+			throw new MediaError(
+				"asset-not-found",
+				`No file location for resource ${key} (clip ${clip.id})`,
+				{ resourceId: key, clipId: clip.id },
+			);
+		}
+		return found;
+	};
+
+	filters.push(
+		`color=c=black:s=${width}x${height}:r=${fmt(fps)}:d=${fmt(outputDuration)},format=yuv420p[base]`,
+	);
+	let current = "base";
+	visual.forEach((ranged, index) => {
+		const { clip, outStart, duration, sourceStart } = ranged;
+		const label = `v${index}`;
+		const isImage = clip.resourceKind === "image";
+		const path = assetPathFor(clip);
+		if (isImage) {
+			inputArgs.push(
+				"-loop",
+				"1",
+				"-framerate",
+				fmt(fps),
+				"-t",
+				fmt(duration),
+				"-i",
+				path,
+			);
+		} else {
+			inputArgs.push("-i", path);
+		}
+		const n = inputIndex;
+		inputIndex += 1;
+		const chain = [
+			"setpts=PTS-STARTPTS",
+			...(isImage
+				? []
+				: [
+						`trim=start=${fmt(sourceStart)}:duration=${fmt(duration)}`,
+						"setpts=PTS-STARTPTS",
+					]),
+			`fps=${fmt(fps)}`,
+			`scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+			"setsar=1",
+			"format=yuv420p",
+			`setpts=PTS+${fmt(outStart)}/TB`,
+		];
+		filters.push(`[${n}:v]${chain.join(",")}[${label}]`);
+		const next = `o${index}`;
+		filters.push(
+			`[${current}][${label}]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,${fmt(outStart)},${fmt(outStart + duration)})'[${next}]`,
+		);
+		current = next;
+	});
+	filters.push(`[${current}]null[vout]`);
+
+	const hasAudio = audio.length > 0;
+	if (hasAudio) {
+		const labels: string[] = [];
+		audio.forEach((ranged, index) => {
+			const { clip, outStart, duration, sourceStart } = ranged;
+			inputArgs.push("-i", assetPathFor(clip));
+			const n = inputIndex;
+			inputIndex += 1;
+			const gain = Math.max(0, Math.min(1.5, Number(clip.audio.gain ?? 1)));
+			const pan = Math.max(-1, Math.min(1, Number(clip.audio.pan ?? 0)));
+			const [left, right] = stereoPanGains(gain, pan);
+			const delayMs = Math.round(outStart * 1000);
+			const chain = [
+				"asetpts=PTS-STARTPTS",
+				`atrim=start=${fmt(sourceStart)}:duration=${fmt(duration)}`,
+				"asetpts=PTS-STARTPTS",
+				`aresample=${AUDIO_SAMPLE_RATE}`,
+				"aformat=sample_fmts=fltp:channel_layouts=stereo",
+				`pan=stereo|c0=${fmt(left)}*c0|c1=${fmt(right)}*c1`,
+				...(delayMs > 0 ? [`adelay=${delayMs}:all=1`] : []),
+			];
+			const label = `a${index}`;
+			filters.push(`[${n}:a]${chain.join(",")}[${label}]`);
+			labels.push(label);
+		});
+		const mixInput =
+			labels.length === 1
+				? `[${labels[0]}]`
+				: `${labels.map((l) => `[${l}]`).join("")}amix=inputs=${labels.length}:normalize=0:duration=longest,`;
+		const tail = `apad=whole_dur=${fmt(outputDuration)},atrim=duration=${fmt(outputDuration)}`;
+		filters.push(`${mixInput}${tail}[aout]`);
+	}
+
+	const args = [
+		"-hide_banner",
+		"-nostdin",
+		"-y",
+		"-loglevel",
+		"error",
+		"-nostats",
+		"-progress",
+		"pipe:1",
+		...inputArgs,
+		"-filter_complex",
+		filters.join(";"),
+		"-map",
+		"[vout]",
+		...(hasAudio ? ["-map", "[aout]"] : []),
+		"-frames:v",
+		String(frameCount),
+		"-r",
+		fmt(fps),
+		...encoderArgs(input.format, hasAudio),
+		input.outputPath,
+	];
+
+	return {
+		args,
+		durationSeconds: outputDuration,
+		frameCount,
+		fps,
+		width,
+		height,
+		hasAudio,
+		clipIds: selected.map((r) => r.clip.id),
+	};
+};
