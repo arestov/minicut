@@ -78,7 +78,9 @@ describe("startNodeMiniCutHost", () => {
 			peerId: host.identity.peerId,
 			hasRegistry: true,
 		});
-		expect(dump.crdt?.transportTrace).toEqual([]);
+		// Local ops (e.g. the default project) are traced, network events must not exist.
+		const trace = (dump.crdt?.transportTrace ?? []) as Array<{ event?: string }>;
+		expect(trace.filter((entry) => !entry.event?.startsWith("local:"))).toEqual([]);
 	});
 
 	it("writes CRDT outbox and durable log entries for local edits without a transport", async () => {

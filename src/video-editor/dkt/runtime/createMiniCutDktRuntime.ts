@@ -15,6 +15,11 @@ import type { MiniCutEffectInterfaces } from "../../core/contracts/effectInterfa
 import { createBrowserEffectInterfaces } from "../../adapters/web/createBrowserEffectInterfaces";
 import { MiniCutAppRoot } from "../../models/AppRoot";
 import {
+	addSessionRoot,
+	removeSessionRoot,
+	pruneSessionPool,
+} from "./sessionPool";
+import {
 	sanitizeDktCrdtStoragePackage,
 } from "../crdt/sanitizeStoragePackage";
 import type { DktCrdtTransport } from "../crdt/testRelayContracts";
@@ -539,6 +544,18 @@ const crdtResolutionAttemptMeta = (
 	};
 };
 
+const runOnAppInput = (
+	app: RuntimeModelLike,
+	fn: () => Promise<void>,
+): Promise<void> =>
+	new Promise<void>((resolve, reject) => {
+		const run = () => {
+			fn().then(resolve, reject);
+		};
+		if (typeof app.input === "function") app.input(run);
+		else run();
+	});
+
 export const createMiniCutDktRuntime = (
 	options: CreateMiniCutDktRuntimeOptions = {},
 ) => {
@@ -721,6 +738,9 @@ export const createMiniCutDktRuntime = (
 						crdtTransportCleanup = cleanup;
 					}
 				}
+				await runOnAppInput(inited.app_model, () =>
+					pruneSessionPool(inited.app_model as never, []),
+				);
 				return {
 					runtime,
 					appModel: inited.app_model,
@@ -754,7 +774,7 @@ export const createMiniCutDktRuntime = (
 						const storageOpenStatus =
 							crdt?.workspaceOpenState?.status ??
 							WORKSPACE_LOCAL_EMPTY_READY_STATE.status;
-						const sessionRoot = hookSessionRoot(app.appModel, {
+						const sessionRoot = (await hookSessionRoot(app.appModel, {
 							rel: "$session_root",
 							attrs: {
 								sessionKey: resolvedSessionId,
@@ -762,8 +782,9 @@ export const createMiniCutDktRuntime = (
 								storageOpenStatus,
 							},
 						},
-						);
-						resolve(sessionRoot as RuntimeModelLike);
+						)) as RuntimeModelLike;
+						await addSessionRoot(app.appModel as never, sessionRoot);
+						resolve(sessionRoot);
 					} catch (error) {
 						reject(error);
 					}
@@ -917,6 +938,10 @@ export const createMiniCutDktRuntime = (
 			if (!sessionRoot) {
 				throw new Error("MiniCut DKT session root is not available");
 			}
+			// A reconnect after a disconnect puts the cached root back into the pool.
+			await runOnAppInput(app.appModel, () =>
+				addSessionRoot(app.appModel as never, sessionRoot),
+			);
 
 			// Recreate the sync stream if the sessionKey changed (e.g. after failover reconnect
 			// or if a premature BOOTSTRAP previously locked the stream to the wrong session).
@@ -1087,6 +1112,21 @@ export const createMiniCutDktRuntime = (
 			void Promise.resolve()
 				.then(() => bootstrapApp(activeSessionKey))
 				.catch(() => null)
+				.then(async (app) => {
+					// A closed session no longer takes part in the app (attention).
+					const rootPromise = sessionRootPromises.get(activeSessionId);
+					if (app && rootPromise) {
+						try {
+							const root = await rootPromise;
+							await runOnAppInput(app.appModel, () =>
+								removeSessionRoot(app.appModel as never, root),
+							);
+						} catch (error) {
+							logRuntime("session-pool:remove-failed", { error: String(error) });
+						}
+					}
+					return app;
+				})
 				.then((app) => {
 					if (app && stream) {
 						app.runtime.sync_sender.removeSyncStream(stream);

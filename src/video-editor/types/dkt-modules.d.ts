@@ -96,6 +96,14 @@ declare module "dkt-all/libs/provoda/bwlev/SessionRoot.js" {
 	export const SessionRoot: unknown;
 }
 
+declare module "dkt-all/libs/provoda/provoda/updateRel.js" {
+	export const updateRel: (
+		model: unknown,
+		relName: string,
+		value: unknown,
+	) => unknown;
+}
+
 declare module "dkt-all/libs/provoda/provoda/BrowseMap.js" {
 	export const hookSessionRoot: (
 		appModel: unknown,

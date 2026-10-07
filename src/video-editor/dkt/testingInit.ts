@@ -34,6 +34,7 @@ import {
 import {
 	MINICUT_INDEXEDDB_SCHEMA_VERSION,
 } from "../adapters/web/minicutIndexedDbWorkspace";
+import { addSessionRoot, pruneSessionPool } from "./runtime/sessionPool";
 import { migrateMiniCutIndexedDbStorageV1ToV2 } from "./storage/migrateMiniCutIndexedDbStorageV2";
 
 type AnyModel = {
@@ -519,7 +520,7 @@ export const bootDktModels = async (
 		new Promise<AnyModel>((resolve, reject) => {
 			const doHook = async () => {
 				try {
-					const sr = hookSessionRoot(appModel, {
+					const sr = await hookSessionRoot(appModel, {
 						rel: "$session_root",
 						attrs: {
 							sessionKey: TEST_SESSION_KEY,
@@ -529,6 +530,7 @@ export const bootDktModels = async (
 								WORKSPACE_LOCAL_EMPTY_READY_STATE.status,
 						},
 					});
+					await addSessionRoot(appModel as never, sr as AnyModel);
 					resolve(sr as AnyModel);
 				} catch (err) {
 					reject(err);
@@ -547,6 +549,13 @@ export const bootDktModels = async (
 	if (options.reinitFromSnapshot) {
 		await crdtRuntime?.restoreFromStorage?.();
 		await crdtRuntime?.projectCRDTMeta?.(appModel);
+		await computed();
+		// The stored pool belongs to the previous runtime: only this session is live.
+		await new Promise<void>((resolve, reject) => {
+			appModel.input?.(() =>
+				pruneSessionPool(appModel as never, [sessionRoot as never]).then(resolve, reject),
+			);
+		});
 		await computed();
 	}
 
