@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { waitForAttr } from "../fixtures/scopeWait";
-import { resolveExportDir, resolveProfileDir } from "./appConfig";
+import { resolveExportDir, resolveProfileDir } from "../../../video-editor/adapters/node/desktopProfileConfig";
 import { preflight, StartupError } from "./preflight";
 import { type RealHost, startRealHost } from "./startRealHost";
 

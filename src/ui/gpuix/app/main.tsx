@@ -39,7 +39,7 @@ import { ClipInspector } from "../inspector/ClipInspector";
 import { Sidebar } from "../panels/Sidebar";
 import { colors } from "../theme";
 import { Timeline } from "../timeline/Timeline";
-import { resolveExportDir, resolveProfileDir } from "./appConfig";
+import { resolveExportDir, resolveProfileDir } from "../../../video-editor/adapters/node/desktopProfileConfig";
 import { StartupError } from "./preflight";
 import { StartupErrorScreen } from "./StartupErrorScreen";
 import { type RealHost, startRealHost } from "./startRealHost";
