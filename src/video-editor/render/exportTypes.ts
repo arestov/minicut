@@ -64,6 +64,29 @@ export interface ExportRenderResult {
 	diagnostics?: ExportDiagnostics;
 }
 
+/**
+ * File-backed result produced by the Node media service. Distinguished from
+ * `ExportRenderResult` (browser, Blob) by `kind: "file"`.
+ */
+export interface ExportFileResult {
+	kind: "file";
+	id: string;
+	fileName: string;
+	mimeType: string;
+	/** Absolute path on the host that produced the file. */
+	path: string;
+	size: number;
+	duration: number;
+	frameCount: number;
+}
+
+export type ExportArtifact = ExportRenderResult | ExportFileResult;
+
+export const isExportFileResult = (
+	artifact: ExportArtifact,
+): artifact is ExportFileResult =>
+	"kind" in artifact && artifact.kind === "file";
+
 export interface ExportRenderer {
 	render(
 		request: ExportRenderRequest,
