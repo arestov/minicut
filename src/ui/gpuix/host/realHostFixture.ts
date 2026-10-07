@@ -8,10 +8,10 @@ import { fingerprintNodeFile } from "../../../video-editor/adapters/node/nodeFil
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
 import { createScenarioDriver, type ScenarioDriver } from "../fixtures/scenarioDriver";
-import { createMediaRecoveryExecutor, type MediaRecoveryExecutor } from "./mediaRecoveryExecutor";
-import { createExportExecutor, type ExportExecutor } from "./exportExecutor";
-import { createImportExecutor, type ImportExecutor } from "./importExecutor";
-import { createRuntimeRefStore } from "./runtimeRefs";
+import { createMediaRecoveryExecutor, type MediaRecoveryExecutor } from "../../../video-editor/hosts/desktop/mediaRecoveryExecutor";
+import { createExportExecutor, type ExportExecutor } from "../../../video-editor/hosts/desktop/exportExecutor";
+import { createImportExecutor, type ImportExecutor } from "../../../video-editor/hosts/desktop/importExecutor";
+import { createRuntimeRefStore } from "../../../video-editor/hosts/desktop/runtimeRefs";
 import { spawnDktWorker, type DktWorkerHandle } from "./spawnDktWorker";
 
 /**

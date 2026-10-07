@@ -3,8 +3,8 @@ import path from "node:path";
 import type { FileArtifact } from "../../../video-editor/media/contracts/job";
 import type { MediaExportRequest } from "../../../video-editor/media/contracts/export";
 import { MediaJobController } from "../../../video-editor/media/node/mediaJob";
-import { createExportExecutor } from "./exportExecutor";
-import type { HostPage } from "./hostTypes";
+import { createExportExecutor } from "../../../video-editor/hosts/desktop/exportExecutor";
+import type { HostPage } from "../../../video-editor/hosts/desktop/hostTypes";
 
 const MEDIA_DIR = path.resolve("media-dir");
 const EXPORT_DIR = path.resolve("export-dir");

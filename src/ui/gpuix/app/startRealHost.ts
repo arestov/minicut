@@ -10,13 +10,13 @@ import { createPreviewProxyCache } from "../../../video-editor/media/node/previe
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { resolveMediaBinaries } from "../../../video-editor/media/node/binaries";
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
-import { createExportExecutor } from "../host/exportExecutor";
+import { createExportExecutor } from "../../../video-editor/hosts/desktop/exportExecutor";
 import type { HostServices } from "../host/hostServices";
-import { createImportExecutor } from "../host/importExecutor";
-import { createMediaRecoveryExecutor } from "../host/mediaRecoveryExecutor";
+import { createImportExecutor } from "../../../video-editor/hosts/desktop/importExecutor";
+import { createMediaRecoveryExecutor } from "../../../video-editor/hosts/desktop/mediaRecoveryExecutor";
 import { createImportFromDialog, type PathPrompt } from "../host/nativeDialogs";
 import { createPlaybackExecutor } from "../host/playbackExecutor";
-import { createRuntimeRefStore } from "../host/runtimeRefs";
+import { createRuntimeRefStore } from "../../../video-editor/hosts/desktop/runtimeRefs";
 import { DktWorkerStartError, spawnDktWorker } from "../host/spawnDktWorker";
 import { createNodePreviewController } from "../preview/nodePreviewController";
 import { preflight, StartupError } from "./preflight";

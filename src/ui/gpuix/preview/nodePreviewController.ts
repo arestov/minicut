@@ -14,7 +14,7 @@ import {
 	type ExportPlan,
 	normalizeExportPlan,
 } from "../../../video-editor/render/renderPlan";
-import { contentKeyOf, localAssetIdOf } from "../host/localAssetSource";
+import { contentKeyOf, localAssetIdOf } from "../../../video-editor/hosts/desktop/localAssetSource";
 import type { PreviewFrame, PreviewFrameSource } from "./frameSource";
 import {
 	createNodePreviewFrameSource,

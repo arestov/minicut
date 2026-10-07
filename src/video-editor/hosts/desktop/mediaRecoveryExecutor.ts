@@ -1,9 +1,9 @@
-import type { NodeAssetRegistry } from "../../../video-editor/adapters/node/nodeAssetRegistry";
-import type { ProbeResult } from "../../../video-editor/media/contracts/probe";
+import type { NodeAssetRegistry } from "../../adapters/node/nodeAssetRegistry";
+import type { ProbeResult } from "../../media/contracts/probe";
 import {
 	evaluateRelinkCandidate,
 	type MediaTechnicalMetadata,
-} from "../../../video-editor/media/mediaRelinkPolicy";
+} from "../../media/mediaRelinkPolicy";
 import { assetUriFor } from "./assetUri";
 import { localAssetIdOf } from "./localAssetSource";
 import {

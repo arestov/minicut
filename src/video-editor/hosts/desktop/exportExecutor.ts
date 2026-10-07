@@ -1,7 +1,7 @@
 import path from "node:path";
-import { parseExportRequest } from "../../../video-editor/app/exportRequestState";
-import type { AssetLocations, AssetResolver } from "../../../video-editor/media/contracts/assets";
-import type { MediaService } from "../../../video-editor/media/node/mediaService";
+import { parseExportRequest } from "../../app/exportRequestState";
+import type { AssetLocations, AssetResolver } from "../../media/contracts/assets";
+import type { MediaService } from "../../media/node/mediaService";
 import type { HostPage } from "./hostTypes";
 import { localAssetIdOf, type PayloadResourceSource } from "./localAssetSource";
 

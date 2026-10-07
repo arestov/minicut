@@ -1,4 +1,4 @@
-import type { ImportExecutor } from "./importExecutor";
+import type { ImportExecutor } from "../../../video-editor/hosts/desktop/importExecutor";
 
 /** `promptForPaths` of the GPUIX renderer (the native path picker). */
 export type PathPrompt = (options?: {

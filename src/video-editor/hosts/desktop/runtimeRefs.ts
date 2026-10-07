@@ -1,4 +1,4 @@
-import { createRuntimeTaskFacade } from "../../../video-editor/app/runtimeTaskFacade";
+import { createRuntimeTaskFacade } from "../../app/runtimeTaskFacade";
 import type { RuntimeRefs } from "./hostTypes";
 
 /**

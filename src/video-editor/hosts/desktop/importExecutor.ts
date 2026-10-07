@@ -1,7 +1,7 @@
 import path from "node:path";
-import type { NodeAssetRegistry } from "../../../video-editor/adapters/node/nodeAssetRegistry";
-import type { ProbeResult } from "../../../video-editor/media/contracts/probe";
-import { isProjectImportFilesEffectData } from "../../../video-editor/models/Project/effects";
+import type { NodeAssetRegistry } from "../../adapters/node/nodeAssetRegistry";
+import type { ProbeResult } from "../../media/contracts/probe";
+import { isProjectImportFilesEffectData } from "../../models/Project/effects";
 import { assetUriFor } from "./assetUri";
 import {
 	classifyProbe,

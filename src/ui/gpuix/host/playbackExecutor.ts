@@ -5,7 +5,7 @@ import {
 	PlaybackRuntime,
 	type PlaybackSnapshot,
 } from "../../../video-editor/playback/playbackRuntime";
-import type { HostPage } from "./hostTypes";
+import type { HostPage } from "../../../video-editor/hosts/desktop/hostTypes";
 
 /** Playback clock on timers (no display frame callback in the Bun host). */
 export const timerPlaybackClock = (frameMs = 16): PlaybackClock => ({

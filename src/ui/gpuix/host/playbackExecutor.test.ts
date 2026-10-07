@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PlaybackClock } from "../../../video-editor/playback/playbackRuntime";
-import type { HostPage } from "./hostTypes";
+import type { HostPage } from "../../../video-editor/hosts/desktop/hostTypes";
 import { createPlaybackExecutor } from "./playbackExecutor";
 
 /** Clock the test advances by hand; frames run only when the test fires them. */
