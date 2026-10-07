@@ -5,6 +5,7 @@ import type { MediaCapabilities } from "../contracts/capabilities";
 import type { MediaExportRequest } from "../contracts/export";
 import type { FileArtifact, MediaJob } from "../contracts/job";
 import type { ProbeRequest, ProbeResult } from "../contracts/probe";
+import type { ProxyRequest } from "../contracts/proxy";
 import { type MediaBinaries, resolveMediaBinaries } from "./binaries";
 import { startFfmpeg } from "./ffmpegRunner";
 import {
@@ -16,6 +17,7 @@ import { probeFile } from "./ffprobe";
 import { JobLimiter } from "./jobLimiter";
 import { MediaError, toMediaErrorInfo } from "./mediaError";
 import { MediaJobController } from "./mediaJob";
+import { buildProxyArgs } from "./proxyPlanner";
 import { runCaptured } from "./processRunner";
 
 export interface MediaServiceOptions extends Partial<MediaBinaries> {
@@ -31,6 +33,7 @@ export interface MediaServiceOptions extends Partial<MediaBinaries> {
 export interface MediaService {
 	probe(request: ProbeRequest): Promise<ProbeResult>;
 	exportPlan(request: MediaExportRequest): MediaJob<FileArtifact>;
+	generateProxy(request: ProxyRequest): MediaJob<FileArtifact>;
 	capabilities(): Promise<MediaCapabilities>;
 }
 
@@ -251,6 +254,28 @@ export const createMediaService = (
 					}
 				}
 				return { args: plan.args, totalSeconds: plan.durationSeconds };
+			}),
+
+		generateProxy: (request) =>
+			startFileJob(request.requestId, request.outputPath, async (tempPath) => {
+				const source = await resolveLocation(request.source);
+				const info = await probePath(request.requestId, source);
+				if (!info.video) {
+					throw new MediaError("invalid-request", "Proxy source has no video", {
+						path: source,
+					});
+				}
+				return {
+					args: buildProxyArgs({
+						inputPath: source,
+						outputPath: tempPath,
+						height: request.height,
+						allIntra: request.allIntra,
+						gopSize: request.gopSize,
+						hasAudio: info.audio !== null,
+					}),
+					totalSeconds: info.durationSeconds,
+				};
 			}),
 
 		capabilities: async () => {
