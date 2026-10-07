@@ -62,6 +62,7 @@
 		"test:dkt-solid-sync": "node ./scripts/run-dkt-solid-sync-tests.mjs",
 		"test:gpuix": "node ./scripts/run-gpuix-tests.mjs",
 		"test:gpuix:window": "node ./scripts/run-gpuix-window-smoke.mjs",
+		"test:gpuix:app-window": "node ./scripts/run-gpuix-app-window-smoke.mjs",
 		"typecheck:gpuix": "tsc -p src/ui/gpuix/tsconfig.json --noEmit",
 		"gpuix:dev": "node ./scripts/run-gpuix.mjs",
 		"gpuix:app": "node ./scripts/run-gpuix-app.mjs",
