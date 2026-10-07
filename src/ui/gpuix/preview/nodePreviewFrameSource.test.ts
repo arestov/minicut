@@ -66,7 +66,7 @@ describe("node preview frame source", () => {
 		]);
 	});
 
-	test("delivers frames of the latest generation and releases stale ones", () => {
+	test("forwards a frame newer than the last one forwarded and releases older ones", () => {
 		const fake = fakeProducer();
 		const source = createNodePreviewFrameSource({
 			producer: fake.producer,
@@ -81,11 +81,11 @@ describe("node preview frame source", () => {
 
 		const first = source.request(0);
 		const second = source.request(1);
-		fake.emit(first, 100);
 		fake.emit(second, 200);
+		fake.emit(first, 100); // older than the one already forwarded
 
 		expect(received).toEqual([second]);
-		expect(fake.released).toEqual([100, 200]);
+		expect(fake.released).toEqual([200, 100]);
 	});
 
 	test("returns the buffer once after every subscriber released its frame", () => {

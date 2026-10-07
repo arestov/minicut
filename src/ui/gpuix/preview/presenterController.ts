@@ -3,7 +3,7 @@ import type { PreviewFrame, PreviewFrameSource } from "./frameSource";
 export type FramePresenterStats = {
 	/** Frames uploaded to the target. */
 	presented: number;
-	/** Frames dropped because a newer generation was already requested (or after dispose). */
+	/** Frames dropped because a newer-or-equal generation was already shown (or after dispose). */
 	droppedStale: number;
 	/** Frames dropped because their size, stride or format was not acceptable. */
 	droppedInvalid: number;
@@ -27,8 +27,10 @@ const BYTES_PER_PIXEL = 4;
 
 /**
  * Takes frames from a source and hands each current one to `upload` as a
- * tight RGBA buffer. Frames of an older generation than the latest request
- * are dropped: only the frame answering the newest request is ever shown. The
+ * tight RGBA buffer. Display is monotonic: a frame is shown if its generation
+ * is newer than the last one shown, even while newer requests are still
+ * pending (so a continuous scrub keeps updating); a frame that is not newer
+ * than the last shown one is dropped. The
  * presenter keeps no source frame between calls (it owns one scratch buffer
  * for repacking strided frames) and releases every delivered frame exactly
  * once, so buffer use stays bounded by what the source pools.
@@ -48,7 +50,7 @@ export const createFramePresenter = (
 	const expectedHeight = Math.round(source.height * source.pixelRatio);
 	const tightRow = expectedWidth * BYTES_PER_PIXEL;
 	let scratch: Uint8Array | null = null;
-	let latestGeneration = -1;
+	let lastShownGeneration = -1;
 	let latestTime: number | null = null;
 	let retryNeeded = false;
 	let disposed = false;
@@ -67,7 +69,7 @@ export const createFramePresenter = (
 
 	const unsubscribe = source.subscribe((frame) => {
 		try {
-			if (disposed || frame.generation < latestGeneration) {
+			if (disposed || frame.generation <= lastShownGeneration) {
 				stats.droppedStale += 1;
 				return;
 			}
@@ -90,6 +92,7 @@ export const createFramePresenter = (
 				})
 			) {
 				stats.presented += 1;
+				lastShownGeneration = frame.generation;
 			} else {
 				stats.droppedNotReady += 1;
 				retryNeeded = true;
@@ -104,12 +107,12 @@ export const createFramePresenter = (
 			if (disposed) return;
 			latestTime = timeSeconds;
 			retryNeeded = false;
-			latestGeneration = source.request(timeSeconds);
+			source.request(timeSeconds);
 		},
 		targetReady() {
 			if (disposed || !retryNeeded || latestTime === null) return;
 			retryNeeded = false;
-			latestGeneration = source.request(latestTime);
+			source.request(latestTime);
 		},
 		stats,
 		dispose() {

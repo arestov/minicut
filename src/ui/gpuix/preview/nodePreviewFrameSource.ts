@@ -37,14 +37,17 @@ export const createNodePreviewFrameSource = (
 	const { producer } = options;
 	const listeners = new Set<Listener>();
 	let latest = 0;
+	/** Newest generation forwarded so far; monotonic display rule. */
+	let lastForwarded = 0;
 	let detach: (() => void) | null = null;
 	let disposed = false;
 
 	const forward = (frame: PreviewFrame): void => {
-		if (frame.generation < latest || listeners.size === 0) {
+		if (frame.generation <= lastForwarded || listeners.size === 0) {
 			frame.release();
 			return;
 		}
+		lastForwarded = frame.generation;
 		// The presenter releases every frame it receives exactly once; with
 		// several subscribers the producer buffer goes back after the last one.
 		const targets = [...listeners];

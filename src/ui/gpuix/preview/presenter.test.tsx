@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createTestRoot } from "@gpuix/solid/testing";
 import { createSignal } from "solid-js";
 import { FramePresenter } from "./FramePresenter";
+import { createNodePreviewFrameSource } from "./nodePreviewFrameSource";
 import { createFramePresenter } from "./presenterController";
 import type { PreviewFrame, PreviewFrameSource } from "./frameSource";
 import { createSyntheticPreviewSource } from "./syntheticFrameSource";
@@ -130,7 +131,7 @@ describe("frame presenter", () => {
 		expect(presenter.stats.presented).toBe(1);
 	});
 
-	test("drops a frame older than the latest request", () => {
+	test("shows a newer frame at once even while newer requests are pending, never an older one", () => {
 		const manual = createManualSource();
 		const uploads: number[] = [];
 		const presenter = createFramePresenter(manual.source, (frame) => {
@@ -141,14 +142,67 @@ describe("frame presenter", () => {
 		presenter.show(1);
 		presenter.show(2);
 		presenter.show(3);
-		// The answer to request 1 arrives after request 3 was made.
+		// The answer to request 1 arrives after request 3 was made: still shown.
 		manual.deliver(1);
 		manual.deliver(3);
-		// And a late answer to request 2 after the newer frame was shown.
+		// A late answer to request 2 must not replace the newer shown frame.
 		manual.deliver(2);
 
-		expect(uploads).toEqual([3]);
-		expect(presenter.stats).toMatchObject({ presented: 1, droppedStale: 2 });
+		expect(uploads).toEqual([1, 3]);
+		expect(presenter.stats).toMatchObject({ presented: 2, droppedStale: 1 });
+	});
+
+	test("a scrub keeps uploading in increasing generation order through the node adapter", () => {
+		const requests: Array<{ time: number; generation: number }> = [];
+		let sink: ((frame: PreviewFrame) => void) | null = null;
+		const released: number[] = [];
+		const source = createNodePreviewFrameSource({
+			producer: {
+				request: (time, generation) => {
+					requests.push({ time, generation });
+				},
+				onFrame: (listener) => {
+					sink = listener;
+					return () => {
+						sink = null;
+					};
+				},
+			},
+			width: WIDTH,
+			height: HEIGHT,
+			pixelRatio: RATIO,
+		});
+		const uploads: number[] = [];
+		const presenter = createFramePresenter(source, (frame) => {
+			uploads.push(frame.pixels[0]);
+			return true;
+		});
+		const emit = (generation: number) => {
+			const pixels = new Uint8Array(BITMAP_WIDTH * BITMAP_HEIGHT * 4).fill(generation);
+			sink?.({
+				width: BITMAP_WIDTH,
+				height: BITMAP_HEIGHT,
+				pixels,
+				generation,
+				release: () => {
+					released.push(generation);
+				},
+			});
+		};
+
+		// A continuous drag: a new request every step, frames answer older ones.
+		for (let step = 1; step <= 6; step += 1) presenter.show(step * 0.1);
+		emit(2);
+		presenter.show(0.7);
+		emit(5); // answers request 5 while requests 6 and 7 are pending
+		emit(4); // late: older than the frame shown
+		presenter.show(0.8);
+		emit(7);
+
+		expect(requests.map((r) => r.generation)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+		expect(uploads).toEqual([2, 5, 7]);
+		expect(released).toEqual([2, 5, 4, 7]);
+		expect(presenter.stats).toMatchObject({ presented: 3, droppedStale: 0 });
 	});
 
 	test("releases every delivered frame once, so a two-buffer pool never runs dry", () => {
@@ -237,12 +291,12 @@ describe("frame presenter", () => {
 		expect(uploads[0].includes(255)).toBe(false);
 
 		// Short buffer for its stride, stride below the row, unknown format.
-		manual.deliverCustom({ pixels: new Uint8Array(stride), stride, generation: 1 });
-		manual.deliverCustom({ pixels: new Uint8Array(tightRow * BITMAP_HEIGHT), stride: tightRow - 4, generation: 1 });
+		manual.deliverCustom({ pixels: new Uint8Array(stride), stride, generation: 2 });
+		manual.deliverCustom({ pixels: new Uint8Array(tightRow * BITMAP_HEIGHT), stride: tightRow - 4, generation: 3 });
 		manual.deliverCustom({
 			pixels: new Uint8Array(tightRow * BITMAP_HEIGHT),
 			format: "bgra8" as never,
-			generation: 1,
+			generation: 4,
 		});
 		expect(presenter.stats).toMatchObject({ presented: 1, droppedInvalid: 3 });
 		expect(manual.counts().released).toBe(manual.counts().delivered);

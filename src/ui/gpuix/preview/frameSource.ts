@@ -22,7 +22,10 @@ export type PreviewFrame = {
 	format?: PreviewFrameFormat;
 	/**
 	 * The `request` generation this frame answers. Staleness is decided on
-	 * this value only.
+	 * this value only, by the display rule: a frame is shown when its
+	 * generation is greater than the generation of the last frame shown, even
+	 * if newer requests are still pending (a continuous scrub keeps
+	 * updating); a frame not newer than the last shown one is dropped.
 	 */
 	generation: number;
 	/** Identity of the producing stream (informational; not used for staleness). */
@@ -50,8 +53,9 @@ export type PreviewFrameSource = {
 	readonly pixelRatio: number;
 	/**
 	 * Asks for the frame at a timeline time and returns the generation of the
-	 * request. A frame may arrive later (and out of order with newer
-	 * requests); it carries the generation it answers.
+	 * request (strictly increasing). A frame may arrive later (and out of
+	 * order with newer requests, or synchronously before this returns); it
+	 * carries the generation it answers.
 	 */
 	request(timeSeconds: number): number;
 	/** Registers the frame listener; returns the unsubscribe function. */
