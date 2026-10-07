@@ -142,6 +142,37 @@ describe("MiniCut CRDT durable reinit", () => {
 		await restarted.close();
 	});
 
+	it("restores a local-asset resource through storage without rewriting its source kind", async () => {
+		const ctx = await bootDktModels({
+			crdt: {
+				enabled: true,
+				peerId: "durable-local-asset",
+				storage: createIndexedDbStorage(),
+				transport: null,
+			},
+		});
+		await ctx.lockToRead(async () => {
+			await ctx.sessionRoot.dispatch("createProject", { title: "Local asset durability" });
+		});
+		const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0]!;
+		await ctx.lockToRead(async () => {
+			await project.dispatch("importResource", {
+				name: "registry.mp4", kind: "video", url: "", mime: "video/mp4", duration: 4, status: "ready",
+				sourceKind: "local-asset", sourceRef: "asset:registry-durable",
+			});
+		});
+		const resource = (await ctx.queryRel(project, "resources"))[0]!;
+		expect(await ctx.queryAttr(resource, "sourceKind")).toBe("local-asset");
+
+		const restarted = await reinitContext(ctx, "durable-local-asset");
+		const restored = findModel(restarted, String(resource._node_id));
+		expect(await restarted.queryAttr(restored, "sourceKind")).toBe("local-asset");
+		expect(await restarted.queryAttr(restored, "sourceRef")).toBe("asset:registry-durable");
+
+		await ctx.close();
+		await restarted.close();
+	});
+
 	it("restores graph and durable CRDT log, then continues editing", async () => {
 		const ctx = await bootDktModels({
 			crdt: {

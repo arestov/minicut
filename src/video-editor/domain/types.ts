@@ -11,6 +11,7 @@ export type ResourceDurableSourceKind =
 	| "file-handle"
 	| "object-url"
 	| "remote-url"
+	| "local-asset"
 	| "missing";
 export type ResourceDurableStatus = "ready" | "needs-permission" | "missing";
 export type ResourceAssetStorageKind = "linked" | "project-copy";

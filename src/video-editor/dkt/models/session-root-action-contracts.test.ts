@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from "../../models/sessionZoom";
+import { queryAttr } from "../testingInit";
 import { expectProjectGraphInvariants } from "../test/projectGraphAssertions";
 import {
 	createActionContractHarness,
@@ -419,6 +420,40 @@ describe("SessionRoot action contracts", () => {
 			await readNodeIds(harness.ctx, harness.project, "resources"),
 		).toHaveLength(beforeResourceIds.length + 1);
 		await expectProjectGraphInvariants(harness.ctx);
+	});
+
+	it("importResourceIntoActiveProject keeps the local-asset durable source kind and asset id", async () => {
+		const harness = await createActionContractHarness();
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"importResourceIntoActiveProject",
+			{
+				name: "Registry Asset Video",
+				kind: "video",
+				url: "",
+				mime: "video/mp4",
+				duration: 5,
+				sourceKind: "local-asset",
+				sourceRef: "asset:registry-1",
+				source: { kind: "local" },
+				status: "ready",
+			},
+		);
+
+		const resources = await harness.ctx.queryRel(harness.project, "resources");
+		let created: (typeof resources)[number] | null = null;
+		for (const resource of resources) {
+			if ((await queryAttr(resource, "name")) === "Registry Asset Video") {
+				created = resource;
+			}
+		}
+		if (!created) {
+			throw new Error("Expected created resource");
+		}
+		expect(await queryAttr(created, "sourceKind")).toBe("local-asset");
+		expect(await queryAttr(created, "sourceRef")).toBe("asset:registry-1");
 	});
 
 	it("active project timeline forwarding creates video and embedded audio clips", async () => {

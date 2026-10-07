@@ -105,6 +105,7 @@ const asResourceDurableSourceKind = (
 		value === "file-handle" ||
 		value === "object-url" ||
 		value === "remote-url" ||
+		value === "local-asset" ||
 		value === "missing"
 	) {
 		return value;
