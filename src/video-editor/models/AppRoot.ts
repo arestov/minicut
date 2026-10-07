@@ -37,9 +37,6 @@ import {
 import { EditorSessionRoot } from "./SessionRoot";
 import { Text } from "./Text";
 import { Track } from "./Track";
-import {
-	MEDIA_RESTORE_API_USED,
-} from "./mediaRestoreBoot";
 
 const appProps = mergeDcl({
 	init: (target: unknown) => {
@@ -128,8 +125,6 @@ const appProps = mergeDcl({
 	},
 	attrs: {
 		activeReviewItemId: ["input", null],
-		// Framework stamp of the boot restore interface (set on attach, reset on reinit).
-		[MEDIA_RESTORE_API_USED]: ["input", null],
 
 		projectMetaList: ["input", []],
 		hasProjects: [
@@ -144,8 +139,6 @@ const appProps = mergeDcl({
 		attrs: {
 			activeReviewItemId: { sync: false, reason: "projection" },
 			projectMetaList: { sync: false, reason: "projection" },
-			// TODO(dkt): framework-owned after DKT fix
-			[MEDIA_RESTORE_API_USED]: { sync: false, reason: "effect-runtime" },
 		},
 			rels: {
 			$session_root: { sync: false, reason: "framework-owned" },

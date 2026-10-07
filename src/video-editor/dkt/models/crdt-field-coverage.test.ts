@@ -52,7 +52,6 @@ const MODEL_CASES: ModelCase[] = [
 			attrs: {
 				activeReviewItemId: "projection",
 				projectMetaList: "projection",
-				$meta$apis$mediaRestoreRuntime$used: "effect-runtime",
 			},
 			rels: {
 				common_session_root: "projection",
