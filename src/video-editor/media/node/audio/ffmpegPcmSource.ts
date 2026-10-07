@@ -1,11 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { MediaError } from "../mediaError";
 import { killProcessTree } from "../processRunner";
-import {
-	PCM_BYTES_PER_FRAME,
-	PCM_SAMPLE_RATE,
-	type PcmSource,
-} from "./pcmSource";
+import { createPcmBuffer } from "./pcmBuffer";
+import { PCM_SAMPLE_RATE, type PcmSource } from "./pcmSource";
 
 export type FfmpegPcmSourceOptions = {
 	ffmpegPath: string;
@@ -40,8 +37,7 @@ export const createFfmpegPcmSource = (
 ): FfmpegPcmSource => {
 	const highWater = options.highWaterFrames ?? PCM_SAMPLE_RATE;
 	const lowWater = options.lowWaterFrames ?? PCM_SAMPLE_RATE / 2;
-	let chunks: Buffer[] = [];
-	let bytes = 0;
+	const buffer = createPcmBuffer();
 	let producerDone = false;
 	let cancelled = false;
 	let failure: Error | null = null;
@@ -59,7 +55,7 @@ export const createFfmpegPcmSource = (
 
 	let waiters: Array<{ frames: number; resolve: () => void }> = [];
 	const settleWaiters = (): void => {
-		const available = Math.floor(bytes / PCM_BYTES_PER_FRAME);
+		const available = buffer.frames;
 		const remaining: typeof waiters = [];
 		for (const waiter of waiters) {
 			if (producerDone || cancelled || available >= waiter.frames) waiter.resolve();
@@ -69,7 +65,7 @@ export const createFfmpegPcmSource = (
 	};
 
 	const stdout = child.stdout;
-	const frames = (): number => Math.floor(bytes / PCM_BYTES_PER_FRAME);
+	const frames = (): number => buffer.frames;
 	const updateFlow = (): void => {
 		if (!stdout || producerDone) return;
 		if (frames() >= highWater) stdout.pause();
@@ -78,8 +74,7 @@ export const createFfmpegPcmSource = (
 
 	stdout?.on("data", (chunk: Buffer) => {
 		if (cancelled) return;
-		chunks.push(chunk);
-		bytes += chunk.length;
+		buffer.push(chunk);
 		updateFlow();
 		settleWaiters();
 	});
@@ -113,22 +108,10 @@ export const createFfmpegPcmSource = (
 		settleWaiters();
 	});
 
-	/** Copies exactly `count` frames out of the chunk list. */
 	const take = (count: number): Float32Array => {
-		const need = count * PCM_BYTES_PER_FRAME;
-		const out = new Uint8Array(need);
-		let offset = 0;
-		while (offset < need) {
-			const head = chunks[0] as Buffer;
-			const part = Math.min(head.length, need - offset);
-			out.set(head.subarray(0, part), offset);
-			offset += part;
-			if (part === head.length) chunks.shift();
-			else chunks[0] = head.subarray(part);
-		}
-		bytes -= need;
+		const out = buffer.take(count);
 		updateFlow();
-		return new Float32Array(out.buffer, 0, count * 2);
+		return out;
 	};
 
 	return {
@@ -169,8 +152,7 @@ export const createFfmpegPcmSource = (
 				return;
 			}
 			cancelled = true;
-			chunks = [];
-			bytes = 0;
+			buffer.clear();
 			settleWaiters();
 			await killProcessTree(child);
 			await closed;
