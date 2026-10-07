@@ -252,7 +252,6 @@ const MODEL_CASES: ModelCase[] = [
 				storageOpenStatus: "projection",
 				isCommonRoot: "projection",
 				tabId: "projection",
-				activeProjectId: "projection",
 				pendingProjectInit: "projection",
 				selectedEntityId: "projection",
 				activeInspectorTab: "projection",

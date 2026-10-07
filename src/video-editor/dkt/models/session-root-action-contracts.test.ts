@@ -31,7 +31,7 @@ describe("SessionRoot action contracts", () => {
 		expect(typeof projectsAfter[0]?._node_id).toBe("string");
 	});
 
-	it("handleInit repairs active project rel when activeProjectId is already set", async () => {
+	it("handleInit restores the active project rel when it is empty", async () => {
 		const harness = await createActionContractHarness();
 		const activeProjectId = String(harness.project._node_id);
 
@@ -44,9 +44,9 @@ describe("SessionRoot action contracts", () => {
 		expect(
 			await harness.ctx.queryRel(harness.sessionRoot, "activeProject"),
 		).toHaveLength(0);
-		expect(harness.ctx.getAttr(harness.sessionRoot, "activeProjectId")).toBe(
-			activeProjectId,
-		);
+		expect(
+			harness.ctx.getAttr(harness.sessionRoot, "activeProjectId"),
+		).toBeNull();
 
 		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "handleInit");
 

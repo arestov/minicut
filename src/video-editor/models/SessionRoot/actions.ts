@@ -13,7 +13,6 @@ import { PROJECT_CREATION_SHAPE } from "../Project";
 
 /** Inline session state patch type – replaces legacy EditorSessionState from domain/types. */
 type SessionStateFields = {
-	activeProjectId: string | null;
 	pendingProjectInit: Record<string, unknown> | null;
 	selectedEntityId: string | null;
 	cursor: number;
@@ -84,7 +83,6 @@ export type DktSessionActionName =
 export type DktSessionActionPatch = Partial<
 	Pick<
 		SessionStateFields,
-		| "activeProjectId"
 		| "selectedEntityId"
 		| "cursor"
 		| "playbackIntent"
@@ -368,12 +366,8 @@ export const reduceSessionSelectEntityAction = (
 });
 
 export const reduceSessionSetActiveProjectAction = (
-	payload: unknown,
-): Pick<
-	SessionStateFields,
-	"activeProjectId" | "selectedEntityId" | "cursor"
-> => ({
-	activeProjectId: typeof payload === "string" ? payload : null,
+	_payload: unknown,
+): Pick<SessionStateFields, "selectedEntityId" | "cursor"> => ({
 	selectedEntityId: null,
 	cursor: 0,
 });
@@ -425,7 +419,6 @@ export const sessionSelectEntityAction = {
 export const sessionCreateProjectAction = [
 	{
 		to: {
-			activeProjectId: ["activeProjectId"],
 			selectedEntityId: ["selectedEntityId"],
 			cursor: ["cursor"],
 			createdProject: [
@@ -460,7 +453,6 @@ export const sessionCreateProjectAction = [
 				);
 
 				return {
-					activeProjectId: null,
 					selectedEntityId: null,
 					cursor: 0,
 					createdProject: {
@@ -474,18 +466,6 @@ export const sessionCreateProjectAction = [
 		],
 	},
 	{
-		to: {
-			activeProjectId: ["activeProjectId"],
-		},
-		fn: [
-			["< @one:_node_id < activeProject"] as const,
-			(_payload: unknown, projectNodeId: unknown) => ({
-				activeProjectId:
-					typeof projectNodeId === "string" ? projectNodeId : null,
-			}),
-		],
-	},
-	{
 		to: ["<< activeProject", { action: "handleInit", sub_flow: true }],
 		fn: () => ({}),
 	},
@@ -494,7 +474,6 @@ export const sessionCreateProjectAction = [
 export const sessionHandleInitAction = [
 	{
 		to: {
-			activeProjectId: ["activeProjectId"],
 			pendingProjectInit: ["pendingProjectInit"],
 			selectedEntityId: ["selectedEntityId"],
 			cursor: ["cursor"],
@@ -528,7 +507,7 @@ export const sessionHandleInitAction = [
 		},
 		fn: [
 			[
-				"activeProjectId",
+				"<< @one:activeProject",
 				"storageOpenStatus",
 				"<< @all:pioneer.project",
 				"< @all:title < pioneer.project",
@@ -537,23 +516,15 @@ export const sessionHandleInitAction = [
 			] as const,
 			(
 				payload: unknown,
-				activeProjectId: unknown,
+				currentActiveProject: unknown,
 				storageOpenStatus: unknown,
 				projects: unknown,
 				projectTitles: unknown,
 				now: unknown,
 				lastActiveProject: unknown,
 			) => {
-				if (typeof activeProjectId === "string" && activeProjectId) {
-					const existingProjects = Array.isArray(projects) ? projects : [];
-					const activeProject = existingProjects.find(
-						(item) =>
-							asString((item as { _node_id?: unknown } | null)?._node_id) ===
-							activeProjectId,
-					);
-					return activeProject
-						? { pendingProjectInit: null, existingProject: activeProject }
-						: { pendingProjectInit: null };
+				if (currentActiveProject) {
+					return { pendingProjectInit: null };
 				}
 
 				const existingProjects = Array.isArray(projects) ? projects : [];
@@ -562,7 +533,6 @@ export const sessionHandleInitAction = [
 				const startProject = lastActiveProject || existingProjects.find(Boolean);
 				if (startProject) {
 					return {
-						activeProjectId: null,
 						pendingProjectInit: null,
 						selectedEntityId: null,
 						cursor: 0,
@@ -573,7 +543,6 @@ export const sessionHandleInitAction = [
 
 				if (storageOpenStatus !== WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY) {
 					return {
-						activeProjectId: null,
 						pendingProjectInit: null,
 						selectedEntityId: null,
 						cursor: 0,
@@ -587,7 +556,6 @@ export const sessionHandleInitAction = [
 					now,
 				);
 				return {
-					activeProjectId: null,
 					pendingProjectInit: seed,
 					selectedEntityId: null,
 					cursor: 0,
@@ -602,41 +570,11 @@ export const sessionHandleInitAction = [
 		],
 	},
 	{
-		to: {
-			activeProjectId: ["activeProjectId"],
-		},
-		when_deps: ["pendingProjectInit"] as const,
-		when_fn: (_payload: unknown, pendingProjectInit: unknown) =>
-			pendingProjectInit == null,
-		fn: [
-			["< @one:_node_id < activeProject"] as const,
-			(_payload: unknown, projectNodeId: unknown) => ({
-				activeProjectId:
-					typeof projectNodeId === "string" ? projectNodeId : null,
-			}),
-		],
-	},
-	{
 		to: ["<< activeProject", { action: "handleInit", sub_flow: true }],
 		when_deps: ["pendingProjectInit"] as const,
 		when_fn: (_payload: unknown, pendingProjectInit: unknown) =>
 			Boolean(pendingProjectInit && typeof pendingProjectInit === "object"),
 		fn: () => ({}),
-	},
-	{
-		to: {
-			activeProjectId: ["activeProjectId"],
-		},
-		when_deps: ["pendingProjectInit"] as const,
-		when_fn: (_payload: unknown, pendingProjectInit: unknown) =>
-			Boolean(pendingProjectInit && typeof pendingProjectInit === "object"),
-		fn: [
-			["< @one:_node_id < activeProject"] as const,
-			(_payload: unknown, projectNodeId: unknown) => ({
-				activeProjectId:
-					typeof projectNodeId === "string" ? projectNodeId : null,
-			}),
-		],
 	},
 	{
 		to: {
@@ -649,14 +587,8 @@ export const sessionHandleInitAction = [
 export const sessionSetActiveProjectAction = [
 	{
 		to: {
-			activeProjectId: ["activeProjectId"],
 			selectedEntityId: ["selectedEntityId"],
 			cursor: ["cursor"],
-		},
-		fn: reduceSessionSetActiveProjectAction,
-	},
-	{
-		to: {
 			activeProject: [
 				"<< activeProject",
 				{ method: "set_one", can_use_refs: true },
@@ -667,10 +599,12 @@ export const sessionSetActiveProjectAction = [
 			],
 		},
 		fn: [
-			["<< @all:pioneer.project", "activeProjectId"] as const,
-			(_payload: unknown, projects: unknown, activeProjectId: unknown) => {
+			["<< @all:pioneer.project"] as const,
+			(payload: unknown, projects: unknown) => {
+				const reset = reduceSessionSetActiveProjectAction(payload);
+				const activeProjectId = payload;
 				if (typeof activeProjectId !== "string" || !activeProjectId)
-					return { activeProject: null };
+					return { ...reset, activeProject: null };
 				const modelList = Array.isArray(projects) ? projects : [];
 				const found = modelList.find(
 					(item) =>
@@ -678,8 +612,8 @@ export const sessionSetActiveProjectAction = [
 						activeProjectId,
 				);
 				return found
-					? { activeProject: found, lastActiveProject: found }
-					: { activeProject: null };
+					? { ...reset, activeProject: found, lastActiveProject: found }
+					: { ...reset, activeProject: null };
 			},
 		],
 	},

@@ -75,17 +75,7 @@ export const EditorSessionRoot = model({
 			null,
 			{ aggregate: { name: "sessionProjection", role: "projection", as: "tabId" } },
 		],
-		activeProjectId: [
-			"input",
-			null,
-			{
-				aggregate: {
-					name: "sessionProjection",
-					role: "projection",
-					as: "activeProjectId",
-				},
-			},
-		],
+		activeProjectId: ["comp", ["< @one:_node_id < activeProject"] as const],
 		pendingProjectInit: [
 			"input",
 			null,

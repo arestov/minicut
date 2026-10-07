@@ -18,6 +18,9 @@ describe("SessionRoot: createProject behavior contract", () => {
 		expect(project._node_id).toBe(
 			ctx.getAttr(ctx.sessionRoot, "activeProjectId"),
 		);
+		expect(
+			ctx.getAttr(ctx.sessionRoot, "$meta$rels$activeProject$exists"),
+		).toBe(true);
 		expect(ctx.getAttr(project, "title")).toBe("SessionRoot test project");
 
 		const tracks = await ctx.queryRel(project, "tracks");
@@ -74,6 +77,10 @@ describe("SessionRoot: createProject behavior contract", () => {
 			await ctx.sessionRoot.dispatch("setActiveProject", projectA._node_id);
 		});
 
+		const switched = await ctx.queryRel(ctx.sessionRoot, "activeProject");
+		expect(switched.map((project) => project._node_id)).toEqual([
+			projectA._node_id,
+		]);
 		expect(ctx.getAttr(ctx.sessionRoot, "activeProjectId")).toBe(
 			projectA._node_id,
 		);

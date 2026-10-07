@@ -5,7 +5,11 @@ import { bootDktModels } from "../testingInit";
 
 type Ctx = Awaited<ReturnType<typeof bootDktModels>>;
 
-const openSession = async (ctx: Ctx, sessionKey: string) => {
+const openSession = async (
+	ctx: Ctx,
+	sessionKey: string,
+	extraAttrs: Record<string, unknown> = {},
+) => {
 	let session: Ctx["sessionRoot"] | undefined;
 	await ctx.lockToRead(async () => {
 		session = (await hookSessionRoot(ctx.appModel, {
@@ -14,6 +18,7 @@ const openSession = async (ctx: Ctx, sessionKey: string) => {
 				sessionKey,
 				route: null,
 				storageOpenStatus: ctx.getAttr(ctx.sessionRoot, "storageOpenStatus"),
+				...extraAttrs,
 			},
 		})) as Ctx["sessionRoot"];
 		await addSessionRoot(ctx.appModel as never, session as never);
@@ -55,6 +60,19 @@ describe("a new session opens the last active project", () => {
 		// Export is enabled by the active project id attr.
 		expect(opened.projectId).toBe(opened.nodeId);
 		expect(opened.projectId).not.toBeNull();
+	});
+
+	it("ignores an activeProjectId value stored by older code", async () => {
+		const ctx = await bootDktModels();
+		await create(ctx, "A");
+		await create(ctx, "B");
+
+		const restored = await openSession(ctx, "restored", {
+			activeProjectId: "stale-project-id",
+		});
+		const opened = await activeTitle(ctx, restored);
+		expect(opened.title).toBe("B");
+		expect(opened.projectId).toBe(opened.nodeId);
 	});
 
 	it("follows a switch made in an existing window", async () => {
