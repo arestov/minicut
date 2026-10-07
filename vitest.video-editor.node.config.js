@@ -24,6 +24,8 @@ export default defineConfig({
 			'src/video-editor/node/**/*.test.ts',
 			'src/video-editor/media/node/**/*.test.ts',
 			'src/video-editor/adapters/node/**/*.test.ts',
+			'src/video-editor/adapters/transport/**/*.test.ts',
+			'src/video-editor/hosts/electron/**/*.test.ts',
 			'src/video-editor/worker/*contract.test.ts',
 			'src/video-editor/worker/authorityRuntimeParity.test.ts',
 			'src/video-editor/domain/protocolCompatibility.test.ts',

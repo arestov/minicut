@@ -1,8 +1,9 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog } from "electron";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain } from "electron";
 import { createBrowserEffectInterfaces } from "../../../adapters/web/createBrowserEffectInterfaces";
 import { startDesktopApp, type DesktopApp } from "./desktopApp";
+import { createWindowConnector, type MessageChannelLike } from "./windowConnector";
 
 const mainDir = path.dirname(fileURLToPath(import.meta.url));
 const distRoot = path.resolve(mainDir, "..");
@@ -12,6 +13,10 @@ const userDataOverride = process.env.MINICUT_USER_DATA_DIR;
 if (userDataOverride) {
 	app.setPath("userData", userDataOverride);
 }
+
+const rendererFileUrlPrefix = pathToFileURL(
+	path.join(distRoot, "renderer") + path.sep,
+).href;
 
 let desktopApp: DesktopApp | null = null;
 let disposing = false;
@@ -56,6 +61,14 @@ const startApp = async (): Promise<void> => {
 		app.exit(1);
 		return;
 	}
+	createWindowConnector({
+		runtime: desktopApp.host.runtime,
+		sessionKey: desktopApp.host.identity.roomId,
+		// MessagePortMain structurally matches the port the transport needs.
+		createMessageChannel: () => new MessageChannelMain() as unknown as MessageChannelLike,
+		ipcMain,
+		isTrustedRendererUrl: (url) => url.startsWith(rendererFileUrlPrefix),
+	});
 	await createWindow();
 };
 

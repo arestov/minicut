@@ -21,6 +21,7 @@ export default defineConfig({
 	},
 	build: {
 		outDir: path.resolve(__dirname, 'dist-electron/renderer'),
+		target: 'esnext',
 		emptyOutDir: true,
 	},
 	server: {
