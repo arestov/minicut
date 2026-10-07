@@ -89,9 +89,13 @@ export const Toolbar = () => {
 							dispatch("play");
 							return;
 						}
-						// The model derives where the run is now; only the run id guards staleness.
+						// Pause at the presented position (PlaybackRuntime snapshot, timeline time).
+						// Later the audio clock drives that snapshot; the action does not change.
 						const run = host?.playback?.();
-						dispatch("pausePlayback", run?.runId != null ? { runId: run.runId } : {});
+						dispatch("pausePlayback", {
+							...(run?.runId != null ? { runId: run.runId } : {}),
+							...(run ? { cursor: run.presentationTime } : {}),
+						});
 					}}
 				>
 					<text>{session.playbackIntent() === "playing" ? "Pause" : "Play"}</text>

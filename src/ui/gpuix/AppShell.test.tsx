@@ -224,8 +224,8 @@ describe("AppShell host services", () => {
 		expect(view.texts()).toContain("1 source file is missing");
 	});
 
-	test("the play control starts and pauses a model playback run without sending a cursor", async () => {
-		// A run the model started: pausing sends only the run id; the model derives the cursor.
+	test("the play control starts and pauses a model playback run at the presented cursor", async () => {
+		// A run the model started: pausing sets the model cursor to the presented position.
 		const host = {
 			importFromDialog: async () => {},
 			exportDirectory: "d",
@@ -250,6 +250,6 @@ describe("AppShell host services", () => {
 
 		view.click("play-toggle");
 		await view.untilAttr(view.rootScope, "playbackIntent", (v) => v === "paused");
-		await view.untilAttr(view.rootScope, "cursor", (v) => typeof v === "number" && v >= 0 && v !== 1.5);
+		await view.untilAttr(view.rootScope, "cursor", (v) => v === 1.5);
 	});
 });

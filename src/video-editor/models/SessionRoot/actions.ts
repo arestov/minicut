@@ -793,11 +793,14 @@ type PausePlaybackDeps = {
 };
 
 /**
- * Pause position. `payload.cursor` is an optional override: a clock owner that
- * knows the real position (the audio playback executor) may send it. Without
- * it the model derives the position at this event from the run it started:
- * `playStartCursor + (now - playStartedAt) / 1000 * playbackRate`, clamped to
- * `[0, playbackBoundaryCursor]`. The cursor is never ticked during playback.
+ * Pause position. UI pauses send `payload.cursor` from the presentation clock
+ * (PlaybackRuntime snapshot `presentationTime`, timeline time); that is the
+ * source of truth and is only clamped to `[0, playbackBoundaryCursor]`. Later
+ * the audio clock drives the same snapshot through the runtime clock
+ * interface; the action and protocol stay unchanged. Without a cursor
+ * (non-UI pauses) the model derives the position at this event from the run
+ * it started: `playStartCursor + (now - playStartedAt) / 1000 * playbackRate`.
+ * The cursor is never ticked during playback.
  */
 export const reducePausePlayback = (
 	payload: unknown,
