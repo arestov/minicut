@@ -149,12 +149,16 @@ describe('desktop host in real Electron windows', () => {
 	})
 
 	it('fails a second app on the profile of a running one with the typed database error', async () => {
-		const result = await runInElectron<{ failure: { name: string; message: string } | null }>(body, {
+		const result = await runInElectron<{
+			failure: { name: string; message: string; locked: boolean; title: string } | null
+		}>(body, {
 			userDataDir: newProfile(),
 			params: { scenario: 'profileLocked' },
 		})
 
 		expect(result.failure?.name).toBe('NodeLevelDbStorageOpenError')
+		expect(result.failure?.locked).toBe(true)
+		expect(result.failure?.title).toBe('MiniCut is already open with this profile')
 		expect(result.failure?.message).toMatch(/Failed to open MiniCut LevelDB storage/)
 	})
 })

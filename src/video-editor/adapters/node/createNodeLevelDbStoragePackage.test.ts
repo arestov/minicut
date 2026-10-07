@@ -70,9 +70,30 @@ describe("createNodeLevelDbStoragePackage", () => {
 			);
 			expect(error).toBeInstanceOf(NodeLevelDbStorageOpenError);
 			expect((error as NodeLevelDbStorageOpenError).storagePath).toBe(storagePath);
+			// A held lock is told apart from other open failures.
+			expect((error as NodeLevelDbStorageOpenError).locked).toBe(true);
 		} finally {
 			await owner.close?.();
 		}
+	});
+
+	it("does not call another open failure a lock", async () => {
+		class BrokenLevel {
+			constructor() {
+				throw new Error("corrupted manifest");
+			}
+		}
+
+		const error = await createNodeLevelDbStoragePackage({
+			storagePath: path.join(tempDir, "db"),
+			Level: BrokenLevel as never,
+		}).then(
+			() => null,
+			(reason: unknown) => reason,
+		);
+
+		expect(error).toBeInstanceOf(NodeLevelDbStorageOpenError);
+		expect((error as NodeLevelDbStorageOpenError).locked).toBe(false);
 	});
 
 	it("requires a storage path", async () => {

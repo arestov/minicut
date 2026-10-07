@@ -10,9 +10,14 @@ import {
 	utilityProcess,
 } from "electron";
 import { MINICUT_APP_URL_PREFIX, MINICUT_RENDERER_ENTRY_URL } from "../shared/ipcChannels";
+import {
+	resolveExportDir,
+	resolveProfileDir,
+} from "../../../adapters/node/desktopProfileConfig";
 import { startDesktopApp, type DesktopApp } from "./desktopApp";
 import { createEditorWindow } from "./editorWindow";
 import { registerMiniCutScheme } from "./registerProtocol";
+import { describeStartupFailure } from "./startupFailure";
 
 const mainDir = path.dirname(fileURLToPath(import.meta.url));
 const distRoot = path.resolve(mainDir, "..");
@@ -20,7 +25,9 @@ const distRoot = path.resolve(mainDir, "..");
 // Privileged schemes must be registered before the app is ready.
 registerMiniCutScheme(protocol);
 
-// Tests and tooling point the profile at a throwaway directory.
+// Chromium's own data (cache, cookies) lives in userData; tests and tooling
+// point it at a throwaway directory. The workspace profile is a separate
+// folder that the GPUIX app shares (MINICUT_PROFILE_DIR), used in turn.
 const userDataOverride = process.env.MINICUT_USER_DATA_DIR;
 if (userDataOverride) {
 	app.setPath("userData", userDataOverride);
@@ -41,21 +48,20 @@ const openWindow = () =>
 	});
 
 const startApp = async (): Promise<void> => {
+	const profileDir = resolveProfileDir();
 	try {
-		const profileDir = app.getPath("userData");
 		desktopApp = await startDesktopApp({
 			profileDir,
 			rendererDir: path.join(distRoot, "renderer"),
 			mediaServiceEntryPath: path.join(distRoot, "utility", "mediaService.mjs"),
-			exportDirectory: path.join(profileDir, "exports"),
+			exportDirectory: resolveExportDir(profileDir),
 			electron: { ipcMain, protocol, MessageChannelMain, utilityProcess },
 			trustedRendererUrlPrefixes: devServerUrl ? [devServerUrl] : [],
 		});
 	} catch (error) {
-		dialog.showErrorBox(
-			"MiniCut cannot open the workspace",
-			error instanceof Error ? error.message : String(error),
-		);
+		const failure = describeStartupFailure(error, profileDir);
+		console.error("[minicut:electron] startup failed", failure.kind, error);
+		dialog.showErrorBox(failure.title, failure.detail);
 		app.exit(1);
 		return;
 	}

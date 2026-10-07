@@ -15,6 +15,8 @@ import {
 	type HarnessCtx,
 } from './_harness/desktopDriver'
 
+import { describeStartupFailure } from '../../src/video-editor/hosts/electron/main/startupFailure'
+
 export const beforeReady = registerSchemeBeforeReady
 
 type Ctx = HarnessCtx
@@ -173,12 +175,17 @@ const scenarios = {
 	/** A second app on the profile of a running one fails with the typed database error. */
 	async profileLocked({ electron, ctx }: { electron: Electron; ctx: Ctx }) {
 		const { desktop } = await startTestDesktop({ electron, ctx })
-		let failure: { name: string; message: string } | null = null
+		let failure: { name: string; message: string; locked: boolean; title: string } | null = null
 		try {
 			const second = await startTestDesktop({ electron, ctx })
 			await second.desktop.dispose()
 		} catch (error) {
-			failure = { name: (error as Error).name, message: (error as Error).message }
+			failure = {
+				name: (error as Error).name,
+				message: (error as Error).message,
+				locked: Boolean((error as { locked?: boolean }).locked),
+				title: describeStartupFailure(error, ctx.userDataDir).title,
+			}
 		}
 		await desktop.dispose()
 		return { failure }

@@ -14,8 +14,20 @@ export type CreateNodeLevelDbStoragePackageOptions = {
 	Level?: NodeLevelDbStorageLevelClass;
 };
 
+/** True when some error in the cause chain is LevelDB's `LEVEL_LOCKED`: another process owns the database. */
+export const isLevelDbLockedError = (error: unknown): boolean => {
+	let current: unknown = error;
+	for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
+		if ((current as { code?: unknown }).code === "LEVEL_LOCKED") return true;
+		current = (current as { cause?: unknown }).cause;
+	}
+	return false;
+};
+
 export class NodeLevelDbStorageOpenError extends Error {
 	readonly storagePath: string;
+	/** Another process (a second MiniCut app on this profile) holds the database. */
+	readonly locked: boolean;
 
 	constructor(storagePath: string, cause: unknown) {
 		const reason = cause instanceof Error ? cause.message : String(cause);
@@ -24,6 +36,7 @@ export class NodeLevelDbStorageOpenError extends Error {
 		});
 		this.name = "NodeLevelDbStorageOpenError";
 		this.storagePath = storagePath;
+		this.locked = isLevelDbLockedError(cause);
 	}
 }
 
