@@ -25,6 +25,8 @@ export interface PcmSource {
 	pull(frames: number): Float32Array | null;
 	/** Drops up to `frames` buffered frames and returns how many were dropped. */
 	skip(frames: number): number;
+	/** Resolves when `frames` are buffered, or the stream ended, failed or was cancelled first. */
+	ready(frames: number): Promise<void>;
 	/** Stops the producer and releases its resources. Idempotent. */
 	cancel(): Promise<void>;
 }
@@ -36,5 +38,6 @@ export const createEmptyPcmSource = (): PcmSource => ({
 	error: null,
 	pull: () => null,
 	skip: () => 0,
+	ready: () => Promise.resolve(),
 	cancel: () => Promise.resolve(),
 });

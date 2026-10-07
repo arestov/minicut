@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { AudioMixDescriptor } from "../../../video-editor/media/contracts/audioStream";
 import { createEmptyPcmSource, type PcmSource } from "../../../video-editor/media/node/audio/pcmSource";
 import type { PlaybackClock } from "../../../video-editor/playback/playbackRuntime";
+import type { PcmMixCache } from "../../../video-editor/media/node/audio/pcmMixCache";
 import type { AudioMixController } from "./audioMixController";
 import { createDesktopAudio, type DesktopAudioContext } from "./desktopAudio";
 
@@ -78,7 +79,25 @@ const systemClock = (): PlaybackClock & { now: number } => {
 	return clock;
 };
 
-const setup = (mix: AudioMixDescriptor | null = mixOf()) => {
+const fakeCache = (ready: boolean) => {
+	const prepared: AudioMixDescriptor[] = [];
+	const opened: number[] = [];
+	const cache: PcmMixCache = {
+		prepare: (mix) => void prepared.push(mix),
+		open: (_mix, startSeconds) => {
+			if (!ready) return null;
+			opened.push(startSeconds);
+			return createEmptyPcmSource();
+		},
+		status: () => null,
+		whenWritten: () => Promise.resolve(),
+		idle: () => Promise.resolve(),
+		dispose: () => Promise.resolve(),
+	};
+	return { cache, prepared, opened };
+};
+
+const setup = (mix: AudioMixDescriptor | null = mixOf(), cache?: PcmMixCache) => {
 	const context = fakeContext();
 	const fallback = systemClock();
 	const mixes = fakeMix(mix);
@@ -87,6 +106,7 @@ const setup = (mix: AudioMixDescriptor | null = mixOf()) => {
 		context,
 		mix: mixes.controller,
 		fallbackClock: fallback,
+		...(cache ? { cache } : {}),
 		systemMonotonicMs: () => fallback.now,
 		openStream: (request) => {
 			opened.push({ startSeconds: request.startSeconds });
@@ -161,4 +181,29 @@ test("dispose releases the device and detaches listeners", async () => {
 	mixes.set(mixOf());
 	expect(changes).toEqual([]);
 	expect(context.onstatechange).toBeNull();
+});
+
+test("seeks read the rendered cache when it holds the position and stream directly otherwise", () => {
+	const ready = fakeCache(true);
+	const withCache = setup(mixOf(), ready.cache);
+	withCache.audio.start(30);
+	expect(ready.opened).toHaveLength(1);
+	expect(withCache.opened).toEqual([]);
+
+	const rendering = fakeCache(false);
+	const fallback = setup(mixOf(), rendering.cache);
+	fallback.audio.start(30);
+	expect(fallback.opened).toHaveLength(1);
+});
+
+test("the cache renders the mix at startup and again whenever the mix changes", () => {
+	const { cache, prepared } = fakeCache(true);
+	const { mixes } = setup(mixOf(), cache);
+	expect(prepared).toHaveLength(1);
+
+	mixes.set(mixOf());
+	expect(prepared).toHaveLength(2);
+
+	mixes.set(null);
+	expect(prepared).toHaveLength(2);
 });

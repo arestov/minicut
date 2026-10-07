@@ -159,6 +159,7 @@ const makeSource = (totalFrames: number, firstFrame = 0, buffered = totalFrames)
 			position += count;
 			return count;
 		},
+		ready: () => Promise.resolve(),
 		cancel: () => {
 			cancelled = true;
 			return Promise.resolve();

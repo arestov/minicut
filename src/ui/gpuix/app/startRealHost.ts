@@ -5,10 +5,14 @@ import {
 	nodeAssetRegistryPathFor,
 } from "../../../video-editor/adapters/node/nodeAssetRegistry";
 import { fingerprintNodeFile } from "../../../video-editor/adapters/node/nodeFileFingerprint";
-import { resolveNodePreviewProxyDir } from "../../../video-editor/adapters/node/nodeProfileLayout";
+import {
+	resolveNodeAudioMixCacheDir,
+	resolveNodePreviewProxyDir,
+} from "../../../video-editor/adapters/node/nodeProfileLayout";
 import { createPreviewProxyCache } from "../../../video-editor/media/node/preview/previewProxyCache";
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { resolveMediaBinaries } from "../../../video-editor/media/node/binaries";
+import { createPcmMixCache } from "../../../video-editor/media/node/audio/pcmMixCache";
 import { createNodeAudioContext } from "../../../video-editor/media/node/audio/nodeAudioContext";
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
 import { createAudioMixController } from "../host/audioMixController";
@@ -76,6 +80,7 @@ const openPlaybackAudio = async (
 	mode: "device" | "off",
 	mix: ReturnType<typeof createAudioMixController>,
 	media: ReturnType<typeof createMediaService>,
+	cacheDir: string,
 ): Promise<PlaybackAudio | null> => {
 	if (mode === "off") return null;
 	try {
@@ -84,6 +89,10 @@ const openPlaybackAudio = async (
 			context,
 			mix,
 			openStream: (request) => media.streamAudioMix(request),
+			cache: createPcmMixCache({
+				dir: cacheDir,
+				openStream: (request) => media.streamAudioMix(request),
+			}),
 			fallbackClock: timerPlaybackClock(),
 			onError: (error) => console.error("[minicut:gpuix] audio stream failed", error),
 		});
@@ -185,7 +194,12 @@ export const startRealHost = async ({
 		cleanups.push(() => preview.dispose());
 		const audioMix = createAudioMixController({ assets: registry, probe });
 		cleanups.push(() => audioMix.dispose());
-		const playbackAudio = await openPlaybackAudio(audioMode, audioMix, media);
+		const playbackAudio = await openPlaybackAudio(
+			audioMode,
+			audioMix,
+			media,
+			resolveNodeAudioMixCacheDir(profileDir),
+		);
 		if (playbackAudio) cleanups.push(() => playbackAudio.dispose());
 		const recovery = createMediaRecoveryExecutor({
 			page: pageRuntime,

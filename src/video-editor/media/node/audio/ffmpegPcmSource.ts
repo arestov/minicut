@@ -20,8 +20,6 @@ export type FfmpegPcmSource = PcmSource & {
 	readonly pid: number | undefined;
 	/** Resolves when the process exited and its pipes closed. */
 	readonly closed: Promise<void>;
-	/** Resolves when `frames` are buffered, or the stream ended/failed first. */
-	ready(frames: number): Promise<void>;
 };
 
 const STDERR_LIMIT = 16 * 1024;

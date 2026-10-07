@@ -8,6 +8,7 @@ import {
 	createAudioSink,
 } from "../../../video-editor/media/node/audio/audioSink";
 import type { AudioClockSource } from "../../../video-editor/media/node/audio/audioPlaybackClock";
+import type { PcmMixCache } from "../../../video-editor/media/node/audio/pcmMixCache";
 import type { PcmSource } from "../../../video-editor/media/node/audio/pcmSource";
 import type { AudioMixStreamRequest } from "../../../video-editor/media/contracts/audioStream";
 import type { PlaybackClock } from "../../../video-editor/playback/playbackRuntime";
@@ -45,6 +46,11 @@ export type DesktopAudioOptions = {
 	mix: AudioMixController;
 	/** Opens the PCM stream of the mix (media service). */
 	openStream(request: AudioMixStreamRequest): PcmSource;
+	/**
+	 * Rendered mix: seeks read it instead of spawning a decoder. Without it,
+	 * or while it is still rendering past the start, the stream is opened directly.
+	 */
+	cache?: PcmMixCache;
 	/** Fallback clock used while the device is not running (system timers). */
 	fallbackClock: PlaybackClock;
 	systemMonotonicMs?(): number;
@@ -94,7 +100,15 @@ export const createDesktopAudio = (options: DesktopAudioOptions): PlaybackAudio 
 		if (!running) sink.stop();
 		emit("clock");
 	};
-	const unsubscribeMix = options.mix.subscribe(() => emit("mix"));
+	const prepareCache = (): void => {
+		const mix = options.mix.current();
+		if (mix) options.cache?.prepare(mix);
+	};
+	prepareCache();
+	const unsubscribeMix = options.mix.subscribe(() => {
+		prepareCache();
+		emit("mix");
+	});
 
 	return {
 		clock,
@@ -107,6 +121,7 @@ export const createDesktopAudio = (options: DesktopAudioOptions): PlaybackAudio 
 			sink.play({
 				cursorSeconds,
 				open: (startSeconds) =>
+					options.cache?.open(mix, startSeconds) ??
 					options.openStream({ ...mix, startSeconds }),
 				onError: (error) => options.onError?.(error),
 			});
@@ -122,6 +137,7 @@ export const createDesktopAudio = (options: DesktopAudioOptions): PlaybackAudio 
 			listeners.clear();
 			context.onstatechange = null;
 			sink.dispose();
+			await options.cache?.dispose();
 			await context.close().catch(() => undefined);
 		},
 	};
