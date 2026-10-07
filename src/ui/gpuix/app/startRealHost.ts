@@ -9,13 +9,16 @@ import { resolveNodePreviewProxyDir } from "../../../video-editor/adapters/node/
 import { createPreviewProxyCache } from "../../../video-editor/media/node/preview/previewProxyCache";
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { resolveMediaBinaries } from "../../../video-editor/media/node/binaries";
+import { createNodeAudioContext } from "../../../video-editor/media/node/audio/nodeAudioContext";
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
+import { createAudioMixController } from "../host/audioMixController";
+import { createDesktopAudio, type PlaybackAudio } from "../host/desktopAudio";
 import { createExportExecutor } from "../../../video-editor/hosts/desktop/exportExecutor";
 import type { HostServices } from "../host/hostServices";
 import { createImportExecutor } from "../../../video-editor/hosts/desktop/importExecutor";
 import { createMediaRecoveryExecutor } from "../../../video-editor/hosts/desktop/mediaRecoveryExecutor";
 import { createImportFromDialog, type PathPrompt } from "../host/nativeDialogs";
-import { createPlaybackExecutor } from "../host/playbackExecutor";
+import { createPlaybackExecutor, timerPlaybackClock } from "../host/playbackExecutor";
 import { createRuntimeRefStore } from "../../../video-editor/hosts/desktop/runtimeRefs";
 import { DktWorkerStartError, spawnDktWorker } from "../host/spawnDktWorker";
 import { createNodePreviewController } from "../preview/nodePreviewController";
@@ -38,6 +41,12 @@ export type StartRealHostOptions = {
 	onCrash(error: Error): void;
 	/** Test hooks (automation): files imported by the "test import" control and a quit control. */
 	testHooks?: { importPaths: readonly string[]; quit(): void };
+	/**
+	 * Sound output. `device` (default) opens the default audio device and
+	 * falls back to the silent system clock when there is none; `off` never
+	 * touches the audio device (tests, headless runs).
+	 */
+	audio?: "device" | "off";
 };
 
 const asStartupError = (error: unknown, profileDir: string): unknown => {
@@ -59,6 +68,34 @@ const asStartupError = (error: unknown, profileDir: string): unknown => {
 };
 
 /**
+ * Opens the audio output for playback, or returns null (sound off) when the
+ * host runs without a device. A device that fails to open is reported once and
+ * playback continues silently on the system clock.
+ */
+const openPlaybackAudio = async (
+	mode: "device" | "off",
+	mix: ReturnType<typeof createAudioMixController>,
+	media: ReturnType<typeof createMediaService>,
+): Promise<PlaybackAudio | null> => {
+	if (mode === "off") return null;
+	try {
+		const context = await createNodeAudioContext();
+		return createDesktopAudio({
+			context,
+			mix,
+			openStream: (request) => media.streamAudioMix(request),
+			fallbackClock: timerPlaybackClock(),
+			onError: (error) => console.error("[minicut:gpuix] audio stream failed", error),
+		});
+	} catch (error) {
+		console.warn(
+			`[minicut:gpuix] no audio output, playback is silent: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return null;
+	}
+};
+
+/**
  * Real host composition of the GPUIX app: DKT on LevelDB in a Bun worker, the
  * page sync runtime, the asset registry, the media service and the GPUIX-side
  * executors for every effect the model requests (import, export, media
@@ -71,6 +108,7 @@ export const startRealHost = async ({
 	prompt,
 	onCrash,
 	testHooks,
+	audio: audioMode = "device",
 }: StartRealHostOptions): Promise<RealHost> => {
 	await preflight(profileDir);
 	const worker = await spawnDktWorker({ profileDir, onCrash }).catch(
@@ -145,17 +183,27 @@ export const startRealHost = async ({
 			probe,
 		});
 		cleanups.push(() => preview.dispose());
+		const audioMix = createAudioMixController({ assets: registry, probe });
+		cleanups.push(() => audioMix.dispose());
+		const playbackAudio = await openPlaybackAudio(audioMode, audioMix, media);
+		if (playbackAudio) cleanups.push(() => playbackAudio.dispose());
 		const recovery = createMediaRecoveryExecutor({
 			page: pageRuntime,
 			registry,
 			refs,
 			probe,
 			fingerprint: (filePath) => fingerprintNodeFile(filePath),
-			onAssetsChanged: () => preview.refreshAssets(),
+			onAssetsChanged: () => {
+				preview.refreshAssets();
+				audioMix.refreshAssets();
+			},
 			generateId: () => crypto.randomUUID(),
 			now: () => Date.now(),
 		});
-		const playback = createPlaybackExecutor({ page: pageRuntime });
+		const playback = createPlaybackExecutor({
+			page: pageRuntime,
+			...(playbackAudio ? { audio: playbackAudio } : {}),
+		});
 		cleanups.push(() => playback.dispose());
 
 		const listen = (
@@ -193,7 +241,10 @@ export const startRealHost = async ({
 			playback: playback.snapshot,
 			preview: {
 				source: preview.source,
-				updatePlan: (input) => preview.updatePlan(input),
+				updatePlan: (input) => {
+					preview.updatePlan(input);
+					audioMix.updatePlan(input);
+				},
 				notice: preview.notice,
 			},
 			...(testHooks

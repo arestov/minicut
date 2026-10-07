@@ -31,6 +31,7 @@ const start = (profileDir: string) =>
 		profileDir,
 		exportDir: resolveExportDir(profileDir),
 		prompt: async () => null,
+		audio: "off",
 		onCrash: (error) => {
 			throw error;
 		},

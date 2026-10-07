@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { PlaybackRuntime, type PlaybackRun } from "../../../playback/playbackRuntime";
-import { createAudioPlaybackClock } from "./audioPlaybackClock";
+import {
+	createAudioPlaybackClock,
+	createOutputLatencyEstimator,
+} from "./audioPlaybackClock";
 
 const setup = (ctxPatch: { outputLatency?: number } = {}) => {
 	const ctx = { currentTime: 0, outputLatency: ctxPatch.outputLatency ?? 0, state: "running" };
@@ -33,7 +36,7 @@ const setup = (ctxPatch: { outputLatency?: number } = {}) => {
 	return { ctx, clock, tick, runFrame, frames };
 };
 
-describe("createAudioPlaybackClock (spike)", () => {
+describe("createAudioPlaybackClock", () => {
 	it("never goes backwards while the audio clock advances in coarse steps", () => {
 		const { clock, tick } = setup();
 		let prev = clock.nowMonotonicMs();
@@ -112,5 +115,22 @@ describe("createAudioPlaybackClock (spike)", () => {
 		}
 		expect(runtime.getSnapshot().isPlaying).toBe(false);
 		expect(completions).toEqual([3]);
+	});
+});
+
+describe("createOutputLatencyEstimator", () => {
+	it("takes the median of recent readings so a latency that flickers to zero does not move the clock", () => {
+		const ctx = { outputLatency: 0.0128 };
+		const estimator = createOutputLatencyEstimator(ctx, 9);
+		for (let i = 0; i < 9; i += 1) estimator.sample();
+		expect(estimator.value()).toBeCloseTo(0.0128, 6);
+
+		ctx.outputLatency = 0;
+		estimator.sample();
+		estimator.sample();
+		expect(estimator.value()).toBeCloseTo(0.0128, 6);
+
+		for (let i = 0; i < 9; i += 1) estimator.sample();
+		expect(estimator.value()).toBe(0);
 	});
 });

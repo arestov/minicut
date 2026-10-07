@@ -52,6 +52,7 @@ import { type RealHost, startRealHost } from "./startRealHost";
  *   MINICUT_PROFILE_DIR   profile folder (default: per-user app data)
  *   MINICUT_EXPORT_DIR    export folder (default: <profile>/exports)
  *   MINICUT_FFMPEG_PATH / MINICUT_FFPROBE_PATH   binaries (default: PATH)
+ *   MINICUT_AUDIO=off     never open the audio device (silent playback on the system clock)
  */
 const windowOptions = {
 	title: "MiniCut",
@@ -136,6 +137,7 @@ try {
 		profileDir,
 		exportDir: resolveExportDir(profileDir),
 		prompt: (options) => renderer.promptForPaths(options),
+		audio: process.env.MINICUT_AUDIO === "off" ? "off" : "device",
 		onCrash: (error) => {
 			console.error("[minicut:gpuix] the DKT worker crashed", error);
 			void shutdown(1);
