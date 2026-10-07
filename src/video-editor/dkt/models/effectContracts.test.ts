@@ -276,7 +276,14 @@ describe("effect contract suite: playback", () => {
 		expect(await queryAttr(harness.sessionRoot, "isPlaying")).toBe(false);
 		expect(await queryAttr(harness.sessionRoot, "cursor")).toBe(12);
 		expect(callsSincePlay()).toHaveLength(2);
-		expect(callsSincePlay()[1]).toEqual({ run: null, committedCursor: 12 });
+		expect(callsSincePlay()[1]).toEqual({
+			sessionRootNodeId: harness.sessionRoot._node_id,
+			run: null,
+			committedCursor: 12,
+		});
+		expect(callsSincePlay()[0]).toMatchObject({
+			sessionRootNodeId: harness.sessionRoot._node_id,
+		});
 	});
 });
 

@@ -258,6 +258,7 @@ describe("SessionRoot action contracts", () => {
 		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(false);
 		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(0.5);
 		expect(harness.playbackRequests.at(-1)).toEqual({
+			sessionRootNodeId: expect.any(String),
 			run: null,
 			committedCursor: 0.5,
 		});

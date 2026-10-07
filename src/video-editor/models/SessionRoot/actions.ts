@@ -925,6 +925,7 @@ export const sessionHandleIsPlayingAction = {
 			"playbackRate",
 			"playbackBoundaryCursor",
 			"cursor",
+			"_node_id",
 		] as const,
 		(
 			payload: unknown,
@@ -934,11 +935,16 @@ export const sessionHandleIsPlayingAction = {
 			rate: unknown,
 			boundaryCursor: unknown,
 			cursor: unknown,
+			sessionRootNodeId: unknown,
 		) => {
 			const isPlaying =
 				(payload as { next_value?: unknown } | null)?.next_value === true;
+			// The effect interface is shared by all windows; the session root id
+			// tells the host which window playback this run belongs to.
+			const owner = { sessionRootNodeId: asString(sessionRootNodeId) };
 			return isPlaying
 				? {
+						...owner,
 						run: {
 							runId: asNumber(runId, 0),
 							startCursorSeconds: asNumber(startCursor, 0),
@@ -947,7 +953,7 @@ export const sessionHandleIsPlayingAction = {
 							boundaryCursorSeconds: asNumber(boundaryCursor, 0),
 						},
 					}
-				: { run: null, committedCursor: asNumber(cursor, 0) };
+				: { ...owner, run: null, committedCursor: asNumber(cursor, 0) };
 		},
 	],
 } as const satisfies DktActionDescriptor;
@@ -966,6 +972,7 @@ export const sessionHandlePlaybackBoundaryAction = {
 			"playStartedAt",
 			"playbackRate",
 			"playbackBoundaryCursor",
+			"_node_id",
 		] as const,
 		(
 			_payload: unknown,
@@ -976,9 +983,11 @@ export const sessionHandlePlaybackBoundaryAction = {
 			startedAt: unknown,
 			rate: unknown,
 			boundaryCursor: unknown,
+			sessionRootNodeId: unknown,
 		) =>
 			isPlaying === true
 				? {
+						sessionRootNodeId: asString(sessionRootNodeId),
 						run: {
 							runId: asNumber(runId, 0),
 							startCursorSeconds: asNumber(startCursor, 0),
