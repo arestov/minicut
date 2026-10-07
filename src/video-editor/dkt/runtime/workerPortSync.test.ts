@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineShape } from "../../../dkt-ui-sync/shape/defineShape";
 import type { PageSyncRuntime } from "../../../dkt-ui-sync/runtime/PageSyncRuntime";
 import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
+import type { DomSyncPortLike } from "dkt/dom-sync/transport.js";
 import { createPortTransport } from "../shared/createPortTransport";
 import type { MiniCutDktTransportMessage } from "../shared/messageTypes";
 import { createMiniCutPageSyncRuntime } from "./createMiniCutPageSyncRuntime";
@@ -109,7 +110,7 @@ describe(`DKT worker sync over MessagePort (${isBun ? "bun" : "node"})`, () => {
 
 		const page = createMiniCutPageSyncRuntime({
 			transport: createPortTransport<MiniCutDktTransportMessage>(
-				worker as unknown as Parameters<typeof createPortTransport>[0],
+				worker as unknown as DomSyncPortLike<MiniCutDktTransportMessage>,
 			),
 		});
 		runtime = page;

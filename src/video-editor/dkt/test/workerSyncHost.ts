@@ -1,5 +1,6 @@
 import { parentPort } from "node:worker_threads";
 import { createMiniCutDktRuntime } from "../runtime/createMiniCutDktRuntime";
+import type { DomSyncPortLike } from "dkt/dom-sync/transport.js";
 import { createPortTransport } from "../shared/createPortTransport";
 import type { MiniCutDktTransportMessage } from "../shared/messageTypes";
 import { createEffectContractFakes } from "./effectContractFakes";
@@ -18,6 +19,6 @@ const runtime = createMiniCutDktRuntime({
 });
 runtime.connect(
 	createPortTransport<MiniCutDktTransportMessage>(
-		parentPort as unknown as Parameters<typeof createPortTransport>[0],
+		parentPort as unknown as DomSyncPortLike<MiniCutDktTransportMessage>,
 	),
 );

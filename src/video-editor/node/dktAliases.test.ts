@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-// @ts-expect-error plain ESM script shared with Vite, Node loader and Bun
 import * as aliases from "../../../scripts/dktAliases.mjs";
 
 const repoRoot = path.resolve(__dirname, "../../..");
