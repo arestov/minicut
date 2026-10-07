@@ -8,6 +8,7 @@ import path from "node:path";
  *   <profileDir>/minicut-profile.json            profile + default workspace metadata
  *   <profileDir>/workspaces/<roomId>/leveldb/    LevelDB of that workspace
  *   <profileDir>/cache/preview-proxies/          scrub proxy cache (regenerable)
+ *   <profileDir>/workspaces/<roomId>/assets.json host asset registry (asset id -> local path)
  */
 export const NODE_PROFILE_METADATA_FILE_NAME = "minicut-profile.json";
 export const NODE_PROFILE_WORKSPACES_DIR_NAME = "workspaces";
@@ -26,3 +27,4 @@ export const resolveNodePreviewProxyDir = (profileDir: string): string =>
 		NODE_PROFILE_CACHE_DIR_NAME,
 		NODE_PREVIEW_PROXIES_DIR_NAME,
 	);
+export const NODE_WORKSPACE_ASSET_REGISTRY_FILE_NAME = "assets.json";
