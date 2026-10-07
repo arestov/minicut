@@ -550,6 +550,7 @@ export const reduceEnsureProjectReviewSession = (
 	noop: unknown,
 	project: unknown,
 	existingSession: unknown,
+	now?: unknown,
 ) => {
 	const projectId = getNodeId(project);
 	if (!projectId) {
@@ -566,7 +567,7 @@ export const reduceEnsureProjectReviewSession = (
 	}
 	return {
 		reviewSession: {
-			attrs: reviewSessionAttrsForProject(projectId),
+			attrs: reviewSessionAttrsForProject(projectId, now),
 			hold_ref_id: "projectReviewSession",
 		},
 		reviewSessions: { use_ref_id: "projectReviewSession" },
@@ -578,6 +579,7 @@ export const reduceMaterializeProjectCRDTConflictReview = (
 	payload: unknown,
 	noop: unknown,
 	project: unknown,
+	now?: unknown,
 ) => {
 	const projectId = getNodeId(project);
 	if (!projectId) {
@@ -593,7 +595,7 @@ export const reduceMaterializeProjectCRDTConflictReview = (
 	for (const conflict of lifecycleRecords(payload)) {
 		const item = materializeCRDTConflictReviewItem({ conflict, projectId });
 		itemsById.delete(item.id);
-		itemsById.set(item.id, reviewItemCreationFromItem(item));
+		itemsById.set(item.id, reviewItemCreationFromItem(item, now));
 	}
 	const items = [...itemsById.values()];
 	if (items.length === 0) {

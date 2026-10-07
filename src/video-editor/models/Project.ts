@@ -874,6 +874,7 @@ export const Project = model({
 						"$noop",
 						"<<<<",
 						"<< @one:reviewSessions",
+						"$now",
 					] as const,
 					reduceEnsureProjectReviewSession,
 				],
@@ -905,7 +906,7 @@ export const Project = model({
 					],
 				},
 				fn: [
-					["$noop", "<<<<"] as const,
+					["$noop", "<<<<", "$now"] as const,
 					reduceMaterializeProjectCRDTConflictReview,
 				],
 			},

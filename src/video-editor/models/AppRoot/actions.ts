@@ -357,13 +357,14 @@ export const reduceCreateClipModel = (payload: unknown) => {
 	};
 };
 
-export const reduceCreateReviewItemModel = (payload: unknown) =>
-	reduceCreateReviewItem(payload);
+export const reduceCreateReviewItemModel = (payload: unknown, now?: unknown) =>
+	reduceCreateReviewItem(payload, now);
 
 export const reduceCreateReviewSessionModel = (
 	payload: unknown,
 	projectIdHint?: unknown,
-) => reduceCreateReviewSession(payload, projectIdHint);
+	now?: unknown,
+) => reduceCreateReviewSession(payload, projectIdHint, now);
 
 export const reduceCreateActivitySummaryModel = (payload: unknown) =>
 	reduceCreateActivitySummary(payload);
@@ -373,16 +374,19 @@ export const reduceHandleCRDTConflict = (
 	projectIdHint?: unknown,
 	projects?: unknown,
 	clips?: unknown,
+	now?: unknown,
 ) =>
 	reduceCreateReviewSessionWithLifecycleItems(
 		augmentReviewConflictPayload(payload, projects, clips),
 		projectIdHint,
+		now,
 	);
 
 export const reduceHandleCRDTSync = (
 	payload: unknown,
 	projectIdHint?: unknown,
-) => reduceCreateReviewSessionWithActivitySummary(payload, projectIdHint);
+	now?: unknown,
+) => reduceCreateReviewSessionWithActivitySummary(payload, projectIdHint, now);
 
 const trackOrderMove = (value: unknown) => {
 	const record = asRecord(value);
@@ -677,6 +681,7 @@ export const reduceHandleCRDTConflictGraph = (
 	projects?: unknown,
 	clips?: unknown,
 	existingReviewItemIds?: unknown,
+	now?: unknown,
 ) => {
 	const resolvedProjectIdHint =
 		typeof projectIdHint === "string" && projectIdHint.length > 0
@@ -685,6 +690,7 @@ export const reduceHandleCRDTConflictGraph = (
 	const session = reduceCreateReviewSessionWithLifecycleItems(
 		augmentReviewConflictPayload(payload, projects, clips),
 		projectIdHint,
+		now,
 	);
 	const items = session?.rels?.items;
 	if (!session || !Array.isArray(items) || items.length === 0) {
@@ -772,10 +778,12 @@ export const reduceLinkReviewSessionItemsFromOutput = (payload: unknown) => {
 export const reduceHandleCRDTSyncGraph = (
 	payload: unknown,
 	projectIdHint?: unknown,
+	now?: unknown,
 ) => {
 	const session = reduceCreateReviewSessionWithActivitySummary(
 		payload,
 		projectIdHint,
+		now,
 	);
 	const activitySummaries = session?.rels?.activitySummaries;
 	if (

@@ -151,9 +151,13 @@ export const ReviewItem = model({
 				updatedAt: ["updatedAt"],
 			},
 			fn: [
-				["$noop", "reviewItemId"] as const,
-				(payload: unknown, noop: unknown, reviewItemId: unknown) =>
-					reduceSetReviewItem(payload, reviewItemId) ?? noop,
+				["$noop", "reviewItemId", "$now"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					reviewItemId: unknown,
+					now: unknown,
+				) => reduceSetReviewItem(payload, reviewItemId, now) ?? noop,
 			],
 		},
 		createManualTrackOrderSuggestion: {
@@ -162,12 +166,18 @@ export const ReviewItem = model({
 				updatedAt: ["updatedAt"],
 			},
 			fn: [
-				["$noop", "reviewItemId"] as const,
-				(payload: unknown, noop: unknown, reviewItemId: unknown) =>
+				["$noop", "reviewItemId", "$now"] as const,
+				(
+					payload: unknown,
+					noop: unknown,
+					reviewItemId: unknown,
+					now: unknown,
+				) =>
 					reduceCreateManualTrackOrderSuggestionOnReviewItem(
 						payload,
 						noop,
 						reviewItemId,
+						now,
 					),
 			],
 		},

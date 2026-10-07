@@ -112,9 +112,9 @@ export const ReviewSession = model({
 				updatedAt: ["updatedAt"],
 			},
 			fn: [
-				["$noop"] as const,
-				(payload: unknown, noop: unknown) =>
-					reduceSelectReviewItem(payload) ?? noop,
+				["$noop", "$now"] as const,
+				(payload: unknown, noop: unknown, now: unknown) =>
+					reduceSelectReviewItem(payload, now) ?? noop,
 			],
 		},
 		attachReviewItemFromOutput: {

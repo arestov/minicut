@@ -48,7 +48,13 @@ const trackEntriesForIds = (
 	});
 };
 
-export const reviewItemAttrsFromItem = (item: MiniCutReviewItem) => ({
+export const asNowMs = (now: unknown): number =>
+	typeof now === "number" && Number.isFinite(now) ? now : 0;
+
+export const reviewItemAttrsFromItem = (
+	item: MiniCutReviewItem,
+	now: unknown,
+) => ({
 	reviewItemId: item.id,
 	conflictId: item.conflictId,
 	projectId: item.projectId,
@@ -61,18 +67,18 @@ export const reviewItemAttrsFromItem = (item: MiniCutReviewItem) => ({
 	availableActions: item.availableActions,
 	actionTargets: item.actionTargets,
 	source: item.source,
-	updatedAt: Date.now(),
+	updatedAt: asNowMs(now),
 });
 
-export const reduceCreateReviewItem = (payload: unknown) => {
+export const reduceCreateReviewItem = (payload: unknown, now?: unknown) => {
 	const item = asObject<MiniCutReviewItem>(payload);
 	if (!item || !asString(item.id) || !asString(item.conflictId)) {
 		return null;
 	}
 	return {
 		attrs: {
-			...reviewItemAttrsFromItem(item),
-			createdAt: Date.now(),
+			...reviewItemAttrsFromItem(item, now),
+			createdAt: asNowMs(now),
 		},
 	};
 };
@@ -89,6 +95,7 @@ const reviewItemsFromPayload = (payload: unknown): MiniCutReviewItem[] =>
 export const reduceSetReviewItem = (
 	payload: unknown,
 	currentReviewItemId?: unknown,
+	now?: unknown,
 ) => {
 	const items = reviewItemsFromPayload(payload);
 	const item =
@@ -98,12 +105,13 @@ export const reduceSetReviewItem = (
 	if (!item || !asString(item.id) || !asString(item.conflictId)) {
 		return null;
 	}
-	return reviewItemAttrsFromItem(item);
+	return reviewItemAttrsFromItem(item, now);
 };
 
 export const reduceMaterializeReviewItemFromConflict = (
 	payload: unknown,
 	projectIdHint: unknown,
+	now?: unknown,
 ) => {
 	const value = asObject<{ conflict?: unknown; projectId?: unknown }>(payload);
 	const conflict = asObject<CrdtConflictRecord>(value?.conflict ?? payload);
@@ -113,6 +121,7 @@ export const reduceMaterializeReviewItemFromConflict = (
 	}
 	return reduceCreateReviewItem(
 		materializeCRDTConflictReviewItem({ conflict, projectId }),
+		now,
 	);
 };
 
@@ -120,6 +129,7 @@ export const reduceCreateManualTrackOrderSuggestionOnReviewItem = (
 	payload: unknown,
 	noop: unknown,
 	currentReviewItemId: unknown,
+	now?: unknown,
 ) => {
 	const value = asObject<{
 		reviewItemId?: unknown;
@@ -150,6 +160,6 @@ export const reduceCreateManualTrackOrderSuggestionOnReviewItem = (
 			...preview,
 			manualOrder: trackEntriesForIds(trackIds, preview),
 		},
-		updatedAt: Date.now(),
+		updatedAt: asNowMs(now),
 	};
 };

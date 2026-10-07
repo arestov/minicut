@@ -8,7 +8,7 @@ import type {
 	MiniCutReviewItem,
 } from "../../dkt/review/types";
 import { activitySummaryAttrsFromSummary } from "../ActivitySummary/actions";
-import { reviewItemAttrsFromItem } from "../ReviewItem/actions";
+import { asNowMs, reviewItemAttrsFromItem } from "../ReviewItem/actions";
 
 const asObject = <Value extends object>(value: unknown): Value | null =>
 	value && typeof value === "object" ? (value as Value) : null;
@@ -26,6 +26,7 @@ const getNodeId = (model: unknown): string | null =>
 export const reduceCreateReviewSession = (
 	payload: unknown,
 	projectIdHint: unknown,
+	nowMs?: unknown,
 ) => {
 	const value = asObject<{
 		reviewSessionId?: unknown;
@@ -36,7 +37,7 @@ export const reduceCreateReviewSession = (
 	if (!projectId) {
 		return null;
 	}
-	const now = Date.now();
+	const now = asNowMs(nowMs);
 	return {
 		attrs: {
 			reviewSessionId:
@@ -54,8 +55,11 @@ export const reduceCreateReviewSession = (
 	};
 };
 
-export const reviewSessionAttrsForProject = (projectId: string) => {
-	const now = Date.now();
+export const reviewSessionAttrsForProject = (
+	projectId: string,
+	nowMs: unknown,
+) => {
+	const now = asNowMs(nowMs);
 	return {
 		reviewSessionId: `review-session:${projectId}`,
 		projectId,
@@ -67,10 +71,13 @@ export const reviewSessionAttrsForProject = (projectId: string) => {
 	};
 };
 
-export const reviewItemCreationFromItem = (item: MiniCutReviewItem) => ({
+export const reviewItemCreationFromItem = (
+	item: MiniCutReviewItem,
+	now: unknown,
+) => ({
 	attrs: {
-		...reviewItemAttrsFromItem(item),
-		createdAt: Date.now(),
+		...reviewItemAttrsFromItem(item, now),
+		createdAt: asNowMs(now),
 	},
 });
 
@@ -83,6 +90,7 @@ export const activitySummaryCreationFromSummary = (
 export const reduceCreateReviewSessionWithItem = (
 	payload: unknown,
 	projectIdHint: unknown,
+	now?: unknown,
 ) => {
 	const value = asObject<{ conflict?: unknown; projectId?: unknown }>(payload);
 	const conflict = asObject<CrdtConflictRecord>(value?.conflict ?? payload);
@@ -93,11 +101,11 @@ export const reduceCreateReviewSessionWithItem = (
 	const item = materializeCRDTConflictReviewItem({ conflict, projectId });
 	return {
 		attrs: {
-			...reviewSessionAttrsForProject(projectId),
+			...reviewSessionAttrsForProject(projectId, now),
 			selectedReviewItemId: item.id,
 		},
 		rels: {
-			items: [reviewItemCreationFromItem(item)],
+			items: [reviewItemCreationFromItem(item, now)],
 		},
 	};
 };
@@ -118,12 +126,13 @@ const lifecycleRecords = (payload: unknown): CrdtConflictRecord[] => {
 export const reduceCreateReviewSessionWithLifecycleItems = (
 	payload: unknown,
 	projectIdHint: unknown,
+	now?: unknown,
 ) => {
 	const value = asObject<{ projectId?: unknown }>(payload);
 	const projectId = asString(value?.projectId) ?? asString(projectIdHint);
 	const records = lifecycleRecords(payload);
 	if (!projectId || records.length === 0) {
-		return reduceCreateReviewSessionWithItem(payload, projectIdHint);
+		return reduceCreateReviewSessionWithItem(payload, projectIdHint, now);
 	}
 	const itemsById = new Map<string, ReturnType<typeof reviewItemCreationFromItem>>();
 	for (const conflict of records) {
@@ -132,7 +141,7 @@ export const reduceCreateReviewSessionWithLifecycleItems = (
 		}
 		const item = materializeCRDTConflictReviewItem({ conflict, projectId });
 		itemsById.delete(item.id);
-		itemsById.set(item.id, reviewItemCreationFromItem(item));
+		itemsById.set(item.id, reviewItemCreationFromItem(item, now));
 	}
 	const items = [...itemsById.values()];
 	if (items.length === 0) {
@@ -141,7 +150,7 @@ export const reduceCreateReviewSessionWithLifecycleItems = (
 	const selectedReviewItemId = items[0]?.attrs.reviewItemId;
 	return {
 		attrs: {
-			...reviewSessionAttrsForProject(projectId),
+			...reviewSessionAttrsForProject(projectId, now),
 			selectedReviewItemId:
 				typeof selectedReviewItemId === "string" ? selectedReviewItemId : null,
 		},
@@ -152,6 +161,7 @@ export const reduceCreateReviewSessionWithLifecycleItems = (
 export const reduceCreateReviewSessionWithActivitySummary = (
 	payload: unknown,
 	projectIdHint: unknown,
+	now?: unknown,
 ) => {
 	const value = asObject<{ payload?: unknown; projectId?: unknown }>(payload);
 	const syncPayload = asObject<CrdtSyncPayload>(value?.payload ?? payload);
@@ -161,14 +171,14 @@ export const reduceCreateReviewSessionWithActivitySummary = (
 	}
 	const summary = materializeCRDTSyncSummary({ payload: syncPayload, projectId });
 	return {
-		attrs: reviewSessionAttrsForProject(projectId),
+		attrs: reviewSessionAttrsForProject(projectId, now),
 		rels: {
 			activitySummaries: [activitySummaryCreationFromSummary(summary)],
 		},
 	};
 };
 
-export const reduceSelectReviewItem = (payload: unknown) => {
+export const reduceSelectReviewItem = (payload: unknown, now?: unknown) => {
 	const value = asObject<{ reviewItemId?: unknown }>(payload);
 	const reviewItemId = asString(value?.reviewItemId) ?? asString(payload);
 	if (!reviewItemId) {
@@ -176,7 +186,7 @@ export const reduceSelectReviewItem = (payload: unknown) => {
 	}
 	return {
 		selectedReviewItemId: reviewItemId,
-		updatedAt: Date.now(),
+		updatedAt: asNowMs(now),
 	};
 };
 

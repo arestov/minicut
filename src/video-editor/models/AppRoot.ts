@@ -172,7 +172,11 @@ const appProps = mergeDcl({
 					creation_shape: REVIEW_ITEM_CREATION_SHAPE,
 				},
 			],
-			fn: reduceCreateReviewItemModel,
+			fn: [
+				["$now"] as const,
+				(payload: unknown, now: unknown) =>
+					reduceCreateReviewItemModel(payload, now),
+			],
 		},
 		createReviewArchiveEntryModel: {
 			to: [
@@ -210,11 +214,13 @@ const appProps = mergeDcl({
 				[
 					"< @one:_node_id < project",
 					"<< @all:project",
+					"$now",
 				] as const,
 				(
 					payload: unknown,
 					rootProjectId: unknown,
 					projects: unknown,
+					now: unknown,
 				) =>
 					reduceCreateReviewSessionModel(
 						payload,
@@ -223,6 +229,7 @@ const appProps = mergeDcl({
 							rootProjectId,
 							projects,
 						),
+						now,
 					),
 			],
 		},
@@ -240,12 +247,14 @@ const appProps = mergeDcl({
 					"< @one:_node_id < project",
 					"<< @all:project",
 					"<< @all:clip",
+					"$now",
 				] as const,
 				(
 					payload: unknown,
 					rootProjectId: unknown,
 					projects: unknown,
 					clips: unknown,
+					now: unknown,
 				) =>
 					reduceHandleCRDTConflict(
 						payload,
@@ -257,6 +266,7 @@ const appProps = mergeDcl({
 						),
 						projects,
 						clips,
+						now,
 					),
 			],
 		},
@@ -273,11 +283,13 @@ const appProps = mergeDcl({
 				[
 					"< @one:_node_id < project",
 					"<< @all:project",
+					"$now",
 				] as const,
 				(
 					payload: unknown,
 					rootProjectId: unknown,
 					projects: unknown,
+					now: unknown,
 				) =>
 					reduceHandleCRDTSync(
 						payload,
@@ -286,6 +298,7 @@ const appProps = mergeDcl({
 							rootProjectId,
 							projects,
 						),
+						now,
 					),
 			],
 		},
@@ -317,12 +330,14 @@ const appProps = mergeDcl({
 						"$noop",
 						"< @one:_node_id < project",
 						"<< @all:project",
+						"$now",
 					] as const,
 					(
 						payload: unknown,
 						noop: unknown,
 						rootProjectId: unknown,
 						projects: unknown,
+						now: unknown,
 					) =>
 						reduceHandleCRDTSyncGraph(
 							payload,
@@ -331,6 +346,7 @@ const appProps = mergeDcl({
 								rootProjectId,
 								projects,
 							),
+							now,
 						) ?? noop,
 				],
 			},
@@ -380,6 +396,7 @@ const appProps = mergeDcl({
 						"<< @all:project",
 						"<< @all:clip",
 						"< @all:reviewItemId < reviewItem",
+						"$now",
 					] as const,
 					(
 						payload: unknown,
@@ -388,6 +405,7 @@ const appProps = mergeDcl({
 						projects: unknown,
 						clips: unknown,
 						existingReviewItemIds: unknown,
+						now: unknown,
 					) =>
 						reduceHandleCRDTConflictGraph(
 							payload,
@@ -400,6 +418,7 @@ const appProps = mergeDcl({
 							projects,
 							clips,
 							existingReviewItemIds,
+							now,
 						) ?? noop,
 				],
 			},
