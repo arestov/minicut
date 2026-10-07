@@ -175,13 +175,24 @@ const normalizeExportStage = (
 const reduceSessionSetExportProgressAction = (
 	payload: unknown,
 	nowValue: unknown,
-): Pick<SessionStateFields, "exportProgress"> => {
+	noop: unknown,
+	exportProgress: unknown,
+	exportRequest: unknown,
+): Pick<SessionStateFields, "exportProgress"> | unknown => {
 	if (payload === null) {
 		return { exportProgress: null };
 	}
 
 	const now = asNumber(nowValue, 0);
 	const value = asObject(payload);
+	const payloadId = asString(value?.id);
+	const currentId =
+		asString(asObject(exportProgress)?.id) ??
+		asString(asObject(exportRequest)?.id);
+	// Late progress of a superseded or dismissed export must not overwrite the current one.
+	if (!payloadId || payloadId !== currentId) {
+		return noop;
+	}
 	const range = normalizeExportRange(value?.range);
 	const stage = normalizeExportStage(value?.stage);
 	if (!value || !range || !stage) {
@@ -191,7 +202,7 @@ const reduceSessionSetExportProgressAction = (
 	const progressFallback = stage === "done" ? 100 : 0;
 	return {
 		exportProgress: {
-			id: asString(value.id) ?? `export:${now.toString(36)}`,
+			id: payloadId,
 			range,
 			stage,
 			progress: clampProgressPercent(value.progress, progressFallback),
@@ -1021,9 +1032,21 @@ export const sessionSetExportProgressAction = {
 		exportProgress: ["exportProgress"],
 	},
 	fn: [
-		["$now"] as const,
-		(payload: unknown, now: unknown) =>
-			reduceSessionSetExportProgressAction(payload, now),
+		["$now", "$noop", "exportProgress", "exportRequest"] as const,
+		(
+			payload: unknown,
+			now: unknown,
+			noop: unknown,
+			exportProgress: unknown,
+			exportRequest: unknown,
+		) =>
+			reduceSessionSetExportProgressAction(
+				payload,
+				now,
+				noop,
+				exportProgress,
+				exportRequest,
+			),
 	],
 } as const satisfies DktActionDescriptor;
 

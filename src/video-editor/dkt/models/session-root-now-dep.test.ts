@@ -69,6 +69,13 @@ describe("SessionRoot time dependencies ($now)", () => {
 	it("setExportProgress defaults updatedAt from $now", async () => {
 		const harness = await createActionContractHarness();
 		vi.spyOn(Date, "now").mockReturnValue(NOW);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"requestProjectExport",
+			{ id: "export:test:2", range: { type: "project" } },
+		);
+		vi.spyOn(Date, "now").mockReturnValue(NOW + 1000);
 
 		await dispatchAndSettle(
 			harness.ctx,
@@ -79,6 +86,6 @@ describe("SessionRoot time dependencies ($now)", () => {
 
 		expect(
 			harness.ctx.getAttr(harness.sessionRoot, "exportProgress"),
-		).toMatchObject({ id: "export:test:2", updatedAt: NOW });
+		).toMatchObject({ id: "export:test:2", updatedAt: NOW + 1000 });
 	});
 });

@@ -115,6 +115,28 @@ describe("effect contract suite: export", () => {
 		await driver.export.consume(newRequest);
 		expect(await queryAttr(harness.sessionRoot, "exportRequest")).toBeNull();
 	});
+
+	it("ignores late progress for a superseded export request id", async () => {
+		const { fakes, harness, driver } = await setup();
+		await requestExport({ harness }, "export:progress-old");
+		await requestExport({ harness }, "export:progress-new");
+		const oldRequest = requestOf(fakes.exportCalls[0]);
+		const newRequest = requestOf(fakes.exportCalls[1]);
+
+		await driver.export.progress(newRequest, "rendering", 10);
+		await driver.export.progress(oldRequest, "rendering", 90);
+		expect(await queryAttr(harness.sessionRoot, "exportProgress")).toMatchObject({
+			id: "export:progress-new",
+			stage: "rendering",
+			progress: 10,
+		});
+
+		await driver.export.progress(oldRequest, "error", 0, { error: "late" });
+		expect(await queryAttr(harness.sessionRoot, "exportProgress")).toMatchObject({
+			id: "export:progress-new",
+			stage: "rendering",
+		});
+	});
 });
 
 describe("effect contract suite: import", () => {
