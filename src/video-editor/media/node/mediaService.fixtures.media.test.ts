@@ -8,8 +8,12 @@ import type { MediaExportFormat } from "../contracts/export";
 import type { ProbeResult } from "../contracts/probe";
 import { createMediaService } from "./mediaService";
 import { ensureFixtures, type FixtureName } from "./testing/mediaFixtures";
+import { runCaptured } from "./processRunner";
 import { audioStats, meanLumaAt } from "./testing/mediaMetrics";
 import { scenarioAssets, videoAudioScenario } from "./testing/exportScenarios";
+
+const FFMPEG = process.env.MINICUT_FFMPEG_PATH ?? "ffmpeg";
+const FFPROBE = process.env.MINICUT_FFPROBE_PATH ?? "ffprobe";
 
 const clip = (partial: Record<string, unknown>): PreviewClipSource =>
 	({ name: "Clip", inPoint: 0, ...partial }) as unknown as PreviewClipSource;
@@ -39,6 +43,7 @@ describe("FFmpeg export against fixtures", () => {
 			"video-offset",
 			"audio-tone",
 			"image-card",
+			"video-red-bt709",
 		]);
 		outDir = await mkdtemp(path.join(os.tmpdir(), "minicut-fixtures-"));
 	});
@@ -160,6 +165,30 @@ describe("FFmpeg export against fixtures", () => {
 		const { file } = await exportPlan("image", plan, { i: "image-card" });
 		expect(await meanLumaAt(file, 0.3)).toBeLessThan(25);
 		expect(await meanLumaAt(file, 1.5)).toBeGreaterThan(40);
+	});
+
+	it("tags the output limited-range BT.601 and converts BT.709 sources to it", async () => {
+		const plan = planOf(
+			[clip({ id: "v", resourceId: "r", resourceKind: "video", start: 0, duration: 1 })],
+			1,
+		);
+		const { file } = await exportPlan("color-tags", plan, { r: "video-red-bt709" });
+		const probe = await runCaptured(FFPROBE, [
+			"-v", "error", "-select_streams", "v:0",
+			"-show_entries", "stream=color_range,color_space", "-of", "default=nw=1", file,
+		]);
+		expect(probe.stdout).toContain("color_range=tv");
+		expect(probe.stdout).toContain("color_space=smpte170m");
+		// Luma of saturated red: BT.601 = 81, BT.709 = 63. The source is 709, so the
+		// exported data must have been converted (not just relabelled).
+		const stats = await runCaptured(FFMPEG, [
+			"-v", "error", "-i", file, "-frames:v", "1",
+			"-vf", "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-",
+			"-f", "null", "-",
+		]);
+		const luma = Number(/YAVG=([\d.]+)/.exec(stats.stdout)?.[1]);
+		expect(luma).toBeGreaterThan(77);
+		expect(luma).toBeLessThan(84);
 	});
 
 	it("writes H.264/AAC MP4 when requested", async () => {

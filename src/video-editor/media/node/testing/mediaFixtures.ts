@@ -13,6 +13,7 @@ export type FixtureName =
 	| "video-audio"
 	| "video-av-webm"
 	| "video-blue-webm"
+	| "video-red-bt709"
 	| "video-vfr"
 	| "video-offset"
 	| "audio-tone"
@@ -104,6 +105,28 @@ export const FIXTURE_SPECS: Record<FixtureName, FixtureSpec> = {
 			"libvpx-vp9",
 			"-pix_fmt",
 			"yuv420p",
+		],
+	},
+	// Saturated red encoded and tagged as limited-range BT.709.
+	"video-red-bt709": {
+		file: "video-red-bt709.mp4",
+		args: [
+			"-f",
+			"lavfi",
+			"-i",
+			"color=c=red:size=320x240:rate=25:duration=2",
+			"-vf",
+			"scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",
+			"-c:v",
+			"libx264",
+			"-colorspace",
+			"bt709",
+			"-color_primaries",
+			"bt709",
+			"-color_trc",
+			"bt709",
+			"-color_range",
+			"tv",
 		],
 	},
 	// Irregular frame gaps with preserved timestamps -> variable frame rate.

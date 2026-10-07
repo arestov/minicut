@@ -54,6 +54,23 @@ export const AUDIO_SAMPLE_RATE = 48_000;
  */
 const EXPORT_BACKGROUND = "0x09090b";
 
+/**
+ * Output colour description of the browser export (WebCodecs tags its VP8/VP9
+ * as limited range BT.601). The filter graph already yields BT.601 limited
+ * data (the background and overlay convert to it); tag the stream so players
+ * do not have to guess the matrix.
+ */
+const OUTPUT_COLOR_TAGS = [
+	"-color_range",
+	"tv",
+	"-colorspace",
+	"smpte170m",
+	"-color_primaries",
+	"smpte170m",
+	"-color_trc",
+	"smpte170m",
+];
+
 interface FfmpegPlanInputBase {
 	plan: ExportPlan;
 	range: ExportRange;
@@ -218,6 +235,7 @@ const encoderArgs = (format: MediaExportFormat, hasAudio: boolean): string[] => 
 			"20",
 			"-pix_fmt",
 			"yuv420p",
+			...OUTPUT_COLOR_TAGS,
 			...(hasAudio ? ["-c:a", "aac", "-b:a", "192k"] : []),
 			"-movflags",
 			"+faststart",
@@ -240,6 +258,7 @@ const encoderArgs = (format: MediaExportFormat, hasAudio: boolean): string[] => 
 		"5",
 		"-pix_fmt",
 		"yuv420p",
+		...OUTPUT_COLOR_TAGS,
 		...(hasAudio ? ["-c:a", "libopus", "-b:a", "128k"] : []),
 		"-f",
 		"webm",
