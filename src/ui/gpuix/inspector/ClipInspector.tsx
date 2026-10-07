@@ -4,9 +4,8 @@ import { Panel } from "../controls/Panel";
 import { Stepper } from "../controls/Stepper";
 import { colors, metrics } from "../theme";
 
-const OPACITY_STEP_PERCENT = 10;
+const OPACITY_STEP = 0.1;
 const SCALE_STEP = 0.1;
-const MIN_SCALE = 0.1;
 const MOVE_STEP_SECONDS = 0.5;
 const RESIZE_STEP_SECONDS = 0.5;
 
@@ -101,32 +100,15 @@ const InspectorBody = () => {
 				label="Opacity"
 				testId="inspector-opacity"
 				value={`${opacityPercent()}%`}
-				decrementDisabled={opacityPercent() <= 0}
-				incrementDisabled={opacityPercent() >= 100}
-				onDecrement={() =>
-					dispatch("updateOpacity", {
-						opacityPercent: Math.max(0, opacityPercent() - OPACITY_STEP_PERCENT),
-					})
-				}
-				onIncrement={() =>
-					dispatch("updateOpacity", {
-						opacityPercent: Math.min(100, opacityPercent() + OPACITY_STEP_PERCENT),
-					})
-				}
+				onDecrement={() => dispatch("nudgeOpacity", { delta: -OPACITY_STEP })}
+				onIncrement={() => dispatch("nudgeOpacity", { delta: OPACITY_STEP })}
 			/>
 			<Stepper
 				label="Scale"
 				testId="inspector-scale"
 				value={`${roundTo(scale(), 2)}x`}
-				decrementDisabled={scale() <= MIN_SCALE}
-				onDecrement={() =>
-					dispatch("setTransform", {
-						scale: Math.max(MIN_SCALE, roundTo(scale() - SCALE_STEP, 2)),
-					})
-				}
-				onIncrement={() =>
-					dispatch("setTransform", { scale: roundTo(scale() + SCALE_STEP, 2) })
-				}
+				onDecrement={() => dispatch("scaleBy", { delta: -SCALE_STEP })}
+				onIncrement={() => dispatch("scaleBy", { delta: SCALE_STEP })}
 			/>
 		</div>
 	);

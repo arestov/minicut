@@ -336,4 +336,40 @@ describe("Clip action contracts", () => {
 
 		await expectProjectGraphInvariants(harness.ctx);
 	});
+
+	it("nudgeOpacity applies a relative delta and clamps to [0, 1]", async () => {
+		const harness = await createActionContractHarness();
+		const clip = harness.videoClip;
+
+		await dispatchAndSettle(harness.ctx, clip, "updateOpacity", { opacityPercent: 50 });
+		await dispatchAndSettle(harness.ctx, clip, "nudgeOpacity", { delta: 0.1 });
+		expect(harness.ctx.getAttr(clip, "opacity")).toEqual({ value: 0.6 });
+
+		await dispatchAndSettle(harness.ctx, clip, "nudgeOpacity", { delta: 5 });
+		expect(harness.ctx.getAttr(clip, "opacity")).toEqual({ value: 1 });
+
+		await dispatchAndSettle(harness.ctx, clip, "nudgeOpacity", { delta: -5 });
+		expect(harness.ctx.getAttr(clip, "opacity")).toEqual({ value: 0 });
+
+		await dispatchAndSettle(harness.ctx, clip, "nudgeOpacity", { delta: "x" });
+		expect(harness.ctx.getAttr(clip, "opacity")).toEqual({ value: 0 });
+	});
+
+	it("scaleBy applies a relative delta, clamps, and keeps other transform fields", async () => {
+		const harness = await createActionContractHarness();
+		const clip = harness.videoClip;
+
+		await dispatchAndSettle(harness.ctx, clip, "setTransform", { x: 12, scale: 1 });
+		await dispatchAndSettle(harness.ctx, clip, "scaleBy", { delta: 0.1 });
+		expect(harness.ctx.getAttr(clip, "transform")).toMatchObject({
+			x: { value: 12 },
+			scale: { value: 1.1 },
+		});
+
+		await dispatchAndSettle(harness.ctx, clip, "scaleBy", { delta: -50 });
+		expect(harness.ctx.getAttr(clip, "transform")).toMatchObject({ scale: { value: 0.1 } });
+
+		await dispatchAndSettle(harness.ctx, clip, "scaleBy", { delta: 500 });
+		expect(harness.ctx.getAttr(clip, "transform")).toMatchObject({ scale: { value: 10 } });
+	});
 });

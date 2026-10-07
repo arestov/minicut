@@ -510,6 +510,32 @@ export const reduceSetTransform = (payload: unknown, transform: unknown) => {
 	return patch;
 };
 
+const MIN_CLIP_SCALE = 0.1;
+const MAX_CLIP_SCALE = 10;
+const roundToHundredths = (value: number): number => Math.round(value * 100) / 100;
+
+/** Relative opacity edit: `delta` is a fraction (0.1 = 10 points), result clamped to [0, 1]. */
+export const reduceNudgeOpacity = (payload: unknown, opacity: unknown) => {
+	const delta = (payload as { delta?: unknown } | null)?.delta;
+	if (typeof delta !== "number" || !Number.isFinite(delta)) return null;
+	const current = toAnimatedScalar(opacity, { value: 1 }).value;
+	return {
+		opacity: { value: clamp(roundToHundredths(current + delta), 0, 1) },
+	};
+};
+
+/** Relative scale edit: `delta` is added to the current scale, result clamped to [0.1, 10]. */
+export const reduceScaleBy = (payload: unknown, transform: unknown) => {
+	const delta = (payload as { delta?: unknown } | null)?.delta;
+	if (typeof delta !== "number" || !Number.isFinite(delta)) return null;
+	const current = (transform as TransformAttrs | null)?.scale?.value;
+	const base = typeof current === "number" && Number.isFinite(current) ? current : 1;
+	return clipSetTransformAction.fn(
+		{ scale: clamp(roundToHundredths(base + delta), MIN_CLIP_SCALE, MAX_CLIP_SCALE) },
+		(transform as TransformAttrs | null) ?? defaultClipTransform,
+	);
+};
+
 export const reduceMoveBy = (payload: unknown, start: unknown) => {
 	const patch = reduceTimelineMoveByAction(payload, {
 		start: numberOr(start, 0),

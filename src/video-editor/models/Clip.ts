@@ -8,6 +8,8 @@ import {
 	reduceClipSetMediaKindAction,
 	reduceClipUpdateOpacityAction,
 	reduceMoveBy,
+	reduceNudgeOpacity,
+	reduceScaleBy,
 	reduceResize,
 	reduceSetAudio,
 	reduceSetClipAttrs,
@@ -371,6 +373,26 @@ export const Clip = model({
 				["$noop", "transform"] as const,
 				(payload: unknown, noop: unknown, transform: unknown) =>
 					reduceSetTransform(payload, transform) ?? noop,
+			],
+		},
+		nudgeOpacity: {
+			to: {
+				opacity: ["opacity"],
+			},
+			fn: [
+				["$noop", "opacity"] as const,
+				(payload: unknown, noop: unknown, opacity: unknown) =>
+					reduceNudgeOpacity(payload, opacity) ?? noop,
+			],
+		},
+		scaleBy: {
+			to: {
+				transform: ["transform"],
+			},
+			fn: [
+				["$noop", "transform"] as const,
+				(payload: unknown, noop: unknown, transform: unknown) =>
+					reduceScaleBy(payload, transform) ?? noop,
 			],
 		},
 		moveBy: {

@@ -77,7 +77,7 @@ describe("clip inspector", () => {
 		expect(view.texts()).toContain("1x");
 	});
 
-	test("the opacity stepper edits through updateOpacity and reads back", async () => {
+	test("the opacity stepper edits through nudgeOpacity and reads back", async () => {
 		view = await renderInspector();
 		const clip = await selectFirstClip(view);
 
