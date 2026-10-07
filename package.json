@@ -20,6 +20,7 @@
     "test:bun:node": "node ./scripts/run-vitest-bun.mjs --config vitest.video-editor.node.config.js",
     "test:bun:crdt": "node ./scripts/run-vitest-bun.mjs --config vitest.video-editor.crdt.config.js",
     "test:bun:contracts": "node ./scripts/run-vitest-bun.mjs --config vitest.video-editor.node.config.js src/video-editor/dkt/models/effectContracts.test.ts",
+    "test:bun:media": "node ./scripts/run-vitest-bun.mjs --config vitest.media.config.js",
     "bench:video-editor": "vitest bench --config vitest.video-editor.config.js src/video-editor/worker/renderIndexProjection.bench.ts",
     "test:integration": "npm run test:integration:fast && npm run test:integration:p2p",
     "test:integration:fast": "playwright test",
