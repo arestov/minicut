@@ -18,6 +18,12 @@ export type ExportExecutor = {
 	/** Handler of the `$fx_renderExport` task request published by the host. */
 	handleRequest(payload: unknown): void;
 	/**
+	 * Handler of the `$fx_cancelExport` task request: cancels the running job of
+	 * `payload.queueKey` when it is the export `payload.id`. Reports nothing; the
+	 * model already holds the cancelled state.
+	 */
+	cancel(payload: unknown): void;
+	/**
 	 * Cancels running jobs for shutdown (kills ffmpeg, removes temp files) and
 	 * resolves when they are settled. Cancelled jobs report nothing to the model.
 	 */
@@ -205,6 +211,15 @@ export const createExportExecutor = ({
 			const pending = run(queueKey, request);
 			const entry = running.get(queueKey);
 			if (entry) entry.settled = pending;
+		},
+		cancel(payload) {
+			const value =
+				payload && typeof payload === "object"
+					? (payload as { id?: unknown; queueKey?: unknown })
+					: null;
+			if (typeof value?.id !== "string" || typeof value.queueKey !== "string") return;
+			const entry = running.get(value.queueKey);
+			if (entry && entry.requestId === value.id) entry.cancel();
 		},
 		async dispose() {
 			disposed = true;

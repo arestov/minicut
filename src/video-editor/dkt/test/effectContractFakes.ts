@@ -24,12 +24,16 @@ export type EffectContractFakes = ReturnType<typeof createEffectContractFakes>;
 
 export const createEffectContractFakes = () => {
 	const exportRuntime = createRecorder();
+	const exportCancelRuntime = createRecorder();
 	const importRuntime = createRecorder();
 	const mediaRecoveryRuntime = createRecorder();
 	const playbackRuntime = createRecorder();
 
 	const interfaces: MiniCutEffectInterfaces = {
-		exportRuntime: { requestExport: exportRuntime.record },
+		exportRuntime: {
+			requestExport: exportRuntime.record,
+			cancelExport: exportCancelRuntime.record,
+		},
 		importRuntime: { requestImportFiles: importRuntime.record },
 		mediaRecoveryRuntime: { requestMediaRecovery: mediaRecoveryRuntime.record },
 		playbackRuntime: { applyPlaybackRun: playbackRuntime.record },
@@ -38,6 +42,7 @@ export const createEffectContractFakes = () => {
 	return {
 		interfaces,
 		exportCalls: exportRuntime.calls,
+		exportCancelCalls: exportCancelRuntime.calls,
 		importCalls: importRuntime.calls,
 		mediaRecoveryCalls: mediaRecoveryRuntime.calls,
 		playbackCalls: playbackRuntime.calls,

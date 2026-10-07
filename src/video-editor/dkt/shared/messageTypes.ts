@@ -7,6 +7,7 @@ export const DKT_MSG = {
 	ACTION_ACCEPTED: "dkt:action-accepted",
 	DISPATCH_ACTION: "dkt:dispatch-action",
 	EXPORT_REQUEST: "dkt:export-request",
+	EXPORT_CANCEL_REQUEST: "dkt:export-cancel-request",
 	IMPORT_FILES_REQUEST: "dkt:import-files-request",
 	MEDIA_RECOVERY_REQUEST: "dkt:media-recovery-request",
 	PLAYBACK_RUN_REQUEST: "dkt:playback-run-request",
@@ -108,6 +109,11 @@ export type DktExportRequestMessage = {
 	payload: unknown;
 };
 
+export type DktExportCancelRequestMessage = {
+	type: typeof DKT_MSG.EXPORT_CANCEL_REQUEST;
+	payload: unknown;
+};
+
 export type DktImportFilesRequestMessage = {
 	type: typeof DKT_MSG.IMPORT_FILES_REQUEST;
 	payload: unknown;
@@ -166,6 +172,7 @@ export type MiniCutDktTransportMessage =
 	| DktActionAcceptedMessage
 	| DktDispatchActionMessage
 	| DktExportRequestMessage
+	| DktExportCancelRequestMessage
 	| DktImportFilesRequestMessage
 	| DktMediaRecoveryRequestMessage
 	| DktPlaybackRunRequestMessage

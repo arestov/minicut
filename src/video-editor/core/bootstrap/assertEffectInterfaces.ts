@@ -5,7 +5,7 @@ import type { MiniCutEffectInterfaces } from "../contracts/effectInterfaces";
  * skip a missing method, so a host must prove completeness at composition time.
  */
 export const REQUIRED_EFFECT_INTERFACE_METHODS = {
-	exportRuntime: ["requestExport"],
+	exportRuntime: ["requestExport", "cancelExport"],
 	importRuntime: ["requestImportFiles"],
 	mediaRecoveryRuntime: ["requestMediaRecovery"],
 	playbackRuntime: ["applyPlaybackRun"],

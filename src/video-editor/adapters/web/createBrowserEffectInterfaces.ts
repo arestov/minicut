@@ -68,6 +68,12 @@ export const createBrowserEffectInterfaces = ({
 				});
 				publishExportRequest(payload);
 			},
+			cancelExport: (payload: unknown) => {
+				log("exportRuntime.cancelExport", {
+					requestId: (payload as { id?: unknown } | null)?.id,
+				});
+				publishToPages(DKT_MSG.EXPORT_CANCEL_REQUEST, payload);
+			},
 		},
 		importRuntime: {
 			requestImportFiles: (payload: unknown) => {

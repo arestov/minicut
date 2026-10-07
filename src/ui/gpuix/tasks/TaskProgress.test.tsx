@@ -56,6 +56,23 @@ describe("export progress", () => {
 		expect(view.findAll("export-progress")).toHaveLength(0);
 	});
 
+	test("Cancel cancels the running export through the model", async () => {
+		view = await renderShell("timeline");
+		await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
+		await view.runtime.dispatchAndWait("requestProjectExport", { id: "export:test-cancel" }, null);
+		await view.untilAttr(view.rootScope, "exportProgress", stageIs("queued"));
+		await view.untilAttr(view.rootScope, "canCancelExport", (v) => v === true);
+		view.settle();
+
+		view.click("export-cancel");
+		await view.untilAttr(view.rootScope, "exportProgress", stageIs("cancelled"));
+		view.settle();
+
+		expect(view.texts()).toContain("Export cancelled");
+		expect(view.findAll("export-cancel")).toHaveLength(0);
+		expect(view.fakes.exportCancelCalls).toHaveLength(1);
+	});
+
 	test("follows the model exportProgress attr through each executor step", async () => {
 		view = await renderShell("timeline");
 		await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);

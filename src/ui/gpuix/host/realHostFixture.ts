@@ -127,6 +127,10 @@ export const openRealHostFixture = async (
 				executor.handleRequest(payload);
 			});
 			if (stop) disposers.push(stop);
+			const stopCancel = page.subscribeRuntimeTaskRequests?.("$fx_cancelExport", (payload) => {
+				executor.cancel(payload);
+			});
+			if (stopCancel) disposers.push(stopCancel);
 			disposeExecutors.push(() => executor.dispose());
 			return executor;
 		},

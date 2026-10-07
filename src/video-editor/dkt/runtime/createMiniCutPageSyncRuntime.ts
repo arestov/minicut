@@ -397,6 +397,10 @@ export const createMiniCutPageSyncRuntime = ({
 				emitRuntimeTaskRequest("$fx_renderExport", message.payload);
 				return;
 			}
+			case DKT_MSG.EXPORT_CANCEL_REQUEST: {
+				emitRuntimeTaskRequest("$fx_cancelExport", message.payload);
+				return;
+			}
 			case DKT_MSG.IMPORT_FILES_REQUEST: {
 				emitRuntimeTaskRequest("$fx_handleInputFiles", message.payload);
 				return;

@@ -9,6 +9,8 @@
 /** `$fx_renderExport` (SessionRoot) -> `#exportRuntime`. */
 export interface ExportRuntimeInterface {
 	requestExport(payload: unknown): void;
+	/** `$fx_cancelExport` (SessionRoot): stop the running export named by `payload.id` / `payload.queueKey`. */
+	cancelExport(payload: unknown): void;
 }
 
 /** `$fx_handleInputFiles` (SessionRoot) -> `#importRuntime`. */

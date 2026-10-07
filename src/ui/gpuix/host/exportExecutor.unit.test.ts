@@ -189,6 +189,22 @@ describe("export executor", () => {
 		).toBe(false);
 	});
 
+	test("cancel stops the job of the named export without reporting or consuming", async () => {
+		const { executor, jobs, dispatched, untilJobs } = setup();
+
+		executor.handleRequest(requestPayload("export:5", ["r1"]));
+		await untilJobs(1);
+		const before = dispatched.length;
+
+		executor.cancel({ id: "export:other", queueKey: "project" });
+		expect(jobs[0].job.cancelRequested).toBe(false);
+		executor.cancel({ id: "export:5", queueKey: "project" });
+		expect(jobs[0].job.cancelRequested).toBe(true);
+
+		await executor.dispose();
+		expect(dispatched).toHaveLength(before);
+	});
+
 	test("dispose cancels running jobs and reports nothing further", async () => {
 		const { executor, jobs, dispatched, until, untilJobs } = setup();
 

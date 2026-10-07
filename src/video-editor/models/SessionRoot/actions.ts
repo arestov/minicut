@@ -1,5 +1,5 @@
 import type { ExportProgressState } from "../../app/exportProgressState";
-import { clampProgressPercent } from "../../app/exportProgressState";
+import { clampProgressPercent, isExportRunning } from "../../app/exportProgressState";
 import type { ExportRequestState } from "../../app/exportRequestState";
 import {
 	buildPreviewBuffer,
@@ -77,6 +77,7 @@ export type DktSessionActionName =
 	| "requestClipExport"
 	| "requestSelectedClipExport"
 	| "consumeExportRequest"
+	| "cancelExport"
 	| "setExportProgress"
 	| "clearExportProgress";
 
@@ -165,6 +166,7 @@ const normalizeExportStage = (
 		value === "rendering" ||
 		value === "finalizing" ||
 		value === "done" ||
+		value === "cancelled" ||
 		value === "error"
 	) {
 		return value;
@@ -191,6 +193,10 @@ const reduceSessionSetExportProgressAction = (
 		asString(asObject(exportRequest)?.id);
 	// Late progress of a superseded or dismissed export must not overwrite the current one.
 	if (!payloadId || payloadId !== currentId) {
+		return noop;
+	}
+	// A cancelled export stays cancelled: its executor may still report once.
+	if (asObject(exportProgress)?.stage === "cancelled") {
 		return noop;
 	}
 	const range = normalizeExportRange(value?.range);
@@ -1055,6 +1061,73 @@ export const sessionSetExportProgressAction = {
 	],
 } as const satisfies DktActionDescriptor;
 
+export const sessionCancelExportAction = [
+	{
+		to: {
+			exportRequest: ["exportRequest"],
+			exportProgress: ["exportProgress"],
+			cancelFxPayload: ["$output"],
+		},
+		fn: [
+			["$noop", "exportProgress", "exportRequest", "$now"] as const,
+			(
+				payload: unknown,
+				noop: unknown,
+				exportProgress: unknown,
+				exportRequest: unknown,
+				now: unknown,
+			) => {
+				const progress = asObject(exportProgress);
+				const requestedId =
+					asString((payload as { id?: unknown } | null)?.id) ?? asString(payload);
+				const currentId = asString(progress?.id) ?? asString(asObject(exportRequest)?.id);
+				// Stale or unknown id: the export it names is not the current one.
+				if (!requestedId || requestedId !== currentId) {
+					return noop;
+				}
+				if (progress && !isExportRunning(progress as unknown as ExportProgressState)) {
+					return noop;
+				}
+				const range =
+					normalizeExportRange(progress?.range) ??
+					normalizeExportRange(asObject(exportRequest)?.range);
+				if (!range) {
+					return noop;
+				}
+				const initiatedBy =
+					asString(progress?.initiatedBy) ?? asString(asObject(exportRequest)?.initiatedBy);
+				return {
+					exportRequest: null,
+					exportProgress: {
+						id: requestedId,
+						range,
+						stage: "cancelled",
+						progress: clampProgressPercent(progress?.progress, 0),
+						updatedAt: asNumber(now, 0),
+						initiatedBy,
+					} satisfies ExportProgressState,
+					cancelFxPayload: {
+						id: requestedId,
+						queueKey: range.type === "clip" ? `clip:${range.clipId}` : "project",
+						initiatedBy,
+					},
+				};
+			},
+		],
+	},
+	{
+		to: [
+			"$fx_cancelExport",
+			{ intent: "call", drop_when_api_not_ready: false },
+		],
+		fn: [
+			["$noop"] as const,
+			(payload: unknown, noop: unknown) =>
+				payload && typeof payload === "object" ? payload : noop,
+		],
+	},
+] as const satisfies DktActionDefinition;
+
 export const sessionClearExportProgressAction = {
 	to: {
 		exportProgress: ["exportProgress"],
@@ -1596,6 +1669,7 @@ export const dktSessionActions = {
 	requestClipExport: sessionRequestClipExportAction,
 	requestSelectedClipExport: sessionRequestSelectedClipExportAction,
 	consumeExportRequest: sessionConsumeExportRequestAction,
+	cancelExport: sessionCancelExportAction,
 	setExportProgress: sessionSetExportProgressAction,
 	clearExportProgress: sessionClearExportProgressAction,
 } as const satisfies Record<DktSessionActionName, DktActionDefinition>;

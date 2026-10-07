@@ -78,6 +78,7 @@ const waitForIdle = async (memory: Memory): Promise<void> => {
 const createRecordingInterfaces = () => {
 	const calls = {
 		export: [] as unknown[],
+		exportCancel: [] as unknown[],
 		import: [] as unknown[],
 		mediaRecovery: [] as unknown[],
 		playback: [] as unknown[],
@@ -102,7 +103,10 @@ const createRecordingInterfaces = () => {
 			check();
 		});
 	const interfaces: MiniCutEffectInterfaces = {
-		exportRuntime: { requestExport: record(calls.export) },
+		exportRuntime: {
+			requestExport: record(calls.export),
+			cancelExport: record(calls.exportCancel),
+		},
 		importRuntime: { requestImportFiles: record(calls.import) },
 		mediaRecoveryRuntime: { requestMediaRecovery: record(calls.mediaRecovery) },
 		playbackRuntime: { applyPlaybackRun: record(calls.playback) },
@@ -297,7 +301,7 @@ describe("createMiniCutDktRuntime injected effect interfaces", () => {
 				} as unknown as MiniCutEffectInterfaces,
 			}),
 		).toThrow(
-			"exportRuntime.requestExport, mediaRecoveryRuntime.requestMediaRecovery",
+			"exportRuntime.requestExport, exportRuntime.cancelExport, mediaRecoveryRuntime.requestMediaRecovery",
 		);
 	});
 });

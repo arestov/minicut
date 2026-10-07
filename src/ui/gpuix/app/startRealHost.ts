@@ -186,6 +186,7 @@ export const startRealHost = async ({
 		};
 		listen("$fx_handleInputFiles", (payload) => importer.handleRequest(payload));
 		listen("$fx_renderExport", (payload) => exporter.handleRequest(payload));
+		listen("$fx_cancelExport", (payload) => exporter.cancel(payload));
 		listen("$fx_mediaRecovery", (payload) => recovery.handleRequest(payload));
 		listen("$fx_applyPlaybackRun", (payload) => playback.handleRequest(payload));
 

@@ -39,7 +39,7 @@ test("runs on the effect contract fakes unless the host supplies its own interfa
 	dkt.destroy();
 
 	const own = {
-		exportRuntime: { requestExport() {} },
+		exportRuntime: { requestExport() {}, cancelExport() {} },
 		importRuntime: { requestImportFiles() {} },
 		mediaRecoveryRuntime: { requestMediaRecovery() {} },
 		playbackRuntime: { applyPlaybackRun() {} },

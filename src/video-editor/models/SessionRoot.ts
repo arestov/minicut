@@ -242,6 +242,14 @@ export const EditorSessionRoot = model({
 				},
 			},
 		],
+		canCancelExport: [
+			"comp",
+			["exportProgress"] as const,
+			(exportProgress: unknown) => {
+				const stage = (exportProgress as { stage?: unknown } | null)?.stage;
+				return stage === "queued" || stage === "rendering" || stage === "finalizing";
+			},
+		],
 		timelineZoom: [
 			"input",
 			TIMELINE_ZOOM_DEFAULT,
@@ -361,6 +369,25 @@ export const EditorSessionRoot = model({
 					runtime.applyPlaybackRun(
 						(state as { payload?: unknown } | null)?.payload,
 					);
+				},
+			},
+			$fx_cancelExport: {
+				api: ["exportRuntime"],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as {
+						cancelExport?: (payload: unknown) => void;
+					} | null;
+					const payload = (state as { payload?: unknown } | null)?.payload;
+					if (
+						!runtime ||
+						typeof runtime.cancelExport !== "function" ||
+						!payload ||
+						typeof payload !== "object"
+					) {
+						return;
+					}
+					runtime.cancelExport(payload);
 				},
 			},
 			$fx_handleInputFiles: {

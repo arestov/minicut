@@ -116,6 +116,68 @@ describe("effect contract suite: export", () => {
 		expect(await queryAttr(harness.sessionRoot, "exportRequest")).toBeNull();
 	});
 
+	it("cancels the running export through the export runtime and marks it cancelled", async () => {
+		const { fakes, harness, driver } = await setup();
+		await requestExport({ harness }, "export:cancel-1");
+		const request = requestOf(fakes.exportCalls[0]);
+		await driver.export.progress(request, "rendering", 40);
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "cancelExport", {
+			id: "export:cancel-1",
+		});
+
+		expect(fakes.exportCancelCalls).toEqual([
+			{ id: "export:cancel-1", queueKey: "project", initiatedBy: "contract-suite" },
+		]);
+		expect(await queryAttr(harness.sessionRoot, "exportProgress")).toMatchObject({
+			id: "export:cancel-1",
+			stage: "cancelled",
+			progress: 40,
+		});
+		expect(await queryAttr(harness.sessionRoot, "exportRequest")).toBeNull();
+		expect(await queryAttr(harness.sessionRoot, "canCancelExport")).toBe(false);
+	});
+
+	it("keeps a cancelled export cancelled when the executor still reports", async () => {
+		const { fakes, harness, driver } = await setup();
+		await requestExport({ harness }, "export:cancel-2");
+		const request = requestOf(fakes.exportCalls[0]);
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "cancelExport", {
+			id: "export:cancel-2",
+		});
+
+		await driver.export.progress(request, "rendering", 80);
+
+		expect(await queryAttr(harness.sessionRoot, "exportProgress")).toMatchObject({
+			stage: "cancelled",
+		});
+	});
+
+	it("ignores a cancel for a stale export id or a finished export", async () => {
+		const { fakes, harness, driver } = await setup();
+		await requestExport({ harness }, "export:old");
+		await requestExport({ harness }, "export:new");
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "cancelExport", {
+			id: "export:old",
+		});
+		expect(fakes.exportCancelCalls).toHaveLength(0);
+		expect(await queryAttr(harness.sessionRoot, "exportProgress")).toMatchObject({
+			id: "export:new",
+			stage: "queued",
+		});
+
+		const request = requestOf(fakes.exportCalls[1]);
+		await driver.export.progress(request, "done", 100, { fileName: "out.webm" });
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "cancelExport", {
+			id: "export:new",
+		});
+		expect(fakes.exportCancelCalls).toHaveLength(0);
+		expect(await queryAttr(harness.sessionRoot, "exportProgress")).toMatchObject({
+			stage: "done",
+		});
+	});
+
 	it("rejects an export request without a boundary-provided id", async () => {
 		const { fakes, harness } = await setup();
 

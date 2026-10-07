@@ -62,6 +62,11 @@ export const createWindowExecutorEffectInterfaces = ({
 	): { window: ExecutorWindow | null; silent: boolean } => {
 		const payload = asRecord((message as { payload?: unknown }).payload);
 		switch (message.type) {
+			case DKT_MSG.EXPORT_CANCEL_REQUEST: {
+				// Same window as the export it cancels; never another window's export.
+				const window = byRootNodeId(payload?.initiatedBy);
+				return { window, silent: window === null };
+			}
 			case DKT_MSG.EXPORT_REQUEST: {
 				const initiatedBy = asRecord(payload?.request)?.initiatedBy;
 				return {

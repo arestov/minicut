@@ -6,6 +6,7 @@ export type ExportProgressStage =
 	| "rendering"
 	| "finalizing"
 	| "done"
+	| "cancelled"
 	| "error";
 
 export interface ExportProgressState {
@@ -29,6 +30,7 @@ const exportStageLabel: Record<
 	rendering: "rendering",
 	finalizing: "finalizing",
 	done: "done",
+	cancelled: "cancelled",
 };
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -51,6 +53,9 @@ export const formatExportProgress = (state: ExportProgressState): string => {
 	}
 	if (state.stage === "idle") {
 		return "idle";
+	}
+	if (state.stage === "cancelled") {
+		return "cancelled";
 	}
 	const stage = exportStageLabel[state.stage];
 	return `${stage} ${clampProgressPercent(state.progress)}%`;

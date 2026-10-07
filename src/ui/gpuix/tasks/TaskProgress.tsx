@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { One, useActions, useAttrs } from "../../../dkt-solid-sync";
+import { One, useActions, useAttrs, useRootDispatch } from "../../../dkt-solid-sync";
 import { Button } from "../controls/Button";
 import {
 	clampProgressPercent,
@@ -45,7 +45,8 @@ const isExportProgress = (value: unknown): value is ExportProgressState =>
 
 /** Export progress: the session `exportProgress` attr, shown as it is. */
 export const ExportProgress = () => {
-	const session = useAttrs(["exportProgress"]);
+	const session = useAttrs(["exportProgress", "canCancelExport"]);
+	const dispatch = useRootDispatch();
 	const host = useHostServices();
 	const state = () => {
 		const value = session.exportProgress();
@@ -70,6 +71,15 @@ export const ExportProgress = () => {
 						percent={clampProgressPercent(current().progress)}
 						failed={current().stage === "error"}
 					/>
+					<Show when={session.canCancelExport() === true}>
+						<Button
+							testId="export-cancel"
+							aria-label="Cancel export"
+							onClick={() => dispatch("cancelExport", { id: current().id })}
+						>
+							<text>Cancel</text>
+						</Button>
+					</Show>
 				</div>
 			)}
 		</Show>
