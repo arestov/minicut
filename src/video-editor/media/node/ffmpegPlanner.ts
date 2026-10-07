@@ -577,3 +577,102 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 		clipIds: selected.map((r) => r.clip.id),
 	};
 };
+
+export interface FfmpegAudioStreamPlanInput {
+	plan: ExportPlan;
+	/** Resolved file path by clip resourceId. */
+	assetPaths: Record<string, string>;
+	audioChannels?: Record<string, number>;
+	silentAudioResources?: readonly string[];
+	/** Timeline time of the first output sample. */
+	startSeconds: number;
+	/** Length of the stream; default: until the end of the plan. */
+	durationSeconds?: number;
+}
+
+export interface FfmpegAudioStreamPlan {
+	/** ffmpeg arguments writing interleaved f32le stereo 48 kHz to stdout. */
+	args: string[];
+	durationSeconds: number;
+	/** False when no audio clip overlaps the window (the stream is empty). */
+	hasAudio: boolean;
+}
+
+/**
+ * Plan the timeline audio mix as a raw PCM stream on stdout, starting at
+ * `startSeconds` of the timeline. It uses the export mixer graph, so the
+ * samples equal the audio of an export of the same range (clip sources of
+ * other kinds are ignored).
+ */
+export const planFfmpegAudioStream = (
+	input: FfmpegAudioStreamPlanInput,
+): FfmpegAudioStreamPlan => {
+	if (!Number.isFinite(input.startSeconds) || input.startSeconds < 0) {
+		throw new MediaError(
+			"invalid-request",
+			`Invalid audio stream start: ${input.startSeconds}`,
+		);
+	}
+	const plan = normalizeExportPlan(input.plan);
+	const rangeStart = input.startSeconds;
+	const rangeEnd =
+		input.durationSeconds === undefined
+			? plan.duration
+			: rangeStart + input.durationSeconds;
+	const durationSeconds = Math.max(0, rangeEnd - rangeStart);
+	const silent = new Set(input.silentAudioResources ?? []);
+	const audio = plan.clipSources
+		.map((source) => normalizePreviewClipSource(source))
+		.filter(
+			(source): source is PreviewClipSource =>
+				source !== null &&
+				source.resourceKind === "audio" &&
+				!silent.has(source.resourceId ?? source.id),
+		)
+		.map((source) => clipToRange(source, rangeStart, rangeEnd))
+		.filter((ranged): ranged is RangedClip => ranged !== null);
+	if (audio.length === 0 || durationSeconds <= EPSILON) {
+		return { args: [], durationSeconds, hasAudio: false };
+	}
+	const mix = buildAudioMixGraph({
+		audio,
+		firstInputIndex: 0,
+		outputDuration: durationSeconds,
+		audioChannels: input.audioChannels,
+		assetPathFor: (clip) => {
+			const key = clip.resourceId ?? clip.id;
+			const found = input.assetPaths[key];
+			if (!found) {
+				throw new MediaError(
+					"asset-not-found",
+					`No file location for resource ${key} (clip ${clip.id})`,
+					{ resourceId: key, clipId: clip.id },
+				);
+			}
+			return found;
+		},
+	});
+	return {
+		args: [
+			"-hide_banner",
+			"-nostdin",
+			"-loglevel",
+			"error",
+			"-nostats",
+			...mix.inputArgs,
+			"-filter_complex",
+			mix.filters.join(";"),
+			"-map",
+			"[aout]",
+			"-f",
+			"f32le",
+			"-ar",
+			String(AUDIO_SAMPLE_RATE),
+			"-ac",
+			"2",
+			"pipe:1",
+		],
+		durationSeconds,
+		hasAudio: true,
+	};
+};

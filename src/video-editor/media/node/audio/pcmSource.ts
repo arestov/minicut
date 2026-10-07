@@ -28,3 +28,13 @@ export interface PcmSource {
 	/** Stops the producer and releases its resources. Idempotent. */
 	cancel(): Promise<void>;
 }
+
+/** A source that has ended already (no audio to play). */
+export const createEmptyPcmSource = (): PcmSource => ({
+	bufferedFrames: 0,
+	ended: true,
+	error: null,
+	pull: () => null,
+	skip: () => 0,
+	cancel: () => Promise.resolve(),
+});

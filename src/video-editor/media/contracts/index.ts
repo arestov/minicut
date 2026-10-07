@@ -1,4 +1,5 @@
 export type * from "./assets";
+export type * from "./audioStream";
 export type * from "./capabilities";
 export type * from "./errors";
 export type * from "./export";

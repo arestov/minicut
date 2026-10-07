@@ -1,14 +1,18 @@
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { AssetLocation, AssetResolver } from "../contracts/assets";
+import type { AudioMixStreamRequest } from "../contracts/audioStream";
 import type { MediaCapabilities } from "../contracts/capabilities";
 import type { MediaExportRequest } from "../contracts/export";
 import type { FileArtifact, MediaJob } from "../contracts/job";
 import type { ProbeRequest, ProbeResult } from "../contracts/probe";
 import type { ProxyRequest } from "../contracts/proxy";
 import { type MediaBinaries, resolveMediaBinaries } from "./binaries";
+import { createFfmpegPcmSource } from "./audio/ffmpegPcmSource";
+import { createEmptyPcmSource, type PcmSource } from "./audio/pcmSource";
 import { startFfmpeg } from "./ffmpegRunner";
 import {
+	planFfmpegAudioStream,
 	planFfmpegExport,
 	SUPPORTED_PLAN_OPERATIONS,
 	UNSUPPORTED_PLAN_OPERATIONS,
@@ -37,6 +41,20 @@ export interface MediaService {
 	capabilities(): Promise<MediaCapabilities>;
 }
 
+/**
+ * In-process service: the file jobs of `MediaService` plus the realtime audio
+ * stream (the RPC client in another process does not carry PCM).
+ */
+export interface NodeMediaService extends MediaService {
+	/**
+	 * Timeline audio mix as an f32 stereo 48 kHz PCM stream from
+	 * `request.startSeconds`, produced by the export mixer graph and read at
+	 * the consumer's pace (the process blocks on a full pipe). The caller
+	 * cancels the source; it does not count against the file-job limit.
+	 */
+	streamAudioMix(request: AudioMixStreamRequest): PcmSource;
+}
+
 interface PreparedJob {
 	args: string[];
 	totalSeconds: number;
@@ -52,7 +70,7 @@ const removeQuietly = (file: string): Promise<void> =>
 
 export const createMediaService = (
 	options: MediaServiceOptions = {},
-): MediaService => {
+): NodeMediaService => {
 	const binaries = resolveMediaBinaries(options);
 	const limiter = new JobLimiter(options.maxConcurrentJobs ?? 2);
 	const inFlightRequestIds = new Set<string>();
@@ -296,6 +314,28 @@ export const createMediaService = (
 					totalSeconds: info.durationSeconds,
 				};
 			}),
+
+		streamAudioMix: (request) => {
+			const assetPaths: Record<string, string> = {};
+			for (const [resourceId, location] of Object.entries(request.assets)) {
+				assetPaths[resourceId] = location.path;
+			}
+			const plan = planFfmpegAudioStream({
+				plan: request.plan,
+				assetPaths,
+				audioChannels: request.audioChannels,
+				silentAudioResources: request.silentAudioResources,
+				startSeconds: request.startSeconds,
+				durationSeconds: request.durationSeconds,
+			});
+			// No audio clip in the window: a source that has ended already.
+			if (!plan.hasAudio) return createEmptyPcmSource();
+			return createFfmpegPcmSource({
+				ffmpegPath: binaries.ffmpegPath,
+				args: plan.args,
+				onProcessStart: options.onProcessStart,
+			});
+		},
 
 		capabilities: async () => {
 			const result = await runCaptured(binaries.ffmpegPath, ["-version"], {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PreviewClipSource } from "../../read-model/previewComps";
 import type { ExportPlan } from "../../render/renderPlan";
-import { type FfmpegPreviewPlanInput, planFfmpegExport } from "./ffmpegPlanner";
+import {
+	type FfmpegPreviewPlanInput,
+	planFfmpegAudioStream,
+	planFfmpegExport,
+} from "./ffmpegPlanner";
 import { MediaError } from "./mediaError";
 
 const clip = (partial: Record<string, unknown>): PreviewClipSource =>
@@ -340,5 +344,109 @@ describe("planFfmpegExport preview mode", () => {
 		expect(() =>
 			planFfmpegExport({ ...base, format: "webm" } as never),
 		).toThrowError(expect.objectContaining({ code: "invalid-request" }));
+	});
+});
+
+describe("planFfmpegAudioStream", () => {
+	const plan = makePlan(
+		[
+			video("v", 0, 4),
+			audio("a", 1, 2, { inPoint: 0.5, audio: { gain: 0.5, pan: 0 } }),
+			audio("b", 0, 4, { audio: { gain: 1, pan: -1 } }),
+		],
+		{ duration: 4 },
+	);
+	const assetPaths = paths("v", "a", "b");
+
+	it("builds the export mixer graph for the window and writes f32le stereo 48 kHz to stdout", () => {
+		const stream = planFfmpegAudioStream({
+			plan,
+			assetPaths,
+			startSeconds: 1.5,
+		});
+		const graph = filterOf(stream.args);
+		expect(stream.hasAudio).toBe(true);
+		expect(stream.durationSeconds).toBe(2.5);
+		// clip "a" starts at 1 s, the window at 1.5 s: it is already 0.5 s in, no delay.
+		expect(graph).toContain("atrim=start=1:duration=1.5");
+		expect(graph).not.toContain("adelay");
+		expect(graph).toContain("amix=inputs=2:normalize=0:duration=longest");
+		expect(graph).toContain("apad=whole_dur=2.5,atrim=duration=2.5[aout]");
+		expect(stream.args.slice(-9)).toEqual([
+			"-map",
+			"[aout]",
+			"-f",
+			"f32le",
+			"-ar",
+			"48000",
+			"-ac",
+			"2",
+			"pipe:1",
+		]);
+		expect(stream.args.join(" ")).not.toContain("[vout]");
+	});
+
+	it("uses the same per-clip chain as export for the same range", () => {
+		const exported = planFfmpegExport({
+			plan,
+			range: { type: "project" },
+			format: "webm",
+			assetPaths,
+			outputPath: "o.webm",
+			fps: 25,
+		});
+		const stream = planFfmpegAudioStream({ plan, assetPaths, startSeconds: 0 });
+		const clips = (args: string[]) =>
+			filterOf(args)
+				.split(";")
+				.filter((part) => part.includes("atrim=start") && part.startsWith("["))
+				// input indexes differ: export has the video input first
+				.map((part) => part.replace(/^\[\d+:a\]/, ""));
+		expect(clips(stream.args)).toEqual(clips(exported.args));
+	});
+
+	it("delays clips that start inside the window", () => {
+		const stream = planFfmpegAudioStream({
+			plan,
+			assetPaths,
+			startSeconds: 0.5,
+			durationSeconds: 1,
+		});
+		expect(filterOf(stream.args)).toContain("atrim=start=0.5:duration=0.5,");
+		expect(filterOf(stream.args)).toContain("adelay=500:all=1");
+		expect(stream.durationSeconds).toBe(1);
+	});
+
+	it("treats mono sources like export and drops silent resources", () => {
+		const mono = planFfmpegAudioStream({
+			plan,
+			assetPaths,
+			startSeconds: 0,
+			audioChannels: { "res-b": 1 },
+			silentAudioResources: ["res-a"],
+		});
+		expect(filterOf(mono.args)).toContain("channel_layouts=mono");
+		expect(filterOf(mono.args)).not.toContain("amix");
+		expect(mono.args.join(" ")).not.toContain("a.mp4");
+	});
+
+	it("reports an empty stream when no audio clip overlaps the window", () => {
+		const stream = planFfmpegAudioStream({ plan, assetPaths, startSeconds: 4 });
+		expect(stream).toEqual({ args: [], durationSeconds: 0, hasAudio: false });
+		const videoOnly = planFfmpegAudioStream({
+			plan: makePlan([video("v0", 0, 2)]),
+			assetPaths,
+			startSeconds: 0,
+		});
+		expect(videoOnly.hasAudio).toBe(false);
+	});
+
+	it("rejects a negative start and a missing asset", () => {
+		expect(() =>
+			planFfmpegAudioStream({ plan, assetPaths, startSeconds: -1 }),
+		).toThrow(MediaError);
+		expect(() =>
+			planFfmpegAudioStream({ plan, assetPaths: {}, startSeconds: 0 }),
+		).toThrow(/No file location/);
 	});
 });
