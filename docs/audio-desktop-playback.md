@@ -1,3 +1,81 @@
+# Desktop audio playback (stage 4-audio)
+
+GPUIX desktop app plays the timeline audio through `node-web-audio-api` (WASAPI on Windows) and
+the audio device clock drives the playback cursor. This document describes what shipped, then
+keeps the spike measurements it was built on (sections 1-5 and Risks). Follows
+`docs/audio-sink-evaluation.md`.
+
+## What shipped
+
+Data path: model run (`$fx_applyPlaybackRun`) -> playback executor -> sink -> device.
+
+| Piece | Where | Role |
+| --- | --- | --- |
+| Mix graph | `media/node/ffmpegPlanner.ts` `buildAudioMixGraph`, `planFfmpegAudioStream` | The export mixer graph (per-clip `atrim`, resample to 48 kHz stereo, mono duplicated, gain/pan, `adelay`, `amix`) for a window from the cursor, written as f32le to stdout. Export uses the same function. |
+| PCM stream | `media/node/audio/ffmpegPcmSource.ts`, `MediaService.streamAudioMix` | ffmpeg stdout as a pull `PcmSource`; the pipe is paused above 1 s buffered (backpressure by demand); cancel kills the process tree. |
+| Sink | `media/node/audio/audioSink.ts` | One master gain, one gain per play (5 ms stop ramp), 20 ms `AudioBufferSourceNode` chunks on the sample grid, 100 ms lookahead. Late data is dropped from the stream head so stream position equals the device clock. |
+| Clock | `media/node/audio/audioPlaybackClock.ts` | `PlaybackClock` over `currentTime - median(outputLatency)`, interpolated with the system clock, smoothed, monotonic, hard resync above 40 ms. |
+| Mix descriptor | `ui/gpuix/host/audioMixController.ts` | Resolves the audio clips of the declared plan inputs to files and probed channel counts once per plan revision. Fed by the same `updatePlan` the preview uses. |
+| PCM cache | `media/node/audio/pcmMixCache.ts`, `filePcmSource.ts` | Renders the whole mix once per mix revision to `<profile>/cache/audio-mix/` (wiped on start); seeks read the file. |
+| Composition | `ui/gpuix/host/desktopAudio.ts`, `playbackExecutor.ts`, `app/startRealHost.ts` | Sink + clock + cache on one `AudioContext`; the executor starts sound for each new run at the presented cursor. |
+
+Behaviour:
+
+- Audio is master. `PlaybackRuntime` runs on the audio clock; the cursor and the video presenter follow
+  it (frames dropped or repeated, audio never stretched). Audio start: the stream opens at
+  `cursor + 20 ms start lead + output latency`, so the first scheduled sample is the one the cursor
+  reaches when it is heard.
+- A new run (play, seek while playing, rate change) restarts the sound at the presented cursor; the same
+  run id re-applied (boundary change) leaves it running; pause and boundary stop it with the 5 ms ramp.
+  Resume is a new run.
+- Only rate 1 is audible. Other rates play silently on the same clock (no time stretching).
+- Edits while playing: when the audio part of the plan changes (clip move, gain, trim, volume) the mix is
+  re-resolved, the cache re-rendered, and sound restarts at the presented cursor (the direct stream is used
+  until the cache is one second ahead). Video-only edits do not touch audio.
+- No device at startup, or a device that is suspended or lost: the clock falls back to the system clock
+  (the run is re-anchored on the switch) and playback continues silently; sound restarts when the device
+  is back. `MINICUT_AUDIO=off` never opens the device (`startRealHost` option `audio: "off"`).
+- DKT model and protocol are unchanged. The effect payload still carries the run only; the mix is
+  host-resolved from the declared plan attrs, like the preview source.
+- Master volume is `AudioSink.setMasterGain` (applies immediately, after the lookahead); the model has no
+  volume attr yet, so nothing calls it. Per-track gain and mute are baked into the mix like export.
+
+### Seek, pause, resume measurements
+
+`scripts/audio-spike/measure-seek.ts` (bun, real device): 120 s timeline of 60 audio clips, 8 seeks,
+seek call to non-zero sample at an `AnalyserNode` after the sink (includes the 20 ms start lead).
+
+| Path | median | max |
+| --- | --- | --- |
+| Direct ffmpeg stream (respawn per seek, 60 inputs) | 485 ms | 635 ms |
+| PCM cache | 16 ms | 18 ms |
+
+The cache renders the 120 s mix in 1.9 s. Seek target (< 100 ms to sound) is met once the cache holds the
+position; before that (first seconds after load or after an edit) seeks use the direct stream.
+
+### Tests
+
+- `audioSink.test.ts` (fake context): scheduling grid, lookahead, late-data realignment, stop ramp, end, errors.
+- `audioSink.render.test.ts`: the real `OfflineAudioContext` renders the sink output sample-exactly across chunk joins.
+- `audioPlaybackClock.test.ts`: monotonic, follows a slow audio clock, latency, freeze, `PlaybackRuntime` on top.
+- `ffmpegPcmSource.test.ts`, `pcmMixCache.test.ts`: backpressure, cancel, errors, growing-file reads, replacement.
+- `mediaService.audioStream.media.test.ts`, `audioParity.media.test.ts` (ffmpeg): stream length/offset/cancel, and
+  stream vs decoded export windowed RMS (per channel, from 0 and from a seek position).
+- `playbackExecutor.test.ts`, `desktopAudio.test.ts`, `audioMixController.test.ts` (bun): run/sound
+  lifecycle, clock switching, cache use, mix resolution.
+
+### Not verified / open
+
+- Clicks, glitches and A/V alignment by ear; numbers above are API counters, offline renders and device-clock
+  measurements. Residual offset is about +-13 ms (`outputLatency` is a hint).
+- Device hot-swap, sample-rate change (the context is opened at 48 kHz and rejected otherwise).
+- Native addon inside a `bun build --compile` binary (sidecar `.node`).
+- The same run re-applied by the model (boundary change) re-anchors the cursor from the epoch clock, not the
+  audio clock: a step of up to the audio/system drift (about 63 ppm, 19 ms per 5 min) between cursor and sound.
+- Large timelines: the cache file is 23 MB per minute of timeline.
+- `scripts/audio-spike/` stays as measurement tooling (stream, drift, gap, seek scripts and `measure-seek.ts`);
+  they are not part of any test run.
+
 # Audio sink spike: `node-web-audio-api` streaming, clock, seek
 
 Date: 2026-10-07. Windows 11, Node 24.17.0, Bun 1.4.2, `node-web-audio-api` 2.2.0, default output
@@ -105,20 +183,10 @@ pause/seek/stop and stop the scheduled sources after the ramp.
 - Fixture loops with `-ss` on both inputs print ffmpeg "non monotonically increasing dts" warnings
   (stream_loop on mp4); a real mix uses `atrim`/`adelay` per clip, not loops.
 
-## Proposal: stage 4-audio commits
+## Plan that was implemented
 
-1. `feat(audio): add audio sink service` host-side effect executor owning one `AudioContext`,
-   master and track `GainNode`s, chunk scheduler (20 ms chunks, 100 ms lookahead), stop/seek with a
-   5 ms ramp. The effect payload carries everything (timeline start, rate, mix descriptor); no graph
-   reads.
-2. `feat(media): stream timeline audio mix as f32 PCM` media service job: ffmpeg mix graph to a
-   PCM stream starting at the payload cursor, backpressure by consumer demand.
-3. `feat(audio): drive PlaybackRuntime from the audio clock` promote `createAudioPlaybackClock`
-   (latency median, resync policy, suspended state); the host composition passes it to
-   `PlaybackRuntime`. DKT model and protocol unchanged.
-4. `feat(audio): seek, pause and resume` warm decoder or PCM cache to bring seek under 100 ms.
-5. `test(audio): ...` clock and scheduler unit tests, headless render test through
-   `OfflineAudioContext`; `docs(audio)` update.
+The spike proposed five commits (sink, PCM stream, clock, seek, tests/docs); they landed as described in
+"What shipped" above.
 
 A/V sync policy: audio is master. The cursor is timeline time derived from the audio clock
 (`currentTime - outputLatency`); the video presenter follows the cursor: it shows the frame for the
