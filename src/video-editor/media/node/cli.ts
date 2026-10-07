@@ -253,9 +253,13 @@ export const runCli = async (
 	}
 };
 
+// `import.meta.main` is true only for the entry module, also inside a Bun-compiled
+// bundle where every module shares the entry's URL (the argv comparison then
+// wrongly matches and would run the CLI when imported by the desktop host).
 const isMain =
-	process.argv[1] !== undefined &&
-	import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+	(import.meta as { main?: boolean }).main ??
+	(process.argv[1] !== undefined &&
+		import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
 
 if (isMain) {
 	runCli(process.argv.slice(2)).then(({ exitCode, result }) => {
