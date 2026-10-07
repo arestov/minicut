@@ -195,6 +195,23 @@ export const Resource = model({
 				duration: finiteNumberOr(duration, 0),
 			}),
 		],
+		renderSource: [
+			"comp",
+			["sourceKind", "sourceRef", "contentFingerprint", "fingerprintVersion"] as const,
+			(
+				sourceKind: unknown,
+				sourceRef: unknown,
+				contentFingerprint: unknown,
+				fingerprintVersion: unknown,
+			) => ({
+				sourceKind: stringOr(sourceKind, "missing"),
+				sourceRef: typeof sourceRef === "string" && sourceRef ? sourceRef : null,
+				contentFingerprint:
+					typeof contentFingerprint === "string" && contentFingerprint ? contentFingerprint : null,
+				fingerprintVersion:
+					typeof fingerprintVersion === "string" && fingerprintVersion ? fingerprintVersion : null,
+			}),
+		],
 		transferSnapshot: [
 			"comp",
 			[

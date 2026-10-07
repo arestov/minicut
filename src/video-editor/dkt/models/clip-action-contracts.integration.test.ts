@@ -372,4 +372,25 @@ describe("Clip action contracts", () => {
 		await dispatchAndSettle(harness.ctx, clip, "scaleBy", { delta: 500 });
 		expect(harness.ctx.getAttr(clip, "transform")).toMatchObject({ scale: { value: 10 } });
 	});
+
+	it("clipRenderData carries the resource source kind, ref and content key", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "setResourceAttrs", {
+			sourceKind: "local-asset",
+			sourceRef: "asset-7",
+			contentFingerprint: "abc123",
+			fingerprintVersion: "v1",
+		});
+
+		const renderData = harness.ctx.getAttr(harness.videoClip, "clipRenderData") as {
+			resourceSource?: unknown;
+		} | null;
+
+		expect(renderData?.resourceSource).toEqual({
+			sourceKind: "local-asset",
+			sourceRef: "asset-7",
+			contentFingerprint: "abc123",
+			fingerprintVersion: "v1",
+		});
+	});
 });

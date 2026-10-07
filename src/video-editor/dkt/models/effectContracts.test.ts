@@ -399,6 +399,36 @@ describe("effect contract suite: media recovery", () => {
 		expect(await queryAttr(task, "phase")).toBe("inspecting");
 	});
 
+	it("carries the resource source kind and ref in the recovery and commit payloads", async () => {
+		const { fakes, harness, driver } = await setup();
+		await dispatchAndSettle(harness.ctx, harness.videoResource, "setResourceAttrs", {
+			sourceKind: "local-asset",
+			sourceRef: "asset-42",
+		});
+
+		const task = await startRecovery(harness, "operation:contract-source");
+		expect(fakes.mediaRecoveryCalls[0]).toMatchObject({
+			operationId: "operation:contract-source",
+			sourceKind: "local-asset",
+			sourceRef: "asset-42",
+		});
+
+		await driver.mediaRecovery.inspected(task, {
+			operationId: "operation:contract-source",
+			classification: "exact-match",
+			confirmationRequired: false,
+			updatedAt: 101,
+		});
+		await dispatchAndSettle(harness.ctx, task, "requestCommit", {
+			operationId: "operation:contract-source",
+		});
+		expect(fakes.mediaRecoveryCalls[1]).toMatchObject({
+			mode: "commit",
+			sourceKind: "local-asset",
+			sourceRef: "asset-42",
+		});
+	});
+
 	it("applies an inspection result and ignores one for a stale operation", async () => {
 		const { harness, driver } = await setup();
 		const task = await startRecovery(harness, "operation:contract-2");

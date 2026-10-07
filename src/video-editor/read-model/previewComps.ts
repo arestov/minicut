@@ -41,6 +41,14 @@ export interface ResolvedAnimatedScalar {
 	keyframes?: ScalarKeyframe[];
 }
 
+/** Where the resource file comes from, as declared by the Resource model. */
+export interface ResourceSourceRef {
+	sourceKind: string | null;
+	sourceRef: string | null;
+	contentFingerprint: string | null;
+	fingerprintVersion: string | null;
+}
+
 export interface PreviewClipSource {
 	id: string;
 	resourceId: string | null;
@@ -66,6 +74,8 @@ export interface PreviewClipSource {
 	filters: string[];
 	effects: EffectRenderInstruction[];
 	text: TextAttrs | null;
+	/** Source of the clip resource; absent for clips without a resource. */
+	resourceSource?: ResourceSourceRef;
 }
 
 export interface PreviewStructure {
@@ -154,6 +164,19 @@ const normalizeAudio = (value: unknown): PreviewClipSource["audio"] => {
 	};
 };
 
+const normalizeResourceSource = (value: unknown): ResourceSourceRef | undefined => {
+	const source = asObject(value);
+	if (!source) return undefined;
+	const text = (field: unknown): string | null =>
+		typeof field === "string" && field ? field : null;
+	return {
+		sourceKind: text(source.sourceKind),
+		sourceRef: text(source.sourceRef),
+		contentFingerprint: text(source.contentFingerprint),
+		fingerprintVersion: text(source.fingerprintVersion),
+	};
+};
+
 const normalizeTextAttrs = (value: unknown): TextAttrs | null =>
 	value && typeof value === "object" ? (value as TextAttrs) : null;
 
@@ -192,6 +215,9 @@ export const normalizePreviewClipSource = (
 			: [],
 		effects,
 		text: normalizeTextAttrs(clip.text),
+		...(normalizeResourceSource(clip.resourceSource)
+			? { resourceSource: normalizeResourceSource(clip.resourceSource) }
+			: null),
 	};
 };
 

@@ -33,6 +33,7 @@ export const reduceClipRenderData = (
 	effectInstructions: unknown,
 	textAttrs: unknown,
 	resourceSummary: unknown,
+	resourceSource?: unknown,
 ): PreviewClipSource => {
 	const effects: EffectRenderInstruction[] = Array.isArray(effectInstructions)
 		? (effectInstructions.flat().filter(Boolean) as EffectRenderInstruction[])
@@ -82,5 +83,8 @@ export const reduceClipRenderData = (
 		filters: filters ? [filters] : [],
 		effects,
 		text: objectOrNull<NonNullable<PreviewClipSource["text"]>>(textAttrs),
+		...(objectOrNull(resourceSource)
+			? { resourceSource: objectOrNull<NonNullable<PreviewClipSource["resourceSource"]>>(resourceSource) as NonNullable<PreviewClipSource["resourceSource"]> }
+			: null),
 	};
 };

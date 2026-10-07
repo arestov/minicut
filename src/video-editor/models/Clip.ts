@@ -206,6 +206,7 @@ export const Clip = model({
 				"< @all:renderInstruction < effects",
 				"< @one:renderAttrs < text",
 				"< @one:renderSummary < resource",
+				"< @one:renderSource < resource",
 			] as const,
 			reduceClipRenderData,
 		],

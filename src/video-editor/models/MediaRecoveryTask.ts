@@ -123,11 +123,11 @@ export const MediaRecoveryTask = model({
 			{
 				to: ["$fx_mediaRecovery", { intent: "call", drop_when_api_not_ready: false }],
 				fn: [
-					["$noop", "_node_id", "operationId", "bootId", "intent", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource", "< @one:contentFingerprint < resource", "< @one:fingerprintVersion < resource", "< @one:requiredSourceEnd < resource"] as const,
-					(payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, bootId: unknown, intent: unknown, resourceId: unknown, kind: unknown, duration: unknown, width: unknown, height: unknown, contentFingerprint: unknown, fingerprintVersion: unknown, requiredSourceEnd: unknown) => {
+					["$noop", "_node_id", "operationId", "bootId", "intent", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource", "< @one:contentFingerprint < resource", "< @one:fingerprintVersion < resource", "< @one:requiredSourceEnd < resource", "< @one:sourceKind < resource", "< @one:sourceRef < resource"] as const,
+					(payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, bootId: unknown, intent: unknown, resourceId: unknown, kind: unknown, duration: unknown, width: unknown, height: unknown, contentFingerprint: unknown, fingerprintVersion: unknown, requiredSourceEnd: unknown, sourceKind: unknown, sourceRef: unknown) => {
 						const value = payload as Record<string, unknown> | null;
 						if (!value || typeof taskId !== "string" || typeof resourceId !== "string") return noop;
-						return { taskId, resourceId, operationId, bootId, intent, runtimeHandleId: value.runtimeHandleId, original: { kind, duration, width, height, frameRate: null, timebase: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : null } }, originalFingerprint: contentFingerprint, fingerprintVersion, requiredSourceEnd };
+						return { taskId, resourceId, operationId, bootId, intent, runtimeHandleId: value.runtimeHandleId, original: { kind, duration, width, height, frameRate: null, timebase: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : null } }, originalFingerprint: contentFingerprint, fingerprintVersion, requiredSourceEnd, sourceKind, sourceRef };
 					},
 				],
 			},
@@ -168,8 +168,8 @@ export const MediaRecoveryTask = model({
 			{
 				to: ["$fx_mediaRecoveryCommit", { intent: "call", drop_when_api_not_ready: false }],
 				fn: [
-					["$noop", "_node_id", "operationId", "runtimeHandleId", "candidateMetadata", "candidateFingerprint", "candidateFingerprintVersion", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource"] as const,
-					(_payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, runtimeHandleId: unknown, candidateMetadata: unknown, candidateFingerprint: unknown, candidateFingerprintVersion: unknown, resourceId: unknown, kind: unknown, duration: unknown, width: unknown, height: unknown) => typeof taskId === "string" && typeof resourceId === "string" ? { mode: "commit", taskId, resourceId, operationId, runtimeHandleId, candidateMetadata: candidateMetadata ?? { kind, duration, width, height }, candidateFingerprint, candidateFingerprintVersion } : noop,
+					["$noop", "_node_id", "operationId", "runtimeHandleId", "candidateMetadata", "candidateFingerprint", "candidateFingerprintVersion", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource", "< @one:sourceKind < resource", "< @one:sourceRef < resource"] as const,
+					(_payload: unknown, noop: unknown, taskId: unknown, operationId: unknown, runtimeHandleId: unknown, candidateMetadata: unknown, candidateFingerprint: unknown, candidateFingerprintVersion: unknown, resourceId: unknown, kind: unknown, duration: unknown, width: unknown, height: unknown, sourceKind: unknown, sourceRef: unknown) => typeof taskId === "string" && typeof resourceId === "string" ? { mode: "commit", taskId, resourceId, operationId, runtimeHandleId, candidateMetadata: candidateMetadata ?? { kind, duration, width, height }, candidateFingerprint, candidateFingerprintVersion, sourceKind, sourceRef } : noop,
 				],
 			},
 		],
