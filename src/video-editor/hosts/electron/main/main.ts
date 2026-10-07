@@ -1,12 +1,23 @@
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain } from "electron";
-import { createBrowserEffectInterfaces } from "../../../adapters/web/createBrowserEffectInterfaces";
+import { fileURLToPath } from "node:url";
+import {
+	app,
+	BrowserWindow,
+	dialog,
+	ipcMain,
+	MessageChannelMain,
+	protocol,
+} from "electron";
+import { MINICUT_APP_URL_PREFIX, MINICUT_RENDERER_ENTRY_URL } from "../shared/ipcChannels";
 import { startDesktopApp, type DesktopApp } from "./desktopApp";
-import { createWindowConnector, type MessageChannelLike } from "./windowConnector";
+import { createEditorWindow } from "./editorWindow";
+import { registerMiniCutScheme } from "./registerProtocol";
 
 const mainDir = path.dirname(fileURLToPath(import.meta.url));
 const distRoot = path.resolve(mainDir, "..");
+
+// Privileged schemes must be registered before the app is ready.
+registerMiniCutScheme(protocol);
 
 // Tests and tooling point the profile at a throwaway directory.
 const userDataOverride = process.env.MINICUT_USER_DATA_DIR;
@@ -14,45 +25,27 @@ if (userDataOverride) {
 	app.setPath("userData", userDataOverride);
 }
 
-const rendererFileUrlPrefix = pathToFileURL(
-	path.join(distRoot, "renderer") + path.sep,
-).href;
+// Optional Vite dev server for the renderer (npm run electron:renderer:dev).
+const devServerUrl = process.env.MINICUT_RENDERER_URL;
 
 let desktopApp: DesktopApp | null = null;
-let windowConnector: ReturnType<typeof createWindowConnector> | null = null;
 let disposing = false;
 
-const createWindow = async (): Promise<BrowserWindow> => {
-	const window = new BrowserWindow({
-		width: 1440,
-		height: 900,
-		show: false,
-		webPreferences: {
-			preload: path.join(distRoot, "preload", "preload.cjs"),
-			contextIsolation: true,
-			nodeIntegration: false,
-			sandbox: true,
-		},
+const openWindow = () =>
+	createEditorWindow({
+		BrowserWindow,
+		preloadPath: path.join(distRoot, "preload", "preload.cjs"),
+		url: devServerUrl ?? MINICUT_RENDERER_ENTRY_URL,
+		allowedUrlPrefixes: [MINICUT_APP_URL_PREFIX, ...(devServerUrl ? [devServerUrl] : [])],
 	});
-	window.once("ready-to-show", () => window.show());
-	const devServerUrl = process.env.MINICUT_RENDERER_URL;
-	if (devServerUrl) {
-		await window.loadURL(devServerUrl);
-	} else {
-		await window.loadFile(path.join(distRoot, "renderer", "index.html"));
-	}
-	return window;
-};
 
 const startApp = async (): Promise<void> => {
 	try {
 		desktopApp = await startDesktopApp({
 			profileDir: app.getPath("userData"),
-			// Replaced by the configuration A composition (window executors).
-			effectInterfaces: createBrowserEffectInterfaces({
-				pages: new Set(),
-				log: () => undefined,
-			}),
+			rendererDir: path.join(distRoot, "renderer"),
+			electron: { ipcMain, protocol, MessageChannelMain },
+			trustedRendererUrlPrefixes: devServerUrl ? [devServerUrl] : [],
 		});
 	} catch (error) {
 		dialog.showErrorBox(
@@ -62,15 +55,7 @@ const startApp = async (): Promise<void> => {
 		app.exit(1);
 		return;
 	}
-	windowConnector = createWindowConnector({
-		runtime: desktopApp.host.runtime,
-		sessionKey: desktopApp.host.identity.roomId,
-		// MessagePortMain structurally matches the port the transport needs.
-		createMessageChannel: () => new MessageChannelMain() as unknown as MessageChannelLike,
-		ipcMain,
-		isTrustedRendererUrl: (url) => url.startsWith(rendererFileUrlPrefix),
-	});
-	await createWindow();
+	await openWindow();
 };
 
 app.on("window-all-closed", () => {
@@ -84,8 +69,6 @@ app.on("before-quit", (event) => {
 	}
 	event.preventDefault();
 	disposing = true;
-	windowConnector?.dispose();
-	windowConnector = null;
 	void desktopApp
 		.dispose()
 		.catch((error) => {

@@ -20,7 +20,7 @@ if (!bridge) {
 // Room and session ids come from the main process, never from the URL.
 const connection = await connectDesktopHost(bridge);
 const harness = createVideoEditorHarness(undefined, {
-	platform: createElectronHarnessPlatform(connection.port),
+	platform: createElectronHarnessPlatform({ port: connection.port, bridge }),
 });
 harness.pageRuntime?.bootstrap({
 	sessionKey: connection.sessionKey,
