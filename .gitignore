@@ -9,3 +9,6 @@
 /.tmp
 /debug.log
 /app-structure.snapshot
+
+# Bun is used as a runtime only; npm + package-lock.json is the dependency source of truth
+bun.lock
