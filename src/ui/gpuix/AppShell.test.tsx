@@ -99,7 +99,7 @@ describe("AppShell with inspector, timeline and task progress", () => {
 		expect(view.texts()).not.toContain("No clip selected");
 		expect(view.findAll("inspector-opacity-inc")).toHaveLength(1);
 
-		await view.runtime.dispatchAndWait("requestProjectExport", {}, null);
+		await view.runtime.dispatchAndWait("requestProjectExport", { id: "export:test-1" }, null);
 		await view.untilAttr(
 			view.rootScope,
 			"exportProgress",

@@ -60,7 +60,7 @@ describe("export progress", () => {
 		view = await renderShell("timeline");
 		await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
 
-		await view.runtime.dispatchAndWait("requestProjectExport", {}, null);
+		await view.runtime.dispatchAndWait("requestProjectExport", { id: "export:test-1" }, null);
 		await view.untilAttr(view.rootScope, "exportProgress", stageIs("queued"));
 		view.settle();
 		expect(view.fakes.exportCalls).toHaveLength(1);
@@ -82,7 +82,7 @@ describe("export progress", () => {
 		view = await renderShell("timeline");
 		await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
 
-		await view.runtime.dispatchAndWait("requestProjectExport", {}, null);
+		await view.runtime.dispatchAndWait("requestProjectExport", { id: "export:test-1" }, null);
 		await view.untilAttr(view.rootScope, "exportProgress", stageIs("queued"));
 		await reportExport(view, exportRequestOf(view), "error", 10, { error: "encoder lost" });
 		await view.untilAttr(view.rootScope, "exportProgress", stageIs("error"));

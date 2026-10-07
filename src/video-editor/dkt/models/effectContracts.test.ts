@@ -116,6 +116,36 @@ describe("effect contract suite: export", () => {
 		expect(await queryAttr(harness.sessionRoot, "exportRequest")).toBeNull();
 	});
 
+	it("rejects an export request without a boundary-provided id", async () => {
+		const { fakes, harness } = await setup();
+
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
+			"requestProjectExport",
+			{ initiatedBy: "contract-suite" },
+		);
+
+		expect(fakes.exportCalls).toHaveLength(0);
+		expect(await queryAttr(harness.sessionRoot, "exportRequest")).toBeNull();
+		expect(await queryAttr(harness.sessionRoot, "exportProgress")).toBeNull();
+	});
+
+	it("takes requestedAt and progress updatedAt from the DKT time dep", async () => {
+		const { fakes, harness } = await setup();
+		const before = Date.now();
+
+		await requestExport({ harness }, "export:contract-time");
+
+		const request = requestOf(fakes.exportCalls[0]);
+		expect(request.requestedAt).toBeGreaterThanOrEqual(before);
+		expect(
+			(await queryAttr(harness.sessionRoot, "exportProgress")) as {
+				updatedAt: number;
+			},
+		).toMatchObject({ updatedAt: request.requestedAt });
+	});
+
 	it("ignores late progress for a superseded export request id", async () => {
 		const { fakes, harness, driver } = await setup();
 		await requestExport({ harness }, "export:progress-old");
