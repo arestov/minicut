@@ -19,6 +19,7 @@ const DICT = [
 	"clips",
 	"start",
 	"duration",
+	"selectedClip",
 ] as const;
 const KEY = {
 	title: 1,
@@ -28,8 +29,9 @@ const KEY = {
 	clips: 5,
 	start: 6,
 	duration: 7,
+	selectedClip: 8,
 } as const;
-type FixtureAttr = Exclude<keyof typeof KEY, "tracks" | "clips">;
+type FixtureAttr = Exclude<keyof typeof KEY, "tracks" | "clips" | "selectedClip">;
 type FixtureAttrs = Partial<Record<FixtureAttr, string | number>>;
 
 const ROOT_NODE_ID = "root";
@@ -45,6 +47,8 @@ export type SkeletonRaceFixture = {
 	): void;
 	/** Delivers the `clips` rel of a track: node ids only, no clip attrs. */
 	deliverClipsRel(trackNodeId: string, clipNodeIds: readonly string[]): void;
+	/** Delivers the root `selectedClip` rel: a node id with no attrs yet. */
+	deliverSelectedClipRel(clipNodeId: string | null): void;
 	/** Delivers attrs of any node (for example a clip) that had none. */
 	deliverAttrs(nodeId: string, attrs: FixtureAttrs): void;
 	/** Delivers attrs of every track in one sync update. */
@@ -126,6 +130,14 @@ export const createSkeletonRaceFixture = (
 		},
 		deliverClipsRel(trackNodeId, clipNodeIds) {
 			emitSync(SYNCR_TYPES.UPDATE, [1, trackNodeId, KEY.clips, [...clipNodeIds]]);
+		},
+		deliverSelectedClipRel(clipNodeId) {
+			emitSync(SYNCR_TYPES.UPDATE, [
+				1,
+				ROOT_NODE_ID,
+				KEY.selectedClip,
+				clipNodeId === null ? null : clipNodeId,
+			]);
 		},
 		deliverAttrs(nodeId, attrs) {
 			emitSync(SYNCR_TYPES.UPDATE, attrsUpdate(nodeId, attrs));

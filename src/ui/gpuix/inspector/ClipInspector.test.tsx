@@ -112,4 +112,53 @@ describe("clip inspector", () => {
 		expect(view.texts()).toContain("4.5s");
 		expect(view.texts()).toContain("1.1x");
 	});
+
+	test("typing a name and pressing enter dispatches one rename and the model echoes it", async () => {
+		view = await renderInspector();
+		const clip = await selectFirstClip(view);
+		const renames: unknown[] = [];
+		const getDispatch = view.runtime.getDispatch.bind(view.runtime);
+		view.runtime.getDispatch = (scope) => {
+			const dispatch = getDispatch(scope);
+			return (name, payload, meta) => {
+				if (name === "rename") renames.push(payload);
+				return dispatch(name, payload, meta);
+			};
+		};
+		const input = view.renderer.findByTestId("inspector-name");
+		expect(input).toBeDefined();
+
+		view.renderer.nativeSimulateKeystrokes(input!.id, "x enter");
+		// A second submit with nothing typed must not send another rename.
+		view.renderer.nativeSimulateKeystrokes(input!.id, "enter");
+		await view.untilAttr(clip, "name", (v) => typeof v === "string" && v.endsWith("x"));
+		view.settle();
+
+		expect(renames).toHaveLength(1);
+		expect(renames[0]).toEqual({ name: "Introx" });
+	});
+
+	test("an empty name is not sent and the input shows the model value again", async () => {
+		view = await renderInspector();
+		const clip = await selectFirstClip(view);
+		const renames: unknown[] = [];
+		const getDispatch = view.runtime.getDispatch.bind(view.runtime);
+		view.runtime.getDispatch = (scope) => {
+			const dispatch = getDispatch(scope);
+			return (name, payload, meta) => {
+				if (name === "rename") renames.push(payload);
+				return dispatch(name, payload, meta);
+			};
+		};
+		const input = view.renderer.findByTestId("inspector-name");
+
+		view.renderer.nativeSimulateKeystrokes(
+			input!.id,
+			`${"backspace ".repeat(5)}enter`,
+		);
+		view.settle();
+
+		expect(renames).toHaveLength(0);
+		expect(view.runtime.readAttrs(clip, ["name"]).name).toBe("Intro");
+	});
 });
