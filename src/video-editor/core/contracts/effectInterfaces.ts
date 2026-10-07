@@ -23,6 +23,18 @@ export interface MediaRecoveryRuntimeInterface {
 	requestMediaRecovery(payload: unknown): void;
 }
 
+/**
+ * `#mediaRestoreRuntime` (AppRoot): the platform restores media of attended
+ * projects once per runtime boot. Optional per platform: an absent interface
+ * is legal and the model schedules no boot restore; a declared one must be
+ * complete. The model never checks the platform or the source kind. Restore
+ * requests travel through the regular `$fx_mediaRecovery` effect, and the
+ * runtime rejects a resource it cannot restore through its own task result.
+ */
+export interface MediaRestoreRuntimeInterface {
+	readonly restoresMediaAtBoot: true;
+}
+
 /** `$fx_applyPlaybackRun` (SessionRoot) -> `#playbackRuntime`. */
 export interface PlaybackRuntimeInterface {
 	applyPlaybackRun(payload: unknown): void;
@@ -40,5 +52,6 @@ export interface MiniCutEffectInterfaces {
 	exportRuntime: ExportRuntimeInterface;
 	importRuntime: ImportRuntimeInterface;
 	mediaRecoveryRuntime: MediaRecoveryRuntimeInterface;
+	mediaRestoreRuntime?: MediaRestoreRuntimeInterface;
 	playbackRuntime: PlaybackRuntimeInterface;
 }

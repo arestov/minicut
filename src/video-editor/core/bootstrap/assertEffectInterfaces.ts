@@ -13,6 +13,16 @@ export const REQUIRED_EFFECT_INTERFACE_METHODS = {
 	Record<keyof MiniCutEffectInterfaces, readonly string[]>
 >;
 
+/**
+ * Interfaces a platform may omit. Absent is legal; when present, every listed
+ * flag must be implemented like a required interface.
+ */
+export const OPTIONAL_EFFECT_INTERFACE_FLAGS = {
+	mediaRestoreRuntime: ["restoresMediaAtBoot"],
+} as const satisfies Partial<
+	Record<keyof MiniCutEffectInterfaces, readonly string[]>
+>;
+
 export function assertEffectInterfacesComplete(
 	interfaces: unknown,
 ): asserts interfaces is MiniCutEffectInterfaces {
@@ -30,6 +40,17 @@ export function assertEffectInterfacesComplete(
 			if (typeof api[method] !== "function") {
 				missing.push(`${name}.${method}`);
 			}
+		}
+	}
+	for (const [name, flags] of Object.entries(OPTIONAL_EFFECT_INTERFACE_FLAGS)) {
+		if (source[name] === undefined) continue;
+		const api = source[name] as Record<string, unknown> | null;
+		if (!api || typeof api !== "object") {
+			missing.push(`${name} (declared but not an object)`);
+			continue;
+		}
+		for (const flag of flags) {
+			if (api[flag] !== true) missing.push(`${name}.${flag}`);
 		}
 	}
 	if (missing.length > 0) {

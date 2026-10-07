@@ -22,7 +22,9 @@ const createRecorder = () => {
 
 export type EffectContractFakes = ReturnType<typeof createEffectContractFakes>;
 
-export const createEffectContractFakes = () => {
+export const createEffectContractFakes = (
+	options: { mediaRestore?: boolean } = {},
+) => {
 	const exportRuntime = createRecorder();
 	const exportCancelRuntime = createRecorder();
 	const importRuntime = createRecorder();
@@ -37,6 +39,9 @@ export const createEffectContractFakes = () => {
 		importRuntime: { requestImportFiles: importRuntime.record },
 		mediaRecoveryRuntime: { requestMediaRecovery: mediaRecoveryRuntime.record },
 		playbackRuntime: { applyPlaybackRun: playbackRuntime.record },
+		...(options.mediaRestore
+			? { mediaRestoreRuntime: { restoresMediaAtBoot: true as const } }
+			: {}),
 	};
 
 	return {
