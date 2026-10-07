@@ -63,7 +63,7 @@ const openProject = async (profileDir: string) => {
 	const h = await openRealHostFixture(profileDir);
 	host = h;
 	const importer = h.attachImport();
-	const recovery = h.attachRecovery(importer);
+	const recovery = h.attachRecovery();
 	const root = await h.driver.root();
 	const project = await h.driver.waitOne(root, "activeProject");
 	h.page.mountShape(project, projectShape);
@@ -131,4 +131,47 @@ test("after a restart the resource is restored from the registry; a missing file
 	await waitForAttr(third.h.page, resource, "originalAccessStatus", (v) => v === "granted");
 	await waitForAttr(third.h.page, resource, "localMediaAvailability", (v) => v === "ready-file-handle");
 	expect(third.h.registry.list()[0].path).toBe(moved);
+}, 60_000);
+
+test("boot restore of a resource that has no local file source is rejected by the runtime as source-missing", async () => {
+	const profile = mkdtempSync(path.join(tmpdir(), "minicut-recovery-"));
+	cleanup.push(profile);
+
+	// First run: a resource without a local asset (no recovery executor attached).
+	const first = await openRealHostFixture(profile);
+	host = first;
+	const firstProject = await first.driver.waitOne(await first.driver.root(), "activeProject");
+	await first.driver.run(
+		"importResource",
+		{
+			name: "remote.webm",
+			kind: "video",
+			url: "",
+			mime: "video/webm",
+			duration: 2,
+			status: "ready",
+			sourceKind: "missing",
+			operationId: "import:remote",
+			attemptId: "import:remote:attempt",
+			bootId: "import-boot",
+			recoveryKind: "import",
+			intent: "restore",
+			original: { kind: "video", duration: 2, streams: { videoStreams: 1, audioStreams: null } },
+			requiredSourceEnd: 2,
+			createdAt: 1,
+			updatedAt: 1,
+		},
+		firstProject,
+	);
+	await first.driver.waitMany(firstProject, "resources", 1);
+	await first.close();
+	host = null;
+
+	// Second run: the model schedules the boot restore, the runtime rejects it.
+	const second = await openProject(profile);
+	const [resource] = await second.h.driver.waitMany(second.project, "resources", 1);
+	await waitForAttr(second.h.page, resource, "originalAccessStatus", (v) => v === "missing");
+	const task = await activeTask(second.h, resource);
+	await waitForAttr(second.h.page, task, "reasonCode", (v) => v === "source-missing");
+	await waitForAttr(second.h.page, task, "phase", (v) => v === "awaiting-user-action");
 }, 60_000);

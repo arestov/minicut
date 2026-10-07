@@ -55,8 +55,6 @@ export type MediaRecoveryExecutor = {
 		filePath: string,
 		intent: "locate-original" | "replace-source",
 	): void;
-	/** Starts the automatic restore of a resource that existed before this boot. */
-	requestRestore(resourceId: string, bootId: string): void;
 };
 
 type RecoveryRequest = {
@@ -368,23 +366,6 @@ export const createMediaRecoveryExecutor = (
 					recoveryKind: intent,
 					intent,
 					runtimeHandleId: refs.put({ path: filePath }),
-					createdAt: now,
-					updatedAt: now,
-				},
-				scopeFor(resourceId),
-			);
-		},
-
-		requestRestore(resourceId, bootId) {
-			const now = deps.now();
-			page.dispatch(
-				"startMediaRecovery",
-				{
-					operationId: `${bootId}:${resourceId}`,
-					attemptId: `${bootId}:${resourceId}`,
-					bootId,
-					recoveryKind: "restore",
-					intent: "restore",
 					createdAt: now,
 					updatedAt: now,
 				},

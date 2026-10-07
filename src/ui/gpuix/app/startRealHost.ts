@@ -16,8 +16,6 @@ import { createImportExecutor } from "../host/importExecutor";
 import { createMediaRecoveryExecutor } from "../host/mediaRecoveryExecutor";
 import { createImportFromDialog, type PathPrompt } from "../host/nativeDialogs";
 import { createPlaybackExecutor } from "../host/playbackExecutor";
-import { createResourceAssetIndex } from "../host/resourceAssetIndex";
-import { createRestoreDriver } from "../host/restoreDriver";
 import { createRuntimeRefStore } from "../host/runtimeRefs";
 import { DktWorkerStartError, spawnDktWorker } from "../host/spawnDktWorker";
 import { createNodePreviewController } from "../preview/nodePreviewController";
@@ -113,8 +111,6 @@ export const startRealHost = async ({
 		const probe = (filePath: string) =>
 			media.probe({ requestId: `probe:${crypto.randomUUID()}`, source: { path: filePath } });
 		const refs = createRuntimeRefStore();
-		const assetIndex = createResourceAssetIndex(pageRuntime);
-		cleanups.push(() => assetIndex.dispose());
 
 		const importer = createImportExecutor({
 			page: pageRuntime,
@@ -184,14 +180,6 @@ export const startRealHost = async ({
 		listen("$fx_cancelExport", (payload) => exporter.cancel(payload));
 		listen("$fx_mediaRecovery", (payload) => recovery.handleRequest(payload));
 		listen("$fx_applyPlaybackRun", (payload) => playback.handleRequest(payload));
-
-		const restore = createRestoreDriver({
-			index: assetIndex,
-			recovery,
-			imports: importer,
-			bootId: `boot:${crypto.randomUUID()}`,
-		});
-		cleanups.push(() => restore.dispose());
 
 		const importFromDialog = createImportFromDialog(prompt, importer);
 		const services: HostServices = {
