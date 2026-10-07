@@ -4,6 +4,7 @@ import { HostServicesContext } from "./host/hostServices";
 import { ClipInspector } from "./inspector/ClipInspector";
 import { Sidebar } from "./panels/Sidebar";
 import { renderWithScenario } from "./test/renderApp";
+import { createSyntheticPreviewSource } from "./preview/syntheticFrameSource";
 import { Timeline } from "./timeline/Timeline";
 
 let view: Awaited<ReturnType<typeof renderWithScenario>> | null = null;
@@ -196,5 +197,30 @@ describe("AppShell host services", () => {
 		);
 		view.settle();
 		expect(view.texts()).toContain("exports-dir | out.webm");
+	});
+
+	test("a host preview service gets the model plan inputs and its notice is shown", async () => {
+		const plans: Array<{ fps: number; clipSources: readonly unknown[] } | null> = [];
+		const preview = {
+			source: createSyntheticPreviewSource({ width: 480, height: 270 }),
+			updatePlan: (input: { fps: number; clipSources: readonly unknown[] } | null) => {
+				plans.push(input);
+			},
+			notice: () => "1 source file is missing",
+		};
+		view = await renderWithScenario("timeline", () => (
+			<HostServicesContext.Provider
+				value={{ importFromDialog: async () => {}, exportDirectory: "d", preview }}
+			>
+				<AppShell />
+			</HostServicesContext.Provider>
+		));
+		await view.untilAttr(view.rootScope, "previewStructure", (v) => ((v as { clipSources?: unknown[] } | null)?.clipSources?.length ?? 0) > 0);
+		view.settle();
+
+		const last = plans.filter(Boolean).at(-1);
+		expect(last?.fps).toBe(30);
+		expect(last?.clipSources.length).toBeGreaterThan(0);
+		expect(view.texts()).toContain("1 source file is missing");
 	});
 });

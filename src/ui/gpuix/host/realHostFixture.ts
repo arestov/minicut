@@ -9,7 +9,7 @@ import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
 import { createScenarioDriver, type ScenarioDriver } from "../fixtures/scenarioDriver";
 import { createExportExecutor, type ExportExecutor } from "./exportExecutor";
-import { createResourceAssetIndex } from "./resourceAssetIndex";
+import { createResourceAssetIndex, type ResourceAssetIndex } from "./resourceAssetIndex";
 import { createImportExecutor, type ImportExecutor } from "./importExecutor";
 import { createRuntimeRefStore } from "./runtimeRefs";
 import { spawnDktWorker, type DktWorkerHandle } from "./spawnDktWorker";
@@ -27,6 +27,7 @@ export type RealHostFixture = {
 	registry: NodeAssetRegistry;
 	media: ReturnType<typeof createMediaService>;
 	refs: ReturnType<typeof createRuntimeRefStore>;
+	assetIndex: ResourceAssetIndex;
 	/** Wires the import executor to the model's import effect requests. */
 	attachImport(): ImportExecutor;
 	/** Wires the export executor (output under <profile>/exports). */
@@ -62,6 +63,7 @@ export const openRealHostFixture = async (
 		registry,
 		media,
 		refs,
+		assetIndex,
 		attachImport() {
 			const executor = createImportExecutor({
 				page,
