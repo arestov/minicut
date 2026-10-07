@@ -80,4 +80,34 @@ describe("SessionRoot: createProject behavior contract", () => {
 		expect(ctx.getAttr(ctx.sessionRoot, "selectedEntityId")).toBeNull();
 		expect(ctx.getAttr(ctx.sessionRoot, "cursor")).toBe(0);
 	});
+
+	it("names new projects from the existing titles, not from hidden state", async () => {
+		const ctx = await bootDktModels();
+		const titles = async () =>
+			(await ctx.queryRel(ctx.appModel, "project")).map((project) =>
+				ctx.getAttr(project, "title"),
+			);
+		const createdTitle = async () => {
+			await ctx.lockToRead(async () => {
+				await ctx.sessionRoot.dispatch("createProject", {});
+			});
+			const active = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
+			return ctx.getAttr(active, "title");
+		};
+		const before = (await titles()).length;
+
+		const first = await createdTitle();
+		const second = await createdTitle();
+		expect(Number(String(second).replace("Project ", ""))).toBe(
+			Number(String(first).replace("Project ", "")) + 1,
+		);
+
+		// Renaming the newest project frees its number: derived from titles.
+		const active = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
+		await ctx.lockToRead(async () => {
+			await active.dispatch("renameProject", "Holiday cut");
+		});
+		expect(await createdTitle()).toBe(second);
+		expect((await titles()).length).toBe(before + 3);
+	});
 });

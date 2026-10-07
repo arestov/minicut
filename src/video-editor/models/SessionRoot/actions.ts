@@ -312,11 +312,10 @@ const _createDefaultTracks = () => [
 	},
 ];
 
-let createdProjectSequence = 0;
-
-const getNextProjectIndex = (projectTitles: unknown): number => {
+/** Next "Project N": max N among existing titles + 1 (pure; no hidden counter). */
+export const getNextProjectIndex = (projectTitles: unknown): number => {
 	const titleList = Array.isArray(projectTitles) ? projectTitles : [];
-	let maxIndex = createdProjectSequence;
+	let maxIndex = 0;
 	for (const value of titleList) {
 		if (typeof value !== "string") {
 			continue;
@@ -341,11 +340,8 @@ const createProjectSeedPayload = (
 ) => {
 	const value = asObject(payload) as CreateProjectPayload | null;
 	const nextSequence = forcedProjectId
-		? createdProjectSequence || 1
+		? 1
 		: getNextProjectIndex(projectTitles);
-	if (!forcedProjectId) {
-		createdProjectSequence = nextSequence;
-	}
 	const now = asNumber(nowValue, 0);
 	return {
 		title: asString(value?.title) ?? `Project ${nextSequence}`,
