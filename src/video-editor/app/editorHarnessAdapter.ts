@@ -37,6 +37,30 @@ const stageImportFiles = (
 	return env.tasks.putRuntimeRef(fileList);
 };
 
+/** Files of an import selection, whether or not they come with a handle. */
+const filesOf = (files: FileList | File[] | MediaImportEntry[]): File[] =>
+	Array.from(files).map((entry) => (entry instanceof File ? entry : entry.file));
+
+/**
+ * Host-owned import: the platform stages the files with the host and the
+ * model's own `requestImportFiles` action starts the import there. Returns
+ * false when this platform imports in the page.
+ */
+const requestHostImport = (
+	env: EditorActionEnvironment,
+	files: FileList | File[] | MediaImportEntry[],
+): boolean => {
+	const stageHostImport = env.platform.stageHostImport;
+	if (!stageHostImport) {
+		return false;
+	}
+	const inputBatchHandleId = stageHostImport.call(env.platform, filesOf(files));
+	if (inputBatchHandleId) {
+		dispatchRoot(env, "requestImportFiles", { inputBatchHandleId });
+	}
+	return true;
+};
+
 export const createEditorHarnessAdapter = (
 	env: EditorActionEnvironment,
 ): VideoEditorHarnessActions => {
@@ -70,6 +94,9 @@ export const createEditorHarnessAdapter = (
 			files: FileList | File[],
 			projectScope: ReactSyncScopeHandle,
 		): void {
+			if (requestHostImport(env, files)) {
+				return;
+			}
 			const inputBatchHandleId = stageImportFiles(env, files);
 			if (!inputBatchHandleId) {
 				return;
@@ -94,6 +121,9 @@ export const createEditorHarnessAdapter = (
 			void executeImportFilesTask({ task, env, projectScope });
 		},
 		requestImportFiles(files: FileList | File[]): void {
+			if (requestHostImport(env, files)) {
+				return;
+			}
 			const inputBatchHandleId = stageImportFiles(env, files);
 			if (!inputBatchHandleId) {
 				return;

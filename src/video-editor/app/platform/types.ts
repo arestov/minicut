@@ -21,6 +21,13 @@ export interface VideoEditorHarnessPlatform {
 	createObjectUrl(source: Blob): string | null;
 	revokeObjectUrl(url: string): void;
 	probeMediaFile(file: File, signal?: AbortSignal): Promise<HarnessMediaProbeResult>;
+	/**
+	 * Host-owned import (desktop config B): the host imports picked files from
+	 * their local paths on its media service. Returns the batch id the model's
+	 * `requestImportFiles` carries, or null when the files cannot be staged
+	 * (not path-backed, not media). Absent on Web, where the page imports.
+	 */
+	stageHostImport?(files: readonly File[]): string | null;
 	createProjectAssetStore(): ProjectAssetStore;
 	readonly playbackClock: PlaybackClock;
 	estimateStorage(): Promise<StorageEstimate | Record<string, never>>;
