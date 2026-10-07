@@ -109,6 +109,24 @@ export const clickButton = (webContents: WebContents, label: string): Promise<bo
 		return true;
 	})()`)
 
+/** Resolves when the labelled button exists and is enabled (waits on DOM changes, no polling). */
+export const waitForButtonEnabled = (webContents: WebContents, label: string): Promise<true> =>
+	webContents.executeJavaScript(`new Promise((resolve) => {
+		const label = ${JSON.stringify(label)};
+		const check = () => {
+			const button = [...document.querySelectorAll('button')].find(
+				(candidate) => (candidate.innerText || candidate.getAttribute('aria-label') || '').trim() === label,
+			);
+			if (button && !button.disabled) {
+				observer.disconnect();
+				resolve(true);
+			}
+		};
+		const observer = new MutationObserver(check);
+		observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+		check();
+	})`)
+
 /** Resolves when the window's renderer has gone away (closed or destroyed). */
 export const closeWindow = (window: BrowserWindow): Promise<void> =>
 	new Promise((resolve) => {

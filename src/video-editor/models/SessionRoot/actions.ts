@@ -444,6 +444,10 @@ export const sessionCreateProjectAction = [
 					can_use_refs: true,
 				},
 			],
+			lastActiveProject: [
+				"<< $root.lastActiveProject",
+				{ method: "set_one", can_use_refs: true },
+			],
 		},
 		fn: [
 			["< @all:title < pioneer.project", "$now"] as const,
@@ -464,6 +468,7 @@ export const sessionCreateProjectAction = [
 						hold_ref_id: "createdProject",
 					},
 					activeProject: { use_ref_id: "createdProject" },
+					lastActiveProject: { use_ref_id: "createdProject" },
 				};
 			},
 		],
@@ -516,6 +521,10 @@ export const sessionHandleInitAction = [
 					can_use_refs: true,
 				},
 			],
+			lastActiveProject: [
+				"<< $root.lastActiveProject",
+				{ method: "set_one", can_use_refs: true },
+			],
 		},
 		fn: [
 			[
@@ -524,6 +533,7 @@ export const sessionHandleInitAction = [
 				"<< @all:pioneer.project",
 				"< @all:title < pioneer.project",
 				"$now",
+				"<< @one:pioneer.lastActiveProject",
 			] as const,
 			(
 				payload: unknown,
@@ -532,6 +542,7 @@ export const sessionHandleInitAction = [
 				projects: unknown,
 				projectTitles: unknown,
 				now: unknown,
+				lastActiveProject: unknown,
 			) => {
 				if (typeof activeProjectId === "string" && activeProjectId) {
 					const existingProjects = Array.isArray(projects) ? projects : [];
@@ -546,14 +557,17 @@ export const sessionHandleInitAction = [
 				}
 
 				const existingProjects = Array.isArray(projects) ? projects : [];
-				const firstProject = existingProjects.find(Boolean);
-				if (firstProject) {
+				// A new session opens the project most recently made active by
+				// any session, else the first one.
+				const startProject = lastActiveProject || existingProjects.find(Boolean);
+				if (startProject) {
 					return {
 						activeProjectId: null,
 						pendingProjectInit: null,
 						selectedEntityId: null,
 						cursor: 0,
-						existingProject: firstProject,
+						existingProject: startProject,
+						lastActiveProject: startProject,
 					};
 				}
 
@@ -582,6 +596,7 @@ export const sessionHandleInitAction = [
 						hold_ref_id: "createdProject",
 					},
 					activeProject: { use_ref_id: "createdProject" },
+					lastActiveProject: { use_ref_id: "createdProject" },
 				};
 			},
 		],
@@ -592,7 +607,7 @@ export const sessionHandleInitAction = [
 		},
 		when_deps: ["pendingProjectInit"] as const,
 		when_fn: (_payload: unknown, pendingProjectInit: unknown) =>
-			pendingProjectInit === null,
+			pendingProjectInit == null,
 		fn: [
 			["< @one:_node_id < activeProject"] as const,
 			(_payload: unknown, projectNodeId: unknown) => ({
@@ -646,6 +661,10 @@ export const sessionSetActiveProjectAction = [
 				"<< activeProject",
 				{ method: "set_one", can_use_refs: true },
 			],
+			lastActiveProject: [
+				"<< $root.lastActiveProject",
+				{ method: "set_one", can_use_refs: true },
+			],
 		},
 		fn: [
 			["<< @all:pioneer.project", "activeProjectId"] as const,
@@ -658,7 +677,9 @@ export const sessionSetActiveProjectAction = [
 						asString((item as { _node_id?: unknown } | null)?._node_id) ===
 						activeProjectId,
 				);
-				return { activeProject: found ?? null };
+				return found
+					? { activeProject: found, lastActiveProject: found }
+					: { activeProject: null };
 			},
 		],
 	},

@@ -72,6 +72,12 @@ const appProps = mergeDcl({
 		sessions: ["input", { linking: "<< $session_root", many: true }],
 		free_sessions: ["input", { linking: "<< $session_root", many: true }],
 		project: ["input", { linking: "project", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
+		// Per-device UI state: the project most recently made active by any
+		// session. A new session without an active project opens it.
+		lastActiveProject: [
+			"input",
+			{ linking: "project", role: "projection" },
+		],
 		// Projects some session looks at (user attention for boot media restore).
 		attendedProject: [
 			"comp",
@@ -146,6 +152,7 @@ const appProps = mergeDcl({
 			sessions: { sync: false, reason: "projection" },
 			free_sessions: { sync: false, reason: "projection" },
 			project: "sequence",
+			lastActiveProject: { sync: false, reason: "projection" },
 			attendedProject: { sync: false, reason: "projection" },
 			track: { sync: false, reason: "projection" },
 			resource: { sync: false, reason: "projection" },

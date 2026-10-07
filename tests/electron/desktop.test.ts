@@ -62,6 +62,7 @@ describe('desktop host in real Electron windows', () => {
 			connected: Connected[]
 			roomId: string
 			secondSawEdit: boolean
+			secondExportEnabled: boolean
 		}>(body, { params: { scenario: 'twoWindows' } })
 
 		expect(result.connected).toHaveLength(2)
@@ -70,6 +71,7 @@ describe('desktop host in real Electron windows', () => {
 		expect(first.sessionId.startsWith(`${result.roomId}:window:`)).toBe(true)
 		expect(second.sessionId.startsWith(`${result.roomId}:window:`)).toBe(true)
 		expect(result.secondSawEdit).toBe(true)
+		expect(result.secondExportEnabled).toBe(true)
 	})
 
 	it('keeps the window mapping on reload and detaches on close', async () => {

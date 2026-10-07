@@ -59,6 +59,7 @@ const MODEL_CASES: ModelCase[] = [
 				free_sessions: "projection",
 				project: "crdt",
 				attendedProject: "projection",
+				lastActiveProject: "projection",
 				track: "projection",
 				resource: "projection",
 				mediaRecoveryTask: "projection",

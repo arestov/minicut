@@ -9,6 +9,7 @@ import {
 	pickFiles,
 	registerSchemeBeforeReady,
 	startTestDesktop,
+	waitForButtonEnabled,
 	waitForConnectedWindows,
 	waitForPageText,
 	type Electron,
@@ -65,6 +66,8 @@ const scenarios = {
 		await waitForPageText(first.webContents, /2 tracks/)
 		const second = await openTestWindow(electron, ctx)
 		await waitForPageText(second.webContents, /2 tracks/)
+		// The second window opens the last active project: export is enabled there.
+		const secondExportEnabled = await waitForButtonEnabled(second.webContents, 'Export')
 		const connected = listWindows(desktop)
 
 		await clickButton(first.webContents, 'Video track')
@@ -75,6 +78,7 @@ const scenarios = {
 			connected,
 			roomId: desktop.host.identity.roomId,
 			secondSawEdit: /3 tracks/.test(secondText),
+			secondExportEnabled,
 			deliveries,
 		}
 		await closeWindow(second)
