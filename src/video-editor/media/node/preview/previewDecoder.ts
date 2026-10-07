@@ -34,6 +34,8 @@ export interface PreviewDecodeOptions {
 	plan: ExportPlan;
 	/** Resolved file path by clip resourceId. */
 	assetPaths: Record<string, string>;
+	/** Probed frame rate per video resource; see FfmpegPreviewPlanInput. */
+	sourceFps?: Record<string, number>;
 	/** Preview bitmap size in pixels; even integers. */
 	width: number;
 	height: number;
@@ -96,6 +98,7 @@ export const startPreviewDecode = (
 			// Half a frame short of the end so float noise never adds a frame.
 			preview: { start, duration: (frameCount - 0.5) / fps },
 			assetPaths: options.assetPaths,
+			sourceFps: options.sourceFps,
 			fps,
 			width,
 			height,

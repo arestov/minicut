@@ -127,6 +127,7 @@ describe("preview producer against fixtures", () => {
 		resources: Record<string, FixtureName>,
 		times: number[],
 		moving: number[],
+		sourceFps: Record<string, number>,
 	): Promise<void> => {
 		const scenario = { name, plan, resources };
 		const exported = path.join(dir, `${name}.webm`);
@@ -148,6 +149,7 @@ describe("preview producer against fixtures", () => {
 		producer.setSource({
 			revision: name,
 			plan,
+			sourceFps,
 			assetPaths: Object.fromEntries(
 				Object.entries(scenarioAssets(scenario, fixtures)).map(
 					([id, location]) => [id, (location as { path: string }).path],
@@ -204,6 +206,7 @@ describe("preview producer against fixtures", () => {
 			videoAudioScenario.resources,
 			[0.3, 1.2, 1.96],
 			[0.3, 1.2, 1.96],
+			{ "res-video": 25 },
 		);
 	});
 
@@ -221,9 +224,12 @@ describe("preview producer against fixtures", () => {
 					id: "trimmed",
 					resourceId: "res-video",
 					resourceKind: "video",
-					start: 0.5,
+					// In-point 0.7 and start 0.51 are off the 25 fps source grid by a
+					// quarter frame in the way that matters (not an exact half-frame
+					// tie, which export itself resolves by float noise).
+					start: 0.51,
 					duration: 1.2,
-					inPoint: 0.72, // frame-aligned: a sub-frame in-point can shift preview vs export by one frame
+					inPoint: 0.7,
 				}),
 				clip({
 					id: "card",
@@ -242,6 +248,7 @@ describe("preview producer against fixtures", () => {
 			// black, trimmed (source 1.1s, 1.5s... in), trimmed+image, image only
 			[0.2, 0.8, 1.2, 1.5, 1.8],
 			[0.8, 1.2], // at 1.5 the image hides most of the moving video
+			{ "res-video": 25 },
 		);
 	});
 });

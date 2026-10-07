@@ -28,6 +28,11 @@ export interface PreviewSource {
 	plan: ExportPlan;
 	/** Resolved file path by clip resourceId. */
 	assetPaths: Record<string, string>;
+	/**
+	 * Probed frame rate per video resource. Needed for export-identical frame
+	 * selection with sub-frame in-points.
+	 */
+	sourceFps?: Record<string, number>;
 }
 
 export interface PreviewProducerOptions {
@@ -162,6 +167,7 @@ export const createPreviewProducer = (
 			ffmpegPath: options.ffmpegPath,
 			plan: src.plan,
 			assetPaths: src.assetPaths,
+			sourceFps: src.sourceFps,
 			width,
 			height,
 			fps: options.fps,

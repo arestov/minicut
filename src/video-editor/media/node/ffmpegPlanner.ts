@@ -81,11 +81,23 @@ export interface FfmpegExportPlanInput extends FfmpegPlanInputBase {
  */
 export interface FfmpegPreviewPlanInput extends FfmpegPlanInputBase {
 	preview: { start: number; duration: number };
+	/**
+	 * Frame rate of each video resource (from probe). With it the preview
+	 * selects the same source frame as export `trim`, which keeps the first
+	 * source frame at or after the in-point and times the following frames
+	 * from it, even when the in-point is not on the source frame grid. Without
+	 * it the preview seeks to the exact in-point (may differ by a source frame
+	 * for sub-frame in-points).
+	 */
+	sourceFps?: Record<string, number>;
 	format?: undefined;
 	outputPath?: undefined;
 }
 
 export type FfmpegPlanInput = FfmpegExportPlanInput | FfmpegPreviewPlanInput;
+
+/** Input seek margin (seconds) kept before the first wanted source frame. */
+const PREVIEW_SEEK_PAD = 0.5;
 
 export interface FfmpegPlan {
 	args: string[];
@@ -222,6 +234,40 @@ const encoderArgs = (format: MediaExportFormat, hasAudio: boolean): string[] => 
 	];
 };
 
+/**
+ * Export keeps the first source frame at or after the in-point (f0), times
+ * every later frame from it, rounds those times to the output frame grid (fps
+ * filter) and shifts them by `clip.start / TB`, which truncates to a whole
+ * slot. The frame shown in output slot s of the clip is therefore the one with
+ * round((frame - f0) * fps) == s - floor(clip.start * fps). The preview
+ * reproduces that for a window starting at slot `windowSlot`: it seeks near
+ * the first wanted source frame (with one output frame of look-behind) and
+ * keeps the same arithmetic relative to f0.
+ */
+const previewSeekFor = (
+	clip: PreviewClipSource,
+	windowSlot: number,
+	outFps: number,
+	duration: number,
+	sourceFps: Record<string, number> | undefined,
+): { target: number; trimStart: number; trimEnd: number; shift: number } | null => {
+	const fps = sourceFps?.[clip.resourceId ?? clip.id];
+	if (!isPositiveFinite(fps)) return null;
+	const f0 = Math.ceil(clip.inPoint * fps - EPSILON) / fps;
+	const clipSlot = Math.trunc(Number(fmt(clip.start)) / (1 / outFps));
+	// Output slots of the clip already passed before the window starts.
+	const skipped = Math.max(0, windowSlot - clipSlot);
+	const origin = f0 + skipped / outFps;
+	const first = skipped > 0 ? Math.max(f0, origin - 1 / outFps) : f0;
+	const target = Math.max(0, first - PREVIEW_SEEK_PAD);
+	return {
+		target,
+		trimStart: first - target,
+		trimEnd: origin + duration - target,
+		shift: origin - target,
+	};
+};
+
 export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 	if (!input.preview && input.format !== "webm" && input.format !== "mp4") {
 		throw new MediaError(
@@ -325,6 +371,15 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 		const label = `v${index}`;
 		const isImage = clip.resourceKind === "image";
 		const path = assetPathFor(clip);
+		const previewSeek = !isImage && input.preview
+			? previewSeekFor(
+					clip,
+					Math.round(rangeStart * fps),
+					fps,
+					duration,
+					input.sourceFps,
+				)
+			: null;
 		if (isImage) {
 			inputArgs.push(
 				"-loop",
@@ -337,21 +392,29 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 				path,
 			);
 		} else if (input.preview) {
-			inputArgs.push("-ss", fmt(sourceStart), "-i", path);
+			inputArgs.push("-ss", fmt(previewSeek?.target ?? sourceStart), "-i", path);
 		} else {
 			inputArgs.push("-i", path);
 		}
 		const n = inputIndex;
 		inputIndex += 1;
 		const chain = [
-			"setpts=PTS-STARTPTS",
+			// A grid-aware preview keeps the seek-relative timestamps (no
+			// normalisation to the first decoded frame) so the trim below sees
+			// the same sub-frame offsets as export.
+			...(previewSeek ? [] : ["setpts=PTS-STARTPTS"]),
 			...(isImage
 				? []
-				: [
-						`trim=start=${input.preview ? "0" : fmt(sourceStart)}:duration=${fmt(duration)}`,
-						"setpts=PTS-STARTPTS",
-					]),
-			`fps=${fmt(fps)}`,
+				: previewSeek
+					? [
+							`trim=start=${fmt(previewSeek.trimStart)}:end=${fmt(previewSeek.trimEnd)}`,
+							`setpts=PTS-${fmt(previewSeek.shift)}/TB`,
+						]
+					: [
+							`trim=start=${input.preview ? "0" : fmt(sourceStart)}:duration=${fmt(duration)}`,
+							"setpts=PTS-STARTPTS",
+						]),
+			`fps=${fmt(fps)}${previewSeek ? ":start_time=0" : ""}`,
 			`scale=${width}:${height}:force_original_aspect_ratio=decrease`,
 			"setsar=1",
 			"format=yuv420p",
