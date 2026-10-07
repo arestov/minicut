@@ -17,8 +17,8 @@ import { audioStats, centerRgbAt, compareFrameAt, integratedLoudness, meanLumaAt
  */
 
 // Explicit tolerances for web (WebCodecs VP8 + browser scaling) vs node (FFmpeg VP9 + swscale).
-// Measured on the reference machine: SSIM 0.978-0.987 (0.949 on flat black frames: the web encoder lifts black to RGB ~9, node writes 0), PSNR 31.8-37.6 dB, RMS delta 0.07 dB, LUFS delta 0.1.
-const SSIM_MIN = 0.94
+// Measured on the reference machine: SSIM 0.9928-0.99998 (flat black/background frames 0.99997+; before node adopted the web #09090b background they were 0.949), PSNR 41-56 dB, RMS delta 0.07 dB, LUFS delta 0.1.
+const SSIM_MIN = 0.97
 const PSNR_MIN_DB = 30
 const RMS_TOLERANCE_DB = 1
 const LUFS_TOLERANCE = 1
