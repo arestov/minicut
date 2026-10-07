@@ -9,36 +9,42 @@ Numbers are for the machine below only; do not compare across machines.
 - CPU: AMD Ryzen 7 5800H with Radeon Graphics x16, 15 GB RAM
 - Node: v24.17.0; GC exposed: true
 - ffmpeg version 7.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
-- Source: 1920x1080 25fps H.264 (veryfast, default GOP), 30s
+- Source: 1920x1080 25fps H.264 (veryfast, default GOP), 30s, 18.5 MB
+- Scrub proxy: H.264 all-intra, 540p (CRF 23, veryfast), 9.3 MB, generated in 2.1 s
 - Preview: 960x540 RGBA (2 MB/frame)
 
 ## Cold seek latency (40 seeks, request to delivered frame)
 
-| p50 | p95 | min | max |
-| --- | --- | --- | --- |
-| 336.8 ms | 487.2 ms | 215.6 ms | 511.0 ms |
+| Input | p50 | p95 | min | max |
+| --- | --- | --- | --- | --- |
+| original | 340.4 ms | 458.6 ms | 206.3 ms | 498.5 ms |
+| proxy | 136.9 ms | 167.2 ms | 129.2 ms | 185.7 ms |
+
+Floor: a bare ffmpeg process (lavfi 16x16, one frame, null output) takes p50 118.1 ms, p95 127.5 ms here.
 
 ## Scrub (60 requests, one every 8 ms)
 
-- Frames delivered: 4
-- Decodes started: 4
-- Requests coalesced behind an in-flight decode: 56
-- Decodes cancelled: 0
+| Input | frames delivered | decodes | coalesced | cancelled |
+| --- | --- | --- | --- | --- |
+| original | 5 | 5 | 55 | 0 |
+| proxy | 8 | 8 | 52 | 0 |
 
 ## Range stream (150 frames from 2 s, consumer releases at once)
 
-- First frame after 280.3 ms (process start + seek + first decode)
-- Steady state: 232.6 frames/s (9.3x of 25 fps)
-- Dropped frames (pool exhausted): 0
+| Input | first frame | steady frames/s | dropped (pool exhausted) |
+| --- | --- | --- | --- |
+| original | 214.7 ms | 270.8 (10.8x of 25 fps) | 0 |
+| proxy | 112.9 ms | 425.3 (17.0x of 25 fps) | 0 |
 
 ## Memory growth over the whole run (after GC when exposed)
 
-- RSS: 83.7 MB -> 132 MB (growth 48.3 MB)
-- JS heap growth: 0.5 MB; external: 54.6 MB; ArrayBuffers: 51.1 MB
+- RSS: 82.9 MB -> 114.1 MB (growth 31.2 MB)
+- JS heap growth: -0.6 MB; external: 35.7 MB; ArrayBuffers: 33.2 MB
 
 ## Reading the numbers
 
-- Seek latency is dominated by ffmpeg process start plus decoding from the previous keyframe; a persistent decoder would remove the process start.
+- Seek on the original is ffmpeg process start plus decoding from the previous keyframe at 1080p. On the all-intra proxy a seek decodes one 540p frame, so most of what remains is process start; a persistent decoder would remove that.
+- The proxy is used only once it is ready (generated lazily per content key, cached on disk); before that and after a failed generation the producer decodes the original. Export always reads originals; `previewProxy.media.test.ts` checks preview-from-proxy against export frames by SSIM at proxy resolution.
 - Scrub: a running single-frame decode is never cancelled; at most one newer request waits behind it (older waiting ones are coalesced). Frames are therefore produced continuously while requests keep arriving, about one per decode time.
 - Range streaming is decoder-only for now (startPreviewDecode with pooled buffers, drop on pool exhaustion); there is no producer-level stream queue or backpressure yet.
 - Memory: pool and cache are bounded (pool capacity x frame bytes plus cache capacity x frame bytes); growth beyond that would indicate a leak.
