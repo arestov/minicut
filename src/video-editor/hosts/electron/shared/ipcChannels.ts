@@ -48,10 +48,6 @@ export const ELECTRON_IPC = {
 	CONNECT: "minicut:connect",
 	/** main -> preload: the port plus the window session handshake. */
 	PORT: "minicut:port",
-	/** renderer -> main, synchronous: register a local file as an asset. */
-	ASSET_REGISTER: "minicut:asset:register",
-	/** renderer -> main: release a registered asset. */
-	ASSET_RELEASE: "minicut:asset:release",
 } as const;
 
 /** `window.postMessage` channel preload uses to hand the port to the page. */
@@ -75,20 +71,10 @@ export type DesktopPortMessage = {
 	channel: typeof DESKTOP_PORT_MESSAGE_CHANNEL;
 } & DesktopHandshakeReply;
 
-export type DesktopAssetRegistration =
-	| { ok: true; assetId: string; url: string; name: string; size: number }
-	| { ok: false; reason: string };
-
 /** API that preload exposes as `window.minicutDesktop`. */
 export type MiniCutDesktopBridge = {
 	/** Ask main for a message port; the answer arrives via window.postMessage. */
 	requestConnection(): void;
 	/** Local path of a dropped or picked file; empty when it is not path-backed. */
 	getPathForFile(file: File): string;
-	/**
-	 * Registers a path-backed file with the host asset registry. Files never
-	 * cross IPC: main reads the path itself and serves it by asset id.
-	 */
-	registerAssetFile(file: File): DesktopAssetRegistration;
-	releaseAsset(assetId: string): void;
 };

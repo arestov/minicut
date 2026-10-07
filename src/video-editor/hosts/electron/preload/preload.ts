@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
 	DESKTOP_PORT_MESSAGE_CHANNEL,
 	ELECTRON_IPC,
-	type DesktopAssetRegistration,
 	type DesktopHandshakeReply,
 	type DesktopPortMessage,
 	type MiniCutDesktopBridge,
@@ -32,19 +31,6 @@ const bridge: MiniCutDesktopBridge = {
 		ipcRenderer.send(ELECTRON_IPC.CONNECT);
 	},
 	getPathForFile,
-	registerAssetFile(file) {
-		const filePath = getPathForFile(file);
-		if (!filePath) {
-			return { ok: false, reason: "file is not backed by a local path" };
-		}
-		return ipcRenderer.sendSync(
-			ELECTRON_IPC.ASSET_REGISTER,
-			filePath,
-		) as DesktopAssetRegistration;
-	},
-	releaseAsset(assetId) {
-		ipcRenderer.send(ELECTRON_IPC.ASSET_RELEASE, assetId);
-	},
 };
 
 contextBridge.exposeInMainWorld("minicutDesktop", bridge);

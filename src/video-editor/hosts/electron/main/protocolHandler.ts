@@ -1,13 +1,25 @@
 import path from "node:path";
 import { mediaContentTypeForPath, serveFile } from "./fileResponse";
-import type { HostAssetRegistry } from "./assetRegistry";
+import type { NodeAssetRegistry } from "../../../adapters/node/nodeAssetRegistry";
 import {
 	MINICUT_PROTOCOL_HOST,
 	MINICUT_PROTOCOL_SCHEME,
 } from "../shared/ipcChannels";
 
+/** Where `/asset/<id>` finds its file: only ids the registry knows resolve. */
+export type AssetSource = {
+	resolve(assetId: string): string | null;
+};
+
+/** The persistent registry of the workspace as an asset source. */
+export const createRegistryAssetSource = (
+	registry: Pick<NodeAssetRegistry, "get">,
+): AssetSource => ({
+	resolve: (assetId) => registry.get(assetId)?.path ?? null,
+});
+
 export type MiniCutProtocolHandlerOptions = {
-	assets: Pick<HostAssetRegistry, "resolve">;
+	assets: AssetSource;
 	/** Directory of the built renderer; served under `/app/`. */
 	rendererDir: string;
 };

@@ -6,12 +6,15 @@ import {
 } from "../../../adapters/node/startNodeMiniCutHost";
 import { MINICUT_APP_URL_PREFIX } from "../shared/ipcChannels";
 import { createWindowExecutorEffectInterfaces } from "./createWindowExecutorEffectInterfaces";
-import { registerAssetIpc } from "./assetIpc";
 import {
-	createHostAssetRegistry,
-	type HostAssetRegistry,
-} from "./assetRegistry";
-import { createMiniCutProtocolHandler } from "./protocolHandler";
+	createNodeAssetRegistry,
+	nodeAssetRegistryPathFor,
+	type NodeAssetRegistry,
+} from "../../../adapters/node/nodeAssetRegistry";
+import {
+	createMiniCutProtocolHandler,
+	createRegistryAssetSource,
+} from "./protocolHandler";
 import { installMiniCutProtocol } from "./registerProtocol";
 import {
 	createWindowConnector,
@@ -41,7 +44,8 @@ export type StartDesktopAppOptions = {
 
 export type DesktopApp = {
 	host: NodeMiniCutHost;
-	assets: HostAssetRegistry;
+	/** Persistent registry of the workspace (asset id -> local file); the protocol serves from it. */
+	assets: NodeAssetRegistry;
 	windows: ReturnType<typeof createWindowConnector>;
 	/** Idempotent: detaches windows and releases the LevelDB lock. */
 	dispose(): Promise<void>;
@@ -78,7 +82,16 @@ export const startDesktopApp = async ({
 		effectInterfaces,
 		generateUuid,
 	});
-	const assets = createHostAssetRegistry({ generateId: generateUuid });
+	let assets: NodeAssetRegistry;
+	try {
+		assets = await createNodeAssetRegistry({
+			filePath: nodeAssetRegistryPathFor(host.identity.storagePath),
+			generateId: generateUuid,
+		});
+	} catch (error) {
+		await host.dispose().catch(() => undefined);
+		throw error;
+	}
 	const trustedPrefixes = [MINICUT_APP_URL_PREFIX, ...trustedRendererUrlPrefixes];
 	const isTrustedRendererUrl = (url: string): boolean =>
 		trustedPrefixes.some((prefix) => isUrlUnderPrefix(url, prefix));
@@ -86,13 +99,11 @@ export const startDesktopApp = async ({
 	try {
 		installMiniCutProtocol(
 			electron.protocol,
-			createMiniCutProtocolHandler({ assets, rendererDir }),
+			createMiniCutProtocolHandler({
+				assets: createRegistryAssetSource(assets),
+				rendererDir,
+			}),
 		);
-		const assetIpc = registerAssetIpc({
-			assets,
-			ipcMain: electron.ipcMain as never,
-			isTrustedRendererUrl,
-		});
 		const connector = createWindowConnector({
 			runtime: host.runtime,
 			sessionKey: host.identity.roomId,
@@ -109,11 +120,12 @@ export const startDesktopApp = async ({
 			windows: connector,
 			dispose: async () => {
 				connector.dispose();
-				assetIpc.dispose();
+				await assets.flush().catch(() => undefined);
 				await host.dispose();
 			},
 		};
 	} catch (error) {
+		await assets.flush().catch(() => undefined);
 		await host.dispose().catch(() => undefined);
 		throw error;
 	}

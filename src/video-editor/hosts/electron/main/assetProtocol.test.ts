@@ -1,20 +1,17 @@
-import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { IpcMainEvent } from "electron";
-import { registerAssetIpc } from "./assetIpc";
-import { createHostAssetRegistry } from "./assetRegistry";
+import {
+	createNodeAssetRegistry,
+	type NodeAssetRegistry,
+} from "../../../adapters/node/nodeAssetRegistry";
 import { parseRangeHeader } from "./fileResponse";
-import { createMiniCutProtocolHandler } from "./protocolHandler";
-import { isUrlUnderPrefix } from "./windowConnector";
+import { createMiniCutProtocolHandler, createRegistryAssetSource } from "./protocolHandler";
 import {
 	createAssetUrl,
-	ELECTRON_IPC,
 	MINICUT_APP_URL_PREFIX,
 	parseAssetUrl,
-	type DesktopAssetRegistration,
 } from "../shared/ipcChannels";
 
 const MEDIA_BYTES = Buffer.from(
@@ -25,7 +22,7 @@ describe("asset protocol", () => {
 	let tempDir: string;
 	let mediaPath: string;
 	let rendererDir: string;
-	let assets: ReturnType<typeof createHostAssetRegistry>;
+	let registry: NodeAssetRegistry;
 	let handler: (request: Request) => Promise<Response>;
 	let assetId: string;
 
@@ -38,11 +35,15 @@ describe("asset protocol", () => {
 		await writeFile(path.join(rendererDir, "index.html"), "<html></html>");
 		await writeFile(path.join(rendererDir, "assets", "app.js"), "export {}");
 		await writeFile(path.join(tempDir, "secret.txt"), "secret");
-		assets = createHostAssetRegistry({ generateId: () => "asset-1" });
-		const registration = assets.register(mediaPath, 1);
-		if (!registration.ok) throw new Error(registration.reason);
-		assetId = registration.assetId;
-		handler = createMiniCutProtocolHandler({ assets, rendererDir });
+		registry = await createNodeAssetRegistry({
+			filePath: path.join(tempDir, "assets.json"),
+			generateId: () => "asset-1",
+		});
+		assetId = (await registry.register(mediaPath)).assetId;
+		handler = createMiniCutProtocolHandler({
+			assets: createRegistryAssetSource(registry),
+			rendererDir,
+		});
 	});
 
 	afterEach(async () => {
@@ -56,32 +57,6 @@ describe("asset protocol", () => {
 		handler(new Request(absolute(url), { method, headers }));
 	const bytesOf = async (response: Response) =>
 		Buffer.from(await response.arrayBuffer());
-
-	describe("registry", () => {
-		it("registers an existing absolute file and reports its metadata", () => {
-			expect(assets.register(mediaPath, 1)).toEqual({
-				ok: true,
-				assetId: "asset-1",
-				name: "clip.mp4",
-				size: MEDIA_BYTES.length,
-			});
-		});
-
-		it("refuses relative paths, directories, missing files and non-strings", () => {
-			expect(assets.register("clip.mp4", 1)).toMatchObject({ ok: false });
-			expect(assets.register(tempDir, 1)).toMatchObject({ ok: false });
-			expect(assets.register(path.join(tempDir, "missing.mp4"), 1)).toMatchObject({
-				ok: false,
-			});
-			expect(assets.register(42, 1)).toMatchObject({ ok: false });
-		});
-
-		it("forgets a released asset", () => {
-			expect(assets.release(assetId, 1)).toBe(true);
-			expect(assets.resolve(assetId)).toBeNull();
-			expect(assets.release(assetId, 1)).toBe(false);
-		});
-	});
 
 	describe("asset URLs", () => {
 		it("round-trips an asset id through the URL", () => {
@@ -168,10 +143,13 @@ describe("asset protocol", () => {
 		it("serves an empty file without a body", async () => {
 			const emptyPath = path.join(tempDir, "empty.wav");
 			await writeFile(emptyPath, "");
-			const registration = createHostAssetRegistry({ generateId: () => "empty" });
-			registration.register(emptyPath, 1);
+			const emptyRegistry = await createNodeAssetRegistry({
+				filePath: path.join(tempDir, "empty-assets.json"),
+				generateId: () => "empty",
+			});
+			await emptyRegistry.register(emptyPath);
 			const emptyHandler = createMiniCutProtocolHandler({
-				assets: registration,
+				assets: createRegistryAssetSource(emptyRegistry),
 				rendererDir,
 			});
 
@@ -184,11 +162,35 @@ describe("asset protocol", () => {
 	});
 
 	describe("routing", () => {
-		it("answers 404 for an unknown or released asset", async () => {
-			assets.release(assetId, 1);
-
-			expect((await get(createAssetUrl(assetId))).status).toBe(404);
+		it("answers 404 for an id the registry does not know", async () => {
+			expect((await get(createAssetUrl(assetId))).status).toBe(200);
 			expect((await get(createAssetUrl("nope"))).status).toBe(404);
+		});
+
+		it("serves an asset id again after the registry was reopened from disk", async () => {
+			await registry.flush();
+			const reopened = await createNodeAssetRegistry({
+				filePath: path.join(tempDir, "assets.json"),
+			});
+			const reopenedHandler = createMiniCutProtocolHandler({
+				assets: createRegistryAssetSource(reopened),
+				rendererDir,
+			});
+
+			const response = await reopenedHandler(new Request(absolute(createAssetUrl(assetId))));
+
+			expect(response.status).toBe(200);
+			expect(await bytesOf(response)).toEqual(MEDIA_BYTES);
+		});
+
+		it("serves a relinked asset id from its new file", async () => {
+			const other = path.join(tempDir, "other.mp4");
+			await writeFile(other, Buffer.from([1, 2, 3]));
+			await registry.relink(assetId, other);
+
+			const response = await get(createAssetUrl(assetId));
+
+			expect(await bytesOf(response)).toEqual(Buffer.from([1, 2, 3]));
 		});
 
 		it("serves the renderer bundle under /app/ and index.html by default", async () => {
@@ -217,17 +219,6 @@ describe("asset protocol", () => {
 	});
 
 	describe("hardening", () => {
-		it("refuses network and device paths and files that are not video, audio or raster images", async () => {
-			await writeFile(path.join(tempDir, "notes.txt"), "text");
-			await writeFile(path.join(tempDir, "drawing.svg"), "<svg/>");
-
-			expect(assets.register("\\\\server\\share\\clip.mp4", 1)).toMatchObject({ ok: false });
-			expect(assets.register("\\\\?\\C:\\clip.mp4", 1)).toMatchObject({ ok: false });
-			expect(assets.register("//server/share/clip.mp4", 1)).toMatchObject({ ok: false });
-			expect(assets.register(path.join(tempDir, "notes.txt"), 1)).toMatchObject({ ok: false });
-			expect(assets.register(path.join(tempDir, "drawing.svg"), 1)).toMatchObject({ ok: false });
-		});
-
 		it("serves media with nosniff and a sandbox policy, and the bundle with a CSP", async () => {
 			const media = await get(createAssetUrl(assetId));
 			const page = await get(`${MINICUT_APP_URL_PREFIX}index.html`);
@@ -252,119 +243,6 @@ describe("asset protocol", () => {
 			const response = await handlerWithText(new Request(absolute(createAssetUrl("any"))));
 
 			expect(response.status).toBe(404);
-		});
-
-		it("lets only the owner release an asset and releases everything of an owner at once", () => {
-			const registry = createHostAssetRegistry();
-			const mine = registry.register(mediaPath, 1);
-			const theirs = registry.register(mediaPath, 2);
-			if (!mine.ok || !theirs.ok) throw new Error("registration failed");
-
-			expect(registry.release(mine.assetId, 2)).toBe(false);
-			expect(registry.releaseOwner(1)).toBe(1);
-			expect(registry.resolve(mine.assetId)).toBeNull();
-			expect(registry.resolve(theirs.assetId)).toBe(mediaPath);
-		});
-	});
-
-	describe("asset IPC", () => {
-		const createIpc = () => {
-			const listeners = new Map<string, (event: IpcMainEvent, ...args: unknown[]) => void>();
-			return {
-				on(channel: string, listener: (event: IpcMainEvent, ...args: unknown[]) => void) {
-					listeners.set(channel, listener);
-				},
-				removeListener(channel: string) {
-					listeners.delete(channel);
-				},
-				invoke(channel: string, event: unknown, ...args: unknown[]) {
-					listeners.get(channel)?.(event as IpcMainEvent, ...args);
-				},
-				size: () => listeners.size,
-			};
-		};
-		const app = (url: string) => `${MINICUT_APP_URL_PREFIX}${url}`;
-		const createSender = (id: number, frameUrl = app("index.html")) => {
-			const mainFrame = { url: frameUrl };
-			const sender = Object.assign(new EventEmitter(), { id, mainFrame });
-			return {
-				sender,
-				event: () => ({ sender, senderFrame: mainFrame, returnValue: undefined as unknown }),
-			};
-		};
-		const trusts = (url: string) => isUrlUnderPrefix(url, MINICUT_APP_URL_PREFIX);
-
-		it("registers a path from a trusted frame and returns the asset URL", () => {
-			const ipc = createIpc();
-			registerAssetIpc({ assets, ipcMain: ipc, isTrustedRendererUrl: trusts });
-			const event = createSender(7).event();
-
-			ipc.invoke(ELECTRON_IPC.ASSET_REGISTER, event, mediaPath);
-
-			expect(event.returnValue).toEqual({
-				ok: true,
-				assetId: "asset-1",
-				url: createAssetUrl("asset-1"),
-				name: "clip.mp4",
-				size: MEDIA_BYTES.length,
-			} satisfies DesktopAssetRegistration);
-		});
-
-		it("refuses untrusted senders, including a lookalike host", () => {
-			const ipc = createIpc();
-			registerAssetIpc({ assets, ipcMain: ipc, isTrustedRendererUrl: trusts });
-			const lookalike = createSender(8, "minicut://local/application/index.html").event();
-			const foreign = createSender(9, "https://example.com/").event();
-
-			ipc.invoke(ELECTRON_IPC.ASSET_REGISTER, lookalike, mediaPath);
-			ipc.invoke(ELECTRON_IPC.ASSET_REGISTER, foreign, mediaPath);
-
-			expect(lookalike.returnValue).toEqual({ ok: false, reason: "untrusted sender" });
-			expect(foreign.returnValue).toEqual({ ok: false, reason: "untrusted sender" });
-		});
-
-		it("releases only the sender's own assets", () => {
-			const ipc = createIpc();
-			registerAssetIpc({ assets, ipcMain: ipc, isTrustedRendererUrl: trusts });
-			const owner = createSender(7);
-			const other = createSender(8);
-			const registered = owner.event();
-			ipc.invoke(ELECTRON_IPC.ASSET_REGISTER, registered, mediaPath);
-			const { assetId: ownedId } = registered.returnValue as { assetId: string };
-
-			ipc.invoke(ELECTRON_IPC.ASSET_RELEASE, other.event(), ownedId);
-			expect(assets.resolve(ownedId)).toBe(mediaPath);
-
-			ipc.invoke(ELECTRON_IPC.ASSET_RELEASE, owner.event(), ownedId);
-			expect(assets.resolve(ownedId)).toBeNull();
-		});
-
-		it("releases a window's assets when it is destroyed or its main frame navigates", () => {
-			const ipc = createIpc();
-			const registry = createHostAssetRegistry();
-			const { dispose } = registerAssetIpc({
-				assets: registry,
-				ipcMain: ipc,
-				isTrustedRendererUrl: trusts,
-			});
-			const reloaded = createSender(7);
-			const closed = createSender(8);
-			const sameDocument = createSender(9);
-			for (const window of [reloaded, closed, sameDocument]) {
-				ipc.invoke(ELECTRON_IPC.ASSET_REGISTER, window.event(), mediaPath);
-			}
-			expect(registry.size()).toBe(3);
-
-			sameDocument.sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: true });
-			expect(registry.size()).toBe(3);
-			reloaded.sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
-			expect(registry.size()).toBe(2);
-			closed.sender.emit("destroyed");
-			expect(registry.size()).toBe(1);
-
-			dispose();
-			expect(ipc.size()).toBe(0);
-			expect(closed.sender.listenerCount("destroyed")).toBe(0);
 		});
 	});
 });
