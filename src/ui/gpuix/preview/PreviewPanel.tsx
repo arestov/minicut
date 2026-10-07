@@ -1,8 +1,8 @@
 import { useAttrs } from "../../../dkt-solid-sync";
 import { Panel } from "../controls/Panel";
 import { colors } from "../theme";
-import { SyntheticPreview } from "./SyntheticPreview";
-import { createSyntheticFrameSource, formatTimecode } from "./syntheticFrameSource";
+import { FramePresenter } from "./FramePresenter";
+import { createSyntheticPreviewSource, formatTimecode } from "./syntheticFrameSource";
 
 const PREVIEW_WIDTH = 480;
 const PREVIEW_HEIGHT = 270;
@@ -10,7 +10,7 @@ const PREVIEW_HEIGHT = 270;
 /** Preview of the frame at the session cursor (synthetic frames for now). */
 export const PreviewPanel = () => {
 	const session = useAttrs(["cursor"]);
-	const source = createSyntheticFrameSource({
+	const source = createSyntheticPreviewSource({
 		width: PREVIEW_WIDTH,
 		height: PREVIEW_HEIGHT,
 	});
@@ -32,7 +32,7 @@ export const PreviewPanel = () => {
 					backgroundColor: colors.window,
 				}}
 			>
-				<SyntheticPreview testId="preview-frame" source={source} time={cursor} />
+				<FramePresenter testId="preview-frame" source={source} time={cursor} />
 				<text testId="preview-timecode" style={{ color: colors.textMuted, fontSize: 12 }}>
 					{formatTimecode(cursor())}
 				</text>

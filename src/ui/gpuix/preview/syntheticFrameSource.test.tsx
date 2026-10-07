@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { createTestRoot } from "@gpuix/solid/testing";
-import { createSignal } from "solid-js";
-import { SyntheticPreview } from "./SyntheticPreview";
 import {
 	createSyntheticFrameSource,
 	formatTimecode,
@@ -57,31 +54,5 @@ describe("synthetic frame source", () => {
 		expect(formatTimecode(0)).toBe("00:00.00");
 		expect(formatTimecode(65.5)).toBe("01:05.50");
 		expect(formatTimecode(-3)).toBe("00:00.00");
-	});
-});
-
-describe("SyntheticPreview", () => {
-	test("uploads a frame once mounted and a new frame when time changes", () => {
-		const source = createSyntheticFrameSource({ width: 64, height: 36 });
-		const root = createTestRoot();
-		const uploads: Array<{ width: number; height: number; bytes: number }> = [];
-		const upload = root.renderer.setImagePixels.bind(root.renderer);
-		root.renderer.setImagePixels = (...args: Parameters<typeof upload>) => {
-			const [, width, height, pixels] = args;
-			uploads.push({ width, height, bytes: pixels.length });
-			upload(...args);
-		};
-		const [time, setTime] = createSignal(0);
-
-		root.render(() => (
-			<div>
-				<SyntheticPreview source={source} time={time} />
-			</div>
-		));
-		expect(uploads).toEqual([{ width: 128, height: 72, bytes: 128 * 72 * 4 }]);
-
-		root.flushSync(() => setTime(1));
-		expect(uploads).toHaveLength(2);
-		root.unmount();
 	});
 });

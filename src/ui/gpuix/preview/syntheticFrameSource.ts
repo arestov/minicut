@@ -1,3 +1,5 @@
+import type { PreviewFrame, PreviewFrameSource } from "./frameSource";
+
 /**
  * JS-generated preview frames. Placeholder for the real frame stream of the
  * desktop host: same contract (packed RGBA, straight alpha, bitmap sized to
@@ -163,6 +165,97 @@ export const createSyntheticFrameSource = (
 			drawTimecode(formatTimecode(timeSeconds), scale, 4 * pixelRatio, 4 * pixelRatio);
 
 			return frame;
+		},
+	};
+};
+
+export type SyntheticPreviewSourceOptions = SyntheticFrameSourceOptions & {
+	/**
+	 * Runs deferred work. When set, frames are delivered through it instead of
+	 * inside `request`, each in its own pooled buffer, so a frame can arrive
+	 * after a newer request like frames from a real stream. Hosts pass their
+	 * own scheduler; tests pass one they run by hand.
+	 */
+	schedule?: (run: () => void) => void;
+	/** Called when a frame listener throws; delivery to the others continues. */
+	onListenerError?: (error: unknown) => void;
+};
+
+/**
+ * The synthetic generator as a `PreviewFrameSource`.
+ *
+ * Without `schedule`, each request renders its frame at once into one reused
+ * buffer and delivers it to the listeners; the buffer is overwritten by the
+ * next request, which is why the presenter uploads inside the listener and
+ * releases the frame right away. With `schedule`, each frame is copied into a
+ * pooled buffer that is returned to the pool by `release`.
+ */
+export const createSyntheticPreviewSource = (
+	options: SyntheticPreviewSourceOptions,
+): PreviewFrameSource => {
+	const generator = createSyntheticFrameSource(options);
+	const listeners = new Set<(frame: PreviewFrame) => void>();
+	const pool: Uint8Array[] = [];
+	const reportError = options.onListenerError ?? ((error) => console.error(error));
+	let generation = 0;
+
+	const deliver = (frame: PreviewFrame) => {
+		let delivered = 0;
+		for (const listener of [...listeners]) {
+			try {
+				listener(frame);
+				delivered += 1;
+			} catch (error) {
+				reportError(error);
+			}
+		}
+		// Nobody took the frame: it goes straight back.
+		if (delivered === 0 && listeners.size === 0) frame.release();
+	};
+
+	return {
+		width: options.width,
+		height: options.height,
+		pixelRatio: generator.pixelRatio,
+		request(timeSeconds) {
+			generation += 1;
+			const current = generation;
+			const frame = generator.frameAt(timeSeconds);
+			const { schedule } = options;
+			if (!schedule) {
+				deliver({
+					width: frame.width,
+					height: frame.height,
+					pixels: frame.pixels,
+					generation: current,
+					release() {},
+				});
+				return current;
+			}
+			const pixels = pool.pop() ?? new Uint8Array(frame.pixels.length);
+			pixels.set(frame.pixels);
+			let released = false;
+			schedule(() =>
+				deliver({
+					width: frame.width,
+					height: frame.height,
+					pixels,
+					generation: current,
+					release() {
+						// Idempotent: a frame must not enter the pool twice.
+						if (released) return;
+						released = true;
+						pool.push(pixels);
+					},
+				}),
+			);
+			return current;
+		},
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
 		},
 	};
 };
