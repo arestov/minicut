@@ -162,6 +162,51 @@ describe("desktop app composition (configuration B)", () => {
 	const countOf = (window: WindowEnd, type: MiniCutDktTransportMessage["type"]) =>
 		window.received.filter((message) => message.type === type).length;
 
+	const rootOf = (window: WindowEnd): string =>
+		String(
+			(window.received.find((m) => m.type === DKT_MSG.RUNTIME_READY) as { rootNodeId?: string })
+				.rootNodeId,
+		);
+	/** The app root's pool of session roots and the projects they look at. */
+	const appPool = async () => {
+		const dump = (await app.host.runtime.debugDumpState(app.host.identity.roomId)) as {
+			workerState?: {
+				runtimeModels?: Array<{ modelName: string | null; rels: Record<string, unknown> }>;
+			};
+		};
+		const appRoot = dump.workerState?.runtimeModels?.find((model) => model.modelName === "app_root");
+		const ids = (rel: unknown): string[] => (Array.isArray(rel) ? (rel as string[]) : []);
+		return {
+			sessions: ids(appRoot?.rels.sessions),
+			attendedProjects: ids(appRoot?.rels.attendedProject),
+		};
+	};
+
+	it("registers each window as a session, attends its project, and releases both when it closes", async () => {
+		const first = await openWindow(1);
+		const second = await openWindow(2);
+		await settle(first, second);
+
+		const open = await appPool();
+		expect(open.sessions.sort()).toEqual([rootOf(first), rootOf(second)].sort());
+		// Both windows look at the shared project: one attended project, not two.
+		expect(open.attendedProjects).toHaveLength(1);
+
+		(first.transport as { destroy(): void }).destroy();
+		const detached = new Promise<void>((resolve) => {
+			const stop = app.windows.onConnectedWindowsChanged(() => {
+				if (app.windows.getConnectedWindows().length === 1) {
+					stop();
+					resolve();
+				}
+			});
+		});
+		await detached;
+		await settle(second);
+
+		expect((await appPool()).sessions).toEqual([rootOf(second)]);
+	});
+
 	it("serves the minicut protocol with the app assets handler installed", () => {
 		expect(protocolHandlers.has("minicut")).toBe(true);
 	});
