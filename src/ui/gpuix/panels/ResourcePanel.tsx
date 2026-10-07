@@ -8,6 +8,7 @@ import {
 } from "../../../dkt-solid-sync";
 import { Button } from "../controls/Button";
 import { Panel } from "../controls/Panel";
+import { RecoveryPhase } from "../tasks/TaskProgress";
 import { colors, metrics } from "../theme";
 import {
 	describeResourceNote,
@@ -70,6 +71,7 @@ const ResourceRow = () => {
 				<text style={{ color: colors.textMuted, fontSize: 11 }}>
 					{`${String(attrs.kind())} | ${formatDuration(attrs.duration())}${size() ? ` | ${size()}` : ""}`}
 				</text>
+				<RecoveryPhase />
 				<Show when={note()}>
 					{(current) => (
 						<text

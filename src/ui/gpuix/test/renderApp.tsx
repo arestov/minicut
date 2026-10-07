@@ -39,6 +39,8 @@ export const renderWithScenario = async (
 
 	return {
 		runtime: dkt.pageRuntime,
+		/** Recording effect fakes: the requests the model sent to executors. */
+		fakes: dkt.fakes!,
 		rootScope,
 		root,
 		renderer: root.renderer,

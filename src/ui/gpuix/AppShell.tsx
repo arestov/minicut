@@ -3,6 +3,7 @@ import { useAttrs } from "../../dkt-solid-sync";
 import { Panel } from "./controls/Panel";
 import { PreviewPanel } from "./preview/PreviewPanel";
 import { formatTimecode } from "./preview/syntheticFrameSource";
+import { ExportProgress, ImportProgress } from "./tasks/TaskProgress";
 import { colors, metrics } from "./theme";
 import { Toolbar } from "./toolbar/Toolbar";
 
@@ -29,6 +30,7 @@ const StatusBar = () => {
 				height: metrics.statusBarHeight,
 				flexShrink: 0,
 				paddingLeft: 12,
+				paddingRight: 12,
 				backgroundColor: colors.panelHeader,
 				borderTopWidth: 1,
 				borderColor: colors.border,
@@ -40,6 +42,9 @@ const StatusBar = () => {
 			<text testId="status-playing">
 				{session.isPlaying() === true ? "Playing" : "Paused"}
 			</text>
+			<div style={{ flexGrow: 1 }} />
+			<ImportProgress />
+			<ExportProgress />
 		</div>
 	);
 };
