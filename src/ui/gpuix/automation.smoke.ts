@@ -26,7 +26,7 @@ const app = await launch({
 	command: process.env.BUN_BIN || "bun",
 	args: ["main.tsx", "--scenario=timeline"],
 	cwd: here,
-	env: { ...process.env, GPUIX_BACKGROUND: "1" },
+	env: { ...process.env, GPUIX_BACKGROUND: process.env.GPUIX_BACKGROUND ?? "1" },
 });
 
 /** Polls a condition with a pause between reads; fails with `message` after the timeout. */

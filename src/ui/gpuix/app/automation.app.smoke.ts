@@ -44,7 +44,7 @@ const start = (): Promise<App> =>
 		cwd,
 		env: {
 			...process.env,
-			GPUIX_BACKGROUND: "1",
+			GPUIX_BACKGROUND: process.env.GPUIX_BACKGROUND ?? "1",
 			MINICUT_PROFILE_DIR: profileDir,
 			MINICUT_EXPORT_DIR: exportDir,
 			MINICUT_GPUIX_TEST_HOOKS: "1",

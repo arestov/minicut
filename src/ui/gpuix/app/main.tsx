@@ -57,7 +57,8 @@ const windowOptions = {
 	title: "MiniCut",
 	width: 1280,
 	height: 800,
-	// GPUIX_BACKGROUND=1 (window smoke test) keeps the user's focus.
+	// GPUIX_BACKGROUND=1 (set by the window test scripts) opens the window without taking focus.
+	// Not `show: false`: a hidden or minimized window does not paint (docs/gpuix-test-windows.md).
 	focus: process.env.GPUIX_BACKGROUND !== "1",
 };
 
