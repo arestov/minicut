@@ -585,9 +585,9 @@ export const Project = model({
 				lastImportError: ["lastImportError"],
 			},
 			fn: [
-				["$noop"] as const,
-				(payload: unknown, noop: unknown) =>
-					reduceSetImportProgress(payload) ?? noop,
+				["$noop", "activeImportTaskId"] as const,
+				(payload: unknown, noop: unknown, activeImportTaskId: unknown) =>
+					reduceSetImportProgress(payload, activeImportTaskId) ?? noop,
 			],
 		},
 		importResource: [

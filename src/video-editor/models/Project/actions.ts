@@ -1363,8 +1363,19 @@ export const reduceRequestImportFiles = (payload: unknown) => {
 	};
 };
 
-export const reduceSetImportProgress = (payload: unknown) => {
+export const reduceSetImportProgress = (
+	payload: unknown,
+	activeImportTaskId: unknown,
+) => {
 	const value = payload as ProjectSetImportProgressPayload | null;
+	// Progress of a superseded or already finished batch must not overwrite the current one.
+	if (
+		typeof value?.taskId !== "string" ||
+		!value.taskId ||
+		value.taskId !== activeImportTaskId
+	) {
+		return null;
+	}
 	const stage = value?.stage;
 	if (
 		stage !== "queued" &&

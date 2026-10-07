@@ -491,6 +491,12 @@ describe("SessionRoot action contracts", () => {
 		await dispatchAndSettle(
 			harness.ctx,
 			harness.sessionRoot,
+			"requestImportFiles",
+			{ inputBatchHandleId: "input-batch:session-progress" },
+		);
+		await dispatchAndSettle(
+			harness.ctx,
+			harness.sessionRoot,
 			"setActiveProjectImportProgress",
 			{
 				taskId: "input-batch:session-progress",

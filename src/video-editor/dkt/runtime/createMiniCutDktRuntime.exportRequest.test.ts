@@ -158,6 +158,14 @@ describe("createMiniCutDktRuntime export request channel", () => {
 
 		memory.emit({
 			type: DKT_MSG.DISPATCH_ACTION,
+			actionName: "requestImportFiles",
+			payload: { inputBatchHandleId: "input-batch:worker-progress" },
+			scopeNodeId: null,
+		});
+		await waitForIdle(memory);
+
+		memory.emit({
+			type: DKT_MSG.DISPATCH_ACTION,
 			actionName: "setActiveProjectImportProgress",
 			payload: {
 				taskId: "input-batch:worker-progress",

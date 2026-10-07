@@ -177,8 +177,11 @@ describe("effect contract suite: import", () => {
 		});
 		expect(await queryAttr(harness.project, "activeImportTaskId")).toBeNull();
 
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "requestImportFiles", {
+			inputBatchHandleId: "input-batch:contract-2b",
+		});
 		await driver.import.progress(
-			"input-batch:contract-2",
+			"input-batch:contract-2b",
 			"error",
 			1,
 			2,
@@ -187,6 +190,33 @@ describe("effect contract suite: import", () => {
 		expect(await queryAttr(harness.project, "lastImportError")).toBe(
 			"decode failed",
 		);
+	});
+
+	it("ignores progress for a superseded or finished import batch", async () => {
+		const { harness, driver } = await setup();
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "requestImportFiles", {
+			inputBatchHandleId: "input-batch:old",
+		});
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "requestImportFiles", {
+			inputBatchHandleId: "input-batch:new",
+		});
+
+		await driver.import.progress("input-batch:old", "processing", 5, 6);
+		expect(await queryAttr(harness.project, "activeImportTaskId")).toBe(
+			"input-batch:new",
+		);
+		expect(await queryAttr(harness.project, "importProgress")).toEqual({
+			stage: "queued",
+			processed: 0,
+			total: 0,
+		});
+
+		await driver.import.progress("input-batch:new", "done", 1, 1);
+		await driver.import.progress("input-batch:new", "processing", 0, 1);
+		expect(await queryAttr(harness.project, "activeImportTaskId")).toBeNull();
+		expect(await queryAttr(harness.project, "importProgress")).toMatchObject({
+			stage: "done",
+		});
 	});
 });
 
