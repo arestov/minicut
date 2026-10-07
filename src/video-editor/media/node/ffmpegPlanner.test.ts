@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PreviewClipSource } from "../../read-model/previewComps";
 import type { ExportPlan } from "../../render/renderPlan";
-import { planFfmpegExport } from "./ffmpegPlanner";
+import { type FfmpegPreviewPlanInput, planFfmpegExport } from "./ffmpegPlanner";
 import { MediaError } from "./mediaError";
 
 const clip = (partial: Record<string, unknown>): PreviewClipSource =>
@@ -257,5 +257,56 @@ describe("planFfmpegExport mono audio", () => {
 		const graph = filterOf(result.args);
 		expect(graph).toContain("channel_layouts=mono");
 		expect(graph).toContain("pan=stereo|c0=1*c0|c1=1*c0");
+	});
+});
+
+describe("planFfmpegExport preview mode", () => {
+	const preview = (extra: Partial<FfmpegPreviewPlanInput> = {}) =>
+		planFfmpegExport({
+			plan: makePlan([
+				video("a", 0, 2, { inPoint: 1.5 }),
+				video("b", 2, 2),
+				audio("t", 0, 4),
+			]),
+			range: { type: "project" },
+			preview: { start: 2.5, duration: 0.02 },
+			assetPaths: paths("a", "b", "t"),
+			width: 160,
+			height: 120,
+			...extra,
+		});
+
+	it("seeks video inputs, drops audio and writes raw rgba to stdout", () => {
+		const result = preview();
+		const joined = result.args.join(" ");
+		expect(joined).toContain("-ss 0.5 -i C:/media/b.mp4");
+		expect(filterOf(result.args)).toContain("trim=start=0:duration=0.02");
+		expect(result.hasAudio).toBe(false);
+		expect(result.clipIds).toEqual(["b", "t"]);
+		expect(result.args).not.toContain("-progress");
+		expect(result.args.slice(-5)).toEqual(["-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"]);
+		expect(result.args).toEqual(expect.arrayContaining(["-frames:v", "1"]));
+	});
+
+	it("keeps the export capability errors", () => {
+		expect(() =>
+			preview({
+				plan: makePlan([video("a", 0, 4, { opacity: { value: 0.5 } })]),
+			}),
+		).toThrowError(expect.objectContaining({ code: "unsupported-operation" }));
+	});
+
+	it("still requires a format and an output path for export", () => {
+		const base = {
+			plan: makePlan([video("a", 0, 4)]),
+			range: { type: "project" as const },
+			assetPaths: paths("a"),
+		};
+		expect(() =>
+			planFfmpegExport({ ...base, outputPath: "o.webm" } as never),
+		).toThrowError(expect.objectContaining({ code: "unsupported-format" }));
+		expect(() =>
+			planFfmpegExport({ ...base, format: "webm" } as never),
+		).toThrowError(expect.objectContaining({ code: "invalid-request" }));
 	});
 });

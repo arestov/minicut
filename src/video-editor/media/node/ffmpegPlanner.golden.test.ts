@@ -1,0 +1,160 @@
+import { describe, expect, it } from "vitest";
+import { planFfmpegExport } from "./ffmpegPlanner";
+
+/**
+ * Golden export arguments recorded from the planner before the preview option
+ * was added: export output must stay byte-identical.
+ */
+const c = (partial: Record<string, unknown>) =>
+	({ name: "C", inPoint: 0, ...partial }) as never;
+
+const plan = {
+	projectId: "g",
+	fps: 25,
+	width: 320,
+	height: 240,
+	duration: 4,
+	clipSources: [
+		c({ id: "a", resourceId: "res-a", resourceKind: "video", start: 0, duration: 2, inPoint: 1.5 }),
+		c({ id: "b", resourceId: "res-b", resourceKind: "video", start: 1.5, duration: 2.5 }),
+		c({ id: "i", resourceId: "res-i", resourceKind: "image", start: 3, duration: 1 }),
+		c({ id: "t", resourceId: "res-t", resourceKind: "audio", start: 0.5, duration: 3, inPoint: 0.25, audio: { gain: 2, pan: 0.5 } }),
+		c({ id: "m", resourceId: "res-m", resourceKind: "audio", start: 0, duration: 4, audio: { gain: 0.5, pan: 0 } }),
+	],
+};
+
+const GOLDEN: Record<"webm" | "mp4", string[]> = {
+	"webm": [
+		"-hide_banner",
+		"-nostdin",
+		"-y",
+		"-loglevel",
+		"error",
+		"-nostats",
+		"-progress",
+		"pipe:1",
+		"-i",
+		"C:/media/a.mp4",
+		"-i",
+		"C:/media/b.mp4",
+		"-loop",
+		"1",
+		"-framerate",
+		"25",
+		"-t",
+		"1",
+		"-i",
+		"C:/media/i.png",
+		"-i",
+		"C:/media/t.wav",
+		"-i",
+		"C:/media/m.wav",
+		"-filter_complex",
+		"color=c=black:s=320x240:r=25:d=4,format=yuv420p[base];[0:v]setpts=PTS-STARTPTS,trim=start=1.5:duration=2,setpts=PTS-STARTPTS,fps=25,scale=320:240:force_original_aspect_ratio=decrease,setsar=1,format=yuv420p,setpts=PTS+0/TB[v0];[base][v0]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,0,2)'[o0];[1:v]setpts=PTS-STARTPTS,trim=start=0:duration=2.5,setpts=PTS-STARTPTS,fps=25,scale=320:240:force_original_aspect_ratio=decrease,setsar=1,format=yuv420p,setpts=PTS+1.5/TB[v1];[o0][v1]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,1.5,4)'[o1];[2:v]setpts=PTS-STARTPTS,fps=25,scale=320:240:force_original_aspect_ratio=decrease,setsar=1,format=yuv420p,setpts=PTS+3/TB[v2];[o1][v2]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,3,4)'[o2];[o2]null[vout];[3:a]asetpts=PTS-STARTPTS,atrim=start=0.25:duration=3,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,pan=stereo|c0=0.75*c0|c1=1.5*c1,adelay=500:all=1[a0];[4:a]asetpts=PTS-STARTPTS,atrim=start=0:duration=4,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono,pan=stereo|c0=0.5*c0|c1=0.5*c0[a1];[a0][a1]amix=inputs=2:normalize=0:duration=longest,apad=whole_dur=4,atrim=duration=4[aout]",
+		"-map",
+		"[vout]",
+		"-map",
+		"[aout]",
+		"-frames:v",
+		"100",
+		"-r",
+		"25",
+		"-c:v",
+		"libvpx-vp9",
+		"-b:v",
+		"0",
+		"-crf",
+		"32",
+		"-row-mt",
+		"1",
+		"-deadline",
+		"good",
+		"-cpu-used",
+		"5",
+		"-pix_fmt",
+		"yuv420p",
+		"-c:a",
+		"libopus",
+		"-b:a",
+		"128k",
+		"-f",
+		"webm",
+		"out.part"
+	],
+	"mp4": [
+		"-hide_banner",
+		"-nostdin",
+		"-y",
+		"-loglevel",
+		"error",
+		"-nostats",
+		"-progress",
+		"pipe:1",
+		"-i",
+		"C:/media/a.mp4",
+		"-i",
+		"C:/media/b.mp4",
+		"-loop",
+		"1",
+		"-framerate",
+		"25",
+		"-t",
+		"1",
+		"-i",
+		"C:/media/i.png",
+		"-i",
+		"C:/media/t.wav",
+		"-i",
+		"C:/media/m.wav",
+		"-filter_complex",
+		"color=c=black:s=320x240:r=25:d=4,format=yuv420p[base];[0:v]setpts=PTS-STARTPTS,trim=start=1.5:duration=2,setpts=PTS-STARTPTS,fps=25,scale=320:240:force_original_aspect_ratio=decrease,setsar=1,format=yuv420p,setpts=PTS+0/TB[v0];[base][v0]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,0,2)'[o0];[1:v]setpts=PTS-STARTPTS,trim=start=0:duration=2.5,setpts=PTS-STARTPTS,fps=25,scale=320:240:force_original_aspect_ratio=decrease,setsar=1,format=yuv420p,setpts=PTS+1.5/TB[v1];[o0][v1]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,1.5,4)'[o1];[2:v]setpts=PTS-STARTPTS,fps=25,scale=320:240:force_original_aspect_ratio=decrease,setsar=1,format=yuv420p,setpts=PTS+3/TB[v2];[o1][v2]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='between(t,3,4)'[o2];[o2]null[vout];[3:a]asetpts=PTS-STARTPTS,atrim=start=0.25:duration=3,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,pan=stereo|c0=0.75*c0|c1=1.5*c1,adelay=500:all=1[a0];[4:a]asetpts=PTS-STARTPTS,atrim=start=0:duration=4,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono,pan=stereo|c0=0.5*c0|c1=0.5*c0[a1];[a0][a1]amix=inputs=2:normalize=0:duration=longest,apad=whole_dur=4,atrim=duration=4[aout]",
+		"-map",
+		"[vout]",
+		"-map",
+		"[aout]",
+		"-frames:v",
+		"100",
+		"-r",
+		"25",
+		"-c:v",
+		"libx264",
+		"-preset",
+		"veryfast",
+		"-crf",
+		"20",
+		"-pix_fmt",
+		"yuv420p",
+		"-c:a",
+		"aac",
+		"-b:a",
+		"192k",
+		"-movflags",
+		"+faststart",
+		"-f",
+		"mp4",
+		"out.part"
+	]
+}
+;
+
+describe("planFfmpegExport golden args", () => {
+	for (const format of ["webm", "mp4"] as const) {
+		it(`keeps the ${format} export arguments byte-identical`, () => {
+			const result = planFfmpegExport({
+				plan,
+				range: { type: "project" },
+				format,
+				assetPaths: {
+					"res-a": "C:/media/a.mp4",
+					"res-b": "C:/media/b.mp4",
+					"res-i": "C:/media/i.png",
+					"res-t": "C:/media/t.wav",
+					"res-m": "C:/media/m.wav",
+				},
+				outputPath: "out.part",
+				audioChannels: { "res-m": 1 },
+			});
+			expect(result.args).toEqual(GOLDEN[format]);
+		});
+	}
+});

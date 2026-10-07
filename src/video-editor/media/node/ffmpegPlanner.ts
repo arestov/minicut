@@ -48,14 +48,11 @@ export const UNSUPPORTED_PLAN_OPERATIONS: UnsupportedPlanOperation[] = [
 
 export const AUDIO_SAMPLE_RATE = 48_000;
 
-export interface FfmpegPlanInput {
+interface FfmpegPlanInputBase {
 	plan: ExportPlan;
 	range: ExportRange;
-	format: MediaExportFormat;
 	/** Resolved file path by clip resourceId. */
 	assetPaths: Record<string, string>;
-	/** Where ffmpeg writes (the runner passes a temp path). */
-	outputPath: string;
 	fps?: number;
 	width?: number;
 	height?: number;
@@ -67,6 +64,28 @@ export interface FfmpegPlanInput {
 	 */
 	audioChannels?: Record<string, number>;
 }
+
+export interface FfmpegExportPlanInput extends FfmpegPlanInputBase {
+	format: MediaExportFormat;
+	/** Where ffmpeg writes (the runner passes a temp path). */
+	outputPath: string;
+	preview?: undefined;
+}
+
+/**
+ * Preview mode: plan a raw RGBA stream on stdout for the window
+ * [start, start + duration) of the timeline, without audio and progress
+ * output. Video inputs are seeked with an input `-ss` instead of decoding
+ * from the file start. The picture semantics (layering, trim, fit) are the
+ * export ones.
+ */
+export interface FfmpegPreviewPlanInput extends FfmpegPlanInputBase {
+	preview: { start: number; duration: number };
+	format?: undefined;
+	outputPath?: undefined;
+}
+
+export type FfmpegPlanInput = FfmpegExportPlanInput | FfmpegPreviewPlanInput;
 
 export interface FfmpegPlan {
 	args: string[];
@@ -204,12 +223,15 @@ const encoderArgs = (format: MediaExportFormat, hasAudio: boolean): string[] => 
 };
 
 export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
-	if (input.format !== "webm" && input.format !== "mp4") {
+	if (!input.preview && input.format !== "webm" && input.format !== "mp4") {
 		throw new MediaError(
 			"unsupported-format",
 			`Unsupported export format: ${String(input.format)}`,
 			{ format: input.format },
 		);
+	}
+	if (!input.preview && !input.outputPath) {
+		throw new MediaError("invalid-request", "Export requires an outputPath");
 	}
 	const plan = normalizeExportPlan(input.plan);
 	const fps = input.fps ?? (isPositiveFinite(plan.fps) ? plan.fps : 30);
@@ -243,6 +265,9 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 			error instanceof Error ? error.message : "Invalid export range",
 		);
 	}
+	if (input.preview) {
+		resolved = { ...resolved, ...input.preview };
+	}
 	const rangeStart = resolved.start;
 	const rangeEnd = resolved.start + resolved.duration;
 	if (!isPositiveFinite(resolved.duration)) {
@@ -267,7 +292,9 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 	}
 
 	const visual = selected.filter((r) => r.clip.resourceKind !== "audio");
-	const audio = selected.filter((r) => r.clip.resourceKind === "audio");
+	const audio = input.preview
+		? []
+		: selected.filter((r) => r.clip.resourceKind === "audio");
 
 	const durationSeconds = resolved.duration;
 	const frameCount = Math.max(1, Math.ceil(durationSeconds * fps));
@@ -309,6 +336,8 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 				"-i",
 				path,
 			);
+		} else if (input.preview) {
+			inputArgs.push("-ss", fmt(sourceStart), "-i", path);
 		} else {
 			inputArgs.push("-i", path);
 		}
@@ -319,7 +348,7 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 			...(isImage
 				? []
 				: [
-						`trim=start=${fmt(sourceStart)}:duration=${fmt(duration)}`,
+						`trim=start=${input.preview ? "0" : fmt(sourceStart)}:duration=${fmt(duration)}`,
 						"setpts=PTS-STARTPTS",
 					]),
 			`fps=${fmt(fps)}`,
@@ -385,8 +414,7 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 		"-loglevel",
 		"error",
 		"-nostats",
-		"-progress",
-		"pipe:1",
+		...(input.preview ? [] : ["-progress", "pipe:1"]),
 		...inputArgs,
 		"-filter_complex",
 		filters.join(";"),
@@ -397,8 +425,12 @@ export const planFfmpegExport = (input: FfmpegPlanInput): FfmpegPlan => {
 		String(frameCount),
 		"-r",
 		fmt(fps),
-		...encoderArgs(input.format, hasAudio),
-		input.outputPath,
+		...(input.preview
+			? ["-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"]
+			: [
+					...encoderArgs(input.format, hasAudio),
+					input.outputPath,
+				]),
 	];
 
 	return {
