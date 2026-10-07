@@ -31,6 +31,7 @@ export default defineConfig({
 			'src/video-editor/domain/protocolCompatibility.test.ts',
 			'src/video-editor/dkt/models/**/*.test.ts',
 			'src/video-editor/dkt/runtime/**/*.test.ts',
+			'tests/parity/*.unit.test.ts',
 		],
 		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**', 'src/video-editor/media/node/**/*.media.test.ts'],
 	},
