@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,7 +15,7 @@ import {
 } from "../../../dkt/shared/messageTypes";
 import { ELECTRON_IPC, type DesktopHandshakeReply } from "../shared/ipcChannels";
 import { createFakeMessageChannelMain } from "../testing/fakeElectron";
-import { createWindowConnector, createWindowSessionId } from "./windowConnector";
+import { createWindowConnector, createWindowSessionId, isUrlUnderPrefix } from "./windowConnector";
 
 const TRUSTED_URL = "minicut-test://renderer/index.html";
 
@@ -43,13 +44,14 @@ const createFakeIpc = () => {
 const createFakeWindow = (id: number, url = TRUSTED_URL) => {
 	const posted: Posted[] = [];
 	const mainFrame = { url };
-	const sender = {
+	const emitter = new EventEmitter();
+	const sender = Object.assign(emitter, {
 		id,
 		mainFrame,
 		postMessage(channel: string, reply: DesktopHandshakeReply, ports: unknown[]) {
 			posted.push({ channel, reply, ports });
 		},
-	};
+	});
 	return {
 		posted,
 		sender,
@@ -106,11 +108,19 @@ describe("Electron window connector", () => {
 		}
 		connectorDispose?.();
 		connectorDispose = null;
+		current = null;
 		await host.dispose();
 		await rm(tempDir, { recursive: true, force: true });
 	});
 
+	let current: {
+		ipc: ReturnType<typeof createFakeIpc>;
+		connector: ReturnType<typeof createWindowConnector>;
+	} | null = null;
 	const startConnector = () => {
+		if (current) {
+			return current;
+		}
 		const ipc = createFakeIpc();
 		const connector = createWindowConnector({
 			runtime: host.runtime,
@@ -120,7 +130,8 @@ describe("Electron window connector", () => {
 			isTrustedRendererUrl: (url) => url.startsWith("minicut-test://renderer/"),
 		});
 		connectorDispose = () => connector.dispose();
-		return { ipc };
+		current = { ipc, connector };
+		return current;
 	};
 
 	const connectWindow = (
@@ -138,12 +149,15 @@ describe("Electron window connector", () => {
 		}
 		const end = openRendererEnd(channel);
 		openTransports.push(end.transport);
-		return { handshake: handshake.reply, ...end };
+		return { handshake: handshake.reply, port: channel, ...end };
 	};
 
-	const bootstrapWindow = async (id: number) => {
+	const bootstrapWindow = async (
+		id: number,
+		fakeWindow = createFakeWindow(id),
+	) => {
 		const { ipc } = startConnector();
-		const window = connectWindow(ipc, createFakeWindow(id));
+		const window = connectWindow(ipc, fakeWindow);
 		const { handshake } = window;
 		if (handshake.error !== undefined) {
 			throw new Error(handshake.error);
@@ -153,8 +167,10 @@ describe("Electron window connector", () => {
 			sessionKey: handshake.sessionKey,
 			sessionId: handshake.sessionId,
 		});
-		await window.waitFor((m) => m.type === DKT_MSG.RUNTIME_READY);
-		return window;
+		const ready = (await window.waitFor(
+			(m) => m.type === DKT_MSG.RUNTIME_READY,
+		)) as { rootNodeId?: string };
+		return { ...window, ready };
 	};
 
 	it("ignores connect requests from untrusted pages and non-main frames", () => {
@@ -295,5 +311,178 @@ describe("Electron window connector", () => {
 			},
 		]);
 		expect(ipc.listenerCount(ELECTRON_IPC.CONNECT)).toBe(0);
+	});
+	describe("window sessions", () => {
+		const closedPort = (port: MessagePort) =>
+			new Promise<void>((resolve) => port.once("close", () => resolve()));
+		const sessionIdOf = (reply: DesktopHandshakeReply) => {
+			if (reply.error !== undefined) throw new Error(reply.error);
+			return reply.sessionId;
+		};
+
+		it("keeps the session mapping on reload and replaces the connection", async () => {
+			const fakeWindow = createFakeWindow(7);
+			const first = await bootstrapWindow(7, fakeWindow);
+			const firstClosed = closedPort(first.port);
+
+			const { ipc, connector } = startConnector();
+			const second = connectWindow(ipc, fakeWindow);
+			second.transport.send({
+				type: DKT_MSG.BOOTSTRAP,
+				sessionKey: host.identity.roomId,
+				sessionId: sessionIdOf(second.handshake),
+			});
+			const ready = (await second.waitFor(
+				(m) => m.type === DKT_MSG.RUNTIME_READY,
+			)) as { rootNodeId?: string };
+			await firstClosed;
+
+			expect(sessionIdOf(second.handshake)).toBe(sessionIdOf(first.handshake));
+			expect(ready.rootNodeId).toBe(first.ready.rootNodeId);
+			expect(connector.getConnectedWindows()).toMatchObject([
+				{ sessionId: sessionIdOf(first.handshake), webContentsId: 7 },
+			]);
+		});
+
+		it("detaches a window when it is destroyed and closes its port", async () => {
+			const fakeWindow = createFakeWindow(7);
+			const window = await bootstrapWindow(7, fakeWindow);
+			const closed = closedPort(window.port);
+
+			fakeWindow.sender.emit("destroyed");
+			await closed;
+
+			expect(startConnector().connector.getConnectedWindows()).toEqual([]);
+		});
+
+		it("detaches when the renderer process is gone or the main frame navigates away", async () => {
+			const crashed = createFakeWindow(1);
+			const navigated = createFakeWindow(2);
+			const sameDocument = createFakeWindow(3);
+			const subframe = createFakeWindow(4);
+			for (const [id, fake] of [
+				[1, crashed],
+				[2, navigated],
+				[3, sameDocument],
+				[4, subframe],
+			] as const) {
+				await bootstrapWindow(id, fake);
+			}
+
+			crashed.sender.emit("render-process-gone", {}, { reason: "crashed" });
+			navigated.sender.emit("did-start-navigation", {
+				isMainFrame: true,
+				isSameDocument: false,
+			});
+			sameDocument.sender.emit("did-start-navigation", {
+				isMainFrame: true,
+				isSameDocument: true,
+			});
+			subframe.sender.emit("did-start-navigation", {
+				isMainFrame: false,
+				isSameDocument: false,
+			});
+
+			expect(
+				startConnector()
+					.connector.getConnectedWindows()
+					.map((entry) => entry.webContentsId),
+			).toEqual([3, 4]);
+		});
+
+		it("detaches when the renderer end of the port closes", async () => {
+			const window = await bootstrapWindow(7);
+
+			const { connector } = startConnector();
+			const detached = new Promise<void>((resolve) => {
+				connector.onConnectedWindowsChanged(() => {
+					if (connector.getConnectedWindows().length === 0) resolve();
+				});
+			});
+
+			window.port.close();
+			await detached;
+
+			expect(connector.getConnectedWindows()).toEqual([]);
+		});
+
+		it("gives each window its own session on the same room and orders them by connection", async () => {
+			const a = createFakeWindow(5);
+			const b = createFakeWindow(6);
+			const first = await bootstrapWindow(5, a);
+			const second = await bootstrapWindow(6, b);
+
+			expect(sessionIdOf(first.handshake)).not.toBe(sessionIdOf(second.handshake));
+			expect(startConnector().connector.getConnectedWindows().map((w) => w.webContentsId)).toEqual([5, 6]);
+
+			a.sender.emit("destroyed");
+
+			expect(startConnector().connector.getConnectedWindows().map((w) => w.webContentsId)).toEqual([6]);
+		});
+	});
+	describe("task ownership", () => {
+		it("records the session root id each window received in RUNTIME_READY", async () => {
+			const window = await bootstrapWindow(7);
+
+			expect(startConnector().connector.getConnectedWindows()[0].rootNodeId).toBe(
+				window.ready.rootNodeId,
+			);
+		});
+
+		it("attributes an import batch to the window that dispatched it, first in first out", async () => {
+			const a = await bootstrapWindow(5);
+			const b = await bootstrapWindow(6);
+			const { connector } = startConnector();
+			const stage = (window: typeof a, requestId: string) => {
+				window.transport.send({
+					type: DKT_MSG.DISPATCH_ACTION,
+					requestId,
+					actionName: "requestImportFiles",
+					payload: { inputBatchHandleId: "rt_tmp_1" },
+				});
+				return window.waitFor(
+					(m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === requestId,
+				);
+			};
+
+			await stage(a, "a1");
+			await stage(b, "b1");
+
+			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(5);
+			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(6);
+			expect(connector.claimImportWindow("rt_tmp_1")).toBeNull();
+			expect(connector.claimImportWindow("never-staged")).toBeNull();
+		});
+
+		it("forgets the import batches of a window that went away", async () => {
+			const fakeWindow = createFakeWindow(5);
+			const window = await bootstrapWindow(5, fakeWindow);
+			const { connector } = startConnector();
+			window.transport.send({
+				type: DKT_MSG.DISPATCH_ACTION,
+				requestId: "s1",
+				actionName: "requestImportFiles",
+				payload: { inputBatchHandleId: "rt_tmp_9" },
+			});
+			await window.waitFor((m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === "s1");
+
+			fakeWindow.sender.emit("destroyed");
+
+			expect(connector.claimImportWindow("rt_tmp_9")).toBeNull();
+		});
+	});
+
+	describe("trusted URL prefixes", () => {
+		it("matches the prefix only at a path, query or hash boundary", () => {
+			const dev = "http://localhost:5173";
+
+			expect(isUrlUnderPrefix("http://localhost:5173", dev)).toBe(true);
+			expect(isUrlUnderPrefix("http://localhost:5173/app", dev)).toBe(true);
+			expect(isUrlUnderPrefix("http://localhost:5173?x=1", dev)).toBe(true);
+			expect(isUrlUnderPrefix("http://localhost:5173.evil.com/", dev)).toBe(false);
+			expect(isUrlUnderPrefix("http://localhost:51730/", dev)).toBe(false);
+			expect(isUrlUnderPrefix("minicut://local/app/index.html", "minicut://local/app/")).toBe(true);
+			expect(isUrlUnderPrefix("minicut://local/application", "minicut://local/app/")).toBe(false);
+		});
 	});
 });

@@ -19,6 +19,7 @@ const rendererFileUrlPrefix = pathToFileURL(
 ).href;
 
 let desktopApp: DesktopApp | null = null;
+let windowConnector: ReturnType<typeof createWindowConnector> | null = null;
 let disposing = false;
 
 const createWindow = async (): Promise<BrowserWindow> => {
@@ -61,7 +62,7 @@ const startApp = async (): Promise<void> => {
 		app.exit(1);
 		return;
 	}
-	createWindowConnector({
+	windowConnector = createWindowConnector({
 		runtime: desktopApp.host.runtime,
 		sessionKey: desktopApp.host.identity.roomId,
 		// MessagePortMain structurally matches the port the transport needs.
@@ -83,6 +84,8 @@ app.on("before-quit", (event) => {
 	}
 	event.preventDefault();
 	disposing = true;
+	windowConnector?.dispose();
+	windowConnector = null;
 	void desktopApp
 		.dispose()
 		.catch((error) => {
