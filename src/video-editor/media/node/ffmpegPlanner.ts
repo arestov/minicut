@@ -128,6 +128,12 @@ export type FfmpegPlanInput = FfmpegExportPlanInput | FfmpegPreviewPlanInput;
 /** Input seek margin (seconds) kept before the first wanted source frame. */
 const PREVIEW_SEEK_PAD = 0.5;
 
+/**
+ * How far before a preview slot source frames are kept so the fps filter can
+ * repeat the last one across a gap of a variable-frame-rate source, as export does.
+ */
+const PREVIEW_LOOK_BEHIND = 0.4;
+
 export interface FfmpegPlan {
 	args: string[];
 	durationSeconds: number;
@@ -289,7 +295,7 @@ const previewSeekFor = (
 	// Output slots of the clip already passed before the window starts.
 	const skipped = Math.max(0, windowSlot - clipSlot);
 	const origin = f0 + skipped / outFps;
-	const first = skipped > 0 ? Math.max(f0, origin - 1 / outFps) : f0;
+	const first = skipped > 0 ? Math.max(f0, origin - PREVIEW_LOOK_BEHIND) : f0;
 	const target = Math.max(0, first - PREVIEW_SEEK_PAD);
 	return {
 		target,

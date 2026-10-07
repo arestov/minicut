@@ -311,11 +311,11 @@ describe("planFfmpegExport preview mode", () => {
 			assetPaths: paths("b"),
 			sourceFps: { "res-b": 25 },
 		});
-		// f0 = 0.72; 25 output slots passed -> origin 1.72, one frame of
-		// look-behind -> first 1.68, seek 0.5s earlier at 1.18.
-		expect(result.args.join(" ")).toContain("-ss 1.18 -i C:/media/b.mp4");
+		// f0 = 0.72; 25 output slots passed -> origin 1.72, 0.4s of
+		// look-behind -> first 1.32, seek 0.5s earlier at 0.82.
+		expect(result.args.join(" ")).toContain("-ss 0.82 -i C:/media/b.mp4");
 		const graph = filterOf(result.args);
-		expect(graph).toContain("trim=start=0.5:end=0.56,setpts=PTS-0.54/TB");
+		expect(graph).toContain("trim=start=0.5:end=0.92,setpts=PTS-0.9/TB");
 		expect(graph).toContain("fps=25:start_time=0");
 		expect(graph).not.toContain("PTS-STARTPTS");
 	});

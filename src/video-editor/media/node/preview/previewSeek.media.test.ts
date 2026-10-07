@@ -31,7 +31,7 @@ describe("preview producer against fixtures", () => {
 	let assetPaths: Record<string, string>;
 
 	beforeAll(async () => {
-		fixtures = await ensureFixtures(["video-cfr", "audio-tone", "image-card"]);
+		fixtures = await ensureFixtures(["video-cfr", "video-vfr", "audio-tone", "image-card"]);
 		dir = await mkdtemp(path.join(os.tmpdir(), "minicut-preview-"));
 		assetPaths = Object.fromEntries(
 			Object.entries(scenarioAssets(videoAudioScenario, fixtures)).map(
@@ -249,6 +249,42 @@ describe("preview producer against fixtures", () => {
 			[0.2, 0.8, 1.2, 1.5, 1.8],
 			[0.8, 1.2], // at 1.5 the image hides most of the moving video
 			{ "res-video": 25 },
+		);
+	});
+
+	it("matches the export for a variable-frame-rate source (gaps, off-grid in-point)", async () => {
+		const vfr = await createMediaService().probe({
+			requestId: "vfr-probe",
+			source: { path: fixtures["video-vfr"] },
+		});
+		expect(vfr.video?.variableFrameRate).toBe(true);
+		const clip = (partial: Record<string, unknown>): PreviewClipSource =>
+			({ name: "Clip", ...partial }) as unknown as PreviewClipSource;
+		const plan: ExportPlan = {
+			projectId: "vfr",
+			fps: FPS,
+			width: W,
+			height: H,
+			duration: 2,
+			clipSources: [
+				clip({
+					id: "vfr-clip",
+					resourceId: "res-vfr",
+					resourceKind: "video",
+					start: 0.2,
+					duration: 1.6,
+					inPoint: 0.31,
+				}),
+			],
+		};
+		const times = [0.3, 0.55, 0.8, 1.0, 1.23, 1.5, 1.77];
+		await expectPreviewMatchesExport(
+			"vfr",
+			plan,
+			{ "res-vfr": "video-vfr" },
+			times,
+			[],
+			{ "res-vfr": vfr.video?.fps ?? 30 },
 		);
 	});
 });
