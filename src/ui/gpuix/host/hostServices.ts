@@ -28,6 +28,11 @@ export type HostServices = {
 	): Promise<void>;
 	/** Where playback is (silent run along the model playback run). */
 	playback?: Accessor<PlaybackSnapshot>;
+	/** Automation only (MINICUT_GPUIX_TEST_HOOKS): controls that stand in for native dialogs and window close. */
+	testHooks?: {
+		importConfiguredFiles(): void;
+		quit(): void;
+	};
 	/** Directory exports are written to; shown next to a finished export. */
 	exportDirectory: string;
 	/** Node preview frames; fixture hosts omit it and the synthetic source is used. */

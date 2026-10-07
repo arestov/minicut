@@ -67,6 +67,18 @@ export const Toolbar = () => {
 					</Button>
 				)}
 			</Show>
+			<Show when={host?.testHooks}>
+				{(hooks) => (
+					<>
+						<Button testId="test-import" onClick={() => hooks().importConfiguredFiles()}>
+							<text>Test import</text>
+						</Button>
+						<Button testId="test-quit" onClick={() => hooks().quit()}>
+							<text>Test quit</text>
+						</Button>
+					</>
+				)}
+			</Show>
 			<Show when={host}>
 				<Button
 					testId="play-toggle"

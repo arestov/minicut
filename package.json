@@ -64,6 +64,7 @@
 		"test:gpuix:window": "node ./scripts/run-gpuix-window-smoke.mjs",
 		"typecheck:gpuix": "tsc -p src/ui/gpuix/tsconfig.json --noEmit",
 		"gpuix:dev": "node ./scripts/run-gpuix.mjs",
+		"gpuix:app": "node ./scripts/run-gpuix-app.mjs",
 		"node:headless:run": "node --import ./test/repl/register-dkt-alias-loader.mjs --import tsx ./src/video-editor/node/cli.ts --scenario ./tests/fixtures/headless/sample-scenario.json",
 		"node:headless:scenario": "node --import ./test/repl/register-dkt-alias-loader.mjs --import tsx ./src/video-editor/node/cli.ts",
     "deploy:frontend": "node ./scripts/deploy-frontend.mjs",
