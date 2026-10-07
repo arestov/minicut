@@ -6,6 +6,7 @@ import { type HostPage, scopeFor } from "../../desktop/hostTypes";
 import { createImportExecutor, type ImportExecutor } from "../../desktop/importExecutor";
 import { createMediaRecoveryExecutor } from "../../desktop/mediaRecoveryExecutor";
 import { createRuntimeRefStore } from "../../desktop/runtimeRefs";
+import type { PreviewProxyCache } from "../../../media/node/preview/previewProxyCache";
 import type { DesktopEffectSink } from "./createDesktopEffectInterfaces";
 import type { HostAction } from "./windowConnector";
 
@@ -17,11 +18,21 @@ export type ExecutorSession = {
 	dispatchAndWait(action: HostAction): Promise<void>;
 };
 
+/** Host-local state of the scrub proxy of an imported video; never enters the graph. */
+export type PreviewProxyStatus =
+	| { state: "generating" }
+	| { state: "ready"; path: string }
+	| { state: "failed"; message: string };
+
 export type DesktopExecutorsOptions = {
 	/** Live windows; looked up at every dispatch, so a closed window is never written to. */
 	getSessions(): readonly ExecutorSession[];
 	media: DesktopMediaService;
 	registry: NodeAssetRegistry;
+	/** Scrub proxies are generated here for imported videos, as jobs of the media service. */
+	proxies: Pick<PreviewProxyCache, "ensure">;
+	/** The proxy of an asset changed state (generation started, finished or failed). */
+	onProxyChanged?(assetId: string, status: PreviewProxyStatus): void;
 	/** Directory exports are written to. */
 	exportDirectory: string;
 	/** Local replica id (`source.ownerPeerId`). */
@@ -37,6 +48,10 @@ export type DesktopExecutorsOptions = {
 };
 
 export type DesktopExecutors = DesktopEffectSink & {
+	/** Proxy state of an imported video asset, or null when none was requested. */
+	previewProxy(assetId: string): PreviewProxyStatus | null;
+	/** Path of the finished proxy of an asset, or null. */
+	previewProxyPath(assetId: string): string | null;
 	/**
 	 * Stages picked paths of one window's import. The window dispatches
 	 * `requestImportFiles` with the returned batch id; the model's import
@@ -71,6 +86,8 @@ export const createDesktopExecutors = ({
 	getSessions,
 	media,
 	registry,
+	proxies,
+	onProxyChanged,
 	exportDirectory,
 	ownerPeerId,
 	assetUrl,
@@ -87,6 +104,39 @@ export const createDesktopExecutors = ({
 	/** Owner session root of each staged import batch (handle ids are unique in `refs`). */
 	const batchOwners = new Map<string, string>();
 	let disposed = false;
+	const proxyStatus = new Map<string, PreviewProxyStatus>();
+
+	const setProxyStatus = (assetId: string, status: PreviewProxyStatus): void => {
+		proxyStatus.set(assetId, status);
+		onProxyChanged?.(assetId, status);
+	};
+
+	/** The scrub proxy of a just-imported video: a media service job, tracked host-side. */
+	const requestProxy = (file: {
+		assetId: string;
+		filePath: string;
+		kind: string;
+		fingerprint: { fingerprint: string; version: string };
+	}): void => {
+		if (file.kind !== "video" || disposed) return;
+		setProxyStatus(file.assetId, { state: "generating" });
+		proxies
+			.ensure({
+				contentKey: `${file.fingerprint.version}/${file.fingerprint.fingerprint}`,
+				sourcePath: file.filePath,
+			})
+			.then(
+				(proxyPath) => setProxyStatus(file.assetId, { state: "ready", path: proxyPath }),
+				(error: unknown) => {
+					// A disposed cache cancels its jobs on shutdown; that is not a failure.
+					if (disposed) return;
+					setProxyStatus(file.assetId, {
+						state: "failed",
+						message: error instanceof Error ? error.message : String(error),
+					});
+				},
+			);
+	};
 
 	const sessionOf = (rootNodeId: string): ExecutorSession | null =>
 		getSessions().find((session) => session.rootNodeId === rootNodeId) ?? null;
@@ -154,6 +204,7 @@ export const createDesktopExecutors = ({
 					},
 					ownerPeerId,
 					assetUrl,
+					onImported: requestProxy,
 					generateId,
 					now,
 				}),
@@ -190,6 +241,11 @@ export const createDesktopExecutors = ({
 	};
 
 	return {
+		previewProxy: (assetId) => proxyStatus.get(assetId) ?? null,
+		previewProxyPath(assetId) {
+			const status = proxyStatus.get(assetId);
+			return status?.state === "ready" ? status.path : null;
+		},
 		requestImportFiles(payload) {
 			run("$fx_handleInputFiles", () => {
 				const batchId = asRecord(payload)?.inputBatchHandleId;

@@ -10,7 +10,11 @@ import type { FileArtifact } from "../../../media/contracts/job";
 import type { ProbeResult } from "../../../media/contracts/probe";
 import { MediaJobController } from "../../../media/node/mediaJob";
 import type { DesktopMediaService } from "../../../media/node/rpc/mediaServiceClient";
-import { createDesktopExecutors, type ExecutorSession } from "./desktopExecutors";
+import {
+	createDesktopExecutors,
+	type ExecutorSession,
+	type PreviewProxyStatus,
+} from "./desktopExecutors";
 import type { HostAction } from "./windowConnector";
 
 /** One action a window's session was asked to run, and by which session. */
@@ -96,9 +100,24 @@ describe("desktop executors", () => {
 		});
 	let clipPath: string;
 	let idSequence: number;
+	/** Proxy generations the executors asked for, each settled by the test. */
+	let proxyRequests: Array<{
+		contentKey: string;
+		sourcePath: string;
+		settle(result: { path: string } | { error: Error }): void;
+	}>;
+	let proxyChanges: Array<{ assetId: string; status: PreviewProxyStatus }>;
+	let proxyWaiters: Array<{ count: number; resolve(): void }>;
+	/** Resolves once `count` proxy state changes were reported. */
+	const proxyChangeCount = (count: number): Promise<void> =>
+		new Promise((resolve) => {
+			if (proxyChanges.length >= count) resolve();
+			else proxyWaiters.push({ count, resolve });
+		});
+	let probed: ProbeResult;
 
 	const media: DesktopMediaService = {
-		probe: async () => probeResult,
+		probe: async () => probed,
 		fingerprint: async () => ({ fingerprint: "fp", version: "v1" }),
 		capabilities: async () => {
 			throw new Error("not used");
@@ -129,6 +148,10 @@ describe("desktop executors", () => {
 		jobs = [];
 		jobWaiters = [];
 		idSequence = 0;
+		proxyRequests = [];
+		proxyChanges = [];
+		proxyWaiters = [];
+		probed = probeResult;
 	});
 	afterEach(async () => {
 		await rm(tempDir, { recursive: true, force: true });
@@ -140,6 +163,22 @@ describe("desktop executors", () => {
 			getSessions: fake.sessions,
 			media,
 			registry,
+			proxies: {
+				ensure: (source) =>
+					new Promise<string>((resolve, reject) => {
+						proxyRequests.push({
+							...source,
+							settle: (result) =>
+								"error" in result ? reject(result.error) : resolve(result.path),
+						});
+					}),
+			},
+			onProxyChanged: (assetId, status) => {
+				proxyChanges.push({ assetId, status });
+				for (const waiter of proxyWaiters.filter((candidate) => proxyChanges.length >= candidate.count)) {
+					waiter.resolve();
+				}
+			},
 			exportDirectory: path.join(tempDir, "exports"),
 			ownerPeerId: "peer",
 			assetUrl: (assetId) => `/asset/${assetId}`,
@@ -193,6 +232,65 @@ describe("desktop executors", () => {
 		});
 		expect(registry.get(assetId)?.path).toBe(clipPath);
 		expect(fake.dispatches.filter((d) => d.via === "root-a")).toEqual([]);
+	});
+
+	const importClip = async (fake: ReturnType<typeof createFakeSessions>, executors: ReturnType<typeof start>["executors"]) => {
+		const batch = executors.stageImport("root-a", [clipPath]);
+		executors.requestImportFiles({ projectId: "project-a", inputBatchHandleId: batch });
+		await fake.next((d) => d.actionName === "setActiveProjectImportProgress" && d.payload.stage === "done");
+		return String(fake.dispatches.find((d) => d.actionName === "importResource")?.payload.sourceRef);
+	};
+
+	it("generates the scrub proxy of an imported video, keyed by its content, without holding the import", async () => {
+		const { fake, executors } = start();
+
+		const assetId = await importClip(fake, executors);
+		await proxyChangeCount(1);
+
+		// The import finished while the proxy is still being made.
+		expect(executors.previewProxy(assetId)).toEqual({ state: "generating" });
+		expect(executors.previewProxyPath(assetId)).toBeNull();
+		expect(proxyRequests).toHaveLength(1);
+		expect(proxyRequests[0]).toMatchObject({ contentKey: "v1/fp", sourcePath: clipPath });
+
+		const proxyPath = path.join(tempDir, "proxy.mp4");
+		proxyRequests[0].settle({ path: proxyPath });
+		await proxyChangeCount(2);
+
+		expect(executors.previewProxy(assetId)).toEqual({ state: "ready", path: proxyPath });
+		expect(executors.previewProxyPath(assetId)).toBe(proxyPath);
+	});
+
+	it("records a failed proxy as a state of the asset, not as an import error", async () => {
+		const { fake, executors } = start();
+
+		const assetId = await importClip(fake, executors);
+		await proxyChangeCount(1);
+		proxyRequests[0].settle({ error: new Error("ffmpeg could not encode") });
+		await proxyChangeCount(2);
+
+		expect(executors.previewProxy(assetId)).toEqual({
+			state: "failed",
+			message: "ffmpeg could not encode",
+		});
+		expect(executors.previewProxyPath(assetId)).toBeNull();
+		expect(fake.dispatches.find((d) => d.payload.stage === "error")).toBeUndefined();
+		expect(failed).toEqual([]);
+	});
+
+	it("makes no proxy for audio or images", async () => {
+		const { fake, executors } = start();
+		probed = {
+			formatName: "wav",
+			durationSeconds: 2,
+			video: null,
+			audio: { channels: 2, sampleRate: 48000 },
+		} as unknown as ProbeResult;
+
+		const assetId = await importClip(fake, executors);
+
+		expect(proxyRequests).toEqual([]);
+		expect(executors.previewProxy(assetId)).toBeNull();
 	});
 
 	it("drops an import whose batch no window staged or whose window is gone", async () => {

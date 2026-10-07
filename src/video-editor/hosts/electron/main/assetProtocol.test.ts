@@ -218,6 +218,46 @@ describe("asset protocol", () => {
 		});
 	});
 
+	describe("scrub proxies", () => {
+		const proxyHandler = async (resolve: (assetId: string) => string | null) =>
+			createMiniCutProtocolHandler({
+				assets: createRegistryAssetSource(registry),
+				proxies: { resolve },
+				rendererDir,
+			});
+
+		it("serves a finished proxy by asset id with Range support", async () => {
+			const proxyPath = path.join(tempDir, "proxy.mp4");
+			await writeFile(proxyPath, Buffer.from([9, 8, 7, 6, 5]));
+			const handlerWithProxy = await proxyHandler((id) => (id === assetId ? proxyPath : null));
+
+			const response = await handlerWithProxy(
+				new Request(absolute("/proxy/" + assetId), { headers: { Range: "bytes=1-2" } }),
+			);
+
+			expect(response.status).toBe(206);
+			expect(await bytesOf(response)).toEqual(Buffer.from([8, 7]));
+			expect(response.headers.get("content-type")).toBe("video/mp4");
+			expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+			expect(response.headers.get("content-security-policy")).toBe("sandbox");
+		});
+
+		it("answers 404 for an asset without a finished proxy and for other ids", async () => {
+			const handlerWithProxy = await proxyHandler(() => null);
+
+			expect((await handlerWithProxy(new Request(absolute("/proxy/" + assetId)))).status).toBe(404);
+			expect((await handlerWithProxy(new Request(absolute("/proxy/nope")))).status).toBe(404);
+		});
+
+		it("does not serve a proxy route when the host has no proxies, and never a non-media file", async () => {
+			expect((await get("/proxy/" + assetId)).status).toBe(404);
+			const notMedia = path.join(tempDir, "secret.txt");
+			const handlerWithText = await proxyHandler(() => notMedia);
+
+			expect((await handlerWithText(new Request(absolute("/proxy/" + assetId)))).status).toBe(404);
+		});
+	});
+
 	describe("hardening", () => {
 		it("serves media with nosniff and a sandbox policy, and the bundle with a CSP", async () => {
 			const media = await get(createAssetUrl(assetId));

@@ -9,9 +9,15 @@ import {
 	type NodeMiniCutHost,
 } from "../../../adapters/node/startNodeMiniCutHost";
 import type { DesktopMediaService } from "../../../media/node/rpc/mediaServiceClient";
+import { resolveNodePreviewProxyDir } from "../../../adapters/node/nodeProfileLayout";
+import { createPreviewProxyCache } from "../../../media/node/preview/previewProxyCache";
 import { createAssetUrl, MINICUT_APP_URL_PREFIX } from "../shared/ipcChannels";
 import { createDesktopEffectInterfaces } from "./createDesktopEffectInterfaces";
-import { createDesktopExecutors, type DesktopExecutors } from "./desktopExecutors";
+import {
+	createDesktopExecutors,
+	type DesktopExecutors,
+	type PreviewProxyStatus,
+} from "./desktopExecutors";
 import { registerImportIpc } from "./importIpc";
 import {
 	startMediaServiceProcess,
@@ -55,6 +61,8 @@ export type StartDesktopAppOptions = {
 	mediaServiceEnv?: NodeJS.ProcessEnv;
 	/** Observes every message the runtime sends to a renderer window (tests). */
 	observeWindowMessages?: (window: { sessionId: string }, message: unknown) => void;
+	/** The scrub proxy of an imported video changed state. */
+	onProxyChanged?: (assetId: string, status: PreviewProxyStatus) => void;
 	/** An effect had no owner; defaults to a warning. */
 	onEffectDropped?: (type: string, reason: string) => void;
 };
@@ -66,6 +74,8 @@ export type DesktopApp = {
 	/** The Node media service in the utility process. */
 	media: DesktopMediaService;
 	windows: ReturnType<typeof createWindowConnector>;
+	/** Proxy state of an imported video asset, or null when none was requested. */
+	previewProxy(assetId: string): PreviewProxyStatus | null;
 	/** Idempotent: detaches windows, ends the media service and releases the LevelDB lock. */
 	dispose(): Promise<void>;
 };
@@ -92,6 +102,7 @@ export const startDesktopApp = async ({
 	generateUuid = () => crypto.randomUUID(),
 	mediaServiceEnv,
 	observeWindowMessages,
+	onProxyChanged,
 	onEffectDropped = (type, reason) =>
 		console.warn("[minicut:electron] effect dropped", type, reason),
 }: StartDesktopAppOptions): Promise<DesktopApp> => {
@@ -155,10 +166,24 @@ export const startDesktopApp = async ({
 		});
 		cleanups.push(() => mediaProcess.dispose());
 
+		// Scrub proxies are content addressed under the profile's cache, shared with GPUIX.
+		const proxies = createPreviewProxyCache({
+			dir: resolveNodePreviewProxyDir(profileDir),
+			mediaService: mediaProcess.service,
+		});
+		cleanups.push(() => proxies.dispose());
+
 		executors = createDesktopExecutors({
 			getSessions: () => windows?.getConnectedWindows() ?? [],
 			media: mediaProcess.service,
 			registry: assets,
+			proxies,
+			onProxyChanged: (assetId, status) => {
+				if (status.state === "failed") {
+					console.warn("[minicut:electron] preview proxy failed", assetId, status.message);
+				}
+				onProxyChanged?.(assetId, status);
+			},
 			exportDirectory,
 			ownerPeerId: host.identity.peerId,
 			assetUrl: createAssetUrl,
@@ -179,6 +204,7 @@ export const startDesktopApp = async ({
 			electron.protocol,
 			createMiniCutProtocolHandler({
 				assets: createRegistryAssetSource(assets),
+				proxies: { resolve: (assetId) => runningExecutors.previewProxyPath(assetId) },
 				rendererDir,
 			}),
 		);
@@ -216,7 +242,14 @@ export const startDesktopApp = async ({
 			}),
 		);
 
-		return { host, assets, media: mediaProcess.service, windows: connector, dispose };
+		return {
+			host,
+			assets,
+			media: mediaProcess.service,
+			windows: connector,
+			previewProxy: (assetId) => runningExecutors.previewProxy(assetId),
+			dispose,
+		};
 	} catch (error) {
 		await dispose().catch(() => undefined);
 		throw error;

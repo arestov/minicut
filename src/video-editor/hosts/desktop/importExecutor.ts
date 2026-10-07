@@ -5,6 +5,7 @@ import { isProjectImportFilesEffectData } from "../../models/Project/effects";
 import { assetUriFor } from "./assetUri";
 import {
 	classifyProbe,
+	type ImportedMediaKind,
 	mimeForPath,
 	technicalMetadataFromProbe,
 } from "./hostMedia";
@@ -21,6 +22,13 @@ export type ImportExecutorDeps = {
 	stat(filePath: string): Promise<{ size: number; mtimeMs: number }>;
 	/** Local replica id (`source.ownerPeerId`). */
 	ownerPeerId: string;
+	/** A file became a resource: the host may do follow-up work (preview proxy). Never throws into the import. */
+	onImported?(file: {
+		assetId: string;
+		filePath: string;
+		kind: ImportedMediaKind;
+		fingerprint: { fingerprint: string; version: string };
+	}): void;
 	/** Resource `url` of a registered asset (a host-local attr); defaults to the registry reference. */
 	assetUrl?(assetId: string): string;
 	/** Ids for operations and batches; generated at this boundary, never in actions. */
@@ -132,6 +140,16 @@ export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor =
 			},
 			scopeFor(projectId),
 		);
+		try {
+			deps.onImported?.({
+				assetId: asset.assetId,
+				filePath,
+				kind,
+				fingerprint,
+			});
+		} catch (error) {
+			console.error("[minicut:import] follow-up after import failed", error);
+		}
 	};
 
 	const stage = (paths: readonly string[]): string | null => {

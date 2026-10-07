@@ -20,6 +20,8 @@ export const createRegistryAssetSource = (
 
 export type MiniCutProtocolHandlerOptions = {
 	assets: AssetSource;
+	/** Finished scrub proxies by asset id (`/proxy/<id>`); only registered, finished ones resolve. */
+	proxies?: AssetSource;
 	/** Directory of the built renderer; served under `/app/`. */
 	rendererDir: string;
 };
@@ -50,9 +52,11 @@ const notFound = (): Response => new Response(null, { status: 404 });
  * Handler of `minicut://local/...`:
  *   /app/<file>     the renderer bundle (confined to rendererDir)
  *   /asset/<id>     a registered local media file, with HTTP Range support
+ *   /proxy/<id>     the finished scrub proxy of a registered video (same rules)
  */
 export const createMiniCutProtocolHandler = ({
 	assets,
+	proxies,
 	rendererDir,
 }: MiniCutProtocolHandlerOptions) => {
 	const rootDir = path.resolve(rendererDir);
@@ -70,14 +74,19 @@ export const createMiniCutProtocolHandler = ({
 			return notFound();
 		}
 
-		if (url.pathname.startsWith("/asset/")) {
+		const mediaRoute = url.pathname.startsWith("/asset/")
+			? { prefix: "/asset/", source: assets }
+			: url.pathname.startsWith("/proxy/") && proxies
+				? { prefix: "/proxy/", source: proxies }
+				: null;
+		if (mediaRoute) {
 			let assetId: string;
 			try {
-				assetId = decodeURIComponent(url.pathname.slice("/asset/".length));
+				assetId = decodeURIComponent(url.pathname.slice(mediaRoute.prefix.length));
 			} catch {
 				return notFound();
 			}
-			const filePath = assets.resolve(assetId);
+			const filePath = mediaRoute.source.resolve(assetId);
 			// Only media is served, whatever the registry holds.
 			if (!filePath || !mediaContentTypeForPath(filePath)) {
 				return notFound();
