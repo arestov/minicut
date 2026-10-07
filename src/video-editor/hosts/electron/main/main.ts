@@ -7,6 +7,7 @@ import {
 	ipcMain,
 	MessageChannelMain,
 	protocol,
+	utilityProcess,
 } from "electron";
 import { MINICUT_APP_URL_PREFIX, MINICUT_RENDERER_ENTRY_URL } from "../shared/ipcChannels";
 import { startDesktopApp, type DesktopApp } from "./desktopApp";
@@ -41,10 +42,13 @@ const openWindow = () =>
 
 const startApp = async (): Promise<void> => {
 	try {
+		const profileDir = app.getPath("userData");
 		desktopApp = await startDesktopApp({
-			profileDir: app.getPath("userData"),
+			profileDir,
 			rendererDir: path.join(distRoot, "renderer"),
-			electron: { ipcMain, protocol, MessageChannelMain },
+			mediaServiceEntryPath: path.join(distRoot, "utility", "mediaService.mjs"),
+			exportDirectory: path.join(profileDir, "exports"),
+			electron: { ipcMain, protocol, MessageChannelMain, utilityProcess },
 			trustedRendererUrlPrefixes: devServerUrl ? [devServerUrl] : [],
 		});
 	} catch (error) {

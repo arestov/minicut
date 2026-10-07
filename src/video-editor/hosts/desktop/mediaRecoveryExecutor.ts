@@ -38,6 +38,8 @@ export type MediaRecoveryExecutorDeps = {
 	): Promise<{ fingerprint: string; version: string }>;
 	/** Called after a recovery changed which file an asset points to. */
 	onAssetsChanged(): void;
+	/** Resource `url` of a registered asset (a host-local attr); defaults to the registry reference. */
+	assetUrl?(assetId: string): string;
 	generateId(): string;
 	now(): number;
 };
@@ -287,7 +289,7 @@ export const createMediaRecoveryExecutor = (
 					// `local-asset`: file registered in the host asset registry (M2).
 					sourceKind: "local-asset",
 					sourceRef: assetId,
-					url: assetUriFor(assetId),
+					url: (deps.assetUrl ?? assetUriFor)(assetId),
 					contentFingerprint: request.candidateFingerprint ?? null,
 					fingerprintVersion: request.candidateFingerprintVersion ?? null,
 					...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}),

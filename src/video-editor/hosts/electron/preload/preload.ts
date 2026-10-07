@@ -3,6 +3,7 @@ import {
 	DESKTOP_PORT_MESSAGE_CHANNEL,
 	ELECTRON_IPC,
 	type DesktopHandshakeReply,
+	type DesktopImportStaging,
 	type DesktopPortMessage,
 	type MiniCutDesktopBridge,
 } from "../shared/ipcChannels";
@@ -27,6 +28,13 @@ const getPathForFile = (file: File): string => {
 };
 
 const bridge: MiniCutDesktopBridge = {
+	stageImportFiles(files) {
+		const paths = files.map((file) => getPathForFile(file));
+		if (paths.length === 0 || paths.some((filePath) => !filePath)) {
+			return { ok: false, reason: "a file is not backed by a local path" };
+		}
+		return ipcRenderer.sendSync(ELECTRON_IPC.IMPORT_STAGE, paths) as DesktopImportStaging;
+	},
 	requestConnection() {
 		ipcRenderer.send(ELECTRON_IPC.CONNECT);
 	},

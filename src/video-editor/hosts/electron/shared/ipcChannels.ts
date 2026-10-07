@@ -48,6 +48,8 @@ export const ELECTRON_IPC = {
 	CONNECT: "minicut:connect",
 	/** main -> preload: the port plus the window session handshake. */
 	PORT: "minicut:port",
+	/** renderer -> main, synchronous: stage local file paths for an import batch. */
+	IMPORT_STAGE: "minicut:import:stage",
 } as const;
 
 /** `window.postMessage` channel preload uses to hand the port to the page. */
@@ -71,10 +73,21 @@ export type DesktopPortMessage = {
 	channel: typeof DESKTOP_PORT_MESSAGE_CHANNEL;
 } & DesktopHandshakeReply;
 
+/** Main's answer to staged import paths: the batch id the import action carries. */
+export type DesktopImportStaging =
+	| { ok: true; batchId: string; accepted: number }
+	| { ok: false; reason: string };
+
 /** API that preload exposes as `window.minicutDesktop`. */
 export type MiniCutDesktopBridge = {
 	/** Ask main for a message port; the answer arrives via window.postMessage. */
 	requestConnection(): void;
 	/** Local path of a dropped or picked file; empty when it is not path-backed. */
 	getPathForFile(file: File): string;
+	/**
+	 * Stages the local paths of picked or dropped files for the host import.
+	 * Files never cross IPC: main imports from the paths and the model gets
+	 * only the returned batch id (`requestImportFiles`).
+	 */
+	stageImportFiles(files: readonly File[]): DesktopImportStaging;
 };

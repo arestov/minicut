@@ -2,22 +2,27 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MessagePort } from "node:worker_threads";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
 	DKT_MSG,
 	DKT_TEST_MSG,
 	type MiniCutDktTransportMessage,
 } from "../../../dkt/shared/messageTypes";
-import { ELECTRON_IPC } from "../shared/ipcChannels";
+import { ensureFixtures } from "../../../media/node/testing/mediaFixtures";
+import {
+	createAssetUrl,
+	ELECTRON_IPC,
+	MINICUT_APP_URL_PREFIX,
+	type DesktopImportStaging,
+} from "../shared/ipcChannels";
 import { createFakeMessageChannelMain } from "../testing/fakeElectron";
+import { createFakeUtilityProcess, type FakeUtilityProcess } from "../testing/fakeUtilityProcess";
 import {
 	createFakeIpc,
 	createFakeWindow,
 	openRendererEnd,
 } from "../testing/fakeWindows";
 import { startDesktopApp, type DesktopApp } from "./desktopApp";
-import { createWindowExecutorEffectInterfaces } from "./createWindowExecutorEffectInterfaces";
-import { MINICUT_APP_URL_PREFIX } from "../shared/ipcChannels";
 
 class FakeMessageChannelMain {
 	readonly port1;
@@ -32,20 +37,51 @@ class FakeMessageChannelMain {
 const ENTRY_URL = `${MINICUT_APP_URL_PREFIX}index.html`;
 
 type WindowEnd = ReturnType<typeof openRendererEnd>;
+type TestWindow = WindowEnd & {
+	webContentsId: number;
+	stage(paths: string[]): DesktopImportStaging;
+};
 
-describe("desktop app composition (configuration A)", () => {
+describe("desktop app composition (configuration B)", () => {
 	let tempDir: string;
 	let app: DesktopApp;
 	let ipc: ReturnType<typeof createFakeIpc>;
+	let utility: FakeUtilityProcess;
+	let fixtures: Record<string, string>;
 	const protocolHandlers = new Map<string, unknown>();
+	let droppedEffects: Array<{ type: string; reason: string }>;
+	let dropWaiters: Array<{ type: string; resolve: () => void }>;
+	const waitForDropped = (type: string): Promise<void> =>
+		new Promise((resolve) => {
+			if (droppedEffects.some((effect) => effect.type === type)) {
+				resolve();
+				return;
+			}
+			dropWaiters.push({ type, resolve });
+		});
+
+	beforeAll(async () => {
+		fixtures = await ensureFixtures(["video-cfr"]);
+	});
 
 	beforeEach(async () => {
 		tempDir = await mkdtemp(path.join(tmpdir(), "minicut-desktop-app-"));
 		ipc = createFakeIpc();
+		utility = createFakeUtilityProcess();
 		protocolHandlers.clear();
+		droppedEffects = [];
+		dropWaiters = [];
 		app = await startDesktopApp({
 			profileDir: path.join(tempDir, "profile"),
 			rendererDir: path.join(tempDir, "renderer"),
+			mediaServiceEntryPath: "media.mjs",
+			exportDirectory: path.join(tempDir, "exports"),
+			onEffectDropped: (type, reason) => {
+				droppedEffects.push({ type, reason });
+				for (const waiter of dropWaiters.filter((candidate) => candidate.type === type)) {
+					waiter.resolve();
+				}
+			},
 			electron: {
 				ipcMain: ipc as never,
 				protocol: {
@@ -54,6 +90,7 @@ describe("desktop app composition (configuration A)", () => {
 					},
 				},
 				MessageChannelMain: FakeMessageChannelMain as never,
+				utilityProcess: utility.api,
 			},
 		});
 	});
@@ -63,7 +100,7 @@ describe("desktop app composition (configuration A)", () => {
 		await rm(tempDir, { recursive: true, force: true });
 	});
 
-	const openWindow = async (id: number): Promise<WindowEnd> => {
+	const openWindow = async (id: number): Promise<TestWindow> => {
 		const fake = createFakeWindow(id, ENTRY_URL);
 		ipc.emit(ELECTRON_IPC.CONNECT, fake.event());
 		const handshake = fake.posted.at(-1);
@@ -77,7 +114,14 @@ describe("desktop app composition (configuration A)", () => {
 			sessionId: handshake.reply.sessionId,
 		});
 		await end.waitFor((m) => m.type === DKT_MSG.RUNTIME_READY);
-		return end;
+		return Object.assign(end, {
+			webContentsId: id,
+			stage(paths: string[]) {
+				const event = fake.event();
+				ipc.emit(ELECTRON_IPC.IMPORT_STAGE, event, paths);
+				return event.returnValue as DesktopImportStaging;
+			},
+		});
 	};
 
 	let sequence = 0;
@@ -122,253 +166,71 @@ describe("desktop app composition (configuration A)", () => {
 		expect(protocolHandlers.has("minicut")).toBe(true);
 	});
 
-	const sessionRootsOf = async (window: WindowEnd) => {
-		window.transport.send({ type: DKT_TEST_MSG.DEBUG_DUMP_REQUEST, requestId: "dump" });
-		const reply = (await window.waitFor(
-			(m) => m.type === DKT_TEST_MSG.DEBUG_DUMP_RESPONSE,
-		)) as {
-			dump: { runtimeModels?: { modelName: string | null; attrs: Record<string, unknown> }[] };
-		};
-		return (reply.dump.runtimeModels ?? []).filter((model) => model.modelName === "session_root");
-	};
-
-	const payloadsOf = (window: WindowEnd, type: MiniCutDktTransportMessage["type"]) =>
-		window.received
-			.filter((message) => message.type === type)
-			.map((message) => (message as { payload?: Record<string, unknown> }).payload ?? {});
-
-	it("runs an export for the window that started it, and for that window only", async () => {
-		const first = await openWindow(1);
-		const second = await openWindow(2);
-		await dispatch(first, "createProject", { title: "First window project" });
-		await dispatch(second, "createProject", { title: "Second window project" });
-		await settle(first, second);
-
-		await dispatch(second, "requestProjectExport", { id: "export:from-second" });
-		await settle(first, second);
-
-		expect(countOf(first, DKT_MSG.EXPORT_REQUEST)).toBe(0);
-		expect(countOf(second, DKT_MSG.EXPORT_REQUEST)).toBe(1);
-		const roots = await sessionRootsOf(second);
-		const progress = roots
-			.map((root) => root.attrs.exportProgress as { id?: string; stage?: string } | null)
-			.filter(Boolean);
-		expect(progress).toEqual([expect.objectContaining({ id: "export:from-second" })]);
-	});
-
-	it("falls back to the oldest window when the export initiator is unknown", async () => {
-		const first = await openWindow(1);
-		const second = await openWindow(2);
-		await dispatch(second, "createProject", { title: "Second window project" });
-		await settle(first, second);
-
-		await dispatch(second, "requestProjectExport", {
-			id: "export:unknown-initiator",
-			initiatedBy: "no-such-session-root",
-		});
-		await settle(first, second);
-
-		expect(countOf(first, DKT_MSG.EXPORT_REQUEST)).toBe(1);
-		expect(countOf(second, DKT_MSG.EXPORT_REQUEST)).toBe(0);
-	});
-
-	it("still serves the initiating window after another window went away", async () => {
-		const first = await openWindow(1);
-		const second = await openWindow(2);
-		await dispatch(second, "createProject", { title: "Failover" });
-		await settle(first, second);
-		const detached = new Promise<void>((resolve) => {
-			app.windows.onConnectedWindowsChanged(() => {
-				if (app.windows.getConnectedWindows().length === 1) resolve();
-			});
-		});
-		(first.transport as { destroy(): void }).destroy();
-		await detached;
-
-		await dispatch(second, "requestProjectExport", { id: "export:after-close" });
-		await settle(second);
-
-		expect(countOf(second, DKT_MSG.EXPORT_REQUEST)).toBe(1);
-	});
-
-	it("delivers an import only to the window that staged it, even with equal handle ids", async () => {
-		const first = await openWindow(1);
-		const second = await openWindow(2);
-		await dispatch(first, "createProject", { title: "First" });
-		await dispatch(second, "createProject", { title: "Second" });
-		await settle(first, second);
-
-		// Handle ids are per-window counters: both windows stage rt_tmp_1.
-		await dispatch(first, "requestImportFiles", { inputBatchHandleId: "rt_tmp_1" });
-		await dispatch(second, "requestImportFiles", { inputBatchHandleId: "rt_tmp_1" });
-		await settle(first, second);
-
-		expect(payloadsOf(first, DKT_MSG.IMPORT_FILES_REQUEST)).toHaveLength(1);
-		expect(payloadsOf(second, DKT_MSG.IMPORT_FILES_REQUEST)).toHaveLength(1);
-	});
-
-	it("applies a playback run only in the window whose session started it", async () => {
-		const first = await openWindow(1);
-		const second = await openWindow(2);
-		await dispatch(first, "createProject", { title: "First" });
-		await dispatch(second, "createProject", { title: "Second" });
-		await dispatch(first, "addTextClipToTimeline", {
-			name: "Text",
-			mediaKind: "text",
-			start: 0,
-			in: 0,
-			duration: 3,
-			text: { content: "Text" },
-		});
-		await settle(first, second);
-		const rootOf = (window: WindowEnd) =>
-			(window.received.find((m) => m.type === DKT_MSG.RUNTIME_READY) as { rootNodeId?: string })
-				.rootNodeId;
-
-		await dispatch(first, "play");
-		await settle(first, second);
-
-		const runsIn = (window: WindowEnd) => payloadsOf(window, DKT_MSG.PLAYBACK_RUN_REQUEST);
-		// Every request a window gets belongs to its own session root ...
-		expect(runsIn(first).every((p) => p.sessionRootNodeId === rootOf(first))).toBe(true);
-		expect(runsIn(second).every((p) => p.sessionRootNodeId === rootOf(second))).toBe(true);
-		// ... and only the window that pressed play was told to run.
-		expect(runsIn(first).some((p) => p.run)).toBe(true);
-		expect(runsIn(second).some((p) => p.run)).toBe(false);
-	});
-
-	it("does not run a task for a window twice after the window reconnects", async () => {
-		const fake = createFakeWindow(1, ENTRY_URL);
-		const connect = async () => {
-			ipc.emit(ELECTRON_IPC.CONNECT, fake.event());
-			const handshake = fake.posted.at(-1);
-			if (!handshake || handshake.reply.error !== undefined) {
-				throw new Error("window was not connected");
-			}
-			const end = openRendererEnd(handshake.ports[0] as MessagePort);
-			end.transport.send({
-				type: DKT_MSG.BOOTSTRAP,
-				sessionKey: handshake.reply.sessionKey,
-				sessionId: handshake.reply.sessionId,
-			});
-			await end.waitFor((m) => m.type === DKT_MSG.RUNTIME_READY);
-			return end;
-		};
-		await connect();
-		const reloaded = await connect();
-		await dispatch(reloaded, "createProject", { title: "Reload" });
-		await settle(reloaded);
-
-		await dispatch(reloaded, "requestProjectExport", { id: "export:after-reload" });
-		await settle(reloaded);
-
-		expect(countOf(reloaded, DKT_MSG.EXPORT_REQUEST)).toBe(1);
-	});
-});
-
-describe("window executor effect interfaces", () => {
-	const createWindows = () => {
-		const received: { window: string; type: string }[] = [];
-		const make = (name: string, rootNodeId: string | null) => ({
-			rootNodeId,
-			transport: {
-				send: (message: MiniCutDktTransportMessage) => {
-					received.push({ window: name, type: message.type });
-				},
-			},
-		});
-		return { received, a: make("a", "root-a"), b: make("b", "root-b") };
-	};
-	const options = (
-		windows: ReturnType<typeof createWindows>,
-		extra: Partial<Parameters<typeof createWindowExecutorEffectInterfaces>[0]> = {},
-	) => ({
-		getWindows: () => [windows.a, windows.b],
-		claimImportWindow: () => null,
-		onDropped: () => undefined,
-		...extra,
-	});
-
-	it("provides every interface the models call", () => {
-		const interfaces = createWindowExecutorEffectInterfaces({
-			getWindows: () => [],
-			claimImportWindow: () => null,
-			onDropped: () => undefined,
+	it("runs the media service in a utility process for the life of the app", async () => {
+		expect(utility.running()).toBe(1);
+		await expect(app.media.capabilities()).resolves.toMatchObject({
+			formats: expect.arrayContaining(["webm"]),
 		});
 
-		expect(Object.keys(interfaces).sort()).toEqual([
-			"exportRuntime",
-			"importRuntime",
-			"mediaRecoveryRuntime",
-			"playbackRuntime",
-			"time",
-		]);
+		await app.dispose();
+
+		expect(utility.running()).toBe(0);
 	});
 
-	it("routes each task to one window chosen from its payload", () => {
-		const windows = createWindows();
-		const interfaces = createWindowExecutorEffectInterfaces(
-			options(windows, { claimImportWindow: () => windows.b }),
-		);
+	it("drops an import batch no window staged and keeps running", async () => {
+		const window = await openWindow(1);
+		await dispatch(window, "createProject", { title: "Unknown batch" });
+		await settle(window);
 
-		interfaces.exportRuntime.requestExport({ request: { id: "e1", initiatedBy: "root-b" } });
-		interfaces.exportRuntime.requestExport({ request: { id: "e2", initiatedBy: "unknown" } });
-		interfaces.mediaRecoveryRuntime.requestMediaRecovery({ taskId: "t1" });
-		interfaces.importRuntime.requestImportFiles({ inputBatchHandleId: "b1" });
-		interfaces.playbackRuntime.applyPlaybackRun({ sessionRootNodeId: "root-b", run: null });
+		await dispatch(window, "requestImportFiles", { inputBatchHandleId: "never-staged" });
+		await waitForDropped("$fx_handleInputFiles");
 
-		expect(windows.received).toEqual([
-			{ window: "b", type: DKT_MSG.EXPORT_REQUEST },
-			{ window: "a", type: DKT_MSG.EXPORT_REQUEST },
-			{ window: "a", type: DKT_MSG.MEDIA_RECOVERY_REQUEST },
-			{ window: "b", type: DKT_MSG.IMPORT_FILES_REQUEST },
-			{ window: "b", type: DKT_MSG.PLAYBACK_RUN_REQUEST },
-		]);
-	});
-
-	it("drops an import batch no window staged and reports it", () => {
-		const windows = createWindows();
-		const dropped: string[] = [];
-		const interfaces = createWindowExecutorEffectInterfaces(
-			options(windows, { onDropped: (type) => dropped.push(type) }),
-		);
-
-		interfaces.importRuntime.requestImportFiles({ inputBatchHandleId: "unknown" });
-
-		expect(windows.received).toEqual([]);
-		expect(dropped).toEqual([DKT_MSG.IMPORT_FILES_REQUEST]);
-	});
-
-	it("drops playback without an owning window, silently only while a window is still booting", () => {
-		const windows = createWindows();
-		const dropped: string[] = [];
-		const booting = { ...windows.b, rootNodeId: null };
-		const whileBooting = createWindowExecutorEffectInterfaces({
-			getWindows: () => [windows.a, booting],
-			claimImportWindow: () => null,
-			onDropped: (type) => dropped.push(type),
+		expect(droppedEffects).toContainEqual({
+			type: "$fx_handleInputFiles",
+			reason: "no window staged this import batch",
 		});
-		const settled = createWindowExecutorEffectInterfaces(
-			options(windows, { onDropped: (type) => dropped.push(type) }),
-		);
-
-		whileBooting.playbackRuntime.applyPlaybackRun({ sessionRootNodeId: "root-x", run: null });
-		settled.playbackRuntime.applyPlaybackRun({ sessionRootNodeId: "root-x", run: null });
-
-		expect(windows.received).toEqual([]);
-		expect(dropped).toEqual([DKT_MSG.PLAYBACK_RUN_REQUEST]);
+		expect(app.assets.list()).toEqual([]);
+		await expect(app.media.capabilities()).resolves.toBeTruthy();
 	});
 
-	it("reports an effect that has no window to run in instead of dropping it silently", () => {
-		const dropped: string[] = [];
-		const interfaces = createWindowExecutorEffectInterfaces({
-			getWindows: () => [],
-			claimImportWindow: () => null,
-			onDropped: (type) => dropped.push(type),
-		});
+	it("never sends import, export or media recovery requests to a window", async () => {
+		const window = await openWindow(1);
+		await dispatch(window, "createProject", { title: "Host only" });
+		await settle(window);
 
-		interfaces.exportRuntime.requestExport({ request: { id: "e1" } });
+		// Both requests end in the host page's executors, which drop them
+		// (no staged batch, no such session): nothing is sent to the window.
+		await dispatch(window, "requestImportFiles", { inputBatchHandleId: "never-staged" });
+		await dispatch(window, "requestProjectExport", { id: "export:host-only", initiatedBy: "other-root" });
+		await waitForDropped("$fx_handleInputFiles");
+		await waitForDropped("$fx_renderExport");
+		await settle(window);
 
-		expect(dropped).toEqual([DKT_MSG.EXPORT_REQUEST]);
+		expect(countOf(window, DKT_MSG.IMPORT_FILES_REQUEST)).toBe(0);
+		expect(countOf(window, DKT_MSG.EXPORT_REQUEST)).toBe(0);
+		expect(countOf(window, DKT_MSG.EXPORT_CANCEL_REQUEST)).toBe(0);
+		expect(countOf(window, DKT_MSG.MEDIA_RECOVERY_REQUEST)).toBe(0);
+	});
+
+	it("refuses staging from untrusted pages and non-media paths", async () => {
+		const window = await openWindow(1);
+		const foreign = createFakeWindow(9, "https://example.com/");
+		const untrusted = foreign.event();
+		ipc.emit(ELECTRON_IPC.IMPORT_STAGE, untrusted, [fixtures["video-cfr"]]);
+
+		expect(untrusted.returnValue).toEqual({ ok: false, reason: "untrusted sender" });
+		expect(window.stage([path.join(tempDir, "notes.txt")])).toMatchObject({ ok: false });
+		expect(window.stage(["\\\\server\\share\\clip.mp4"])).toMatchObject({ ok: false });
+		expect(window.stage(["relative/clip.mp4"])).toMatchObject({ ok: false });
+	});
+
+	it("refuses staging from a window that has no session yet", () => {
+		const fake = createFakeWindow(5, ENTRY_URL);
+		ipc.emit(ELECTRON_IPC.CONNECT, fake.event());
+		const event = fake.event();
+
+		ipc.emit(ELECTRON_IPC.IMPORT_STAGE, event, [fixtures["video-cfr"]]);
+
+		expect(event.returnValue).toEqual({ ok: false, reason: "the window has no session yet" });
 	});
 });

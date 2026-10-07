@@ -135,19 +135,6 @@ export const createWindowConnector = ({
 	let connectSequence = 0;
 	let hostSequence = 0;
 	const changeListeners = new Set<() => void>();
-	/**
-	 * Import batches by runtime handle id, recorded from the window's own
-	 * requestImportFiles dispatch. Handle ids are per-window counters, so one
-	 * id can be pending in several windows: a FIFO of owners per id.
-	 */
-	const pendingImports = new Map<string, WindowEntry[]>();
-	const forgetImports = (entry: WindowEntry): void => {
-		for (const [handleId, owners] of [...pendingImports]) {
-			const rest = owners.filter((owner) => owner !== entry);
-			if (rest.length === 0) pendingImports.delete(handleId);
-			else pendingImports.set(handleId, rest);
-		}
-	};
 	const notifyChanged = (): void => {
 		for (const listener of [...changeListeners]) {
 			listener();
@@ -157,7 +144,6 @@ export const createWindowConnector = ({
 	const detach = (entry: WindowEntry): void => {
 		const live = entry.live;
 		entry.live = null;
-		forgetImports(entry);
 		if (live) {
 			live.destroy();
 			notifyChanged();
@@ -225,20 +211,6 @@ export const createWindowConnector = ({
 		const { port1, port2 } = createMessageChannel();
 		const transport = createElectronMainPortTransport(port1);
 		const owner = entry;
-		// What the window dispatches is the only record of which window owns an import batch.
-		transport.listen((message) => {
-			if (
-				message.type !== DKT_MSG.DISPATCH_ACTION ||
-				message.actionName !== "requestImportFiles"
-			) {
-				return;
-			}
-			const handleId = (message.payload as { inputBatchHandleId?: unknown } | null)
-				?.inputBatchHandleId;
-			if (typeof handleId === "string" && handleId) {
-				pendingImports.set(handleId, [...(pendingImports.get(handleId) ?? []), owner]);
-			}
-		});
 		try {
 			// Messages the runtime listens to, so the host can add its own on this
 			// connection; their replies are consumed here, never shown to the window.
@@ -361,29 +333,6 @@ export const createWindowConnector = ({
 						dispatchAndWait: live.dispatchAndWait,
 					};
 				});
-		},
-		/**
-		 * The window that staged the import batch, consuming one pending record.
-		 * Null when no live window dispatched a batch with this handle id.
-		 */
-		claimImportWindow(handleId: string): ConnectedWindow | null {
-			const owners = pendingImports.get(handleId) ?? [];
-			while (owners.length > 0) {
-				const entry = owners.shift() as WindowEntry;
-				if (owners.length === 0) pendingImports.delete(handleId);
-				if (entry.live) {
-					return {
-						sessionId: entry.sessionId,
-						webContentsId: entry.webContentsId,
-						transport: entry.live.transport,
-						rootNodeId: entry.live.rootNodeId,
-						dispatch: entry.live.dispatch,
-						dispatchAndWait: entry.live.dispatchAndWait,
-					};
-				}
-			}
-			pendingImports.delete(handleId);
-			return null;
 		},
 		/** Called after a window connects or its connection is detached. */
 		onConnectedWindowsChanged(listener: () => void): () => void {

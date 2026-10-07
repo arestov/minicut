@@ -4,7 +4,7 @@ import { createVideoEditorHarness } from "../../../app/createVideoEditorHarness"
 import { VideoEditorHarnessApp } from "../../../app/VideoEditorHarnessApp";
 import type { MiniCutDesktopBridge } from "../shared/ipcChannels";
 import { connectDesktopHost } from "./connectDesktopHost";
-import { createElectronHarnessPlatform } from "./electronPlatform";
+import { createElectronHarnessPlatform, disableFileSystemAccessPicker } from "./electronPlatform";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -17,10 +17,12 @@ if (!bridge) {
 	throw new Error("MiniCut desktop preload bridge is not available");
 }
 
+disableFileSystemAccessPicker();
+
 // Room and session ids come from the main process, never from the URL.
 const connection = await connectDesktopHost(bridge);
 const harness = createVideoEditorHarness(undefined, {
-	platform: createElectronHarnessPlatform({ port: connection.port }),
+	platform: createElectronHarnessPlatform({ port: connection.port, bridge }),
 });
 harness.pageRuntime?.bootstrap({
 	sessionKey: connection.sessionKey,

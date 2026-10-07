@@ -21,6 +21,8 @@ export type ImportExecutorDeps = {
 	stat(filePath: string): Promise<{ size: number; mtimeMs: number }>;
 	/** Local replica id (`source.ownerPeerId`). */
 	ownerPeerId: string;
+	/** Resource `url` of a registered asset (a host-local attr); defaults to the registry reference. */
+	assetUrl?(assetId: string): string;
 	/** Ids for operations and batches; generated at this boundary, never in actions. */
 	generateId(): string;
 	now(): number;
@@ -28,8 +30,13 @@ export type ImportExecutorDeps = {
 
 export type ImportExecutor = {
 	/**
+	 * Stages picked paths without telling the model: returns the batch id a
+	 * dispatch of `requestImportFiles` carries. Paths stay in this process.
+	 */
+	stage(paths: readonly string[]): string | null;
+	/**
 	 * Stages picked paths and asks the model to import them: returns the batch
-	 * id the model carries in its effect request. Paths stay in this process.
+	 * id the model carries in its effect request.
 	 */
 	requestImport(paths: readonly string[]): string | null;
 	/** Handler of the `$fx_handleInputFiles` task request published by the host. */
@@ -86,7 +93,7 @@ export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor =
 			{
 				name,
 				kind,
-				url: assetUriFor(asset.assetId),
+				url: (deps.assetUrl ?? assetUriFor)(asset.assetId),
 				mime: mimeForPath(filePath),
 				duration: original.duration,
 				width: original.width,
@@ -127,11 +134,18 @@ export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor =
 		);
 	};
 
+	const stage = (paths: readonly string[]): string | null => {
+		if (paths.length === 0) return null;
+		const batchId = `import:${deps.generateId()}`;
+		return refs.put({ batchId, paths: [...paths] });
+	};
+
 	return {
+		stage,
+
 		requestImport(paths) {
-			if (paths.length === 0) return null;
-			const batchId = `import:${deps.generateId()}`;
-			const runtimeHandleId = refs.put({ batchId, paths: [...paths] });
+			const runtimeHandleId = stage(paths);
+			if (runtimeHandleId === null) return null;
 			page.dispatch(
 				"requestImportFiles",
 				{ inputBatchHandleId: runtimeHandleId },

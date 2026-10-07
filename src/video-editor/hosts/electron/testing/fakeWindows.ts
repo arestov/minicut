@@ -21,9 +21,12 @@ export const createFakeIpc = () => {
 			listeners.get(channel)?.delete(listener);
 		},
 		listenerCount: (channel: string) => listeners.get(channel)?.size ?? 0,
-		emit(channel: string, event: unknown) {
+		emit(channel: string, event: unknown, ...args: unknown[]) {
 			for (const listener of [...(listeners.get(channel) ?? [])]) {
-				listener(event as IpcMainEvent);
+				(listener as (event: IpcMainEvent, ...args: unknown[]) => void)(
+					event as IpcMainEvent,
+					...args,
+				);
 			}
 		},
 	};
@@ -43,7 +46,11 @@ export const createFakeWindow = (id: number, url = TRUSTED_TEST_URL) => {
 	return {
 		posted,
 		sender,
-		event: (frame: unknown = mainFrame) => ({ sender, senderFrame: frame }),
+		event: (frame: unknown = mainFrame) => ({
+			sender,
+			senderFrame: frame,
+			returnValue: undefined as unknown,
+		}),
 	};
 };
 

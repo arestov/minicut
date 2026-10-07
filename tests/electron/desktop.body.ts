@@ -3,7 +3,10 @@ import path from 'node:path'
 import {
 	clickButton,
 	closeWindow,
+	fetchRange,
+	mediaSources,
 	openTestWindow,
+	pickFiles,
 	registerSchemeBeforeReady,
 	startTestDesktop,
 	waitForConnectedWindows,
@@ -78,9 +81,9 @@ const scenarios = {
 		return result
 	},
 
-	/** Effects with two windows open: who receives export and playback requests. */
+	/** Effects with two windows open: export runs in main, playback in the starting window. */
 	async twoWindowEffects({ electron, ctx }: { electron: Electron; ctx: Ctx }) {
-		const { desktop, deliveries, waitForDeliveries } = await startTestDesktop({ electron, ctx })
+		const { desktop, deliveries } = await startTestDesktop({ electron, ctx })
 		const first = await openTestWindow(electron, ctx)
 		await waitForPageText(first.webContents, /2 tracks/)
 		const second = await openTestWindow(electron, ctx)
@@ -90,8 +93,15 @@ const scenarios = {
 		await clickButton(first.webContents, 'Add Text to Timeline')
 		await waitForPageText(first.webContents, /0\.0s \/ 3\.0s/)
 		await clickButton(first.webContents, 'Export')
-		await waitForDeliveries('dkt:export-request', 1)
-		const exportDeliveries = deliveries.filter((delivery) => delivery.type === 'dkt:export-request')
+		// The media service in main answers: a file or a typed failure, shown in the window that asked.
+		const exportStatus = await waitForPageText(first.webContents, /Export (ready|failed)/)
+		const hostOnly = new Set([
+			'dkt:export-request',
+			'dkt:export-cancel-request',
+			'dkt:import-files-request',
+			'dkt:media-recovery-request',
+		])
+		const exportDeliveries = deliveries.filter((delivery) => hostOnly.has(delivery.type))
 
 		await clickButton(first.webContents, 'Play')
 		await waitForPageText(first.webContents, /Pause/)
@@ -102,7 +112,76 @@ const scenarios = {
 		await closeWindow(second)
 		await closeWindow(first)
 		await desktop.dispose()
-		return { connected, exportDeliveries, playbackStarts }
+		return { connected, exportDeliveries, playbackStarts, exportStatus: /Export (ready|failed)[^\n]*/.exec(exportStatus)?.[0] ?? null }
+	},
+
+	/**
+	 * Import a file through the window's native input, export it, quit.
+	 * Everything slow ran in the media service; the window only saw the outcomes.
+	 */
+	async importAndExport({ electron, ctx }: { electron: Electron; ctx: Ctx }) {
+		const media = String(ctx.params?.media)
+		const { desktop, deliveries, dropped, exportDirectory } = await startTestDesktop({ electron, ctx })
+		const window = await openTestWindow(electron, ctx)
+		await waitForPageText(window.webContents, /2 tracks/)
+
+		await pickFiles(window.webContents, 'Import media files', [media])
+		await waitForPageText(window.webContents, new RegExp(path.basename(media).replace('.', '\\.')))
+		const sources = await mediaSources(window.webContents)
+		const assetUrl = sources.find((source) => source.startsWith('/asset/')) ?? null
+		const range = assetUrl ? await fetchRange(window.webContents, assetUrl) : null
+		const assets = desktop.assets.list()
+
+		await clickButton(window.webContents, 'Export')
+		const exportStatus = await waitForPageText(window.webContents, /Export (ready|failed)[^\n]*/)
+		const exportedFiles = fs.existsSync(exportDirectory) ? fs.readdirSync(exportDirectory) : []
+		const hostOnly = ['dkt:export-request', 'dkt:import-files-request', 'dkt:media-recovery-request']
+		const leaked = deliveries.filter((delivery) => hostOnly.includes(delivery.type))
+
+		await closeWindow(window)
+		await desktop.dispose()
+		return {
+			assetUrl,
+			range,
+			assets: assets.map((asset) => asset.path),
+			exportStatus: /Export (ready|failed)[^\n]*/.exec(exportStatus)?.[0] ?? null,
+			exportedFiles,
+			exportDirectory,
+			leaked,
+			dropped,
+		}
+	},
+
+	/** Second launch on the same profile: the media comes back from the registry by the same id. */
+	async restoreMedia({ electron, ctx }: { electron: Electron; ctx: Ctx }) {
+		const media = String(ctx.params?.media)
+		const { desktop, deliveries } = await startTestDesktop({ electron, ctx })
+		const window = await openTestWindow(electron, ctx)
+		await waitForPageText(window.webContents, new RegExp(path.basename(media).replace('.', '\\.')))
+		const sources = await mediaSources(window.webContents)
+		const assetUrl = sources.find((source) => source.startsWith('/asset/')) ?? null
+		const range = assetUrl ? await fetchRange(window.webContents, assetUrl) : null
+		const text = await waitForPageText(window.webContents, /./)
+		const hostOnly = ['dkt:export-request', 'dkt:import-files-request', 'dkt:media-recovery-request']
+		const leaked = deliveries.filter((delivery) => hostOnly.includes(delivery.type))
+		const assets = desktop.assets.list().map((asset) => asset.path)
+		await closeWindow(window)
+		await desktop.dispose()
+		return { assetUrl, range, assets, leaked, mentionsMissing: /missing|unavailable|relink/i.test(text) }
+	},
+
+	/** A second app on the profile of a running one fails with the typed database error. */
+	async profileLocked({ electron, ctx }: { electron: Electron; ctx: Ctx }) {
+		const { desktop } = await startTestDesktop({ electron, ctx })
+		let failure: { name: string; message: string } | null = null
+		try {
+			const second = await startTestDesktop({ electron, ctx })
+			await second.desktop.dispose()
+		} catch (error) {
+			failure = { name: (error as Error).name, message: (error as Error).message }
+		}
+		await desktop.dispose()
+		return { failure }
 	},
 
 	/** A reload keeps the window mapping and never adds a second connection. */

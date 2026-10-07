@@ -356,48 +356,6 @@ describe("Electron window connector", () => {
 				window.ready.rootNodeId,
 			);
 		});
-
-		it("attributes an import batch to the window that dispatched it, first in first out", async () => {
-			const a = await bootstrapWindow(5);
-			const b = await bootstrapWindow(6);
-			const { connector } = startConnector();
-			const stage = (window: typeof a, requestId: string) => {
-				window.transport.send({
-					type: DKT_MSG.DISPATCH_ACTION,
-					requestId,
-					actionName: "requestImportFiles",
-					payload: { inputBatchHandleId: "rt_tmp_1" },
-				});
-				return window.waitFor(
-					(m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === requestId,
-				);
-			};
-
-			await stage(a, "a1");
-			await stage(b, "b1");
-
-			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(5);
-			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(6);
-			expect(connector.claimImportWindow("rt_tmp_1")).toBeNull();
-			expect(connector.claimImportWindow("never-staged")).toBeNull();
-		});
-
-		it("forgets the import batches of a window that went away", async () => {
-			const fakeWindow = createFakeWindow(5);
-			const window = await bootstrapWindow(5, fakeWindow);
-			const { connector } = startConnector();
-			window.transport.send({
-				type: DKT_MSG.DISPATCH_ACTION,
-				requestId: "s1",
-				actionName: "requestImportFiles",
-				payload: { inputBatchHandleId: "rt_tmp_9" },
-			});
-			await window.waitFor((m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === "s1");
-
-			fakeWindow.sender.emit("destroyed");
-
-			expect(connector.claimImportWindow("rt_tmp_9")).toBeNull();
-		});
 	});
 
 	describe("host actions", () => {
@@ -538,48 +496,6 @@ describe("Electron window connector", () => {
 			expect(startConnector().connector.getConnectedWindows()[0].rootNodeId).toBe(
 				window.ready.rootNodeId,
 			);
-		});
-
-		it("attributes an import batch to the window that dispatched it, first in first out", async () => {
-			const a = await bootstrapWindow(5);
-			const b = await bootstrapWindow(6);
-			const { connector } = startConnector();
-			const stage = (window: typeof a, requestId: string) => {
-				window.transport.send({
-					type: DKT_MSG.DISPATCH_ACTION,
-					requestId,
-					actionName: "requestImportFiles",
-					payload: { inputBatchHandleId: "rt_tmp_1" },
-				});
-				return window.waitFor(
-					(m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === requestId,
-				);
-			};
-
-			await stage(a, "a1");
-			await stage(b, "b1");
-
-			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(5);
-			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(6);
-			expect(connector.claimImportWindow("rt_tmp_1")).toBeNull();
-			expect(connector.claimImportWindow("never-staged")).toBeNull();
-		});
-
-		it("forgets the import batches of a window that went away", async () => {
-			const fakeWindow = createFakeWindow(5);
-			const window = await bootstrapWindow(5, fakeWindow);
-			const { connector } = startConnector();
-			window.transport.send({
-				type: DKT_MSG.DISPATCH_ACTION,
-				requestId: "s1",
-				actionName: "requestImportFiles",
-				payload: { inputBatchHandleId: "rt_tmp_9" },
-			});
-			await window.waitFor((m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === "s1");
-
-			fakeWindow.sender.emit("destroyed");
-
-			expect(connector.claimImportWindow("rt_tmp_9")).toBeNull();
 		});
 	});
 
