@@ -5,6 +5,7 @@ import {
 	type NodeMiniCutHost,
 } from "../../../adapters/node/startNodeMiniCutHost";
 import { MINICUT_APP_URL_PREFIX } from "../shared/ipcChannels";
+import { createWindowExecutorEffectInterfaces } from "./createWindowExecutorEffectInterfaces";
 import { registerAssetIpc } from "./assetIpc";
 import {
 	createHostAssetRegistry,
@@ -14,6 +15,7 @@ import { createMiniCutProtocolHandler } from "./protocolHandler";
 import { installMiniCutProtocol } from "./registerProtocol";
 import {
 	createWindowConnector,
+	isUrlUnderPrefix,
 	type MessageChannelLike,
 } from "./windowConnector";
 
@@ -30,7 +32,8 @@ export type StartDesktopAppOptions = {
 	/** Built renderer served under `minicut://local/app/`. */
 	rendererDir: string;
 	electron: DesktopElectronApi;
-	effectInterfaces: MiniCutEffectInterfaces;
+	/** Defaults to configuration A: browser executors in the renderer windows. */
+	effectInterfaces?: MiniCutEffectInterfaces;
 	/** Extra URL prefixes allowed to open channels (a dev server). */
 	trustedRendererUrlPrefixes?: readonly string[];
 	generateUuid?: () => string;
@@ -55,10 +58,21 @@ export const startDesktopApp = async ({
 	profileDir,
 	rendererDir,
 	electron,
-	effectInterfaces,
+	effectInterfaces: effectInterfacesOverride,
 	trustedRendererUrlPrefixes = [],
 	generateUuid,
 }: StartDesktopAppOptions): Promise<DesktopApp> => {
+	// The effect interfaces are needed before the runtime exists, the window
+	// connector after it: windows are resolved lazily.
+	let windows: ReturnType<typeof createWindowConnector> | null = null;
+	const effectInterfaces =
+		effectInterfacesOverride ??
+		createWindowExecutorEffectInterfaces({
+			getWindows: () => windows?.getConnectedWindows() ?? [],
+			claimImportWindow: (handleId) => windows?.claimImportWindow(handleId) ?? null,
+			onDropped: (type, reason) =>
+				console.warn("[minicut:electron] effect dropped", type, reason),
+		});
 	const host = await startNodeMiniCutHost({
 		profileDir,
 		effectInterfaces,
@@ -67,7 +81,7 @@ export const startDesktopApp = async ({
 	const assets = createHostAssetRegistry({ generateId: generateUuid });
 	const trustedPrefixes = [MINICUT_APP_URL_PREFIX, ...trustedRendererUrlPrefixes];
 	const isTrustedRendererUrl = (url: string): boolean =>
-		trustedPrefixes.some((prefix) => url.startsWith(prefix));
+		trustedPrefixes.some((prefix) => isUrlUnderPrefix(url, prefix));
 
 	try {
 		installMiniCutProtocol(
@@ -79,7 +93,7 @@ export const startDesktopApp = async ({
 			ipcMain: electron.ipcMain as never,
 			isTrustedRendererUrl,
 		});
-		const windows = createWindowConnector({
+		const connector = createWindowConnector({
 			runtime: host.runtime,
 			sessionKey: host.identity.roomId,
 			// MessagePortMain structurally matches the port the transport needs.
@@ -88,12 +102,13 @@ export const startDesktopApp = async ({
 			ipcMain: electron.ipcMain as never,
 			isTrustedRendererUrl,
 		});
+		windows = connector;
 		return {
 			host,
 			assets,
-			windows,
+			windows: connector,
 			dispose: async () => {
-				windows.dispose();
+				connector.dispose();
 				assetIpc.dispose();
 				await host.dispose();
 			},

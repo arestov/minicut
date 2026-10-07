@@ -1,92 +1,20 @@
-import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MessagePort } from "node:worker_threads";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { IpcMainEvent } from "electron";
 import { startNodeMiniCutHost, type NodeMiniCutHost } from "../../../adapters/node/startNodeMiniCutHost";
 import { createEffectContractFakes } from "../../../dkt/test/effectContractFakes";
-import { createPortTransport } from "../../../dkt/shared/createPortTransport";
-import {
-	DKT_MSG,
-	DKT_TEST_MSG,
-	type MiniCutDktTransportMessage,
-} from "../../../dkt/shared/messageTypes";
+import { DKT_MSG, DKT_TEST_MSG } from "../../../dkt/shared/messageTypes";
 import { ELECTRON_IPC, type DesktopHandshakeReply } from "../shared/ipcChannels";
 import { createFakeMessageChannelMain } from "../testing/fakeElectron";
+import {
+	createFakeIpc,
+	createFakeWindow,
+	openRendererEnd,
+	TRUSTED_TEST_URL as TRUSTED_URL,
+} from "../testing/fakeWindows";
 import { createWindowConnector, createWindowSessionId, isUrlUnderPrefix } from "./windowConnector";
-
-const TRUSTED_URL = "minicut-test://renderer/index.html";
-
-type Posted = { channel: string; reply: DesktopHandshakeReply; ports: unknown[] };
-
-const createFakeIpc = () => {
-	const listeners = new Map<string, Set<(event: IpcMainEvent) => void>>();
-	return {
-		on(channel: string, listener: (event: IpcMainEvent) => void) {
-			const set = listeners.get(channel) ?? new Set();
-			set.add(listener);
-			listeners.set(channel, set);
-		},
-		removeListener(channel: string, listener: (event: IpcMainEvent) => void) {
-			listeners.get(channel)?.delete(listener);
-		},
-		listenerCount: (channel: string) => listeners.get(channel)?.size ?? 0,
-		emit(channel: string, event: unknown) {
-			for (const listener of [...(listeners.get(channel) ?? [])]) {
-				listener(event as IpcMainEvent);
-			}
-		},
-	};
-};
-
-const createFakeWindow = (id: number, url = TRUSTED_URL) => {
-	const posted: Posted[] = [];
-	const mainFrame = { url };
-	const emitter = new EventEmitter();
-	const sender = Object.assign(emitter, {
-		id,
-		mainFrame,
-		postMessage(channel: string, reply: DesktopHandshakeReply, ports: unknown[]) {
-			posted.push({ channel, reply, ports });
-		},
-	});
-	return {
-		posted,
-		sender,
-		event: (frame: unknown = mainFrame) => ({ sender, senderFrame: frame }),
-	};
-};
-
-/** Renderer-side view of a window channel: collects replies, waits by predicate. */
-const openRendererEnd = (port: MessagePort) => {
-	const transport = createPortTransport<MiniCutDktTransportMessage>(port as never);
-	const received: MiniCutDktTransportMessage[] = [];
-	const waiters = new Set<{
-		predicate: (message: MiniCutDktTransportMessage) => boolean;
-		resolve: (message: MiniCutDktTransportMessage) => void;
-	}>();
-	transport.listen((message) => {
-		received.push(message);
-		for (const waiter of [...waiters]) {
-			if (waiter.predicate(message)) {
-				waiters.delete(waiter);
-				waiter.resolve(message);
-			}
-		}
-	});
-	const waitFor = (predicate: (message: MiniCutDktTransportMessage) => boolean) =>
-		new Promise<MiniCutDktTransportMessage>((resolve) => {
-			const existing = received.find(predicate);
-			if (existing) {
-				resolve(existing);
-				return;
-			}
-			waiters.add({ predicate, resolve });
-		});
-	return { transport, received, waitFor };
-};
 
 describe("Electron window connector", () => {
 	let tempDir: string;
@@ -418,6 +346,71 @@ describe("Electron window connector", () => {
 			a.sender.emit("destroyed");
 
 			expect(startConnector().connector.getConnectedWindows().map((w) => w.webContentsId)).toEqual([6]);
+		});
+	});
+	describe("task ownership", () => {
+		it("records the session root id each window received in RUNTIME_READY", async () => {
+			const window = await bootstrapWindow(7);
+
+			expect(startConnector().connector.getConnectedWindows()[0].rootNodeId).toBe(
+				window.ready.rootNodeId,
+			);
+		});
+
+		it("attributes an import batch to the window that dispatched it, first in first out", async () => {
+			const a = await bootstrapWindow(5);
+			const b = await bootstrapWindow(6);
+			const { connector } = startConnector();
+			const stage = (window: typeof a, requestId: string) => {
+				window.transport.send({
+					type: DKT_MSG.DISPATCH_ACTION,
+					requestId,
+					actionName: "requestImportFiles",
+					payload: { inputBatchHandleId: "rt_tmp_1" },
+				});
+				return window.waitFor(
+					(m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === requestId,
+				);
+			};
+
+			await stage(a, "a1");
+			await stage(b, "b1");
+
+			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(5);
+			expect(connector.claimImportWindow("rt_tmp_1")?.webContentsId).toBe(6);
+			expect(connector.claimImportWindow("rt_tmp_1")).toBeNull();
+			expect(connector.claimImportWindow("never-staged")).toBeNull();
+		});
+
+		it("forgets the import batches of a window that went away", async () => {
+			const fakeWindow = createFakeWindow(5);
+			const window = await bootstrapWindow(5, fakeWindow);
+			const { connector } = startConnector();
+			window.transport.send({
+				type: DKT_MSG.DISPATCH_ACTION,
+				requestId: "s1",
+				actionName: "requestImportFiles",
+				payload: { inputBatchHandleId: "rt_tmp_9" },
+			});
+			await window.waitFor((m) => m.type === DKT_MSG.ACTION_ACCEPTED && m.requestId === "s1");
+
+			fakeWindow.sender.emit("destroyed");
+
+			expect(connector.claimImportWindow("rt_tmp_9")).toBeNull();
+		});
+	});
+
+	describe("trusted URL prefixes", () => {
+		it("matches the prefix only at a path, query or hash boundary", () => {
+			const dev = "http://localhost:5173";
+
+			expect(isUrlUnderPrefix("http://localhost:5173", dev)).toBe(true);
+			expect(isUrlUnderPrefix("http://localhost:5173/app", dev)).toBe(true);
+			expect(isUrlUnderPrefix("http://localhost:5173?x=1", dev)).toBe(true);
+			expect(isUrlUnderPrefix("http://localhost:5173.evil.com/", dev)).toBe(false);
+			expect(isUrlUnderPrefix("http://localhost:51730/", dev)).toBe(false);
+			expect(isUrlUnderPrefix("minicut://local/app/index.html", "minicut://local/app/")).toBe(true);
+			expect(isUrlUnderPrefix("minicut://local/application", "minicut://local/app/")).toBe(false);
 		});
 	});
 	describe("task ownership", () => {
