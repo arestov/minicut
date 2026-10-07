@@ -24,6 +24,7 @@
     "verify:gpuix-compiled": "node ./scripts/run-bun.mjs scripts/verify-gpuix-compiled-load.ts",
     "test:bun:media": "node ./scripts/run-vitest-bun.mjs --config vitest.media.config.js",
     "test:electron": "vitest run --config vitest.electron.config.js",
+    "test:electron:ui": "playwright test -c playwright.electron.config.js",
     "bench:video-editor": "vitest bench --config vitest.video-editor.config.js src/video-editor/worker/renderIndexProjection.bench.ts",
     "test:integration": "npm run test:integration:fast && npm run test:integration:p2p",
     "test:integration:fast": "playwright test",
