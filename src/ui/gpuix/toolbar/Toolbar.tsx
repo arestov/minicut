@@ -1,3 +1,4 @@
+import { Show } from "solid-js";
 import { One, useAttrs, useRootDispatch } from "../../../dkt-solid-sync";
 import {
 	TIMELINE_ZOOM_MAX,
@@ -5,6 +6,7 @@ import {
 	TIMELINE_ZOOM_STEP,
 } from "../../../video-editor/models/sessionZoom";
 import { Button } from "../controls/Button";
+import { useHostServices } from "../host/hostServices";
 import { colors, metrics } from "../theme";
 
 const ProjectTitle = () => {
@@ -22,6 +24,7 @@ const ProjectTitle = () => {
  */
 export const Toolbar = () => {
 	const dispatch = useRootDispatch();
+	const host = useHostServices();
 	const session = useAttrs(["timelineZoom"]);
 	const zoom = () => {
 		const value = session.timelineZoom();
@@ -52,6 +55,17 @@ export const Toolbar = () => {
 				<ProjectTitle />
 			</One>
 			<div style={{ flexGrow: 1 }} />
+			<Show when={host}>
+				{(services) => (
+					<Button
+						testId="import-media"
+						aria-label="Import media"
+						onClick={() => void services().importFromDialog()}
+					>
+						<text>Import media</text>
+					</Button>
+				)}
+			</Show>
 			<Button testId="new-project" onClick={() => dispatch("createProject", {})}>
 				<text>New project</text>
 			</Button>

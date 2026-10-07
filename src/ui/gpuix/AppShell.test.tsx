@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { AppShell } from "./AppShell";
+import { HostServicesContext } from "./host/hostServices";
 import { ClipInspector } from "./inspector/ClipInspector";
 import { Sidebar } from "./panels/Sidebar";
 import { renderWithScenario } from "./test/renderApp";
@@ -130,5 +131,32 @@ describe("AppShell preview", () => {
 		expect(view.texts()).toContain("00:02.50");
 		// A 480x270 layout box at 2x: straight RGBA bytes.
 		expect(uploads.at(-1)).toBe(960 * 540 * 4);
+	});
+});
+
+describe("AppShell host services", () => {
+	test("the import control exists only when the host provides the dialog service", async () => {
+		view = await renderWithScenario("empty", () => <AppShell />);
+		view.settle();
+		expect(view.findAll("import-media")).toHaveLength(0);
+		view.destroy();
+
+		let imports = 0;
+		view = await renderWithScenario("empty", () => (
+			<HostServicesContext.Provider
+				value={{
+					importFromDialog: async () => {
+						imports += 1;
+					},
+				}}
+			>
+				<AppShell />
+			</HostServicesContext.Provider>
+		));
+		view.settle();
+		expect(view.findAll("import-media")).toHaveLength(1);
+
+		view.click("import-media");
+		expect(imports).toBe(1);
 	});
 });
