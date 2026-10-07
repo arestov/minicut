@@ -37,6 +37,9 @@ import {
 import { EditorSessionRoot } from "./SessionRoot";
 import { Text } from "./Text";
 import { Track } from "./Track";
+import {
+	MEDIA_RESTORE_API_USED,
+} from "./mediaRestoreBoot";
 
 const appProps = mergeDcl({
 	init: (target: unknown) => {
@@ -72,6 +75,12 @@ const appProps = mergeDcl({
 		sessions: ["input", { linking: "<< $session_root", many: true }],
 		free_sessions: ["input", { linking: "<< $session_root", many: true }],
 		project: ["input", { linking: "project", many: true, role: "owner", ownership: "slot-single", inverseRel: "rootOwner" }],
+		// Projects some session looks at (user attention for boot media restore).
+		attendedProject: [
+			"comp",
+			[addr({ relPath: ["sessions", "activeProject"], zip: "all" })],
+			{ linking: "project", many: true, role: "projection" },
+		],
 		track: [
 			"comp",
 			[addr({ relPath: ["project", "tracks"], zip: "all" })],
@@ -119,6 +128,9 @@ const appProps = mergeDcl({
 	},
 	attrs: {
 		activeReviewItemId: ["input", null],
+		// Framework stamp of the boot restore interface (set on attach, reset on reinit).
+		[MEDIA_RESTORE_API_USED]: ["input", null],
+
 		projectMetaList: ["input", []],
 		hasProjects: [
 			"comp",
@@ -132,6 +144,8 @@ const appProps = mergeDcl({
 		attrs: {
 			activeReviewItemId: { sync: false, reason: "projection" },
 			projectMetaList: { sync: false, reason: "projection" },
+			// TODO(dkt): framework-owned after DKT fix
+			[MEDIA_RESTORE_API_USED]: { sync: false, reason: "effect-runtime" },
 		},
 			rels: {
 			$session_root: { sync: false, reason: "framework-owned" },
@@ -139,6 +153,7 @@ const appProps = mergeDcl({
 			sessions: { sync: false, reason: "projection" },
 			free_sessions: { sync: false, reason: "projection" },
 			project: "sequence",
+			attendedProject: { sync: false, reason: "projection" },
 			track: { sync: false, reason: "projection" },
 			resource: { sync: false, reason: "projection" },
 			mediaRecoveryTask: { sync: false, reason: "projection" },
@@ -149,6 +164,16 @@ const appProps = mergeDcl({
 			reviewArchiveEntry: { sync: false, reason: "projection" },
 			reviewSession: { sync: false, reason: "projection" },
 			activitySummary: { sync: false, reason: "projection" },
+		},
+	},
+	effects: {
+		api: {
+			// Optional per platform: absent means no boot media restore.
+			mediaRestoreRuntime: [
+				["_node_id"] as const,
+				["#mediaRestoreRuntime"] as const,
+				(mediaRestoreRuntime: unknown) => mediaRestoreRuntime,
+			],
 		},
 	},
 	actions: {

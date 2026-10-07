@@ -20,6 +20,7 @@ import type {
 	TrackOrderPreview,
 } from "../../dkt/review/features/trackOrder";
 import { defaultClipTransform } from "../Clip/actions";
+import { bootStampOrNull } from "../mediaRestoreBoot";
 import {
 	reviewItemCreationFromItem,
 	reviewSessionAttrsForProject,
@@ -1119,8 +1120,14 @@ export const reduceSetProjectTrackPreviewEnabled = (payload: unknown) => {
 export const reduceImportResourceCreate = (
 	payload: unknown,
 	clips: unknown[],
+	bootStamp: unknown = null,
 ) => {
-	const attrs = normalizeResourceCreationAttrs(payload);
+	// The import runs its own recovery: mark this boot's restore as covered.
+	const doneBoot = bootStampOrNull(bootStamp);
+	const attrs = {
+		...normalizeResourceCreationAttrs(payload),
+		...(doneBoot === null ? {} : { doneBoot }),
+	};
 	const addToTimelineWhenEmpty =
 		(payload as { addToTimelineWhenEmpty?: unknown } | null)
 			?.addToTimelineWhenEmpty === true;

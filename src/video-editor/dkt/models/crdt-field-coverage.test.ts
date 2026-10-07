@@ -52,12 +52,14 @@ const MODEL_CASES: ModelCase[] = [
 			attrs: {
 				activeReviewItemId: "projection",
 				projectMetaList: "projection",
+				$meta$apis$mediaRestoreRuntime$used: "effect-runtime",
 			},
 			rels: {
 				common_session_root: "projection",
 				sessions: "projection",
 				free_sessions: "projection",
 				project: "crdt",
+				attendedProject: "projection",
 				track: "projection",
 				resource: "projection",
 				mediaRecoveryTask: "projection",
@@ -190,6 +192,7 @@ const MODEL_CASES: ModelCase[] = [
 				status: "crdt",
 				data: "effect-runtime",
 				timelineAddRequest: "effect-runtime",
+				doneBoot: "effect-runtime",
 				assetStorageKind: "crdt",
 				assetRef: "crdt",
 				contentFingerprint: "crdt",

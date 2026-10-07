@@ -4,6 +4,7 @@ export const MINICUT_RUNTIME_DICTIONARY_NAMES = Object.freeze([
 	"$meta$apis$exportRuntime$used",
 	"$meta$apis$importRuntime$used",
 	"$meta$apis$mediaRecoveryRuntime$used",
+	"$meta$apis$mediaRestoreRuntime$used",
 	"$meta$apis$playbackRuntime$used",
 ]);
 

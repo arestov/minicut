@@ -10,6 +10,13 @@ import {
 } from "../dkt/review/features/clipTiming/clipTimingActions";
 import { CLIP_CREATION_SHAPE } from "./Clip";
 import {
+	MEDIA_RESTORE_API_READY,
+	MEDIA_RESTORE_API_USED,
+	reduceProjectAttended,
+	reduceProjectAttendedBoot,
+	rootAttr,
+} from "./mediaRestoreBoot";
+import {
 	reduceAddEmbeddedAudio,
 	reduceAddResourceToTimeline,
 	reduceAddTextClipToVideoTrack,
@@ -179,6 +186,19 @@ export const Project = model({
 		createdAt: ["input", 0],
 		updatedAt: ["input", 0],
 		autoCreateDefaultTracks: ["input", false],
+		attended: [
+			"comp",
+			[
+				addr({ relPath: ["$root", "attendedProject"], attr: "_node_id", zip: "all" }),
+				"_node_id",
+			],
+			reduceProjectAttended,
+		],
+		attendedBoot: [
+			"comp",
+			["attended", rootAttr(MEDIA_RESTORE_API_READY), rootAttr(MEDIA_RESTORE_API_USED)],
+			reduceProjectAttendedBoot,
+		],
 		isLandscape: [
 			"comp",
 			["width", "height"],
@@ -606,11 +626,12 @@ export const Project = model({
 				},
 				output_base_rel_shape: { resource: { linking: "<< resources", many: false } },
 				fn: [
-					["<< @all:tracks.clips"] as const,
-					(payload: unknown, clips: unknown) =>
+					["<< @all:tracks.clips", rootAttr(MEDIA_RESTORE_API_USED)] as const,
+					(payload: unknown, clips: unknown, bootStamp: unknown) =>
 						reduceImportResourceCreate(
 							payload,
 							Array.isArray(clips) ? clips : [],
+							bootStamp,
 						),
 				],
 			},

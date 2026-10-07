@@ -16,6 +16,7 @@ import {
 	stringOr,
 } from "./valueGuards";
 import { MEDIA_RECOVERY_TASK_CREATION_SHAPE } from "./MediaRecoveryTask";
+import { reduceBootRestoreStart } from "./mediaRestoreBoot";
 
 export const RESOURCE_CREATION_SHAPE = {
 	attrs: [
@@ -40,6 +41,7 @@ export const RESOURCE_CREATION_SHAPE = {
 		"localMediaStatus",
 		"localMediaAvailability",
 		"originalAccessStatus",
+		"doneBoot",
 	],
 	rels: {
 		project: {},
@@ -162,6 +164,7 @@ export const Resource = model({
 			localMediaAvailability: { sync: false, reason: "effect-runtime" },
 			originalAccessStatus: { sync: false, reason: "effect-runtime" },
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
+			doneBoot: { sync: false, reason: "effect-runtime" },
 		},
 			rels: {
 			project: { sync: false, reason: "framework-owned" },
@@ -192,6 +195,10 @@ export const Resource = model({
 		localMediaStatus: ["input", "unknown"],
 		localMediaAvailability: ["input", "unknown"],
 		originalAccessStatus: ["input", "unknown"],
+		// Boot stamp of the last boot restore started (or import-covered) for this resource.
+		doneBoot: ["input", null],
+		// Boot stamp while the owning project is attended and the platform can restore, else null.
+		wantBoot: ["comp", ["< @one:attendedBoot < project"] as const, (boot: unknown) => boot ?? null],
 		requiredSourceEnd: [
 			"comp",
 			["< @all:in < clips", "< @all:duration < clips"] as const,
@@ -382,6 +389,16 @@ export const Resource = model({
 	},
 	actions: {
 		startMediaRecovery: START_MEDIA_RECOVERY_STEPS,
+		"handleAttr:wantBoot": [
+			{
+				to: { doneBoot: ["doneBoot"], start: ["$output"] },
+				fn: [
+					["$noop", "doneBoot", "_node_id", "$now"] as const,
+					reduceBootRestoreStart,
+				],
+			},
+			...START_MEDIA_RECOVERY_STEPS,
+		],
 		completeMediaRecovery: {
 			aggregate: {
 				name: "importPipeline",
