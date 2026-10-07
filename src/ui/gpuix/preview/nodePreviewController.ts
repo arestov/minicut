@@ -14,6 +14,7 @@ import {
 	type ExportPlan,
 	normalizeExportPlan,
 } from "../../../video-editor/render/renderPlan";
+import { contentKeyOf, localAssetIdOf } from "../host/localAssetSource";
 import type { PreviewFrame, PreviewFrameSource } from "./frameSource";
 import {
 	createNodePreviewFrameSource,
@@ -53,11 +54,7 @@ export type NodePreviewController = {
 
 export type NodePreviewControllerOptions = {
 	ffmpegPath: string;
-	/** Asset id of the local file behind a resource node id (page-side projection). */
-	assetIdFor(resourceId: string): string | null;
 	assets: AssetResolver;
-	/** Content key of a resource file (fingerprint), for the scrub proxy cache; null when unknown. */
-	contentKeyFor?(resourceId: string): string | null;
 	/** Scrub proxy cache; with it, video resources that have a content key decode from proxies once ready. */
 	proxies?: PreviewProxyCache;
 	probe(filePath: string): Promise<ProbeResult>;
@@ -174,7 +171,7 @@ export const createNodePreviewController = (
 			}
 			if (unavailable.has(resourceId)) continue;
 			if (!assetPaths[resourceId]) {
-				const assetId = options.assetIdFor(resourceId);
+				const assetId = localAssetIdOf(source.resourceSource);
 				const resolution = assetId ? await options.assets.resolve(assetId) : null;
 				if (token !== buildToken) return;
 				if (!resolution?.ok) {
@@ -183,7 +180,7 @@ export const createNodePreviewController = (
 					continue;
 				}
 				assetPaths[resourceId] = resolution.location.path;
-				const contentKey = options.contentKeyFor?.(resourceId);
+				const contentKey = contentKeyOf(source.resourceSource);
 				if (contentKey && source.resourceKind === "video") {
 					contentKeys[resourceId] = contentKey;
 				}

@@ -3,13 +3,12 @@ import { parseExportRequest } from "../../../video-editor/app/exportRequestState
 import type { AssetLocations, AssetResolver } from "../../../video-editor/media/contracts/assets";
 import type { MediaService } from "../../../video-editor/media/node/mediaService";
 import type { HostPage } from "./hostTypes";
+import { localAssetIdOf, type PayloadResourceSource } from "./localAssetSource";
 
 export type ExportExecutorDeps = {
 	page: HostPage;
 	media: Pick<MediaService, "exportPlan">;
 	assets: AssetResolver;
-	/** Asset id of the local file behind a resource node id (page-side projection). */
-	assetIdFor(resourceId: string): string | null;
 	/** Directory the exports are written to (created by the media service). */
 	exportDirectory: string;
 };
@@ -40,14 +39,13 @@ const safeFileId = (id: string): string =>
  * errors return through the existing model actions, each event its own
  * dispatch (same delivery as web page executors); the request is consumed
  * when the job ends. Sources are resolved from the request's `resourceId`s
- * through the page-side asset index and the registry. A new request with the same queue key supersedes the running one
+ * from the plan's `resourceSource` (declared by the model) through the registry. A new request with the same queue key supersedes the running one
  * (replace-last, like the Web task facade).
  */
 export const createExportExecutor = ({
 	page,
 	media,
 	assets,
-	assetIdFor,
 	exportDirectory,
 }: ExportExecutorDeps): ExportExecutor => {
 	const running = new Map<
@@ -62,6 +60,7 @@ export const createExportExecutor = ({
 			name?: string;
 			resourceId?: string | null;
 			resourceKind?: string;
+			resourceSource?: PayloadResourceSource;
 		}>,
 	): Promise<{ ok: true; assets: AssetLocations } | { ok: false; message: string }> => {
 		const locations: AssetLocations = {};
@@ -72,7 +71,7 @@ export const createExportExecutor = ({
 				return { ok: false, message: `Clip ${source.id ?? "?"} has no resource` };
 			}
 			if (locations[resourceId]) continue;
-			const assetId = assetIdFor(resourceId);
+			const assetId = localAssetIdOf(source.resourceSource);
 			if (!assetId) {
 				return {
 					ok: false,

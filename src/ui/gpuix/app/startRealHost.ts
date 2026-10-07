@@ -115,7 +115,6 @@ export const startRealHost = async ({
 		const refs = createRuntimeRefStore();
 		const assetIndex = createResourceAssetIndex(pageRuntime);
 		cleanups.push(() => assetIndex.dispose());
-		const assetIdFor = (resourceId: string) => assetIndex.assetIdFor(resourceId);
 
 		const importer = createImportExecutor({
 			page: pageRuntime,
@@ -135,7 +134,6 @@ export const startRealHost = async ({
 			page: pageRuntime,
 			media,
 			assets: registry,
-			assetIdFor,
 			exportDirectory: exportDir,
 		});
 		cleanups.push(() => exporter.dispose());
@@ -146,8 +144,6 @@ export const startRealHost = async ({
 		cleanups.push(() => proxies.dispose());
 		const preview = createNodePreviewController({
 			ffmpegPath: binaries.ffmpegPath,
-			assetIdFor,
-			contentKeyFor: (resourceId) => assetIndex.contentKeyFor(resourceId),
 			proxies,
 			assets: registry,
 			probe,
@@ -157,7 +153,6 @@ export const startRealHost = async ({
 			page: pageRuntime,
 			registry,
 			refs,
-			assetIdFor,
 			probe,
 			fingerprint: (filePath) => fingerprintNodeFile(filePath),
 			onAssetsChanged: () => preview.refreshAssets(),
@@ -197,7 +192,6 @@ export const startRealHost = async ({
 			bootId: `boot:${crypto.randomUUID()}`,
 		});
 		cleanups.push(() => restore.dispose());
-		cleanups.push(assetIndex.subscribe(() => preview.refreshAssets()));
 
 		const importFromDialog = createImportFromDialog(prompt, importer);
 		const services: HostServices = {

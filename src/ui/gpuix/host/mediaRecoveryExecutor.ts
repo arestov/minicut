@@ -5,6 +5,7 @@ import {
 	type MediaTechnicalMetadata,
 } from "../../../video-editor/media/mediaRelinkPolicy";
 import { assetUriFor } from "./assetUri";
+import { localAssetIdOf } from "./localAssetSource";
 import {
 	classifyProbe,
 	technicalMetadataFromProbe,
@@ -31,8 +32,6 @@ export type MediaRecoveryExecutorDeps = {
 	page: HostPage;
 	registry: Pick<NodeAssetRegistry, "resolve" | "register" | "relink" | "get">;
 	refs: RuntimeRefs;
-	/** Asset id of the local file behind a resource node id (page-side projection). */
-	assetIdFor(resourceId: string): string | null;
 	probe(filePath: string): Promise<ProbeResult>;
 	fingerprint(
 		filePath: string,
@@ -71,6 +70,8 @@ type RecoveryRequest = {
 	originalFingerprint?: string | null;
 	fingerprintVersion?: string | null;
 	requiredSourceEnd: number;
+	sourceKind?: unknown;
+	sourceRef?: unknown;
 };
 
 type CommitRequest = {
@@ -81,6 +82,8 @@ type CommitRequest = {
 	candidateMetadata?: Record<string, unknown> | null;
 	candidateFingerprint?: string | null;
 	candidateFingerprintVersion?: string | null;
+	sourceKind?: unknown;
+	sourceRef?: unknown;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -263,7 +266,7 @@ export const createMediaRecoveryExecutor = (
 							path?: string;
 						} | null)
 					: null;
-			let assetId = ref?.assetId ?? deps.assetIdFor(request.resourceId);
+			let assetId = ref?.assetId ?? localAssetIdOf(request);
 			if (typeof ref?.path === "string") {
 				// Relink: the asset id stays, it now points at the picked file.
 				assetId = assetId
@@ -329,7 +332,7 @@ export const createMediaRecoveryExecutor = (
 					typeof request.runtimeHandleId === "string"
 						? (refs.get(request.runtimeHandleId) as { assetId?: string } | null)
 						: null;
-				await restore(request, ref?.assetId ?? deps.assetIdFor(request.resourceId));
+				await restore(request, ref?.assetId ?? localAssetIdOf(request));
 				return;
 			}
 			const picked =

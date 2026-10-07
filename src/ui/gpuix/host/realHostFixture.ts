@@ -95,7 +95,6 @@ export const openRealHostFixture = async (
 				page,
 				registry,
 				refs,
-				assetIdFor: (resourceId) => assetIndex.assetIdFor(resourceId),
 				probe: (filePath) => media.probe({ requestId: "probe", source: { path: filePath } }),
 				fingerprint: (filePath) => fingerprintNodeFile(filePath),
 				onAssetsChanged: () => {},
@@ -120,7 +119,6 @@ export const openRealHostFixture = async (
 				page,
 				media,
 				assets: registry,
-				assetIdFor: (resourceId) => assetIndex.assetIdFor(resourceId),
 				exportDirectory: path.join(profileDir, "exports"),
 			});
 			const stop = page.subscribeRuntimeTaskRequests?.("$fx_renderExport", (payload) => {

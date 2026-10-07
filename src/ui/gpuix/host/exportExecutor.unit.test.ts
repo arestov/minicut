@@ -37,12 +37,18 @@ const fakePage = () => {
 	return { page, dispatched, until };
 };
 
+/** Resource ids that have no local asset (sourceKind other than local-asset). */
+const NO_ASSET = new Set(["no-asset"]);
+
 const clipSource = (resourceId: string) => ({
 	id: `clip-${resourceId}`,
 	name: `Clip ${resourceId}`,
 	resourceId,
 	resourceKind: "video",
 	resourceUrl: "",
+	resourceSource: NO_ASSET.has(resourceId)
+		? { sourceKind: "missing", sourceRef: null }
+		: { sourceKind: "local-asset", sourceRef: "asset-1" },
 	start: 0,
 	duration: 2,
 	inPoint: 0,
@@ -67,7 +73,7 @@ const requestPayload = (id: string, resourceIds: string[], queueKey = "project")
 	},
 });
 
-const setup = (assetIds: Record<string, string | null> = { r1: "asset-1" }) => {
+const setup = () => {
 	const { page, dispatched, until } = fakePage();
 	const jobs: Array<{ request: MediaExportRequest; job: MediaJobController<FileArtifact> }> = [];
 	const jobWaiters: Array<{ count: number; resolve: () => void }> = [];
@@ -98,7 +104,6 @@ const setup = (assetIds: Record<string, string | null> = { r1: "asset-1" }) => {
 				location: { path: path.join(MEDIA_DIR, `${assetId}.mp4`) },
 			}),
 		},
-		assetIdFor: (resourceId) => assetIds[resourceId] ?? null,
 		exportDirectory: EXPORT_DIR,
 	});
 	const actions = (name: string) => dispatched.filter((d) => d.action === name);
@@ -159,9 +164,9 @@ describe("export executor", () => {
 	});
 
 	test("a resource without a local asset is an error before any job starts", async () => {
-		const { executor, jobs, dispatched, until, untilJobs } = setup({ r1: null });
+		const { executor, jobs, dispatched, until, untilJobs } = setup();
 
-		executor.handleRequest(requestPayload("export:3", ["r1"]));
+		executor.handleRequest(requestPayload("export:3", ["no-asset"]));
 		await until((d) => d.action === "consumeExportRequest");
 
 		expect(jobs).toHaveLength(0);

@@ -43,7 +43,6 @@ test("an empty timeline shows a black frame, an imported clip shows decoded pixe
 		disposeRoot = dispose;
 		controller = createNodePreviewController({
 			ffmpegPath: "ffmpeg",
-			assetIdFor: (id) => h.assetIndex.assetIdFor(id),
 			assets: h.registry,
 			probe: (filePath) => h.media.probe({ requestId: "p", source: { path: filePath } }),
 		});
@@ -63,21 +62,13 @@ test("an empty timeline shows a black frame, an imported clip shows decoded pixe
 	const project = await h.driver.waitOne(root, "activeProject");
 	h.page.mountShape(project, projectShape);
 	importer.requestImport([await gpuixFixture("video-audio")]);
+	// The model puts the local asset id into the plan's resourceSource once the import is committed.
 	const structure = (await waitForAttr(h.page, root, "previewStructure", (value) =>
-		((value as { clipSources?: unknown[] } | null)?.clipSources?.length ?? 0) > 0,
+		((value as { clipSources?: Array<{ resourceSource?: { sourceRef?: unknown } }> } | null)?.clipSources ?? []).some(
+			(source) => typeof source.resourceSource?.sourceRef === "string",
+		),
 	)) as { clipSources: never[] };
 	await waitForAttr(h.page, project, "duration", (value) => typeof value === "number");
-	// The asset index is a synced projection: wait until it knows the resource.
-	await new Promise<void>((resolve) => {
-		const check = () => h.assetIndex.assetIdFor((structure.clipSources[0] as { resourceId: string }).resourceId) && resolve();
-		const stop = h.assetIndex.subscribe(() => {
-			if (h.assetIndex.assetIdFor((structure.clipSources[0] as { resourceId: string }).resourceId)) {
-				stop();
-				resolve();
-			}
-		});
-		check();
-	});
 
 	const frame = nextFrame(preview);
 	preview.updatePlan({ projectId: "p", fps: 30, width: 320, height: 240, duration: 2, clipSources: structure.clipSources });
@@ -93,7 +84,6 @@ test("a clip whose source file cannot be resolved is reported and previews as bl
 		disposeRoot = dispose;
 		notice = controller = createNodePreviewController({
 			ffmpegPath: "ffmpeg",
-			assetIdFor: () => null,
 			assets: { resolve: () => ({ ok: false, error: { code: "asset-not-found", message: "x" } }) },
 			probe: () => Promise.reject(new Error("unused")),
 		});
@@ -125,8 +115,6 @@ test("with the proxy cache, preview decodes from the scrub proxy once it is read
 		disposeRoot = dispose;
 		controller = createNodePreviewController({
 			ffmpegPath: "ffmpeg",
-			assetIdFor: (id) => h.assetIndex.assetIdFor(id),
-			contentKeyFor: (id) => h.assetIndex.contentKeyFor(id),
 			proxies,
 			assets: h.registry,
 			probe: (filePath) => h.media.probe({ requestId: "p", source: { path: filePath } }),
@@ -140,20 +128,11 @@ test("with the proxy cache, preview decodes from the scrub proxy once it is read
 	const video = await gpuixFixture("video-audio");
 	importer.requestImport([video]);
 	const structure = (await waitForAttr(h.page, root, "previewStructure", (value) =>
-		((value as { clipSources?: unknown[] } | null)?.clipSources?.length ?? 0) > 0,
-	)) as { clipSources: Array<{ resourceId: string }> };
-	const resourceId = structure.clipSources[0].resourceId;
-	const key = await new Promise<string>((resolve) => {
-		const check = () => {
-			const value = h.assetIndex.contentKeyFor(resourceId);
-			if (value) {
-				stop();
-				resolve(value);
-			}
-		};
-		const stop = h.assetIndex.subscribe(check);
-		check();
-	});
+		((value as { clipSources?: Array<{ resourceSource?: { contentFingerprint?: unknown } }> } | null)?.clipSources ?? []).some(
+			(source) => typeof source.resourceSource?.contentFingerprint === "string",
+		),
+	)) as { clipSources: Array<{ resourceId: string; resourceSource: { contentFingerprint: string; fingerprintVersion: string } }> };
+	const key = `${structure.clipSources[0].resourceSource.fingerprintVersion}:${structure.clipSources[0].resourceSource.contentFingerprint}`;
 
 	const first = nextFrame(preview);
 	preview.updatePlan({ projectId: "p", fps: 25, width: 320, height: 240, duration: 2, clipSources: structure.clipSources as never });
