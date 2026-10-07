@@ -114,7 +114,7 @@ export const Resource = model({
 		contentFingerprint: ["input", null],
 		fingerprintVersion: ["input", null],
 		localMediaStatus: ["input", "unknown"],
-		localMediaAvailability: ["input", "unavailable"],
+		localMediaAvailability: ["input", "unknown"],
 		originalAccessStatus: ["input", "unknown"],
 		requiredSourceEnd: [
 			"comp",

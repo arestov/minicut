@@ -138,6 +138,7 @@ describe("Resource action contracts", () => {
 		expect(harness.ctx.getAttr(harness.videoResource, "assetStorageKind")).toBe("linked");
 		expect(harness.ctx.getAttr(harness.videoResource, "assetRef")).toBeNull();
 		expect(harness.ctx.getAttr(harness.videoResource, "localMediaStatus")).toBe("unknown");
+		expect(harness.ctx.getAttr(harness.videoResource, "localMediaAvailability")).toBe("unknown");
 
 		await dispatchAndSettle(
 			harness.ctx,
