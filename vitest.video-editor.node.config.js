@@ -22,6 +22,7 @@ export default defineConfig({
 		testTimeout: 30_000,
 		include: [
 			'src/video-editor/node/**/*.test.ts',
+			'src/video-editor/media/node/**/*.test.ts',
 			'src/video-editor/adapters/node/**/*.test.ts',
 			'src/video-editor/worker/*contract.test.ts',
 			'src/video-editor/worker/authorityRuntimeParity.test.ts',
@@ -29,6 +30,6 @@ export default defineConfig({
 			'src/video-editor/dkt/models/**/*.test.ts',
 			'src/video-editor/dkt/runtime/**/*.test.ts',
 		],
-		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**'],
+		exclude: ['node_modules/**', 'dist*/**', 'tmp/dkt/**', 'src/video-editor/media/node/**/*.media.test.ts'],
 	},
 })
