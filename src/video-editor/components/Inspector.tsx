@@ -76,27 +76,24 @@ export const Inspector = ({
 	const sessionDispatch = useRootDispatch();
 	const projectScope = useScope();
 	const rootAttrs = useRootAttrs([
-		"activeProjectId",
+		"$meta$rels$activeProject$exists",
 		"activeInspectorTab",
 		"selectedClipTrackPosition",
 	]) as {
-		activeProjectId?: unknown;
+		$meta$rels$activeProject$exists?: unknown;
 		activeInspectorTab?: InspectorTab;
 		selectedClipTrackPosition?: SelectedClipTrackPosition | null;
 	};
 	const trackPosition = rootAttrs.selectedClipTrackPosition ?? null;
 	const activeTab = rootAttrs.activeInspectorTab ?? "edit";
-	const activeProjectId =
-		typeof rootAttrs.activeProjectId === "string"
-			? rootAttrs.activeProjectId
-			: null;
+	const hasActiveProject = rootAttrs.$meta$rels$activeProject$exists === true;
 	const setActiveTab = (tab: InspectorTab): void =>
 		sessionDispatch("setActiveInspectorTab", tab);
 
 	// Read selectedClip rel from session scope (single source of truth)
 	const selectedClipScope = useRootOne("selectedClip");
 
-	if ((!activeProjectId && !projectScope) || !selectedClipScope) {
+	if ((!hasActiveProject && !projectScope) || !selectedClipScope) {
 		return <EmptyInspector activeTab={activeTab} onChange={setActiveTab} />;
 	}
 

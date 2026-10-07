@@ -135,7 +135,7 @@ describe("Toolbar wiring", () => {
 		};
 		useVideoEditorMock.mockReturnValue({ actions: videoEditorActions });
 		useRootAttrsMock.mockReturnValue({
-			activeProjectId: "project:toolbar",
+			$meta$rels$activeProject$exists: true,
 			exportProgress: null,
 		});
 
@@ -146,6 +146,24 @@ describe("Toolbar wiring", () => {
 
 		expect(videoEditorActions.createProject).toHaveBeenCalledTimes(1);
 		expect(videoEditorActions.requestProjectExport).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("Toolbar export availability", () => {
+	it("disables export until the active project rel exists", () => {
+		useRootAttrsMock.mockReturnValue({
+			$meta$rels$activeProject$exists: false,
+			exportProgress: null,
+		});
+		const { rerender } = render(<Toolbar />);
+		expect(screen.getByRole("button", { name: "Export project" })).toBeDisabled();
+
+		useRootAttrsMock.mockReturnValue({
+			$meta$rels$activeProject$exists: true,
+			exportProgress: null,
+		});
+		rerender(<Toolbar />);
+		expect(screen.getByRole("button", { name: "Export project" })).toBeEnabled();
 	});
 });
 
@@ -308,7 +326,6 @@ describe("Timeline wiring", () => {
 		const rootDispatch = vi.fn();
 		useRootDispatchMock.mockReturnValue(rootDispatch);
 		useRootAttrsMock.mockReturnValue({
-			activeProjectId: "project:timeline",
 			timelineZoom: 16,
 			selectedEntityId: "clip:timeline",
 			cursor: 4,

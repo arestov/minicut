@@ -138,6 +138,7 @@ const projectShape = defineShape({
 export const miniCutEditorRootShape = defineShape({
 	attrs: [
 		"activeProjectId",
+		"$meta$rels$activeProject$exists",
 		"selectedEntityId",
 		"activeInspectorTab",
 		"cursor",

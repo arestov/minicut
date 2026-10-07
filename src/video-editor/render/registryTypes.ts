@@ -36,7 +36,6 @@ export interface ProjectGraph {
 }
 
 export interface ProjectRenderGraph extends GraphRoot {
-	activeProjectId: ProjectId | null;
 	projects: Record<ProjectId, ProjectGraph>;
 }
 

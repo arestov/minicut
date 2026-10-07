@@ -82,7 +82,6 @@ const projectShape = defineShape({
 	many: { tracks: defineShape({ attrs: ["kind", "name"] }) },
 });
 const rootShape = defineShape({
-	attrs: ["activeProjectId"],
 	one: { activeProject: projectShape },
 });
 

@@ -19,7 +19,6 @@ const driverResourceShape = defineShape({
 });
 
 const driverShape = defineShape({
-	attrs: ["activeProjectId"],
 	one: {
 		activeProject: defineShape({
 			attrs: ["title"],

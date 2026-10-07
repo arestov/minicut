@@ -17,14 +17,14 @@ const parseExportProgress = (value: unknown): ExportProgressState | null =>
 
 export const Toolbar = () => {
 	const { actions } = useVideoEditor();
-	const rootAttrs = useRootAttrs(["activeProjectId", "exportProgress"]) as {
-		activeProjectId?: unknown;
+	const rootAttrs = useRootAttrs([
+		"$meta$rels$activeProject$exists",
+		"exportProgress",
+	]) as {
+		$meta$rels$activeProject$exists?: unknown;
 		exportProgress?: unknown;
 	};
-	const activeProjectId =
-		typeof rootAttrs.activeProjectId === "string"
-			? rootAttrs.activeProjectId
-			: null;
+	const hasActiveProject = rootAttrs.$meta$rels$activeProject$exists === true;
 	const exportProgress = parseExportProgress(rootAttrs.exportProgress);
 	const projectExport =
 		exportProgress?.range.type === "project" ? exportProgress : null;
@@ -69,7 +69,7 @@ export const Toolbar = () => {
 					label="Export project"
 					variant="default"
 					onClick={exportProject}
-					disabled={!activeProjectId || isProjectExportRunning}
+					disabled={!hasActiveProject || isProjectExportRunning}
 				>
 					Export
 				</IconButton>

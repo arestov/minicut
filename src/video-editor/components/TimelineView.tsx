@@ -77,7 +77,6 @@ interface TimelineHeaderProps {
 }
 
 interface TimelineBodyProps {
-	activeProjectId: string | null;
 	activeTool: TimelineTool;
 	handleHandPan: (event: ReactPointerEvent<HTMLDivElement>) => void;
 	handlePlayheadPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -241,7 +240,6 @@ const TimelineHeader = ({
 };
 
 const TimelineBody = ({
-	activeProjectId,
 	activeTool,
 	handleHandPan,
 	handlePlayheadPointerDown,
@@ -292,7 +290,6 @@ const TimelineBody = ({
 							label="Add video track"
 							variant="outline"
 							onClick={() => onAddTrack("video")}
-							disabled={!activeProjectId}
 						>
 							Video track
 						</IconButton>
@@ -302,7 +299,6 @@ const TimelineBody = ({
 							label="Add audio track"
 							variant="outline"
 							onClick={() => onAddTrack("audio")}
-							disabled={!activeProjectId}
 						>
 							Audio track
 						</IconButton>
@@ -354,7 +350,6 @@ const TimelineBody = ({
 );
 
 const ResolvedProjectTimeline = ({
-	activeProjectId,
 	activeTool,
 	handleHandPan,
 	handlePlayheadPointerDown,
@@ -375,7 +370,6 @@ const ResolvedProjectTimeline = ({
 		<>
 			{renderHeader(trackItems.length)}
 			<TimelineBody
-				activeProjectId={activeProjectId}
 				activeTool={activeTool}
 				handleHandPan={handleHandPan}
 				handlePlayheadPointerDown={handlePlayheadPointerDown}
@@ -402,22 +396,16 @@ export const TimelineView = () => {
 	const { playback } = useVideoEditor();
 	// session-scope attrs read via root hooks (we're inside ActiveProjectScope)
 	const rootAttrs = useRootAttrs([
-		"activeProjectId",
 		"timelineZoom",
 		"selectedEntityId",
 		"cursor",
 		"selectedClipSummary",
 	]) as {
-		activeProjectId?: unknown;
 		timelineZoom?: unknown;
 		selectedEntityId?: unknown;
 		cursor?: unknown;
 		selectedClipSummary?: SelectedClipSummary | null;
 	};
-	const activeProjectId =
-		typeof rootAttrs.activeProjectId === "string"
-			? rootAttrs.activeProjectId
-			: null;
 	const resolvedActiveProjectId = projectScope?._nodeId ?? null;
 	const selectedEntityId =
 		typeof rootAttrs.selectedEntityId === "string"
@@ -569,7 +557,6 @@ export const TimelineView = () => {
 				</>
 			) : (
 				<ResolvedProjectTimeline
-					activeProjectId={resolvedActiveProjectId}
 					activeTool={activeTool}
 					handleHandPan={handleHandPan}
 					handlePlayheadPointerDown={handlePlayheadPointerDown}
