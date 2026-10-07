@@ -22,6 +22,29 @@ const createHandleStore = (handle: Partial<PermissionFileHandle> | null) => ({
 });
 
 describe("createLocalMediaResolver", () => {
+	it("leaves local-asset resources untouched during restore", async () => {
+		const setResourceStatus = vi.fn();
+		const handleStore = createHandleStore(null);
+		const resolver = createLocalMediaResolver({
+			handleStore,
+			runtime: {
+				createObjectUrl: vi.fn(() => "blob:runtime/unused"),
+				revokeObjectUrl: vi.fn(),
+				setResourceStatus,
+			},
+		});
+
+		await expect(
+			resolver.restoreResource({
+				resourceId: "resource:asset",
+				sourceKind: "local-asset",
+				sourceRef: "asset:registry-1",
+			}),
+		).resolves.toBeNull();
+		expect(setResourceStatus).not.toHaveBeenCalled();
+		expect(handleStore.get).not.toHaveBeenCalled();
+	});
+
 	it("creates a fresh runtime object URL for granted file handles", async () => {
 		const setResourceStatus = vi.fn();
 		const resolver = createLocalMediaResolver({

@@ -336,6 +336,8 @@ export const createVideoEditorHarness = (
 					const durableAssetRef = (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef;
 					if (typeof durableStorageKind !== "string" || typeof (attrs as { sourceKind?: unknown }).sourceKind !== "string" || typeof attrs.status !== "string") continue;
 					if (durableStorageKind === "project-copy" && typeof durableAssetRef !== "string") continue;
+					// Host asset-registry resources are not recoverable by the web loop; it would rewrite sourceKind/sourceRef.
+					if ((attrs as { sourceKind?: unknown }).sourceKind === "local-asset") continue;
 					if (startedRecoveryResources.has(resourceId)) continue;
 					if (recoveringResources.has(resourceId)) continue;
 					const resourceScope = { kind: "scope" as const, _nodeId: resourceId };

@@ -56,6 +56,8 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 	const doRestore = async (resource: LocalMediaResourceSnapshot): Promise<string | null> => {
 		const resourceId = resource.resourceId;
 		if (!resourceId) return null;
+		// Host asset-registry resources are resolved by the host, not by the web recovery path.
+		if (resource.sourceKind === "local-asset") return null;
 		setStatus(resourceId, "resolving"); setAxes(resourceId, { availability: "resolving" });
 		const assetParts = typeof resource.assetRef === "string" ? resource.assetRef.split("/") : [];
 		const projectId = assetParts.length === 6 && assetParts[0] === "project"
