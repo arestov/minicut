@@ -89,12 +89,9 @@ export const Toolbar = () => {
 							dispatch("play");
 							return;
 						}
-						// Pause commits where the run is now; the model needs that cursor.
+						// The model derives where the run is now; only the run id guards staleness.
 						const run = host?.playback?.();
-						dispatch("pausePlayback", {
-							...(run?.runId != null ? { runId: run.runId } : {}),
-							cursor: run?.presentationTime ?? 0,
-						});
+						dispatch("pausePlayback", run?.runId != null ? { runId: run.runId } : {});
 					}}
 				>
 					<text>{session.playbackIntent() === "playing" ? "Pause" : "Play"}</text>

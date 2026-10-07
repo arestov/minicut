@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TIMELINE_ZOOM_MAX, TIMELINE_ZOOM_MIN } from "../../models/sessionZoom";
+import { reducePausePlayback } from "../../models/SessionRoot/actions";
 import { queryAttr } from "../testingInit";
 import { expectProjectGraphInvariants } from "../test/projectGraphAssertions";
 import {
@@ -262,6 +263,47 @@ describe("SessionRoot action contracts", () => {
 			run: null,
 			committedCursor: 0.5,
 		});
+	});
+
+	it("pause without a cursor derives the position from the run and $now", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "play");
+		const runId = Number(harness.ctx.getAttr(harness.sessionRoot, "playbackRunId"));
+		const startedAt = Number(harness.ctx.getAttr(harness.sessionRoot, "playStartedAt"));
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "pausePlayback", { runId });
+		const upperBound = (Date.now() - startedAt) / 1000;
+
+		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(false);
+		const cursor = Number(harness.ctx.getAttr(harness.sessionRoot, "cursor"));
+		expect(cursor).toBeGreaterThanOrEqual(0);
+		expect(cursor).toBeLessThanOrEqual(upperBound);
+		expect(harness.playbackRequests.at(-1)).toMatchObject({
+			run: null,
+			committedCursor: cursor,
+		});
+	});
+
+	it("pause with a stale run id is ignored", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "play");
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "pausePlayback", { runId: 99 });
+		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(true);
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "pausePlayback", { runId: 99, cursor: 3 });
+		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(true);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(0);
+	});
+
+	it("pause while not playing without a cursor changes nothing", async () => {
+		const harness = await createActionContractHarness();
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "setCursor", 2);
+
+		await dispatchAndSettle(harness.ctx, harness.sessionRoot, "pausePlayback", {});
+
+		expect(harness.ctx.getAttr(harness.sessionRoot, "cursor")).toBe(2);
+		expect(harness.ctx.getAttr(harness.sessionRoot, "isPlaying")).toBe(false);
 	});
 
 	it("ignores stale completion and accepts completion for the current run", async () => {
@@ -898,5 +940,41 @@ describe("SessionRoot action contracts", () => {
 		expect(
 			harness.ctx.getAttr(harness.sessionRoot, "selectedEntityId"),
 		).toBeNull();
+	});
+});
+
+describe("reducePausePlayback", () => {
+	const noop = Symbol("noop");
+	const run = { intent: "playing", runId: 3, startCursor: 2, startedAt: 10_000, rate: 2, boundary: 12 };
+
+	it("derives start + elapsed seconds * rate, clamped to [0, boundary]", () => {
+		expect(reducePausePlayback({ runId: 3 }, noop, { ...run, now: 11_500 })).toEqual({
+			cursor: 5,
+			playbackIntent: "paused",
+		});
+		expect(reducePausePlayback({}, noop, { ...run, now: 60_000 })).toEqual({
+			cursor: 12,
+			playbackIntent: "paused",
+		});
+		expect(reducePausePlayback({}, noop, { ...run, now: 5_000 })).toEqual({
+			cursor: 2,
+			playbackIntent: "paused",
+		});
+	});
+
+	it("applies an explicit cursor as an override, clamped", () => {
+		expect(reducePausePlayback({ cursor: 4.25 }, noop, { ...run, now: 11_500 })).toEqual({
+			cursor: 4.25,
+			playbackIntent: "paused",
+		});
+		expect(reducePausePlayback({ cursor: 99 }, noop, { ...run, now: 11_500 })).toEqual({
+			cursor: 12,
+			playbackIntent: "paused",
+		});
+	});
+
+	it("ignores a stale run id and a pause while not playing", () => {
+		expect(reducePausePlayback({ runId: 2, cursor: 1 }, noop, { ...run, now: 11_000 })).toBe(noop);
+		expect(reducePausePlayback({}, noop, { ...run, intent: "paused", now: 11_000 })).toBe(noop);
 	});
 });

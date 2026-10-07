@@ -782,29 +782,83 @@ export const sessionPlayAction = {
 	],
 } as const satisfies DktActionDescriptor;
 
+type PausePlaybackDeps = {
+	intent: unknown;
+	runId: unknown;
+	startCursor: unknown;
+	startedAt: unknown;
+	rate: unknown;
+	boundary: unknown;
+	now: unknown;
+};
+
+/**
+ * Pause position. `payload.cursor` is an optional override: a clock owner that
+ * knows the real position (the audio playback executor) may send it. Without
+ * it the model derives the position at this event from the run it started:
+ * `playStartCursor + (now - playStartedAt) / 1000 * playbackRate`, clamped to
+ * `[0, playbackBoundaryCursor]`. The cursor is never ticked during playback.
+ */
+export const reducePausePlayback = (
+	payload: unknown,
+	noop: unknown,
+	deps: PausePlaybackDeps,
+) => {
+	const value = asObject(payload);
+	const requestedRunId = finiteNumber(value?.runId);
+	if (requestedRunId !== null && requestedRunId !== asNumber(deps.runId, 0)) {
+		return noop;
+	}
+	const end = Math.max(0, asNumber(deps.boundary, 0));
+	const override = finiteNumber(value?.cursor);
+	if (override !== null) {
+		return { cursor: clamp(override, 0, end), playbackIntent: "paused" as const };
+	}
+	if (deps.intent !== "playing") return noop;
+	const rate = Math.max(0.01, asNumber(deps.rate, 1));
+	const elapsedSeconds = Math.max(0, asNumber(deps.now, 0) - asNumber(deps.startedAt, 0)) / 1000;
+	return {
+		cursor: clamp(asNumber(deps.startCursor, 0) + elapsedSeconds * rate, 0, end),
+		playbackIntent: "paused" as const,
+	};
+};
+
 export const sessionPausePlaybackAction = {
 	to: {
 		cursor: ["cursor"],
 		playbackIntent: ["playbackIntent"],
 	},
 	fn: [
-		["$noop", "playbackRunId", "playbackBoundaryCursor"] as const,
-		(payload: unknown, noop: unknown, currentRunId: unknown, boundary: unknown) => {
-			const value = asObject(payload);
-			const requestedRunId = finiteNumber(value?.runId);
-			if (
-				requestedRunId !== null &&
-				requestedRunId !== asNumber(currentRunId, 0)
-			) {
-				return noop;
-			}
-			const requestedCursor = finiteNumber(value?.cursor);
-			if (requestedCursor === null) return noop;
-			return {
-				cursor: clamp(requestedCursor, 0, Math.max(0, asNumber(boundary, 0))),
-				playbackIntent: "paused" as const,
-			};
-		},
+		[
+			"$noop",
+			"$now",
+			"playbackIntent",
+			"playbackRunId",
+			"playStartCursor",
+			"playStartedAt",
+			"playbackRate",
+			"playbackBoundaryCursor",
+		] as const,
+		(
+			payload: unknown,
+			noop: unknown,
+			now: unknown,
+			intent: unknown,
+			runId: unknown,
+			startCursor: unknown,
+			startedAt: unknown,
+			rate: unknown,
+			boundary: unknown,
+		) =>
+			reducePausePlayback(payload, noop, {
+				now,
+				intent,
+				runId,
+				startCursor,
+				startedAt,
+				rate,
+				boundary,
+			}),
 	],
 } as const satisfies DktActionDescriptor;
 
