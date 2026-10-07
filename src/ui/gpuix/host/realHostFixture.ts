@@ -8,6 +8,8 @@ import { fingerprintNodeFile } from "../../../video-editor/adapters/node/nodeFil
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
 import { createScenarioDriver, type ScenarioDriver } from "../fixtures/scenarioDriver";
+import { createMediaRecoveryExecutor, type MediaRecoveryExecutor } from "./mediaRecoveryExecutor";
+import { createRestoreDriver } from "./restoreDriver";
 import { createExportExecutor, type ExportExecutor } from "./exportExecutor";
 import { createResourceAssetIndex, type ResourceAssetIndex } from "./resourceAssetIndex";
 import { createImportExecutor, type ImportExecutor } from "./importExecutor";
@@ -33,6 +35,8 @@ export type RealHostFixture = {
 	/** Wires the export executor (output under <profile>/exports). */
 	attachExport(): ExportExecutor;
 	exportDirectory: string;
+	/** Wires media recovery and the automatic restore of resources that pre-exist this boot. */
+	attachRecovery(importer: ImportExecutor): MediaRecoveryExecutor;
 	close(): Promise<void>;
 };
 
@@ -86,6 +90,31 @@ export const openRealHostFixture = async (
 			return executor;
 		},
 		exportDirectory: path.join(profileDir, "exports"),
+		attachRecovery(importer) {
+			const executor = createMediaRecoveryExecutor({
+				page,
+				registry,
+				refs,
+				assetIdFor: (resourceId) => assetIndex.assetIdFor(resourceId),
+				probe: (filePath) => media.probe({ requestId: "probe", source: { path: filePath } }),
+				fingerprint: (filePath) => fingerprintNodeFile(filePath),
+				onAssetsChanged: () => {},
+				generateId: () => crypto.randomUUID(),
+				now: () => Date.now(),
+			});
+			const stop = page.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {
+				void executor.handleRequest(payload);
+			});
+			if (stop) disposers.push(stop);
+			const restore = createRestoreDriver({
+				index: assetIndex,
+				recovery: executor,
+				imports: importer,
+				bootId: `boot:${crypto.randomUUID()}`,
+			});
+			disposers.push(() => restore.dispose());
+			return executor;
+		},
 		attachExport() {
 			const executor = createExportExecutor({
 				page,

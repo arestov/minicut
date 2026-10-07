@@ -52,9 +52,16 @@ export const PreviewPanel = () => {
 			width: PREVIEW_WIDTH,
 			height: PREVIEW_HEIGHT,
 		});
-	const cursor = () => {
+	const committed = () => {
 		const value = session.cursor();
 		return typeof value === "number" ? value : 0;
+	};
+	// While a run is playing (or scrubbing) the presentation time leads; at rest the model cursor.
+	const cursor = () => {
+		const playback = host?.playback?.();
+		return playback && (playback.isPlaying || playback.isScrubbing)
+			? playback.presentationTime
+			: committed();
 	};
 
 	return (

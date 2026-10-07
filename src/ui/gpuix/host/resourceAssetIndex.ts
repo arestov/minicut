@@ -17,6 +17,8 @@ import { defineShape } from "../../../dkt-ui-sync/shape/defineShape";
 export type ResourceAssetIndex = {
 	/** Asset id registered for the resource, or null when it has none. */
 	assetIdFor(resourceId: string): string | null;
+	/** Every resource that currently has an asset (resource node id -> asset id). */
+	entries(): ReadonlyMap<string, string>;
 	/** Called after the map changed (a resource appeared, was relinked, ...). */
 	subscribe(listener: () => void): () => void;
 	dispose(): void;
@@ -122,6 +124,7 @@ export const createResourceAssetIndex = (
 
 	return {
 		assetIdFor: (resourceId) => byResource.get(resourceId) ?? null,
+		entries: () => byResource,
 		subscribe(listener) {
 			listeners.add(listener);
 			return () => listeners.delete(listener);

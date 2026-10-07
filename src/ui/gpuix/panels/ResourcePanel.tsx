@@ -9,6 +9,7 @@ import {
 import { Button } from "../controls/Button";
 import { Panel } from "../controls/Panel";
 import { RecoveryPhase } from "../tasks/TaskProgress";
+import { useHostServices } from "../host/hostServices";
 import { colors, metrics } from "../theme";
 import {
 	describeResourceNote,
@@ -42,6 +43,9 @@ const ResourceRow = () => {
 			originalAccessStatus: attrs.originalAccessStatus(),
 		});
 	const size = () => formatSize(attrs.size());
+	const host = useHostServices();
+	const isMissing = () =>
+		attrs.originalAccessStatus() === "missing" || attrs.status() === "missing";
 
 	return (
 		<div
@@ -83,6 +87,28 @@ const ResourceRow = () => {
 					)}
 				</Show>
 			</div>
+			<Show when={host && isMissing()}>
+				<Button
+					testId="resource-locate"
+					aria-label="Locate file"
+					onClick={() => {
+						const id = scope()?._nodeId;
+						if (id) void host?.relinkFromDialog(id, "locate-original");
+					}}
+				>
+					<text>Locate</text>
+				</Button>
+				<Button
+					testId="resource-replace"
+					aria-label="Replace source"
+					onClick={() => {
+						const id = scope()?._nodeId;
+						if (id) void host?.relinkFromDialog(id, "replace-source");
+					}}
+				>
+					<text>Replace</text>
+				</Button>
+			</Show>
 			<Button
 				testId="resource-add"
 				aria-label="Add to timeline"

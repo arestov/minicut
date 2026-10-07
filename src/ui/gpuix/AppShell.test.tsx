@@ -149,7 +149,7 @@ describe("AppShell host services", () => {
 					importFromDialog: async () => {
 						imports += 1;
 					},
-					exportDirectory: "exports-dir",
+					exportDirectory: "exports-dir", relinkFromDialog: async () => {},
 				}}
 			>
 				<AppShell />
@@ -165,7 +165,7 @@ describe("AppShell host services", () => {
 	test("the export control requests an export with an id generated at the boundary", async () => {
 		view = await renderWithScenario("timeline", () => (
 			<HostServicesContext.Provider
-				value={{ importFromDialog: async () => {}, exportDirectory: "exports-dir" }}
+				value={{ importFromDialog: async () => {}, exportDirectory: "exports-dir", relinkFromDialog: async () => {} }}
 			>
 				<AppShell />
 			</HostServicesContext.Provider>
@@ -210,7 +210,7 @@ describe("AppShell host services", () => {
 		};
 		view = await renderWithScenario("timeline", () => (
 			<HostServicesContext.Provider
-				value={{ importFromDialog: async () => {}, exportDirectory: "d", preview }}
+				value={{ importFromDialog: async () => {}, exportDirectory: "d", relinkFromDialog: async () => {}, preview }}
 			>
 				<AppShell />
 			</HostServicesContext.Provider>
@@ -222,5 +222,34 @@ describe("AppShell host services", () => {
 		expect(last?.fps).toBe(30);
 		expect(last?.clipSources.length).toBeGreaterThan(0);
 		expect(view.texts()).toContain("1 source file is missing");
+	});
+
+	test("the play control starts and pauses a model playback run; the preview follows host playback", async () => {
+		// A run the model started: pausing commits the presentation time the host reports.
+		const host = {
+			importFromDialog: async () => {},
+			exportDirectory: "d",
+			relinkFromDialog: async () => {},
+			playback: () => ({ runId: 1, presentationTime: 1.5, isPlaying: true, isScrubbing: false }),
+		};
+		view = await renderWithScenario("timeline", () => (
+			<HostServicesContext.Provider value={host}>
+				<AppShell />
+			</HostServicesContext.Provider>
+		));
+		await view.untilAttr(view.rootScope, "playbackIntent", (v) => v === "paused");
+		view.settle();
+		expect(view.texts()).toContain("Play");
+
+		view.click("play-toggle");
+		await view.untilAttr(view.rootScope, "playbackIntent", (v) => v === "playing");
+		view.settle();
+		expect(view.texts()).toContain("Pause");
+		// The model asked its playback executor to run.
+		expect(view.fakes.playbackCalls.length).toBeGreaterThan(0);
+
+		view.click("play-toggle");
+		await view.untilAttr(view.rootScope, "playbackIntent", (v) => v === "paused");
+		await view.untilAttr(view.rootScope, "cursor", (v) => v === 1.5);
 	});
 });

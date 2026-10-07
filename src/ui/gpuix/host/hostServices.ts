@@ -1,4 +1,5 @@
 import { type Accessor, createContext, useContext } from "solid-js";
+import type { PlaybackSnapshot } from "../../../video-editor/playback/playbackRuntime";
 import type { PreviewFrameSource } from "../preview/frameSource";
 import type { PreviewPlanInput } from "../preview/nodePreviewController";
 
@@ -20,6 +21,13 @@ export type PreviewHostService = {
 export type HostServices = {
 	/** Opens the native file dialog and imports the picked files. */
 	importFromDialog(): Promise<void>;
+	/** Opens the native file dialog to locate or replace the source file of a resource. */
+	relinkFromDialog(
+		resourceId: string,
+		intent: "locate-original" | "replace-source",
+	): Promise<void>;
+	/** Where playback is (silent run along the model playback run). */
+	playback?: Accessor<PlaybackSnapshot>;
 	/** Directory exports are written to; shown next to a finished export. */
 	exportDirectory: string;
 	/** Node preview frames; fixture hosts omit it and the synthetic source is used. */

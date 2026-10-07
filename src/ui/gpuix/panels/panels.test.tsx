@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { AppShell } from "../AppShell";
+import { HostServicesContext } from "../host/hostServices";
 import { renderWithScenario } from "../test/renderApp";
 import { describeResourceNote } from "./resourceLabels";
 import { Sidebar } from "./Sidebar";
@@ -114,5 +115,42 @@ describe("project and resource panels", () => {
 		await verifier.waitMany(tracks[0], "clips", 2);
 
 		expect(view.runtime.readMany(tracks[0], "clips")).toHaveLength(2);
+	});
+
+	test("a missing file offers locate and replace only when the host has a dialog service", async () => {
+		view = await renderShell("unavailable-resource");
+		const project = await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
+		const [resource] = await view.untilMany(project!, "resources", (n) => n >= 1);
+		await view.untilAttr(resource, "originalAccessStatus", (v) => v === "missing");
+		view.settle();
+		expect(view.findAll("resource-locate")).toHaveLength(0);
+		view.destroy();
+
+		const calls: Array<[string, string]> = [];
+		view = await renderWithScenario("unavailable-resource", () => (
+			<HostServicesContext.Provider
+				value={{
+					importFromDialog: async () => {},
+					exportDirectory: "d",
+					relinkFromDialog: async (id, intent) => {
+						calls.push([id, intent]);
+					},
+				}}
+			>
+				<AppShell sidebar={<Sidebar />} />
+			</HostServicesContext.Provider>
+		));
+		const project2 = await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
+		const [resource2] = await view.untilMany(project2!, "resources", (n) => n >= 1);
+		await view.untilAttr(resource2, "originalAccessStatus", (v) => v === "missing");
+		view.settle();
+
+		view.click("resource-locate");
+		view.click("resource-replace");
+
+		expect(calls).toEqual([
+			[resource2._nodeId, "locate-original"],
+			[resource2._nodeId, "replace-source"],
+		]);
 	});
 });

@@ -1,5 +1,6 @@
 import { Show } from "solid-js";
-import { One, useAttrs } from "../../../dkt-solid-sync";
+import { One, useActions, useAttrs } from "../../../dkt-solid-sync";
+import { Button } from "../controls/Button";
 import {
 	clampProgressPercent,
 	formatExportProgress,
@@ -129,8 +130,11 @@ export const ImportProgress = () => (
 );
 
 const RecoveryPhaseBody = () => {
-	const task = useAttrs(["phase", "reasonCode", "errorMessage"]);
+	const task = useAttrs(["phase", "reasonCode", "errorMessage", "operationId"]);
+	const dispatch = useActions();
 	return (
+		<Show when={task.phase() !== "completed" && task.phase() !== "superseded"}>
+		<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
 		<text
 			testId="recovery-phase"
 			style={{
@@ -140,6 +144,22 @@ const RecoveryPhaseBody = () => {
 		>
 			{`Recovery: ${String(task.phase()).replaceAll("-", " ")}`}
 		</text>
+		<Show when={task.phase() === "awaiting-confirmation"}>
+			<Button
+				testId="recovery-confirm"
+				aria-label="Use this file"
+				onClick={() =>
+					dispatch("requestCommit", {
+						operationId: task.operationId(),
+						updatedAt: Date.now(),
+					})
+				}
+			>
+				<text>Use this file</text>
+			</Button>
+		</Show>
+		</div>
+		</Show>
 	);
 };
 

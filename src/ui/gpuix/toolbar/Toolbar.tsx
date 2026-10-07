@@ -26,7 +26,7 @@ export const Toolbar = () => {
 	const dispatch = useRootDispatch();
 	const host = useHostServices();
 	const root = useRootScope();
-	const session = useAttrs(["timelineZoom"]);
+	const session = useAttrs(["timelineZoom", "playbackIntent"]);
 	const zoom = () => {
 		const value = session.timelineZoom();
 		return typeof value === "number" ? value : null;
@@ -68,6 +68,25 @@ export const Toolbar = () => {
 				)}
 			</Show>
 			<Show when={host}>
+				<Button
+					testId="play-toggle"
+					aria-label="Play or pause"
+					active={session.playbackIntent() === "playing"}
+					onClick={() => {
+						if (session.playbackIntent() !== "playing") {
+							dispatch("play");
+							return;
+						}
+						// Pause commits where the run is now; the model needs that cursor.
+						const run = host?.playback?.();
+						dispatch("pausePlayback", {
+							...(run?.runId != null ? { runId: run.runId } : {}),
+							cursor: run?.presentationTime ?? 0,
+						});
+					}}
+				>
+					<text>{session.playbackIntent() === "playing" ? "Pause" : "Play"}</text>
+				</Button>
 				<Button
 					testId="export-project"
 					aria-label="Export project"

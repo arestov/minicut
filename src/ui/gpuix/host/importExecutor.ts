@@ -34,6 +34,8 @@ export type ImportExecutor = {
 	requestImport(paths: readonly string[]): string | null;
 	/** Handler of the `$fx_handleInputFiles` task request published by the host. */
 	handleRequest(payload: unknown): Promise<void>;
+	/** Asset ids imported in this process; their recovery is the import own. */
+	readonly importedAssetIds: ReadonlySet<string>;
 };
 
 /**
@@ -47,6 +49,7 @@ export type ImportExecutor = {
 export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor => {
 	const { page, refs } = deps;
 	const startedBatches = new Set<string>();
+	const importedAssetIds = new Set<string>();
 
 	const progress = (
 		taskId: string,
@@ -76,6 +79,7 @@ export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor =
 			deps.fingerprint(filePath),
 			deps.stat(filePath),
 		]);
+		importedAssetIds.add(asset.assetId);
 		const original = technicalMetadataFromProbe(info, kind);
 		const name = path.basename(filePath);
 		const now = deps.now();
@@ -128,6 +132,7 @@ export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor =
 	};
 
 	return {
+		importedAssetIds,
 		requestImport(paths) {
 			if (paths.length === 0) return null;
 			const batchId = `import:${deps.generateId()}`;
