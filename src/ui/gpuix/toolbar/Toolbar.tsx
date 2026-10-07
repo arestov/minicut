@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { One, useAttrs, useRootDispatch } from "../../../dkt-solid-sync";
+import { One, useAttrs, useRootDispatch, useRootScope } from "../../../dkt-solid-sync";
 import {
 	TIMELINE_ZOOM_MAX,
 	TIMELINE_ZOOM_MIN,
@@ -25,6 +25,7 @@ const ProjectTitle = () => {
 export const Toolbar = () => {
 	const dispatch = useRootDispatch();
 	const host = useHostServices();
+	const root = useRootScope();
 	const session = useAttrs(["timelineZoom"]);
 	const zoom = () => {
 		const value = session.timelineZoom();
@@ -65,6 +66,21 @@ export const Toolbar = () => {
 						<text>Import media</text>
 					</Button>
 				)}
+			</Show>
+			<Show when={host}>
+				<Button
+					testId="export-project"
+					aria-label="Export project"
+					onClick={() =>
+						// The request id is generated here, at the boundary.
+						dispatch("requestProjectExport", {
+							id: `export:${crypto.randomUUID()}`,
+							initiatedBy: root()?._nodeId ?? null,
+						})
+					}
+				>
+					<text>Export</text>
+				</Button>
 			</Show>
 			<Button testId="new-project" onClick={() => dispatch("createProject", {})}>
 				<text>New project</text>

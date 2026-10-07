@@ -9,6 +9,8 @@ import { type Accessor, createContext, useContext } from "solid-js";
 export type HostServices = {
 	/** Opens the native file dialog and imports the picked files. */
 	importFromDialog(): Promise<void>;
+	/** Directory exports are written to; shown next to a finished export. */
+	exportDirectory: string;
 };
 
 export const HostServicesContext = createContext<HostServices | undefined>(

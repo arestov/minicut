@@ -8,6 +8,8 @@ import { fingerprintNodeFile } from "../../../video-editor/adapters/node/nodeFil
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { createMediaService } from "../../../video-editor/media/node/mediaService";
 import { createScenarioDriver, type ScenarioDriver } from "../fixtures/scenarioDriver";
+import { createExportExecutor, type ExportExecutor } from "./exportExecutor";
+import { createResourceAssetIndex } from "./resourceAssetIndex";
 import { createImportExecutor, type ImportExecutor } from "./importExecutor";
 import { createRuntimeRefStore } from "./runtimeRefs";
 import { spawnDktWorker, type DktWorkerHandle } from "./spawnDktWorker";
@@ -27,6 +29,9 @@ export type RealHostFixture = {
 	refs: ReturnType<typeof createRuntimeRefStore>;
 	/** Wires the import executor to the model's import effect requests. */
 	attachImport(): ImportExecutor;
+	/** Wires the export executor (output under <profile>/exports). */
+	attachExport(): ExportExecutor;
+	exportDirectory: string;
 	close(): Promise<void>;
 };
 
@@ -44,7 +49,9 @@ export const openRealHostFixture = async (
 	});
 	const media = createMediaService({ assetResolver: registry });
 	const refs = createRuntimeRefStore();
-	const disposers: Array<() => void> = [];
+	const assetIndex = createResourceAssetIndex(page);
+	const disposers: Array<() => void> = [() => assetIndex.dispose()];
+	const disposeExecutors: Array<() => Promise<void>> = [];
 	let closed = false;
 
 	return {
@@ -76,9 +83,26 @@ export const openRealHostFixture = async (
 			if (stop) disposers.push(stop);
 			return executor;
 		},
+		exportDirectory: path.join(profileDir, "exports"),
+		attachExport() {
+			const executor = createExportExecutor({
+				page,
+				media,
+				assets: registry,
+				assetIdFor: (resourceId) => assetIndex.assetIdFor(resourceId),
+				exportDirectory: path.join(profileDir, "exports"),
+			});
+			const stop = page.subscribeRuntimeTaskRequests?.("$fx_renderExport", (payload) => {
+				executor.handleRequest(payload);
+			});
+			if (stop) disposers.push(stop);
+			disposeExecutors.push(() => executor.dispose());
+			return executor;
+		},
 		async close() {
 			if (closed) return;
 			closed = true;
+			await Promise.all(disposeExecutors.map((dispose) => dispose()));
 			for (const dispose of disposers) dispose();
 			driver.destroy();
 			page.destroy();

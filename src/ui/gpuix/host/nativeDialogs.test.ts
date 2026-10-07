@@ -6,7 +6,7 @@ test("passes the picked paths to the import executor", async () => {
 	const importFromDialog = createImportFromDialog(
 		async (options) => {
 			expect(options).toMatchObject({ files: true, multiple: true });
-			return ["C:\media\a.mp4", "C:\media\b.wav"];
+			return ["/media/a.mp4", "/media/b.wav"];
 		},
 		{
 			requestImport(paths) {
@@ -18,7 +18,7 @@ test("passes the picked paths to the import executor", async () => {
 
 	await importFromDialog();
 
-	expect(staged).toEqual([["C:\media\a.mp4", "C:\media\b.wav"]]);
+	expect(staged).toEqual([["/media/a.mp4", "/media/b.wav"]]);
 });
 
 test("a cancelled dialog imports nothing", async () => {

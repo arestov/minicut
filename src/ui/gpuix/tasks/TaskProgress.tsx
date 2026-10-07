@@ -5,6 +5,7 @@ import {
 	formatExportProgress,
 	type ExportProgressState,
 } from "../../../video-editor/app/exportProgressState";
+import { useHostServices } from "../host/hostServices";
 import { colors } from "../theme";
 
 const ProgressBar = (props: {
@@ -44,6 +45,7 @@ const isExportProgress = (value: unknown): value is ExportProgressState =>
 /** Export progress: the session `exportProgress` attr, shown as it is. */
 export const ExportProgress = () => {
 	const session = useAttrs(["exportProgress"]);
+	const host = useHostServices();
 	const state = () => {
 		const value = session.exportProgress();
 		return isExportProgress(value) ? value : null;
@@ -57,6 +59,11 @@ export const ExportProgress = () => {
 					style={{ display: "flex", alignItems: "center", gap: 8 }}
 				>
 					<text testId="export-progress-label">{`Export ${formatExportProgress(current())}`}</text>
+					<Show when={host && current().stage === "done" && current().fileName}>
+						<text testId="export-progress-file" style={{ color: colors.textMuted }}>
+							{`${host?.exportDirectory ?? ""} | ${current().fileName ?? ""}`}
+						</text>
+					</Show>
 					<ProgressBar
 						testId="export-progress-bar"
 						percent={clampProgressPercent(current().progress)}

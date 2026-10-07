@@ -148,6 +148,7 @@ describe("AppShell host services", () => {
 					importFromDialog: async () => {
 						imports += 1;
 					},
+					exportDirectory: "exports-dir",
 				}}
 			>
 				<AppShell />
@@ -158,5 +159,42 @@ describe("AppShell host services", () => {
 
 		view.click("import-media");
 		expect(imports).toBe(1);
+	});
+
+	test("the export control requests an export with an id generated at the boundary", async () => {
+		view = await renderWithScenario("timeline", () => (
+			<HostServicesContext.Provider
+				value={{ importFromDialog: async () => {}, exportDirectory: "exports-dir" }}
+			>
+				<AppShell />
+			</HostServicesContext.Provider>
+		));
+		await view.untilAttr(view.rootScope, "exportProgress", () => true);
+		view.settle();
+
+		view.click("export-project");
+		const queued = (await view.untilAttr(
+			view.rootScope,
+			"exportProgress",
+			(v) => (v as { stage?: string } | null)?.stage === "queued",
+		)) as { id: string };
+
+		const request = (view.fakes.exportCalls[0] as { request: { id: string } }).request;
+		expect(request.id).toBe(queued.id);
+		expect(request.id).toMatch(/^export:[0-9a-f-]{36}$/);
+
+		// Completion arrives as its own input step; the finished export shows where it went.
+		await view.runtime.dispatchAndWait(
+			"setExportProgress",
+			{ id: queued.id, range: { type: "project" }, stage: "done", progress: 100, fileName: "out.webm", initiatedBy: null },
+			null,
+		);
+		await view.untilAttr(
+			view.rootScope,
+			"exportProgress",
+			(v) => (v as { stage?: string } | null)?.stage === "done",
+		);
+		view.settle();
+		expect(view.texts()).toContain("exports-dir | out.webm");
 	});
 });
