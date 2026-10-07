@@ -225,11 +225,22 @@ describe("preview producer with scrub proxies", () => {
 				};
 			},
 		};
-		const proxies = createPreviewProxyCache({
+		const base = createPreviewProxyCache({
 			dir: path.join(dir, "flaky"),
 			mediaService: flaky,
 			params: { height: H, allIntra: true },
 		});
+		// Records each generation promise so the test awaits the real outcome
+		// (a real FFmpeg transcode) instead of polling with a fixed timeout.
+		const generations: Promise<string>[] = [];
+		const proxies: typeof base = {
+			...base,
+			ensure: (request) => {
+				const generation = base.ensure(request);
+				generations.push(generation);
+				return generation;
+			},
+		};
 		const producer = createPreviewProducer({
 			ffmpegPath: FFMPEG,
 			width: W,
@@ -240,13 +251,14 @@ describe("preview producer with scrub proxies", () => {
 		await vi.waitFor(() => expect(producer.stats().proxyFailures).toBe(1));
 		// Same revision: no second attempt.
 		producer.setSource({ ...source });
+		expect(generations).toHaveLength(1);
 		expect(calls).toBe(1);
 		// New revision: retried, and the proxy ends up used.
 		producer.setSource({ ...source, revision: "proxy-scrub-2" });
-		await vi.waitFor(() =>
-			expect(proxies.ready("test/video-cfr")).not.toBeNull(),
-		);
+		expect(generations).toHaveLength(2);
+		await generations[1];
 		expect(calls).toBe(2);
+		expect(proxies.ready("test/video-cfr")).not.toBeNull();
 		const frame = await frameAt(producer, 0.8, 1);
 		frame.release();
 		expect(producer.stats()).toMatchObject({ proxyDecodes: 1, proxyFailures: 0 });
