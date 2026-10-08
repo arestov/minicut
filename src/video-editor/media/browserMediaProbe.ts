@@ -1,3 +1,4 @@
+import { byteRangeSourceFromBlob, sniffAudioStreams } from "./audioStreamSniffer";
 import type { MediaTechnicalMetadata } from "./mediaRelinkPolicy";
 
 type ProbeElement = HTMLVideoElement | HTMLAudioElement;
@@ -30,6 +31,8 @@ export const probeBrowserMediaFile = async (
 		});
 		if (!Number.isFinite(element.duration) || element.duration < 0) throw new Error("Media duration is unavailable");
 		const video = kind === "video" ? element as HTMLVideoElement : null;
-		return { kind, duration: element.duration, frameRate: null, timebase: null, width: video?.videoWidth || null, height: video?.videoHeight || null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : null } };
+		// Audio streams of a video come from the container header; null stays "unknown".
+		const audio = kind === "video" ? await sniffAudioStreams(byteRangeSourceFromBlob(file)).catch(() => null) : null;
+		return { kind, duration: element.duration, frameRate: null, timebase: null, width: video?.videoWidth || null, height: video?.videoHeight || null, audioChannels: audio?.audioChannels ?? null, audioSampleRate: audio?.audioSampleRate ?? null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : (audio?.audioStreams ?? null) } };
 	} finally { element.removeAttribute("src"); element.load(); platform.revokeObjectURL(url); }
 };

@@ -493,6 +493,7 @@ export const createVideoEditorHarness = (
 			revokeObjectUrl: (url) => platform.revokeObjectUrl(url),
 			getImportedResourceDuration: (url, kind) =>
 				platform.getImportedResourceDuration(url, kind),
+			probeAudioStreams: (file) => platform.probeAudioStreams(file),
 			fingerprintFile,
 			estimateStorage: async () => {
 				return platform.estimateStorage();

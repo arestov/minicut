@@ -191,3 +191,58 @@ describe("executeImportFilesTask handle-backed imports", () => {
 		});
 	});
 });
+
+describe("executeImportFilesTask audio stream probing", () => {
+	const importWith = async (kind: "video" | "audio", probe: ((file: File) => Promise<{ audioStreams: number; audioChannels: number | null; audioSampleRate: number | null } | null>) | undefined) => {
+		const tasks = createRuntimeTaskFacade();
+		const projectScope = makeScope("project:probe");
+		const inputBatchHandleId = tasks.putRuntimeRef([new File(["x"], "clip.webm", { type: "video/webm" })]);
+		const task = tasks.dispatchTask("$fx_handleInputFiles", { data: { inputBatchHandleId } });
+		const imported: Record<string, unknown>[] = [];
+		const env = {
+			pageRuntime: { getRootScope: () => makeScope("root"), readOne: () => projectScope },
+			dkt: {
+				dispatch: () => undefined,
+				dispatchAndWait: async (name: string, payload: Record<string, unknown>) => { if (name === "importResource") imported.push(payload); },
+			},
+			media: {
+				getFileKind: () => kind,
+				createObjectUrl: () => "blob:http://localhost/clip",
+				revokeObjectUrl: () => undefined,
+				getImportedResourceDuration: async () => 1,
+				fingerprintFile: async () => ({ fingerprint: "abc", version: "sha256-v1" }),
+				probeAudioStreams: probe,
+			},
+			transfers: { getPeerId: () => null },
+			lifecycle: { registerObjectUrl: () => undefined },
+			tasks,
+			resourceChunkSize: 1024,
+		} as unknown as EditorActionEnvironment;
+		await executeImportFilesTask({ task, env, projectScope });
+		return imported[0] as { audioStreams: unknown; original: { audioChannels: unknown; streams: { audioStreams: unknown } } };
+	};
+
+	it("carries a probed zero for a video without audio", async () => {
+		const payload = await importWith("video", async () => ({ audioStreams: 0, audioChannels: null, audioSampleRate: null }));
+		expect(payload.audioStreams).toBe(0);
+		expect(payload.original.streams.audioStreams).toBe(0);
+	});
+
+	it("carries the probed stream count and channels", async () => {
+		const payload = await importWith("video", async () => ({ audioStreams: 1, audioChannels: 2, audioSampleRate: 48000 }));
+		expect(payload.audioStreams).toBe(1);
+		expect(payload.original.audioChannels).toBe(2);
+	});
+
+	it("keeps unknown when the probe is unavailable or fails", async () => {
+		expect((await importWith("video", undefined)).audioStreams).toBeNull();
+		expect((await importWith("video", async () => { throw new Error("unreadable"); })).audioStreams).toBeNull();
+		expect((await importWith("video", async () => null)).audioStreams).toBeNull();
+	});
+
+	it("does not probe audio files", async () => {
+		const probe = vi.fn(async () => null);
+		expect((await importWith("audio", probe)).audioStreams).toBe(1);
+		expect(probe).not.toHaveBeenCalled();
+	});
+});

@@ -1,3 +1,4 @@
+import type { AudioStreamsInfo } from "../../media/audioStreamSniffer";
 import type { ProjectAssetStore } from "../../media/projectAssetStore";
 import type { PlaybackClock } from "../../playback/playbackRuntime";
 import type { ExportRenderer } from "../../render/exportRenderer";
@@ -21,6 +22,8 @@ export interface VideoEditorHarnessPlatform {
 	createObjectUrl(source: Blob): string | null;
 	revokeObjectUrl(url: string): void;
 	probeMediaFile(file: File, signal?: AbortSignal): Promise<HarnessMediaProbeResult>;
+	/** Audio streams of a file from its container header; null when unknown. */
+	probeAudioStreams(file: File): Promise<AudioStreamsInfo | null>;
 	/**
 	 * Host-owned import (desktop config B): the host imports picked files from
 	 * their local paths on its media service. Returns the batch id the model's

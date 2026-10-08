@@ -43,6 +43,9 @@ export const createNodeHarnessPlatform = (
 			new Error("Media probing is not available in the Node harness platform"),
 		);
 	},
+	async probeAudioStreams() {
+		return null;
+	},
 	createProjectAssetStore: () => createProjectAssetStore(async () => null),
 	playbackClock: nodePlaybackClock,
 	async estimateStorage() {

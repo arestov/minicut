@@ -49,6 +49,10 @@ export const executeImportFilesTask = async ({ task, env, projectScope: supplied
 			const objectUrl = env.media.createObjectUrl(file); if (!objectUrl) { processed += 1; continue; }
 			env.lifecycle.registerObjectUrl(objectUrl, "import");
 			let duration = 0; try { duration = await env.media.getImportedResourceDuration(objectUrl, kind); } catch { /* unknown duration remains zero */ }
+			// Only a video can carry an embedded audio clip; null stays "unknown".
+			let audio: Awaited<ReturnType<NonNullable<typeof env.media.probeAudioStreams>>> = null;
+			if (kind === "video") { try { audio = (await env.media.probeAudioStreams?.(file)) ?? null; } catch { /* unknown audio streams */ } }
+			const audioStreams = kind === "audio" ? 1 : (audio?.audioStreams ?? null);
 			let contentFingerprint: string | null = null; let fingerprintVersion: string | null = null;
 			try { const result = await env.media.fingerprintFile?.(file); if (result) { contentFingerprint = result.fingerprint; fingerprintVersion = result.version; } } catch { /* degraded identity */ }
 			const operationId = crypto.randomUUID(); const attemptId = crypto.randomUUID(); const bootId = `import:${batchRef}`;
@@ -56,13 +60,13 @@ export const executeImportFilesTask = async ({ task, env, projectScope: supplied
 			const ownerPeerId = env.transfers.getPeerId(); const mime = file.type || "application/octet-stream";
 			await env.dkt.dispatchAndWait("importResource", {
 				name: file.name, kind, url: objectUrl, mime, duration, size: file.size, lastModified: file.lastModified,
-				addToTimelineWhenEmpty,
+				addToTimelineWhenEmpty, audioStreams,
 				sourceKind: handle ? "file-handle" : "object-url", sourceRef: null, source: { kind: "local", ownerPeerId }, status: "ready",
 				data: { status: "ready", chunkSize: env.resourceChunkSize, chunks: {}, ranges: { loaded: [[0, file.size]], requested: [] }, loadedBytes: file.size },
 				assetStorageKind: "linked", assetRef: null, contentFingerprint, fingerprintVersion, localMediaStatus: handle ? "ready-file-handle" : "unknown",
 				localMediaAvailability: handle ? "ready-file-handle" : "unknown", originalAccessStatus: handle ? "granted" : "missing",
 				operationId, attemptId, bootId, recoveryKind: "import", intent: "restore", runtimeHandleId,
-				original: { kind, duration, frameRate: null, timebase: null, width: null, height: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : null } },
+				original: { kind, duration, frameRate: null, timebase: null, width: null, height: null, audioChannels: audio?.audioChannels ?? null, audioSampleRate: audio?.audioSampleRate ?? null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams } },
 				requiredSourceEnd: duration, originalFingerprint: contentFingerprint, createdAt: Date.now(), updatedAt: Date.now(),
 			}, project);
 			processed += 1; progress(env, project, { taskId: batchRef, stage: "processing", processed, total: entries.length });

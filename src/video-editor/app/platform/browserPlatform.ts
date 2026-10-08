@@ -10,6 +10,7 @@ import {
 	browserProjectAssetRoot,
 	createProjectAssetStore,
 } from "../../media/projectAssetStore";
+import { byteRangeSourceFromBlob, sniffAudioStreams } from "../../media/audioStreamSniffer";
 import { probeBrowserMediaFile } from "../../media/browserMediaProbe";
 import { browserPlaybackClock } from "../../playback/playbackRuntime";
 import type { MiniCutCrdtPageBridgeSender } from "../../dkt/runtime/createMiniCutPageSyncRuntime";
@@ -106,6 +107,7 @@ export const createBrowserHarnessPlatform = (
 		options.exportRenderer ?? createBrowserVideoExportRenderer(),
 	getImportedResourceDuration,
 	probeMediaFile: (file, signal) => probeBrowserMediaFile(file, signal),
+	probeAudioStreams: (file) => sniffAudioStreams(byteRangeSourceFromBlob(file)),
 	createProjectAssetStore: () => createProjectAssetStore(browserProjectAssetRoot),
 	playbackClock: browserPlaybackClock,
 	async estimateStorage() {

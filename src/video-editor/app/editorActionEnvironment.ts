@@ -6,6 +6,7 @@ import type { ResourceKind } from "../render/registryTypes";
 import type { VideoEditorHarnessPlatform } from "./platform";
 import type { createLocalMediaHandleStore } from "./mediaHandleStore";
 import type { ProjectAssetStore } from "../media/projectAssetStore";
+import type { AudioStreamsInfo } from "../media/audioStreamSniffer";
 import type {
 	DispatchRuntimeTaskOptions,
 	DispatchRuntimeTaskPayload,
@@ -27,6 +28,8 @@ export interface EditorMediaPort {
 		url: string,
 		kind: Extract<ResourceKind, "video" | "audio" | "image">,
 	): Promise<number>;
+	/** Audio streams of a file from its container header; null when unknown. */
+	probeAudioStreams?(file: File): Promise<AudioStreamsInfo | null>;
 }
 
 /** Optional capabilities used only by durable import/recovery workflows. */
