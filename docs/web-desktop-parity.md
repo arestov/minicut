@@ -87,6 +87,13 @@ neighbouring source frame scores 0.02 to 0.05 lower in the neighbour check.
   exports. The parity assertions for them use `it.fails`: the suite turns red
   when the desktop gains opacity, and the entry in `KNOWN_DESKTOP_GAPS` must be
   removed then.
+- **Silent video, no embedded audio clip**: `blue.webm` has no audio stream. Both
+  platforms detect that at import (desktop: ffprobe stream list; web: a header
+  sniffer, `media/audioStreamSniffer.ts`) and store `audioStreams: 0` on the
+  resource, so placing it on the timeline creates no "Embedded audio" clip on A1.
+  Before this, both created an empty clip (the export treated it as silence).
+  Projects imported earlier keep such a clip. A container the web sniffer cannot
+  read yields an unknown count and the clip is still created.
 - **Empty cursor**: the web stage shows a "No frame at cursor" text, the desktop
   the plain `#09090b` background.
 - **Still images** were imported with zero length on desktop and could not be
