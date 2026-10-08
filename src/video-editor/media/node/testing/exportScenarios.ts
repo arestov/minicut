@@ -118,8 +118,9 @@ export const webCompareScenario: ExportScenario = {
  *
  *   V1: av.webm  start 0.5 in 0.5 dur 1.5   (Start +0.5s trim)
  *       blue.webm start 1.0 in 0 dur 2.0   (nudged twice, on top of av)
- *   A1: av embedded audio 0..2.008, mono tone.wav 4.008..7.008
- * (blue's embedded audio clip is omitted: the source has no audio stream.)
+ *   A1: av embedded audio 0..2.008, mono tone.wav 2.008..5.008
+ * (blue has no audio stream: the import adds no embedded audio clip for it, so the
+ * tone is appended right after the av audio.)
  */
 export const webLayeringScenario: ExportScenario = {
 	name: "web-layering-trim-mono",
@@ -133,7 +134,7 @@ export const webLayeringScenario: ExportScenario = {
 		fps: 25,
 		width: 320,
 		height: 240,
-		duration: 7.008,
+		duration: 5.008,
 		clipSources: [
 			clip({
 				id: "av-video",
@@ -161,7 +162,7 @@ export const webLayeringScenario: ExportScenario = {
 				id: "tone-audio",
 				resourceId: "res-tone",
 				resourceKind: "audio",
-				start: 4.008,
+				start: 2.008,
 				duration: 3,
 			}),
 		],
@@ -172,5 +173,5 @@ export const webLayeringScenario: ExportScenario = {
 export const webLayeringTimeline: Array<[string, string, number, number, number]> = [
 	["V1", "av.webm", 0.5, 0.5, 1.5],
 	["V1", "blue.webm", 1, 0, 2],
-	["A1", "tone.wav", 4.008, 0, 3],
+	["A1", "tone.wav", 2.008, 0, 3],
 ];

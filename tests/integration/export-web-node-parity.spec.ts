@@ -259,8 +259,8 @@ test.describe('web vs node export parity', () => {
 		expect(await meanLumaAt(nodePath, 0.8)).toBeGreaterThan(40)
 		expect(await meanLumaAt(webPath, 0.8)).toBeGreaterThan(40)
 
-		// Mono tone (4.008-7.008s): the web mixer duplicates mono to both channels at full level; so must node.
-		const toneWindow = { start: 4.3, duration: 2.4 }
+		// Mono tone (2.008-5.008s): the web mixer duplicates mono to both channels at full level; so must node.
+		const toneWindow = { start: 2.3, duration: 2.4 }
 		const avWindow = { start: 0.3, duration: 1.5 }
 		const webTone = await audioStats(webPath, toneWindow)
 		const nodeTone = await audioStats(nodePath, toneWindow)
