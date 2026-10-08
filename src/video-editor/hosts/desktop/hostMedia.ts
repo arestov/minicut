@@ -63,6 +63,8 @@ export const technicalMetadataFromProbe = (
 	audioSampleRate: probe.audio?.sampleRate ?? null,
 	streams: {
 		videoStreams: kind === "video" ? 1 : 0,
-		audioStreams: kind === "audio" ? 1 : null,
+		// ffprobe lists every stream: a video without audio is a known 0, not unknown.
+		audioStreams:
+			kind === "image" ? null : probe.streams.filter((stream) => stream.kind === "audio").length,
 	},
 });

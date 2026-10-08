@@ -110,6 +110,7 @@ export const createImportExecutor = (deps: ImportExecutorDeps): ImportExecutor =
 				size: file.size,
 				lastModified: Math.round(file.mtimeMs),
 				addToTimelineWhenEmpty,
+				audioStreams: original.streams.audioStreams,
 				// `local-asset`: file registered in the host asset registry (M2).
 				sourceKind: "local-asset",
 				sourceRef: asset.assetId,

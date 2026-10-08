@@ -70,6 +70,7 @@ const probeResult = {
 	durationSeconds: 2,
 	video: { width: 320, height: 240, fps: 25, nominalFps: 25, frameCount: 50 },
 	audio: null,
+	streams: [{ kind: "video" }],
 } as unknown as ProbeResult;
 
 describe("desktop executors", () => {
@@ -285,6 +286,7 @@ describe("desktop executors", () => {
 			durationSeconds: 2,
 			video: null,
 			audio: { channels: 2, sampleRate: 48000 },
+			streams: [{ kind: "audio" }],
 		} as unknown as ProbeResult;
 
 		const assetId = await importClip(fake, executors);
