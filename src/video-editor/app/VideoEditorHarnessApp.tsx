@@ -14,7 +14,8 @@ import {
 } from "./createVideoEditorHarness";
 import { resolveCollaborationMode } from "./collaborationMode";
 import { createBrowserHarnessPlatform } from "./platform";
-import { type RoomUrlResolution, resolveRoomUrlState } from "./roomUrlState";
+import { resolveBrowserRoomAsync } from "./browserRoom";
+import type { RoomUrlResolution } from "./roomUrlState";
 import { VideoEditorProvider } from "./VideoEditorContext";
 import "../components/styles.css";
 
@@ -24,8 +25,6 @@ interface VideoEditorHarnessAppProps {
 		| Parameters<NonNullable<VideoEditorHarness["pageRuntime"]>["bootstrap"]>[0]
 		| null;
 }
-
-const LAST_ROOM_STORAGE_KEY = "minicut:last-room-id";
 
 const formatErrorMessage = (error: unknown): string =>
 	error instanceof Error
@@ -114,27 +113,6 @@ const resolveTurnIceServer = (): RTCIceServer | null => {
 	};
 };
 
-const resolveBrowserRoom = (): RoomUrlResolution | null => {
-	if (typeof window === "undefined") {
-		return null;
-	}
-
-	const resolved = resolveRoomUrlState({
-		hash: window.location.hash,
-		lastRoomId: window.localStorage.getItem(LAST_ROOM_STORAGE_KEY),
-	});
-	window.localStorage.setItem(LAST_ROOM_STORAGE_KEY, resolved.roomId);
-	if (resolved.shouldReplace) {
-		window.history.replaceState(
-			window.history.state,
-			"",
-			resolved.canonicalHash,
-		);
-	}
-
-	return resolved;
-};
-
 const resolveMediaTransferOptions = (): {
 	chunkSize?: number;
 	chunkSendDelayMs?: number;
@@ -185,10 +163,28 @@ export const VideoEditorHarnessApp = ({
 	const [crdtHarnessResetReady, setCrdtHarnessResetReady] = useState(
 		() => !isCrdtHarnessResetScheduled(),
 	);
-	const resolvedRoom = useMemo(() => resolveBrowserRoom(), []);
+	// undefined: still resolving; null: no browser room (non-DOM host).
+	const [resolvedRoom, setResolvedRoom] = useState<
+		RoomUrlResolution | null | undefined
+	>(undefined);
+	useEffect(() => {
+		let cancelled = false;
+		void resolveBrowserRoomAsync().then((room) => {
+			if (!cancelled) {
+				setResolvedRoom(room);
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
 	useEffect(() => {
-		if (crdtHarnessResetReady || !isCrdtHarnessResetScheduled()) {
+		if (
+			crdtHarnessResetReady ||
+			resolvedRoom === undefined ||
+			!isCrdtHarnessResetScheduled()
+		) {
 			return;
 		}
 
@@ -276,6 +272,10 @@ export const VideoEditorHarnessApp = ({
 		}
 		if (providedHarness) {
 			return providedHarness;
+		}
+		// Room-scoped workers must not exist before the room is resolved.
+		if (resolvedRoom === undefined) {
+			return null;
 		}
 
 		if (collaborationMode === "single" || !resolvedRoom || !signalUrl) {
@@ -384,8 +384,17 @@ export const VideoEditorHarnessApp = ({
 		return (
 			<div className="ve-shell ve-shell--status">
 				<div className="crdt-harness-notice" role="status">
-					<strong>Resetting CRDT harness storage</strong>
-					<span>IndexedDB will be reopened after the reset completes.</span>
+					{crdtHarnessResetReady ? (
+						<>
+							<strong>Resolving room</strong>
+							<span>The editor starts once the room is known.</span>
+						</>
+					) : (
+						<>
+							<strong>Resetting CRDT harness storage</strong>
+							<span>IndexedDB will be reopened after the reset completes.</span>
+						</>
+					)}
 				</div>
 				{crdtHarnessError ? (
 					<div className="crdt-harness-notice crdt-harness-notice--error" role="alert">

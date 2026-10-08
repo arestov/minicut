@@ -33,6 +33,9 @@ export const normalizeRoomId = (
 	return trimmed.toLowerCase();
 };
 
+export const hasExplicitRoomInHash = (hash: string): boolean =>
+	/^#\/?new$/i.test(hash.trim()) || normalizeRoomId(hash.trim()) !== null;
+
 export const buildRoomHash = (roomId: string): `#/${string}` => `#/${roomId}`;
 
 const defaultRoomIdGenerator = (): string => {

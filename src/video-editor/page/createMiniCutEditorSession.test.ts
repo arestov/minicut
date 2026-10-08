@@ -63,7 +63,7 @@ describe("createMiniCutEditorSession", () => {
 		const { createMiniCutEditorSession } = await import(
 			"./createMiniCutEditorSession"
 		);
-		const session = createMiniCutEditorSession();
+		const session = await createMiniCutEditorSession();
 
 		session.bootstrap();
 		session.dispatchAction("setCursor", 1.25, null);
@@ -95,7 +95,7 @@ describe("createMiniCutEditorSession", () => {
 		const { createMiniCutEditorSession } = await import(
 			"./createMiniCutEditorSession"
 		);
-		const session = createMiniCutEditorSession();
+		const session = await createMiniCutEditorSession();
 
 		session.bootstrap();
 
@@ -120,7 +120,7 @@ describe("createMiniCutEditorSession", () => {
 		const { createMiniCutEditorSession } = await import(
 			"./createMiniCutEditorSession"
 		);
-		const session = createMiniCutEditorSession();
+		const session = await createMiniCutEditorSession();
 
 		session.bootstrap();
 

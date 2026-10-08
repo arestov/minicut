@@ -9,13 +9,10 @@ import {
 	type CollaborationMode,
 } from "../app/collaborationMode";
 import { createBrowserHarnessPlatform } from "../app/platform";
-import {
-	type RoomUrlResolution,
-	resolveRoomUrlState,
-} from "../app/roomUrlState";
+import { resolveBrowserRoomAsync } from "../app/browserRoom";
+import type { RoomUrlResolution } from "../app/roomUrlState";
 import { createDefaultRtcConfig } from "../p2p/PageP2PManager";
 
-const LAST_ROOM_STORAGE_KEY = "minicut:last-room-id";
 const DEFAULT_SESSION_KEY = "minicut-local";
 
 const resolveCrdtHarnessPeerId = (): string | null => {
@@ -101,27 +98,6 @@ const resolveTurnIceServer = (): RTCIceServer | null => {
 		username,
 		credential,
 	};
-};
-
-const resolveBrowserRoom = (): RoomUrlResolution | null => {
-	if (typeof window === "undefined") {
-		return null;
-	}
-
-	const resolved = resolveRoomUrlState({
-		hash: window.location.hash,
-		lastRoomId: window.localStorage.getItem(LAST_ROOM_STORAGE_KEY),
-	});
-	window.localStorage.setItem(LAST_ROOM_STORAGE_KEY, resolved.roomId);
-	if (resolved.shouldReplace) {
-		window.history.replaceState(
-			window.history.state,
-			"",
-			resolved.canonicalHash,
-		);
-	}
-
-	return resolved;
 };
 
 const resolveMediaTransferOptions = (): {
@@ -216,8 +192,12 @@ export interface MiniCutEditorSession {
 	destroy(): void;
 }
 
-export const createMiniCutEditorSession = (): MiniCutEditorSession => {
-	const room = resolveBrowserRoom();
+/**
+ * Resolves the room first: no room-scoped worker may exist before the room is
+ * known, otherwise concurrent tabs could end up in different workers.
+ */
+export const createMiniCutEditorSession = async (): Promise<MiniCutEditorSession> => {
+	const room = await resolveBrowserRoomAsync();
 	const signalUrl = resolveSignalUrl();
 	const collaborationMode =
 		typeof window === "undefined"
