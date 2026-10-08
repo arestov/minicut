@@ -134,3 +134,38 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await firstPage.close()
 	await secondPage.close()
 })
+
+test('a page with an explicit room link stays in its own isolated room', async ({ context }) => {
+	const defaultRoomPage = await context.newPage()
+	const explicitRoomPage = await context.newPage()
+	const explicitRoomId = `explicit-room-${Date.now()}`
+
+	// An explicit link also stores its room as the "last room", so a no-hash page
+	// opened at the same moment may legitimately pick it up. Resolve the default
+	// room first; the explicit link must then stay in its own room regardless.
+	await defaultRoomPage.goto('/')
+	await expect(defaultRoomPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
+	await explicitRoomPage.goto(`/#/${explicitRoomId}`)
+	await expect(explicitRoomPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
+	await Promise.all([waitForP2PDebugState(defaultRoomPage), waitForP2PDebugState(explicitRoomPage)])
+
+	expect(new URL(explicitRoomPage.url()).hash).toBe(`#/${explicitRoomId}`)
+	expect(new URL(defaultRoomPage.url()).hash).not.toBe(`#/${explicitRoomId}`)
+
+	const defaultTitle = `DefaultRoom-${Date.now()}`
+	const explicitTitle = `ExplicitRoom-${Date.now()}`
+	await createProjectViaDebugBridge(defaultRoomPage, defaultTitle)
+	await createProjectViaDebugBridge(explicitRoomPage, explicitTitle)
+	await waitForRuntimeSettled(defaultRoomPage)
+	await waitForRuntimeSettled(explicitRoomPage)
+
+	// Each room only ever contains its own project: the other room's project
+	// would have arrived over the shared CRDT room by now if the rooms were shared.
+	await expect.poll(() => getProjectTitles(defaultRoomPage)).toContain(defaultTitle)
+	await expect.poll(() => getProjectTitles(explicitRoomPage)).toContain(explicitTitle)
+	expect(await getProjectTitles(defaultRoomPage)).not.toContain(explicitTitle)
+	expect(await getProjectTitles(explicitRoomPage)).not.toContain(defaultTitle)
+
+	await defaultRoomPage.close()
+	await explicitRoomPage.close()
+})
