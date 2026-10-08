@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { ensureFixtures } from '../../src/video-editor/media/node/testing/mediaFixtures'
 
 const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
 	const beforeCount = await page.evaluate(() => {
@@ -573,6 +574,19 @@ test('importing into an empty timeline auto-adds the first resource', async ({ p
 
 	await expect(page.getByRole('button', { name: /fixture-video.webm/i }).first()).toBeVisible()
 	await expect(page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /Embedded audio/i })).toBeVisible()
+})
+
+test('importing a silent video adds no Embedded audio clip', async ({ page }) => {
+	await page.goto('/')
+	await createProjectFromMenu(page)
+
+	const { 'video-blue-webm': silentVideo } = await ensureFixtures(['video-blue-webm'])
+	await page.getByLabel('Import media files').setInputFiles(silentVideo)
+	await waitForImportedVideoSemanticState(page, 'video-blue.webm')
+
+	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
+	await expect(timeline.getByRole('button', { name: /video-blue\.webm/i }).first()).toBeVisible()
+	await expect(timeline.getByRole('button', { name: /Embedded audio/i })).toHaveCount(0)
 })
 
 test('adding another resource appends clip start in dumpProjectState', async ({ page }) => {
