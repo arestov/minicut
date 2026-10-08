@@ -200,6 +200,7 @@ const MODEL_CASES: ModelCase[] = [
 				localMediaStatus: "effect-runtime",
 				localMediaAvailability: "effect-runtime",
 				originalAccessStatus: "effect-runtime",
+				audioStreams: "crdt",
 			},
 			rels: {
 				project: "framework-owned",

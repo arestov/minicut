@@ -38,6 +38,8 @@ export type MiniCutDktResourceSeed = {
 	contentFingerprint?: string | null;
 	fingerprintVersion?: string | null;
 	localMediaStatus?: string;
+	/** Audio streams of the source; null/absent = unknown. */
+	audioStreams?: number | null;
 };
 
 export type MiniCutDktClipSeed = {

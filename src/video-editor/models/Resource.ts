@@ -41,6 +41,7 @@ export const RESOURCE_CREATION_SHAPE = {
 		"localMediaStatus",
 		"localMediaAvailability",
 		"originalAccessStatus",
+		"audioStreams",
 		"doneBoot",
 	],
 	rels: {
@@ -163,6 +164,7 @@ export const Resource = model({
 			localMediaStatus: { sync: false, reason: "effect-runtime" },
 			localMediaAvailability: { sync: false, reason: "effect-runtime" },
 			originalAccessStatus: { sync: false, reason: "effect-runtime" },
+			audioStreams: "lww",
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 			doneBoot: { sync: false, reason: "effect-runtime" },
 		},
@@ -195,6 +197,8 @@ export const Resource = model({
 		localMediaStatus: ["input", "unknown"],
 		localMediaAvailability: ["input", "unknown"],
 		originalAccessStatus: ["input", "unknown"],
+		// Audio streams found in the source at import; null = unknown, 0 = known silent.
+		audioStreams: ["input", null],
 		// Boot stamp of the last boot restore started (or import-covered) for this resource.
 		doneBoot: ["input", null],
 		// Boot stamp while the owning project is attended and the platform can restore, else null.

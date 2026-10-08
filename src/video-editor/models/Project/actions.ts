@@ -206,7 +206,12 @@ type ResourceLike = {
 	url?: unknown;
 	mime?: unknown;
 	duration?: unknown;
+	audioStreams?: unknown;
 };
+
+/** Known audio stream count, or null when unknown. */
+const asAudioStreams = (value: unknown): number | null =>
+	typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 
 export const normalizeTrackCreationAttrs = (payload: unknown) => {
 	const value = payload as ProjectTrackCreationInput | null;
@@ -262,6 +267,7 @@ export const normalizeResourceCreationAttrs = (payload: unknown) => {
 		contentFingerprint: asString(value?.contentFingerprint),
 		fingerprintVersion: asString(value?.fingerprintVersion),
 		localMediaStatus: typeof value?.localMediaStatus === "string" ? value.localMediaStatus : "unknown",
+		audioStreams: asAudioStreams(value?.audioStreams),
 	};
 };
 
@@ -487,7 +493,10 @@ export const createEmbeddedAudioClipPayload = (
 	resource: ResourceLike,
 	appendStart?: number,
 ) => {
-	if (getResourceAttr(resource, "kind") !== "video") {
+	if (
+		getResourceAttr(resource, "kind") !== "video" ||
+		getResourceAttr(resource, "audioStreams") === 0
+	) {
 		return noop;
 	}
 	return createTimelineClipPayload(
@@ -1149,7 +1158,9 @@ export const reduceImportResourceCreate = (
 				: {}),
 			resource: { use_ref_id: "newResource" },
 			shouldAddToTimeline,
-			shouldAddEmbeddedAudio: shouldAddToTimeline && attrs.kind === "video",
+			// A source known to have no audio (0) gets no embedded audio clip; unknown (null) keeps it.
+			shouldAddEmbeddedAudio:
+				shouldAddToTimeline && attrs.kind === "video" && attrs.audioStreams !== 0,
 		},
 	};
 };
@@ -1615,7 +1626,7 @@ export const reduceAddResourceToTimeline = (
 		return { audioClip: videoClip };
 	}
 
-	if (kind !== "video") {
+	if (kind !== "video" || getResourceAttr(resolvedResource, "audioStreams") === 0) {
 		return { videoClip };
 	}
 
