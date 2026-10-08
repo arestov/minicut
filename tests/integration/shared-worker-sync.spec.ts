@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
+import { waitForP2PDebugState } from './p2pTestHelpers'
 
 /**
  * Create a project with a unique title via the debug bridge so selection
@@ -94,6 +95,8 @@ test('shared worker synchronizes project patches across browser pages', async ({
 	await Promise.all([firstPage.goto('/'), secondPage.goto('/')])
 	await expect(firstPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
 	await expect(secondPage.getByRole('heading', { name: 'minicut' })).toBeVisible()
+	// The debug bridge is installed by a dynamic import after first render.
+	await Promise.all([waitForP2PDebugState(firstPage), waitForP2PDebugState(secondPage)])
 
 	// Create a project with a unique title so the selector is unambiguous even
 	// when auto-seeding has already added "Project 1" on both pages.
