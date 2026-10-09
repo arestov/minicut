@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { reduceCreateReviewSession, reduceSelectReviewItem } from "./actions";
+import {
+	reduceCreateReviewSession,
+	reduceSelectReviewItem,
+	reduceSetReviewFilters,
+} from "./actions";
 
 describe("ReviewSession actions", () => {
 	it("opens project review sessions from active project hint", () => {
@@ -19,5 +23,16 @@ describe("ReviewSession actions", () => {
 			selectedReviewItemId: "review:1",
 		});
 	});
-});
 
+	it("sets the list status filter and ignores unknown values", () => {
+		expect(reduceSetReviewFilters({ status: "resolved" }, 5)).toEqual({
+			filters: { status: "resolved" },
+			updatedAt: 5,
+		});
+		expect(reduceSetReviewFilters("all", 6)).toEqual({
+			filters: { status: "all" },
+			updatedAt: 6,
+		});
+		expect(reduceSetReviewFilters({ status: "open" }, 7)).toBeNull();
+	});
+});

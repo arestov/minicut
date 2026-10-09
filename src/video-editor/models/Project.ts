@@ -51,6 +51,11 @@ import {
 	reduceResolveTrackOrderConflict,
 	reducePreserveCurrentTrackOrder,
 } from "./Project/actions";
+import {
+	asReviewStatusFilter,
+	reviewStatusFilterFromFilters,
+	reviewStatusMatchesFilter,
+} from "../dkt/review/reviewFilters";
 import { REVIEW_TRACK_ROLES } from "../dkt/review/reviewTrackPrimitives";
 import {
 	reduceProjectPreviewClipSources,
@@ -154,6 +159,7 @@ export const Project = model({
 			primaryVideoTrack: "lww",
 			primaryAudioTrack: "lww",
 			reviewItems: { sync: false, reason: "projection" },
+			visibleReviewItems: { sync: false, reason: "projection" },
 			reviewArchiveEntries: { sync: false, reason: "projection" },
 			reviewSessions: { sync: false, reason: "projection" },
 			activitySummaries: { sync: false, reason: "projection" },
@@ -283,6 +289,13 @@ export const Project = model({
 			] as const,
 			reduceProjectPreviewClipSources,
 		],
+		// Status filter of the review list, kept on the project's review session
+		// (the first one, like materializeCRDTConflictReview).
+		reviewStatusFilter: [
+			"comp",
+			["< @one:filters < reviewSessions"] as const,
+			reviewStatusFilterFromFilters,
+		],
 		reviewOpenItemCount: [
 			"comp",
 			["< @all:openItemCount < reviewSessions"] as const,
@@ -342,6 +355,34 @@ export const Project = model({
 				addr({
 					relPath: ["$root", "reviewItem"],
 					where: ["=", "projectId", ["local", "_node_id"]],
+					take: "all",
+				}),
+			],
+			{
+				many: true,
+				linking: "<< reviewItem << #",
+				role: "projection",
+			},
+		],
+		// Review items of this project that pass reviewStatusFilter.
+		visibleReviewItems: [
+			"comp",
+			[
+				addr({
+					relPath: ["$root", "reviewItem"],
+					where: [
+						"and",
+						["=", "projectId", ["local", "_node_id"]],
+						[
+							"fn",
+							{
+								key: "minicutReviewStatusMatchesFilter",
+								fn: reviewStatusMatchesFilter,
+							},
+							["local", "reviewStatusFilter"],
+							"status",
+						],
+					],
 					take: "all",
 				}),
 			],
@@ -892,6 +933,22 @@ export const Project = model({
 			{
 				to: ["<< primaryVideoTrack", { action: "addTextClip", sub_flow: true }],
 				fn: [["<<<<"] as const, reduceAddTextClipToVideoTrack],
+			},
+		],
+		setReviewStatusFilter: [
+			{
+				to: ["<< @one:reviewSessions", { action: "setFilters", sub_flow: true }],
+				fn: [
+					["$noop"] as const,
+					(payload: unknown, noop: unknown) => {
+						const status = asReviewStatusFilter(
+							payload && typeof payload === "object"
+								? (payload as { status?: unknown }).status
+								: payload,
+						);
+						return status ? { status } : noop;
+					},
+				],
 			},
 		],
 		materializeCRDTConflictReview: [

@@ -9,6 +9,7 @@ import {
 	reduceAttachActivitySummaryFromOutput,
 	reduceAttachReviewItemFromOutput,
 	reduceSelectReviewItem,
+	reduceSetReviewFilters,
 } from "./ReviewSession/actions";
 
 export type MiniCutReviewSessionSnapshot = {
@@ -115,6 +116,17 @@ export const ReviewSession = model({
 				["$noop", "$now"] as const,
 				(payload: unknown, noop: unknown, now: unknown) =>
 					reduceSelectReviewItem(payload, now) ?? noop,
+			],
+		},
+		setFilters: {
+			to: {
+				filters: ["filters"],
+				updatedAt: ["updatedAt"],
+			},
+			fn: [
+				["$noop", "$now"] as const,
+				(payload: unknown, noop: unknown, now: unknown) =>
+					reduceSetReviewFilters(payload, now) ?? noop,
 			],
 		},
 		attachReviewItemFromOutput: {

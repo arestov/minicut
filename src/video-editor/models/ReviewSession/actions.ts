@@ -9,6 +9,7 @@ import type {
 } from "../../dkt/review/types";
 import { activitySummaryAttrsFromSummary } from "../ActivitySummary/actions";
 import { asNowMs, reviewItemAttrsFromItem } from "../ReviewItem/actions";
+import { asReviewStatusFilter } from "../../dkt/review/reviewFilters";
 
 const asObject = <Value extends object>(value: unknown): Value | null =>
 	value && typeof value === "object" ? (value as Value) : null;
@@ -186,6 +187,20 @@ export const reduceSelectReviewItem = (payload: unknown, now?: unknown) => {
 	}
 	return {
 		selectedReviewItemId: reviewItemId,
+		updatedAt: asNowMs(now),
+	};
+};
+
+/** `{ status }` (or a bare status) -> the session's list filters. */
+export const reduceSetReviewFilters = (payload: unknown, now?: unknown) => {
+	const status = asReviewStatusFilter(
+		asObject<{ status?: unknown }>(payload)?.status ?? payload,
+	);
+	if (!status) {
+		return null;
+	}
+	return {
+		filters: { status },
 		updatedAt: asNowMs(now),
 	};
 };
