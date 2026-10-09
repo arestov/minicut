@@ -74,6 +74,8 @@ const makeTimingConflict = async (current: Fixture) => {
 	]);
 	// The list and inspector render once the item snapshot has reached the page.
 	await reviewItem(peers.a, project.a);
+	await untilPeerAttr(peers.a, project.a, "hasReviewContent", (v) => v === true);
+	await untilPeerMany(peers.a, project.a, "visibleReviewItems", (n) => n >= 1);
 	current.view.settle();
 };
 

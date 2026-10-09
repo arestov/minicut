@@ -61,6 +61,7 @@ const build = (data: Data) => {
 			reviewOpenItemCount:
 				data.openCount ?? items.filter((item) => item.status === "open").length,
 			reviewStatusFilter: data.statusFilter ?? "unresolved",
+			hasReviewContent: items.length > 0 || summaries.length > 0,
 		},
 	};
 	const relsByNodeId: Record<string, Record<string, string | string[] | null>> = {

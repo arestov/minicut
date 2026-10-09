@@ -58,6 +58,9 @@ const finish = async (
 	await untilPeerAttr(peers.a, project.a, "reviewOpenItemCount", (v) => v === 1);
 	const item = await reviewItem(peers.a, project.a);
 	expect(item.kind).toBe(kind);
+	// The entry point and the filtered list are model comps that settle after the item.
+	await untilPeerAttr(peers.a, project.a, "hasReviewContent", (v) => v === true);
+	await untilPeerMany(peers.a, project.a, "visibleReviewItems", (n) => n === 1);
 	const view = renderOnPeer(peers.a, () => <AppShell />);
 	view.settle();
 	return { peers, project, tracks, view, item };

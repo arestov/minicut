@@ -1,14 +1,11 @@
 import { Show, createEffect, on } from "solid-js";
-import { One, useAttrs, useMany } from "../../../dkt-solid-sync";
+import { One, useAttrs } from "../../../dkt-solid-sync";
 import { Button } from "../controls/Button";
 import { useReviewMode } from "./reviewModeState";
 
 const Trigger = () => {
 	const mode = useReviewMode();
-	const counts = useAttrs(["reviewOpenItemCount"]);
-	const items = useMany("reviewItems");
-	const sessions = useMany("reviewSessions");
-	const summaries = useMany("activitySummaries");
+	const counts = useAttrs(["reviewOpenItemCount", "hasReviewContent"]);
 	const openCount = () => {
 		const value = counts.reviewOpenItemCount();
 		return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -26,7 +23,7 @@ const Trigger = () => {
 	);
 
 	return (
-		<Show when={items().length > 0 || sessions().length > 0 || summaries().length > 0}>
+		<Show when={counts.hasReviewContent() === true}>
 			<Button
 				testId="review-trigger"
 				aria-label={openCount() > 0 ? `Review ${openCount()}` : "Review"}
@@ -41,7 +38,8 @@ const Trigger = () => {
 
 /**
  * Toolbar entry to review mode. It exists only while the active project has
- * review items or sessions and carries the model's open item count.
+ * review content (Project.hasReviewContent) and carries the model's open item
+ * count.
  */
 export const ReviewTrigger = () => (
 	<One rel="activeProject">

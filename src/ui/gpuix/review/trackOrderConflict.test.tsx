@@ -64,6 +64,8 @@ const setup = async (): Promise<Fixture> => {
 	]);
 	const item = await reviewItem(peers.a, project.a);
 	expect(item.kind).toBe("track_order");
+	await untilPeerAttr(peers.a, project.a, "hasReviewContent", (v) => v === true);
+	await untilPeerMany(peers.a, project.a, "visibleReviewItems", (n) => n >= 1);
 	view.settle();
 	return { peers, project, view };
 };
