@@ -6,6 +6,7 @@ import {
 	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceSelectReviewItem,
+	resolveReviewProjectIdHint,
 } from "./actions";
 import { clipTimingConflictFixture } from "../../dkt/review/testHarness/fixtures/clipTimingConflict";
 import { danglingResourceConflictFixture } from "../../dkt/review/testHarness/fixtures/danglingResourceConflict";
@@ -48,6 +49,32 @@ describe("AppRoot review actions", () => {
 		} finally {
 			await ctx.close();
 		}
+	});
+
+	it("attributes a sync batch to the project owning a touched node, not the first project", () => {
+		const projects = [
+			{ _node_id: "project:first", children_models: { tracks: [], resources: [] } },
+			{
+				_node_id: "project:second",
+				children_models: {
+					resources: [],
+					tracks: [
+						{ _node_id: "track:1", children_models: { clips: [{ _node_id: "clip:1" }] } },
+					],
+				},
+			},
+		];
+
+		expect(
+			resolveReviewProjectIdHint(syncBatchFixture, "project:first", projects),
+		).toBe("project:second");
+		expect(
+			resolveReviewProjectIdHint(
+				{ ...syncBatchFixture, touched_node_ids: ["unknown:1"] },
+				"project:first",
+				projects,
+			),
+		).toBe("project:first");
 	});
 
 	it("materializes CRDT conflict lifecycle hooks as ReviewSession item payloads", () => {

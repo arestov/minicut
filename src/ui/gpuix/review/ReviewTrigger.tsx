@@ -8,6 +8,7 @@ const Trigger = () => {
 	const counts = useAttrs(["reviewOpenItemCount"]);
 	const items = useMany("reviewItems");
 	const sessions = useMany("reviewSessions");
+	const summaries = useMany("activitySummaries");
 	const openCount = () => {
 		const value = counts.reviewOpenItemCount();
 		return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -25,7 +26,7 @@ const Trigger = () => {
 	);
 
 	return (
-		<Show when={items().length > 0 || sessions().length > 0}>
+		<Show when={items().length > 0 || sessions().length > 0 || summaries().length > 0}>
 			<Button
 				testId="review-trigger"
 				aria-label={openCount() > 0 ? `Review ${openCount()}` : "Review"}

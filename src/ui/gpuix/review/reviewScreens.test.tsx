@@ -63,9 +63,9 @@ const build = (data: Data) => {
 		root: { activeProject: "project", pioneer: "app" },
 		project: {
 			reviewItems: items.map((item) => `item:${item.id}`),
-			reviewSessions: data.hasSession || summaries.length > 0 ? ["session"] : [],
+			reviewSessions: data.hasSession ? ["session"] : [],
+			activitySummaries: summaries.map((_, index) => `summary:${index}`),
 		},
-		session: { activitySummaries: summaries.map((_, index) => `summary:${index}`) },
 	};
 	for (const item of items) {
 		attrsByNodeId[`item:${item.id}`] = { reviewItemSnapshot: item };

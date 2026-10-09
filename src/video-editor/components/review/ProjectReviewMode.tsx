@@ -279,8 +279,9 @@ const ProjectReviewContent = ({
 		sessions.find((candidate) => candidate.openItemCount > 0) ??
 		sessions[0] ??
 		null;
+	useMany("activitySummaries");
 	const activitySnapshots = useRelAttrSnapshots(
-		session?.scope ?? null,
+		projectScope,
 		"activitySummaries",
 		ACTIVITY_SUMMARY_ATTRS,
 	);

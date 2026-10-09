@@ -38,8 +38,8 @@ const renderProjectReviewMode = (item: MiniCutReviewItem) => {
 			"project:1": {
 				reviewItems: [item.id],
 				reviewSessions: ["review-session:project:1"],
+				activitySummaries: [],
 			},
-			"review-session:project:1": { activitySummaries: [] },
 		},
 		attrsByNodeId: {
 			[item.id]: attrsFromReviewItem(item),
@@ -147,6 +147,42 @@ describe("ProjectReviewMode review actions", () => {
 		]);
 	});
 
+	it("lists the project's activity summaries without any review session", async () => {
+		const runtime = createTestReactScopeRuntime({
+			rootNodeId: "root",
+			relsByNodeId: {
+				root: { activeProject: "project:1" },
+				"project:1": {
+					reviewItems: [],
+					reviewSessions: [],
+					activitySummaries: ["activity:1"],
+				},
+			},
+			attrsByNodeId: {
+				"activity:1": {
+					activitySummaryId: "activity:1",
+					projectId: "project:1",
+					batchId: "peer-b:batch:1",
+					title: "Imported changes from peer-b",
+					created: [{ type: "clip", id: "clip:1" }],
+					updated: [],
+					deleted: [],
+				},
+			},
+		});
+
+		render(
+			<ReactScopeRuntimeContext.Provider value={runtime}>
+				<ScopeContext.Provider value={runtime.getRootScope()}>
+					<ProjectReviewMode />
+				</ScopeContext.Provider>
+			</ReactScopeRuntimeContext.Provider>,
+		);
+		await userEvent.click(await screen.findByRole("button", { name: "Review" }));
+
+		expect(await screen.findByText("Imported changes from peer-b")).toBeTruthy();
+	});
+
 	it("uses review item snapshot as the review action view-model", async () => {
 		const item = materializeClipTimingReviewItem({
 			conflict: clipTimingConflictFixture,
@@ -159,8 +195,8 @@ describe("ProjectReviewMode review actions", () => {
 				"project:1": {
 					reviewItems: [item.id],
 					reviewSessions: ["review-session:project:1"],
+					activitySummaries: [],
 				},
-				"review-session:project:1": { activitySummaries: [] },
 			},
 			attrsByNodeId: {
 				[item.id]: {

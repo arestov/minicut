@@ -11,7 +11,6 @@ import {
 	reduceHandleCRDTConflictGraph,
 	reduceHandleCRDTSync,
 	reduceHandleCRDTSyncGraph,
-	reduceLinkReviewSessionActivityFromOutput,
 	reduceLinkReviewSessionItemsFromOutput,
 	resolveReviewProjectIdHint,
 	reduceSelectReviewItem,
@@ -339,16 +338,6 @@ const appProps = mergeDcl({
 							creation_shape: ACTIVITY_SUMMARY_CREATION_SHAPE,
 						},
 					],
-					reviewSession: [
-						"<< reviewSession << #",
-						{
-							method: "at_end",
-							can_create: true,
-							can_hold_refs: true,
-							creation_shape: REVIEW_SESSION_CREATION_SHAPE,
-						},
-					],
-					$output: ["$output"],
 				},
 				fn: [
 					[
@@ -373,14 +362,6 @@ const appProps = mergeDcl({
 							),
 							now,
 						) ?? noop,
-				],
-			},
-			{
-				to: ["*"],
-				fn: [
-					["$noop"] as const,
-					(payload: unknown, noop: unknown) =>
-						reduceLinkReviewSessionActivityFromOutput(payload) ?? noop,
 				],
 			},
 		],

@@ -8,6 +8,7 @@ import {
 	reduceCreateParkedIncomingVariantOnOwner,
 	reducePrepareParkedIncomingVariant,
 } from "../dkt/review/features/clipTiming/clipTimingActions";
+import { ACTIVITY_SUMMARY_CREATION_SHAPE } from "./ActivitySummary";
 import { CLIP_CREATION_SHAPE } from "./Clip";
 import {
 	MEDIA_RESTORE_API_READY,
@@ -83,6 +84,7 @@ export const PROJECT_CREATION_SHAPE = {
 		reviewArchiveEntries: REVIEW_ARCHIVE_ENTRY_CREATION_SHAPE,
 		reviewItems: REVIEW_ITEM_CREATION_SHAPE,
 		reviewSessions: REVIEW_SESSION_CREATION_SHAPE,
+		activitySummaries: ACTIVITY_SUMMARY_CREATION_SHAPE,
 	},
 } as const;
 
@@ -154,6 +156,7 @@ export const Project = model({
 			reviewItems: { sync: false, reason: "projection" },
 			reviewArchiveEntries: { sync: false, reason: "projection" },
 			reviewSessions: { sync: false, reason: "projection" },
+			activitySummaries: { sync: false, reason: "projection" },
 		},
 	},
 	attrs: {
@@ -360,6 +363,21 @@ export const Project = model({
 			{
 				many: true,
 				linking: "<< reviewArchiveEntry << #",
+				role: "projection",
+			},
+		],
+		activitySummaries: [
+			"comp",
+			[
+				addr({
+					relPath: ["$root", "activitySummary"],
+					where: ["=", "projectId", ["local", "_node_id"]],
+					take: "all",
+				}),
+			],
+			{
+				many: true,
+				linking: "<< activitySummary << #",
 				role: "projection",
 			},
 		],

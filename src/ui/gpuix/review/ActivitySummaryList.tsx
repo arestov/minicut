@@ -51,14 +51,10 @@ const ActivityRow = () => {
 
 const NoActivity = () => <MutedText testId="activity-empty">No sync activity</MutedText>;
 
-const SessionActivity = () => (
-	<Many rel="activitySummaries" item={ActivityRow} readyAttr="batchId" empty={<NoActivity />} />
-);
-
 /**
- * Sync activity of the active project: the summaries of its review sessions
+ * Sync activity of the active project: its activity summaries
  * (what a sync batch created, updated and deleted, and the conflicts it
- * opened). Rendered inside the project scope.
+ * opened), which the project model collects. Rendered inside the project scope.
  */
 export const ActivitySummaryList = () => (
 	<div
@@ -66,6 +62,6 @@ export const ActivitySummaryList = () => (
 		style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, overflowY: "scroll" }}
 	>
 		<SectionTitle>Activity</SectionTitle>
-		<Many rel="reviewSessions" item={SessionActivity} empty={<NoActivity />} />
+		<Many rel="activitySummaries" item={ActivityRow} readyAttr="batchId" empty={<NoActivity />} />
 	</div>
 );

@@ -89,7 +89,17 @@ const collectConflictNodeIds = (payload: unknown): Set<string> => {
 		updated?: unknown;
 		acknowledged?: unknown;
 		resolved?: unknown;
+		touched_node_ids?: unknown;
 	};
+	// A sync batch names the nodes it touched; the project owning one of them
+	// is the project the batch is about.
+	if (Array.isArray(value.touched_node_ids)) {
+		for (const id of value.touched_node_ids) {
+			if (typeof id === "string" && id.length > 0) {
+				ids.add(id);
+			}
+		}
+	}
 	for (const list of [
 		value.opened,
 		value.updated,
@@ -776,65 +786,25 @@ export const reduceLinkReviewSessionItemsFromOutput = (payload: unknown) => {
 	};
 };
 
+/**
+ * A sync batch becomes one ActivitySummary of the touched project (listed by
+ * Project.activitySummaries). It does not open a review session: sessions
+ * belong to conflicts.
+ */
 export const reduceHandleCRDTSyncGraph = (
 	payload: unknown,
 	projectIdHint?: unknown,
 	now?: unknown,
 ) => {
-	const session = reduceCreateReviewSessionWithActivitySummary(
+	const activitySummaries = reduceCreateReviewSessionWithActivitySummary(
 		payload,
 		projectIdHint,
 		now,
-	);
-	const activitySummaries = session?.rels?.activitySummaries;
-	if (
-		!session ||
-		!Array.isArray(activitySummaries) ||
-		activitySummaries.length === 0
-	) {
+	)?.rels?.activitySummaries;
+	if (!Array.isArray(activitySummaries) || activitySummaries.length === 0) {
 		return null;
 	}
-	const refs = activitySummaries.map((summary, index) => {
-		const activitySummaryId = summary.attrs.activitySummaryId;
-		return typeof activitySummaryId === "string"
-			? `activitySummary:${activitySummaryId}`
-			: `activitySummary:${index}`;
-	});
-	return {
-		activitySummaries: activitySummaries.map((summary, index) => ({
-			...summary,
-			hold_ref_id: refs[index],
-		})),
-		reviewSession: {
-			attrs: session.attrs,
-			hold_ref_id: "reviewSession",
-		},
-		$output: {
-			...(payload && typeof payload === "object"
-				? (payload as Record<string, unknown>)
-				: { value: payload }),
-			rels: {
-				reviewSession: { use_ref_id: "reviewSession" },
-				activitySummary: { use_ref_id: refs[0] },
-			},
-		},
-	};
-};
-
-export const reduceLinkReviewSessionActivityFromOutput = (payload: unknown) => {
-	const reviewSession = resolveOutputRelModel(payload, "reviewSession");
-	const activitySummary = resolveOutputRelModel(payload, "activitySummary");
-	const reviewSessionId = getNodeId(reviewSession);
-	if (!reviewSessionId || !activitySummary) {
-		return null;
-	}
-	return {
-		[reviewSessionId]: {
-			rels: {
-				activitySummaries: [activitySummary],
-			},
-		},
-	};
+	return { activitySummaries };
 };
 
 export const reduceSelectReviewItem = (payload: unknown) => {
