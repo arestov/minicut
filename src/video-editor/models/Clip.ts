@@ -1,5 +1,7 @@
 import { model } from "dkt/model.js";
+import { addr } from "dkt/dcl/addr.js";
 import { crdtReviewResolveTarget } from "../dkt/review/crdtReviewCommands";
+import { reviewItemOpenOnClip } from "../dkt/review/reviewFilters";
 import {
 	defaultClipTransform,
 	normalizeEffectCreationAttrs,
@@ -140,6 +142,7 @@ export const Clip = model({
 			track: { sync: false, reason: "framework-owned" },
 			project: "lww",
 			crdtConflicts: { sync: false, reason: "framework-owned" },
+			openReviewItems: { sync: false, reason: "projection" },
 		},
 	},
 	attrs: {
@@ -210,8 +213,35 @@ export const Clip = model({
 			] as const,
 			reduceClipRenderData,
 		],
+		// Open review items about this clip (drives the timeline conflict badge).
+		openReviewItemCount: [
+			"comp",
+			["< @all:_node_id < openReviewItems"] as const,
+			(ids: unknown) => (Array.isArray(ids) ? ids.length : 0),
+		],
 	},
 	rels: {
+		openReviewItems: [
+			"comp",
+			[
+				addr({
+					relPath: ["$root", "reviewItem"],
+					where: [
+						"fn",
+						{ key: "minicutReviewItemOpenOnClip", fn: reviewItemOpenOnClip },
+						["local", "_node_id"],
+						"affectedObjects",
+						"status",
+					],
+					take: "all",
+				}),
+			],
+			{
+				many: true,
+				linking: "<< reviewItem << #",
+				role: "projection",
+			},
+		],
 		effects: [
 			"input",
 			{

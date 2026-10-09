@@ -40,3 +40,21 @@ export const reviewStatusMatchesFilter = (
 			return !resolved;
 	}
 };
+
+/** True when an open review item lists the clip among its affected objects. */
+export const reviewItemOpenOnClip = (
+	clipId: unknown,
+	affectedObjects: unknown,
+	status: unknown,
+): boolean =>
+	status === "open" &&
+	typeof clipId === "string" &&
+	clipId.length > 0 &&
+	Array.isArray(affectedObjects) &&
+	affectedObjects.some(
+		(object) =>
+			object != null &&
+			typeof object === "object" &&
+			(object as { type?: unknown }).type === "clip" &&
+			(object as { id?: unknown }).id === clipId,
+	);
