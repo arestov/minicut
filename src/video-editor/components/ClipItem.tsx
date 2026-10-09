@@ -17,6 +17,7 @@ import { getAttrsShape } from "../../dkt-ui-sync/shape/autoShapes";
 import { useShape } from "../../dkt-react-sync/hooks/useShape";
 import type { ReactSyncScopeHandle } from "../../dkt-ui-sync/scope/ScopeHandle";
 import type { AnimatedScalar } from "../render/registryTypes";
+import { ClipConflictBadge } from "./ClipConflictBadge";
 import { formatPercent, formatSeconds } from "./format";
 
 const MIN_CLIP_DURATION = 0.5;
@@ -67,6 +68,7 @@ interface ClipRenderAttrs {
 	in?: unknown;
 	opacity?: AnimatedScalar;
 	color?: unknown;
+	openReviewItemCount?: unknown;
 }
 
 interface ResourceRenderAttrs {
@@ -164,6 +166,7 @@ export const ClipItem = ({
 		"in",
 		"opacity",
 		"color",
+		"openReviewItemCount",
 	]) as ClipRenderAttrs;
 	const effectScopes = useMany("effects");
 	const resourceScope = useOne("resource");
@@ -471,6 +474,7 @@ export const ClipItem = ({
 			<div className="ve-clip__title">
 				<span>{name}</span>
 				{missingMedia ? <span className="ve-clip__badge">Missing media</span> : null}
+				<ClipConflictBadge count={Number(clipAttrs.openReviewItemCount ?? 0)} />
 				{effectScopes.map((effectScope) => (
 					<ScopeContext.Provider key={effectScope._nodeId} value={effectScope}>
 						<ClipGradeBadge />

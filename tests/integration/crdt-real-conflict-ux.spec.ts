@@ -342,6 +342,44 @@ const waitForNoConflictBadgesOnBoth = async (firstPage: Page, secondPage: Page) 
 	}), { timeout: 30_000 }).toEqual({ first: 0, second: 0 })
 }
 
+// The badge follows Clip.openReviewItemCount. Asserted on the peer that
+// created the clip only: a suspected DKT bug leaves addr comps uncomputed on
+// clips replicated from the other peer (see
+// src/video-editor/dkt/review/headless/clipConflictBadge.headless.test.ts).
+const clipConflictBadge = (page: Page) =>
+	page
+		.getByRole('region', { name: 'Timeline', exact: true })
+		.locator('.ve-clip')
+		.filter({ hasText: 'fixture-video.webm' })
+		.first()
+		.locator('.clip-conflict-badge')
+
+/**
+ * The clip badge count equals the project's open review count on the toolbar
+ * (every item here is about the one clip); no badge when nothing is open.
+ */
+const waitForConflictBadgeToMatchReviewCount = async (page: Page) => {
+	const readCounts = async () => {
+		const badge = clipConflictBadge(page)
+		const badgeLabel = (await badge.count()) > 0 ? await badge.first().getAttribute('aria-label') : null
+		const reviewLabel = (await page.locator('.ve-project-review-trigger').first().getAttribute('aria-label')) ?? ''
+		return {
+			badge: badgeLabel ? Number(/^(\d+) open conflicts?$/.exec(badgeLabel)?.[1] ?? Number.NaN) : 0,
+			review: Number(/^Review (\d+)$/.exec(reviewLabel)?.[1] ?? 0),
+		}
+	}
+	await expect.poll(async () => {
+		const counts = await readCounts()
+		return counts.badge === counts.review
+	}, { timeout: 30_000 }).toBe(true)
+}
+
+const waitForConflictBadgeOnClip = async (page: Page) => {
+	const badge = clipConflictBadge(page)
+	await expect(badge).toHaveCount(1, { timeout: 30_000 })
+	await expect(badge).toHaveAttribute('aria-label', /^[1-9]\d* open conflicts?$/)
+}
+
 const waitForWorkerDumpContainsProjectResourceAndClip = async (page: Page, projectId: string, clipId: string) => {
 	let latest: unknown = null
 	await expect.poll(async () => {
@@ -486,6 +524,11 @@ test('p2p real CRDT timing conflict renders conflict UX without fake injection',
 		await expect(projectReview).toBeVisible({ timeout: 10_000 })
 		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
 		await expect(first.page.locator('.ve-clip-conflict-popover')).toHaveCount(0)
+		await waitForConflictBadgeOnClip(sourcePage)
+		// The list shows the model's filtered (unresolved) items.
+		await expect(
+			projectReview.getByRole('list', { name: 'Review items' }).getByRole('button').first(),
+		).toContainText(/clip timing · open/, { timeout: 30_000 })
 		await expectRealConflictTrace(first.page, second.page)
 		await waitForRuntimeSettled(first.page)
 
@@ -731,6 +774,7 @@ test('p2p real CRDT timing conflict keeps current from review UI on both peers',
 		const projectReview = first.page.getByRole('region', { name: 'Project review' })
 		await expect(projectReview).toBeVisible({ timeout: 10_000 })
 		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
+		await waitForConflictBadgeOnClip(sourcePage)
 		await waitForRuntimeSettled(first.page)
 
 		const openCountBefore = await readReviewOpenCount(first.page)
@@ -820,6 +864,7 @@ test('p2p real CRDT timing conflict acknowledges from review UI on both peers', 
 		const projectReview = first.page.getByRole('region', { name: 'Project review' })
 		await expect(projectReview).toBeVisible({ timeout: 10_000 })
 		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
+		await waitForConflictBadgeOnClip(sourcePage)
 		await waitForRuntimeSettled(first.page)
 
 		const openCountBefore = await readReviewOpenCount(first.page)
@@ -845,7 +890,8 @@ test('p2p real CRDT timing conflict acknowledges from review UI on both peers', 
 			waitForReviewItemStatus(second.page, conflictId, 'acknowledged'),
 		])
 		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
-		await waitForNoConflictBadgesOnBoth(first.page, second.page)
+		// Acknowledging one item of a group leaves the others open on the clip.
+		await waitForConflictBadgeToMatchReviewCount(sourcePage)
 	} catch (error) {
 		const artifactPath = await writeP2PDebugArtifacts('real-crdt-acknowledge-timeout', first.page, second.page)
 		throw new Error(`Timed out waiting for real CRDT acknowledge proof. Debug artifact: ${artifactPath}`, { cause: error })

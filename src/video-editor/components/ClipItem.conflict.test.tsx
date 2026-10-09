@@ -161,11 +161,28 @@ describe("ClipItem conflict UX", () => {
 		expect(commitCall?.[2]).toEqual(previewCall?.[2]);
 	});
 
-	it("does not expose the legacy clip-level conflict popover from CRDT meta", () => {
+	it("shows a conflict badge from the clip's open review item count, not from CRDT meta", () => {
 		const clipScope = { kind: "scope" as const, _nodeId: "clip:conflict-meta" };
 		seedClip(clipScope, {
-			"$meta$aggregates$crdt$clipTiming$open_conflicts_count": 1,
+			"$meta$aggregates$crdt$clipTiming$open_conflicts_count": 3,
 			"$meta$aggregates$crdt$clipTiming$last_conflict_id": "conflict:duration",
+			openReviewItemCount: 1,
+		});
+
+		renderClipItem(clipScope);
+
+		expect(
+			screen.getByRole("button", { name: "1 open conflict" }),
+		).toBeInTheDocument();
+		expect(document.querySelectorAll(".clip-conflict-badge")).toHaveLength(1);
+		expect(document.querySelector(".ve-clip-conflict-popover")).toBeNull();
+	});
+
+	it("shows no conflict badge without open review items, whatever the CRDT meta says", () => {
+		const clipScope = { kind: "scope" as const, _nodeId: "clip:no-review" };
+		seedClip(clipScope, {
+			"$meta$aggregates$crdt$clipTiming$open_conflicts_count": 1,
+			openReviewItemCount: 0,
 		});
 
 		renderClipItem(clipScope);
@@ -173,6 +190,6 @@ describe("ClipItem conflict UX", () => {
 		expect(
 			screen.queryByRole("button", { name: /open conflict/i }),
 		).not.toBeInTheDocument();
-		expect(document.querySelector(".ve-clip-conflict-popover")).toBeNull();
+		expect(document.querySelector(".clip-conflict-badge")).toBeNull();
 	});
 });

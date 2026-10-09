@@ -4,56 +4,18 @@ import { describe, expect, it, vi } from "vitest";
 import { ClipConflictBadge } from "./ClipConflictBadge";
 
 describe("ClipConflictBadge", () => {
-	it("hides when generated CRDT meta has no open conflicts", () => {
-		const { container } = render(
-			<ClipConflictBadge model={{ states: {} }} timing={true} />,
-		);
+	it("hides when the clip has no open review items", () => {
+		const { container } = render(<ClipConflictBadge count={0} />);
 
 		expect(container).toBeEmptyDOMElement();
 	});
 
-	it("opens Review UI for timing conflicts without materialize_conflicts", async () => {
-		const dispatch = vi.fn();
+	it("shows the open review item count and opens review on click", async () => {
 		const onOpen = vi.fn();
-		render(
-			<ClipConflictBadge
-				model={{
-					states: {
-						"$meta$aggregates$crdt$clipTiming$open_conflicts_count": 2,
-					},
-					dispatch,
-				}}
-				timing={true}
-				onOpen={onOpen}
-			/>,
-		);
+		render(<ClipConflictBadge count={2} onOpen={onOpen} />);
 
-		await userEvent.click(screen.getByRole("button", { name: /2 open conflicts/i }));
+		await userEvent.click(screen.getByRole("button", { name: "2 open conflicts" }));
 
-		expect(dispatch).not.toHaveBeenCalled();
-		expect(onOpen).toHaveBeenCalledOnce();
-	});
-
-	it("opens Review UI for structural and model conflicts without DKT internals", async () => {
-		const dispatch = vi.fn();
-		const onOpen = vi.fn();
-		render(
-			<ClipConflictBadge
-				model={{
-					states: {
-						"$meta$aggregates$crdt$timelineMembership$open_conflicts_count": 1,
-						"$meta$model$crdt$open_conflicts_count": 3,
-					},
-					dispatch,
-				}}
-				scope="all"
-				onOpen={onOpen}
-			/>,
-		);
-
-		await userEvent.click(screen.getByRole("button", { name: /3 open conflicts/i }));
-
-		expect(dispatch).not.toHaveBeenCalled();
 		expect(onOpen).toHaveBeenCalledOnce();
 	});
 });
