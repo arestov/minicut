@@ -7,6 +7,7 @@ import {
 } from "../../../video-editor/models/sessionZoom";
 import { Button } from "../controls/Button";
 import { useHostServices } from "../host/hostServices";
+import { ReviewTrigger } from "../review/ReviewTrigger";
 import { colors, metrics } from "../theme";
 
 const ProjectTitle = () => {
@@ -56,6 +57,7 @@ export const Toolbar = () => {
 				<ProjectTitle />
 			</One>
 			<div style={{ flexGrow: 1 }} />
+			<ReviewTrigger />
 			<Show when={host}>
 				{(services) => (
 					<Button

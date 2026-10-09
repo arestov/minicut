@@ -1,9 +1,11 @@
-import type { JSX } from "solid-js";
+import { type JSX, Show } from "solid-js";
 import { useAttrs } from "../../dkt-solid-sync";
 import { Panel } from "./controls/Panel";
 import { PreviewPanel } from "./preview/PreviewPanel";
 import { formatTimecode } from "./preview/syntheticFrameSource";
 import { ExportProgress, ImportProgress } from "./tasks/TaskProgress";
+import { ReviewMode } from "./review/ReviewMode";
+import { ReviewModeProvider, useReviewMode } from "./review/reviewModeState";
 import { colors, metrics } from "./theme";
 import { Toolbar } from "./toolbar/Toolbar";
 
@@ -49,6 +51,24 @@ const StatusBar = () => {
 	);
 };
 
+/** Preview and inspector, or review mode in their place while it is open. */
+const MainArea = (props: { inspector?: JSX.Element }) => {
+	const review = useReviewMode();
+	return (
+		<Show
+			when={review.isOpen()}
+			fallback={
+				<>
+					<PreviewPanel />
+					{props.inspector}
+				</>
+			}
+		>
+			<ReviewMode />
+		</Show>
+	);
+};
+
 /**
  * Window layout: toolbar on top, sidebar and preview in the middle, timeline
  * at the bottom, status bar last. The sidebar and timeline are slots filled by
@@ -59,6 +79,7 @@ export const AppShell = (props: {
 	timeline?: JSX.Element;
 	inspector?: JSX.Element;
 }) => (
+	<ReviewModeProvider>
 	<div
 		testId="app-shell"
 		style={{
@@ -106,8 +127,7 @@ export const AppShell = (props: {
 						</Panel>
 					)}
 				</div>
-				<PreviewPanel />
-				{props.inspector}
+				<MainArea inspector={props.inspector} />
 			</div>
 			<div
 				testId="timeline-slot"
@@ -127,4 +147,5 @@ export const AppShell = (props: {
 		</div>
 		<StatusBar />
 	</div>
+	</ReviewModeProvider>
 );
