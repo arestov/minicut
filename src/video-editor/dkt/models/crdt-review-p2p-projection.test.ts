@@ -488,6 +488,14 @@ describe("MiniCut p2p review projection", () => {
 			profileVersion: 1,
 		});
 		try {
+			// B received A's project bootstrap history; only the clip batch below is
+			// the natural sync under test.
+			await pair.waitForConvergence();
+			const bootstrapSummaryIds = new Set(
+				(await inspectReviewGraph(pair.b.ctx)).rootActivitySummaries.map(
+					(summary) => summary.nodeId,
+				),
+			);
 			await pair.a.dispatch(pair.a.videoTrack, "addClip", {
 				name: "sync-activity.webm",
 				mediaKind: "video",
@@ -497,9 +505,13 @@ describe("MiniCut p2p review projection", () => {
 			});
 			await pair.waitForConvergence();
 
+			const newSummaries = (graph: Awaited<ReturnType<typeof inspectReviewGraph>>) =>
+				graph.rootActivitySummaries.filter(
+					(summary) => !bootstrapSummaryIds.has(summary.nodeId),
+				);
 			let graph = await inspectReviewGraph(pair.b.ctx);
 			const deadline = Date.now() + 5_000;
-			while (graph.rootActivitySummaries.length === 0 && Date.now() <= deadline) {
+			while (newSummaries(graph).length === 0 && Date.now() <= deadline) {
 				await pair.b.ctx.computed();
 				graph = await inspectReviewGraph(pair.b.ctx);
 				await new Promise((resolve) => setTimeout(resolve, 25));
@@ -509,7 +521,7 @@ describe("MiniCut p2p review projection", () => {
 			expect(graph.reviewSessions.flatMap((session) => session.items)).toHaveLength(
 				0,
 			);
-			expect(graph.rootActivitySummaries).toEqual([
+			expect(newSummaries(graph)).toEqual([
 				expect.objectContaining({
 					modelName: "activity_summary",
 					attrs: expect.objectContaining({
@@ -519,7 +531,7 @@ describe("MiniCut p2p review projection", () => {
 					}),
 				}),
 			]);
-			expect(graph.rootActivitySummaries[0]?.attrs.created).toEqual(
+			expect(newSummaries(graph)[0]?.attrs.created).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
 						type: expect.any(String),
