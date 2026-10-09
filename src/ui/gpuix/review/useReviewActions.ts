@@ -2,6 +2,7 @@ import { createOneFor, useRootScope, useScopeRuntime } from "../../../dkt-solid-
 import {
 	REVIEW_APP_MODEL_REL,
 	reviewActionScopeForItem,
+	warnReviewAppModelMissing,
 } from "../../../video-editor/components/review/reviewActionRouting";
 import type { MiniCutReviewItem } from "../../../video-editor/dkt/review/types";
 
@@ -26,7 +27,10 @@ export const useReviewActions = () => {
 		},
 		acknowledge(item: MiniCutReviewItem) {
 			const scope = appModel();
-			if (!scope) return;
+			if (!scope) {
+				warnReviewAppModelMissing("acknowledgeReviewItem");
+				return;
+			}
 			runtime.getDispatch(scope)("acknowledgeReviewItem", {
 				conflict_id: item.conflictId,
 				review_item_id: item.id,

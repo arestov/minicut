@@ -51,6 +51,8 @@ type Data = {
 	summaries?: Array<Record<string, unknown>>;
 	openCount?: number;
 	hasSession?: boolean;
+	/** Without it the root has no app model rel (pioneer). */
+	noAppModel?: boolean;
 };
 
 const build = (data: Data) => {
@@ -65,7 +67,9 @@ const build = (data: Data) => {
 		},
 	};
 	const relsByNodeId: Record<string, Record<string, string | string[] | null>> = {
-		root: { activeProject: "project", pioneer: "app" },
+		root: data.noAppModel
+			? { activeProject: "project" }
+			: { activeProject: "project", pioneer: "app" },
 		project: {
 			reviewItems: items.map((item) => `item:${item.id}`),
 			visibleReviewItems: (data.visibleIds ?? items.map((item) => item.id)).map(
@@ -255,6 +259,22 @@ describe("review actions", () => {
 			conflict_id: "conflict:timing",
 			review_item_id: "review:timing",
 		});
+	});
+
+	test("acknowledging without an app model scope warns and sends nothing", () => {
+		const runtime = build({ items: [clipTimingItem()], noAppModel: true });
+		const current = show(runtime);
+		const warnings: unknown[] = [];
+		const warn = console.warn;
+		console.warn = (...args: unknown[]) => warnings.push(args[0]);
+		try {
+			click(current, "review-acknowledge");
+		} finally {
+			console.warn = warn;
+		}
+
+		expect(runtime.dispatchCalls).toEqual([]);
+		expect(String(warnings[0])).toContain("acknowledgeReviewItem not sent");
 	});
 
 	test("actions that no feature inspector owns are offered as plain buttons", () => {

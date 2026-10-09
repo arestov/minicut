@@ -20,6 +20,7 @@ import {
 import {
 	REVIEW_APP_MODEL_REL,
 	reviewActionScopeForItem,
+	warnReviewAppModelMissing,
 } from "./reviewActionRouting";
 import { ReviewPanel } from "./ReviewPanel";
 
@@ -355,7 +356,10 @@ const ProjectReviewContent = ({
 						onSelectReviewItem={(item) => setSelectedItemId(item.id)}
 						onClose={() => setIsOpen(false)}
 						onAcknowledgeReviewItem={(item) => {
-							if (!appModelScope) return;
+							if (!appModelScope) {
+								warnReviewAppModelMissing("acknowledgeReviewItem");
+								return;
+							}
 							runtime.dispatch(
 								"acknowledgeReviewItem",
 								{

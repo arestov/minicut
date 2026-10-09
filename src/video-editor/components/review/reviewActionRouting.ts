@@ -19,3 +19,10 @@ export const reviewActionScopeForItem = (
  * scope through this rel; the session root has no handler for them.
  */
 export const REVIEW_APP_MODEL_REL = "pioneer";
+
+/** Acknowledge cannot be sent before the app model scope is loaded; say so. */
+export const warnReviewAppModelMissing = (actionName: string) => {
+	console.warn(
+		`[review] ${actionName} not sent: the app model (root rel "${REVIEW_APP_MODEL_REL}") is not loaded`,
+	);
+};

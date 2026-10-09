@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ReactScopeRuntimeContext } from "../../../dkt-react-sync/context/ReactScopeRuntimeContext";
 import { ScopeContext } from "../../../dkt-react-sync/context/ScopeContext";
 import { createTestReactScopeRuntime } from "../../../dkt-ui-sync/test/createTestReactScopeRuntime";
@@ -210,6 +210,41 @@ describe("ProjectReviewMode review actions", () => {
 				payload: { status: "resolved" },
 			}),
 		]);
+	});
+
+	it("warns and sends nothing when Acknowledge has no app model scope", async () => {
+		const item = materializeClipTimingReviewItem({
+			conflict: clipTimingConflictFixture,
+			projectId: "project:1",
+		});
+		const runtime = createTestReactScopeRuntime({
+			rootNodeId: "root",
+			relsByNodeId: {
+				root: { activeProject: "project:1" },
+				"project:1": { reviewItems: [item.id], reviewSessions: [], activitySummaries: [] },
+			},
+			attrsByNodeId: {
+				"project:1": { hasReviewContent: true },
+				[item.id]: attrsFromReviewItem(item),
+			},
+		});
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			render(
+				<ReactScopeRuntimeContext.Provider value={runtime}>
+					<ScopeContext.Provider value={runtime.getRootScope()}>
+						<ProjectReviewMode />
+					</ScopeContext.Provider>
+				</ReactScopeRuntimeContext.Provider>,
+			);
+			await userEvent.click(await screen.findByRole("button", { name: /^Review/ }));
+			await userEvent.click(await screen.findByRole("button", { name: "Acknowledge" }));
+
+			expect(runtime.dispatchCalls).toEqual([]);
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining("acknowledgeReviewItem not sent"));
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it("shows no review entry while the model says the project has no review content", () => {
