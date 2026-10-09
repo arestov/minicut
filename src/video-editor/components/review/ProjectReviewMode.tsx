@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ScopeContext } from "../../../dkt-react-sync/context/ScopeContext";
 import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
+import { useAttrs } from "../../../dkt-react-sync/hooks/useAttrs";
 import { useMany } from "../../../dkt-react-sync/hooks/useMany";
 import { useOne } from "../../../dkt-react-sync/hooks/useOne";
 import { useReactScopeRuntime } from "../../../dkt-react-sync/hooks/useReactScopeRuntime";
@@ -12,6 +13,10 @@ import type {
 	MiniCutReviewKind,
 	MiniCutReviewObject,
 } from "../../dkt/review/types";
+import {
+	DEFAULT_REVIEW_STATUS_FILTER,
+	asReviewStatusFilter,
+} from "../../dkt/review/reviewFilters";
 import {
 	REVIEW_APP_MODEL_REL,
 	reviewActionScopeForItem,
@@ -261,11 +266,25 @@ const ProjectReviewContent = ({
 		"reviewSessions",
 		REVIEW_SESSION_ATTRS,
 	);
+	// useMany declares the rel in the scope shape, so the runtime syncs it.
+	useMany("visibleReviewItems");
+	const listItemSnapshots = useRelAttrSnapshots(
+		projectScope,
+		"visibleReviewItems",
+		REVIEW_ITEM_ATTRS,
+	);
+	const { reviewStatusFilter } = useAttrs(["reviewStatusFilter"]);
+	const statusFilter =
+		asReviewStatusFilter(reviewStatusFilter) ?? DEFAULT_REVIEW_STATUS_FILTER;
 	const [isOpen, setIsOpen] = useState(false);
 	const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 	const items = useMemo(
 		() => itemSnapshots.map(toReviewItem),
 		[itemSnapshots],
+	);
+	const listItems = useMemo(
+		() => listItemSnapshots.map(toReviewItem),
+		[listItemSnapshots],
 	);
 	const sessions = useMemo(
 		() => sessionSnapshots.map(toReviewSession),
@@ -327,6 +346,15 @@ const ProjectReviewContent = ({
 				<div className="ve-project-review-drawer">
 					<ReviewPanel
 						items={items}
+						listItems={listItems}
+						statusFilter={statusFilter}
+						onStatusFilterChange={(status) =>
+							runtime.dispatch(
+								"setReviewStatusFilter",
+								{ status },
+								projectScope,
+							)
+						}
 						activitySummaries={activitySummaries}
 						selectedItemId={selectedItemId ?? session?.selectedReviewItemId}
 						onSelectReviewItem={(item) => setSelectedItemId(item.id)}

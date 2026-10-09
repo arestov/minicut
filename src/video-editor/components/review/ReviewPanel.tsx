@@ -1,4 +1,8 @@
 import { useMemo } from "react";
+import {
+	REVIEW_STATUS_FILTERS,
+	type ReviewStatusFilter,
+} from "../../dkt/review/reviewFilters";
 import type {
 	MiniCutActivitySummary,
 	MiniCutReviewItem,
@@ -7,8 +11,19 @@ import { ActivitySummaryPanel } from "./ActivitySummaryPanel";
 import { ConflictInspectorPanel } from "./ConflictInspectorPanel";
 import { ReviewItemList } from "./ReviewItemList";
 
+const STATUS_FILTER_LABELS: Record<ReviewStatusFilter, string> = {
+	unresolved: "Unresolved",
+	resolved: "Resolved",
+	all: "All",
+};
+
 type ReviewPanelProps = {
+	/** Every review item of the project (counts, selection, inspector). */
 	items: MiniCutReviewItem[];
+	/** The items the list shows: the model's filtered list (defaults to items). */
+	listItems?: MiniCutReviewItem[];
+	statusFilter?: ReviewStatusFilter;
+	onStatusFilterChange?: (status: ReviewStatusFilter) => void;
 	activitySummaries?: MiniCutActivitySummary[];
 	selectedItemId?: string | null;
 	onSelectReviewItem?: (item: MiniCutReviewItem) => void;
@@ -23,6 +38,9 @@ type ReviewPanelProps = {
 
 export const ReviewPanel = ({
 	items,
+	listItems = items,
+	statusFilter,
+	onStatusFilterChange,
 	activitySummaries = [],
 	selectedItemId,
 	onSelectReviewItem,
@@ -45,10 +63,28 @@ export const ReviewPanel = ({
 						{openCount} open / {items.length} total
 					</span>
 				</div>
+				{statusFilter ? (
+					<div
+						className="ve-review-panel__filter"
+						role="group"
+						aria-label="Review status filter"
+					>
+						{REVIEW_STATUS_FILTERS.map((status) => (
+							<button
+								key={status}
+								type="button"
+								aria-pressed={status === statusFilter}
+								onClick={() => onStatusFilterChange?.(status)}
+							>
+								{STATUS_FILTER_LABELS[status]}
+							</button>
+						))}
+					</div>
+				) : null}
 			</header>
 			<div className="ve-review-panel__body">
 				<ReviewItemList
-					items={items}
+					items={listItems}
 					selectedItemId={selectedItem?.id ?? null}
 					onSelectReviewItem={onSelectReviewItem}
 				/>

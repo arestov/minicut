@@ -2358,6 +2358,22 @@ button:disabled {
 	font-size: 12px;
 }
 
+.ve-review-panel__filter {
+	display: flex;
+	gap: 4px;
+}
+
+.ve-review-panel__filter button {
+	padding: 4px 10px;
+	border-radius: 6px;
+	font-size: 12px;
+}
+
+.ve-review-panel__filter button[aria-pressed="true"] {
+	border-color: #2563eb;
+	background: #eff6ff;
+}
+
 .ve-review-panel__body {
 	display: grid;
 	grid-template-columns: 230px minmax(0, 1fr) 220px;

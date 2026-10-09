@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ReactScopeRuntimeContext } from "../../../dkt-react-sync/context/ReactScopeRuntimeContext";
@@ -143,6 +143,70 @@ describe("ProjectReviewMode review actions", () => {
 					conflict_id: "conflict:clip-timing",
 					review_item_id: "review:conflict:clip-timing",
 				},
+			}),
+		]);
+	});
+
+	it("lists the model's filtered items and sends filter changes to the project", async () => {
+		const open = materializeClipTimingReviewItem({
+			conflict: clipTimingConflictFixture,
+			projectId: "project:1",
+		});
+		const resolved = {
+			...open,
+			id: "review:resolved",
+			conflictId: "conflict:resolved",
+			title: "Resolved timing",
+			status: "resolved" as const,
+		};
+		const runtime = createTestReactScopeRuntime({
+			rootNodeId: "root",
+			relsByNodeId: {
+				root: { activeProject: "project:1", pioneer: "app:1" },
+				"project:1": {
+					reviewItems: [open.id, resolved.id],
+					visibleReviewItems: [open.id],
+					reviewSessions: [],
+					activitySummaries: [],
+				},
+			},
+			attrsByNodeId: {
+				"project:1": { reviewStatusFilter: "unresolved" },
+				[open.id]: attrsFromReviewItem(open),
+				[resolved.id]: attrsFromReviewItem(resolved),
+			},
+		});
+		render(
+			<ReactScopeRuntimeContext.Provider value={runtime}>
+				<ScopeContext.Provider value={runtime.getRootScope()}>
+					<ProjectReviewMode />
+				</ScopeContext.Provider>
+			</ReactScopeRuntimeContext.Provider>,
+		);
+		await screen.findByRole("region", { name: "Project review" });
+
+		const list = screen.getByRole("list", { name: "Review items" });
+		expect(within(list).getAllByRole("button").map((button) => button.textContent)).toEqual([
+			`${open.title}clip timing · open`,
+		]);
+		const filter = screen.getByRole("group", { name: "Review status filter" });
+		expect(
+			within(filter)
+				.getAllByRole("button")
+				.map((button) => [button.textContent, button.getAttribute("aria-pressed")]),
+		).toEqual([
+			["Unresolved", "true"],
+			["Resolved", "false"],
+			["All", "false"],
+		]);
+
+		await userEvent.click(within(filter).getByRole("button", { name: "Resolved" }));
+
+		expect(runtime.dispatchCalls).toEqual([
+			expect.objectContaining({
+				actionName: "setReviewStatusFilter",
+				scopeNodeId: "project:1",
+				payload: { status: "resolved" },
 			}),
 		]);
 	});
