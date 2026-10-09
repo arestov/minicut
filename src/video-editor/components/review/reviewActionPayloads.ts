@@ -50,15 +50,17 @@ const assertTimingVariant = (
 	if (!isRecord(variant)) {
 		throw new Error(`Review item ${item.id} has no clip timing variant`);
 	}
-	for (const field of ["start", "in", "duration"] as const) {
-		if (typeof variant[field] !== "number" || !Number.isFinite(variant[field])) {
+	const requiredSeconds = (field: "start" | "in" | "duration"): number => {
+		const value = variant[field];
+		if (typeof value !== "number" || !Number.isFinite(value)) {
 			throw new Error(`Review item ${item.id} has invalid ${field} timing`);
 		}
-	}
+		return value;
+	};
 	return {
-		start: variant.start,
-		in: variant.in,
-		duration: variant.duration,
+		start: requiredSeconds("start"),
+		in: requiredSeconds("in"),
+		duration: requiredSeconds("duration"),
 		fadeIn:
 			typeof variant.fadeIn === "number" && Number.isFinite(variant.fadeIn)
 				? variant.fadeIn
