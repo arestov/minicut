@@ -253,7 +253,7 @@ describe("review mode: a real clip timing conflict", () => {
 	test("keeps the current timing on both peers", async () => {
 		const current = (fixture = await setup());
 		await makeTimingConflict(current);
-		const { view } = current;
+		const { view, peers } = current;
 		const { current: kept } = await previewTimings(current);
 
 		view.click("timing-choose-current");
@@ -261,6 +261,15 @@ describe("review mode: a real clip timing conflict", () => {
 
 		await expectClipDurationOnBoth(current, kept.duration);
 		expect(view.texts()).toContain("Resolution result");
+
+		// The conflict's resolution reaches the review item on both peers.
+		for (const side of ["a", "b"] as const) {
+			const [item] = await untilPeerMany(peers[side], current.project[side], "reviewItems", (n) => n >= 1);
+			await untilPeerAttr(peers[side], item, "resolution", (v) => v != null);
+		}
+		view.settle();
+		expect(view.texts()).not.toContain("Resolution details unavailable");
+		expect(view.texts()).toContain("Applied timing");
 	}, TIMEOUT);
 
 	test("applies the edited final timing: the field is typed into and the custom variant is sent", async () => {

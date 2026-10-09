@@ -721,6 +721,7 @@ export const reduceHandleCRDTConflictGraph = (
 		title: item.attrs.title,
 		affectedObjects: item.attrs.affectedObjects,
 		preview: item.attrs.preview,
+		resolution: item.attrs.resolution,
 		availableActions: item.attrs.availableActions,
 		actionTargets: item.attrs.actionTargets,
 		source: item.attrs.source,

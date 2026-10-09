@@ -115,6 +115,35 @@ describe("AppRoot review actions", () => {
 		});
 	});
 
+	it("carries the conflict resolution into existing review items on lifecycle updates", () => {
+		const resolution = {
+			decision_id: "decision:1",
+			domain_result: { variant: "current" },
+		};
+		const result = reduceHandleCRDTConflictGraph(
+			{
+				opened: [],
+				updated: [],
+				acknowledged: [],
+				resolved: [
+					{ ...clipTimingConflictFixture, status: "resolved", resolution },
+				],
+			},
+			"project:1",
+			[],
+			[],
+			["review:conflict:clip-timing"],
+		);
+
+		expect(result?.updateReviewItems).toEqual([
+			expect.objectContaining({
+				id: "review:conflict:clip-timing",
+				status: "resolved",
+				resolution,
+			}),
+		]);
+	});
+
 	it("enriches bare MVR clip timing conflicts from clip graph state", () => {
 		const result = reduceHandleCRDTConflictGraph(
 			{
