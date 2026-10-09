@@ -1,4 +1,3 @@
-import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { createInMemoryCrdtRelay } from "../crdt/createInMemoryCrdtRelay";
 import { createTestWorkerCrdtTransport } from "../crdt/createTestWorkerCrdtTransport";
 import { bootDktModels, type DktTestContext } from "../testingInit";
@@ -79,25 +78,11 @@ const bindPeerProject = async (ctx: DktTestContext, project: RuntimeModel) => {
 	});
 };
 
-const readDurableOrLiveSnapshot = async (ctx: DktTestContext): Promise<unknown> => {
-	const request = (
-		ctx.storagePackage?.dktStorage as {
-			getSnapshot?: DktStorageRequest<unknown>;
-		}
-	)?.getSnapshot;
-	const durableSnapshot = request
-		? await runDktStorageRequest(request)
-		: null;
-	return durableSnapshot ?? await toReinitableData(ctx.runtime);
-};
-
 const bootPeerContext = async (
 	peerId: PeerId,
 	transport: DktCrdtTransport,
-	snapshot?: unknown,
 ): Promise<DktTestContext> =>
 	bootDktModels({
-		reinitFromSnapshot: snapshot,
 		crdt: {
 			enabled: true,
 			peerId,
@@ -177,13 +162,19 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		});
 	});
 	await waitForRuntimeIdle(ctxA);
+	// Peer B joins like a real second device: it starts with an empty graph and
+	// receives A's CRDT history (outgoing batches) through the relay. It never
+	// gets a graph snapshot without CRDT history.
+	(ctxA.runtime.crdt_runtime as { flushTransportOutbox?: () => unknown } | null)
+		?.flushTransportOutbox?.();
 	const projectA = (await ctxA.queryRel(ctxA.sessionRoot, "activeProject"))[0];
 	if (!projectA) throw new Error("Expected source project");
-	const ctxB = await bootPeerContext(
-		"B",
-		transportB,
-		await readDurableOrLiveSnapshot(ctxA),
-	);
+	const ctxB = await bootPeerContext("B", transportB);
+	transportB.requestSync("crdt-worker-pair-bootstrap");
+	await (
+		ctxB.runtime.crdt_runtime as { transport_receive_tail?: Promise<unknown> } | null
+	)?.transport_receive_tail;
+	await waitForRuntimeIdle(ctxB);
 	await bindPeerProject(ctxB, await findSharedProject(ctxB, String(projectA._node_id)));
 	const a = await wrapPeer("A", ctxA);
 	const b = await wrapPeer("B", ctxB);
