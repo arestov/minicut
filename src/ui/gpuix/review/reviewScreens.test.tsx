@@ -45,6 +45,9 @@ const clipTimingItem = (
 
 type Data = {
 	items?: MiniCutReviewItem[];
+	/** The model's filtered list (Project.visibleReviewItems); all items by default. */
+	visibleIds?: string[];
+	statusFilter?: string;
 	summaries?: Array<Record<string, unknown>>;
 	openCount?: number;
 	hasSession?: boolean;
@@ -57,12 +60,16 @@ const build = (data: Data) => {
 		project: {
 			reviewOpenItemCount:
 				data.openCount ?? items.filter((item) => item.status === "open").length,
+			reviewStatusFilter: data.statusFilter ?? "unresolved",
 		},
 	};
 	const relsByNodeId: Record<string, Record<string, string | string[] | null>> = {
 		root: { activeProject: "project", pioneer: "app" },
 		project: {
 			reviewItems: items.map((item) => `item:${item.id}`),
+			visibleReviewItems: (data.visibleIds ?? items.map((item) => item.id)).map(
+				(id) => `item:${id}`,
+			),
 			reviewSessions: data.hasSession ? ["session"] : [],
 			activitySummaries: summaries.map((_, index) => `summary:${index}`),
 		},
@@ -138,6 +145,47 @@ describe("review list and selection", () => {
 				"clip timing · resolved",
 			]),
 		);
+	});
+
+	test("lists the model's filtered items and sends filter changes to the project", () => {
+		const runtime = build({
+			items: [
+				clipTimingItem(),
+				clipTimingItem({
+					id: "review:done",
+					conflictId: "c:done",
+					title: "Resolved one",
+					status: "resolved",
+				}),
+			],
+			visibleIds: ["review:timing"],
+			statusFilter: "unresolved",
+		});
+		const current = show(runtime);
+
+		expect(current.texts()).toContain("1 open / 2 total");
+		expect(current.texts()).toContain("clip timing · open");
+		expect(current.texts()).not.toContain("clip timing · resolved");
+		const pressed = (value: string) =>
+			current.renderer
+				.findByType("div")
+				.find((candidate) => candidate.testId === `review-filter-${value}`)
+				?.customProps?.["aria-selected"];
+		expect([pressed("unresolved"), pressed("resolved"), pressed("all")]).toEqual([
+			true,
+			false,
+			false,
+		]);
+
+		click(current, "review-filter-resolved");
+		click(current, "review-filter-all");
+
+		expect(
+			runtime.dispatchCalls.map((call) => [call.actionName, call.scopeNodeId, call.payload]),
+		).toEqual([
+			["setReviewStatusFilter", "project", { status: "resolved" }],
+			["setReviewStatusFilter", "project", { status: "all" }],
+		]);
 	});
 
 	test("selecting another row shows that item in the inspector", () => {

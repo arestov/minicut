@@ -3,14 +3,21 @@ import {
 	Many,
 	One,
 	ScopeContext,
+	useActions,
 	useAttrs,
 	useMany,
 	useScope,
 } from "../../../dkt-solid-sync";
 import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
+import {
+	DEFAULT_REVIEW_STATUS_FILTER,
+	asReviewStatusFilter,
+	type ReviewStatusFilter,
+} from "../../../video-editor/dkt/review/reviewFilters";
 import type { MiniCutReviewItem } from "../../../video-editor/dkt/review/types";
 import { Button } from "../controls/Button";
 import { Panel } from "../controls/Panel";
+import { Segmented } from "../controls/Segmented";
 import { colors, metrics } from "../theme";
 import { ActivitySummaryList } from "./ActivitySummaryList";
 import { ConflictInspector } from "./ConflictInspector";
@@ -18,6 +25,12 @@ import { MutedText } from "./ReviewParts";
 import { useReviewMode } from "./reviewModeState";
 
 const LIST_WIDTH = 240;
+
+const STATUS_FILTER_OPTIONS: ReadonlyArray<{ value: ReviewStatusFilter; label: string }> = [
+	{ value: "unresolved", label: "Unresolved" },
+	{ value: "resolved", label: "Resolved" },
+	{ value: "all", label: "All" },
+];
 const ACTIVITY_WIDTH = 240;
 
 const ReviewItemRow = () => {
@@ -61,7 +74,10 @@ const ReviewItemRow = () => {
 
 const ReviewBody = () => {
 	const mode = useReviewMode();
-	const counts = useAttrs(["reviewOpenItemCount"]);
+	const counts = useAttrs(["reviewOpenItemCount", "reviewStatusFilter"]);
+	const dispatch = useActions();
+	const statusFilter = () =>
+		asReviewStatusFilter(counts.reviewStatusFilter()) ?? DEFAULT_REVIEW_STATUS_FILTER;
 	const items = useMany("reviewItems");
 	const selectedScope = (): ReactSyncScopeHandle | null =>
 		items().find((item) => item._nodeId === mode.selectedNodeId()) ?? null;
@@ -93,6 +109,12 @@ const ReviewBody = () => {
 					{`${Number(counts.reviewOpenItemCount() ?? 0)} open / ${items().length} total`}
 				</text>
 				<div style={{ flexGrow: 1 }} />
+				<Segmented
+					testId="review-filter"
+					options={STATUS_FILTER_OPTIONS}
+					value={statusFilter()}
+					onChange={(status) => dispatch("setReviewStatusFilter", { status })}
+				/>
 				<Button testId="review-close" aria-label="Close" onClick={() => mode.close()}>
 					<text>Close</text>
 				</Button>
@@ -113,7 +135,7 @@ const ReviewBody = () => {
 					}}
 				>
 					<Many
-						rel="reviewItems"
+						rel="visibleReviewItems"
 						item={ReviewItemRow}
 						readyAttr="reviewItemSnapshot"
 						empty={<MutedText testId="review-list-empty">No review items</MutedText>}

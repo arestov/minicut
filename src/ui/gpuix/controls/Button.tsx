@@ -25,6 +25,7 @@ export const Button = (props: {
 			tabIndex={props.disabled ? -1 : 0}
 			testId={props.testId}
 			aria-label={props["aria-label"]}
+			aria-selected={props.active}
 			onClick={activate}
 			onKeyDown={(event) => {
 				if (event.key === "enter" || event.key === "space") activate();

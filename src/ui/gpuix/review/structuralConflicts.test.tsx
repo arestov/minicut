@@ -178,6 +178,15 @@ describe("review mode: a real delete-vs-edit conflict", () => {
 		}
 		expect(view.texts()).not.toContain("Review 1");
 		expect(view.has("dve-restore")).toBe(false);
+
+		// The list follows the model's status filter: the resolved item leaves the
+		// default (unresolved) list and shows under Resolved.
+		expect(view.texts()).not.toContain("delete vs edit · resolved");
+		view.click("review-filter-resolved");
+		await untilPeerAttr(peers.a, current.project.a, "reviewStatusFilter", (v) => v === "resolved");
+		await untilPeerMany(peers.a, current.project.a, "visibleReviewItems", (n) => n === 1);
+		view.settle();
+		expect(view.texts()).toContain("delete vs edit · resolved");
 	}, TIMEOUT);
 
 	test("parks the edited variant on an incoming review track and resolves", async () => {
