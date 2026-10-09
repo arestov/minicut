@@ -296,6 +296,17 @@ export const Project = model({
 			["< @one:filters < reviewSessions"] as const,
 			reviewStatusFilterFromFilters,
 		],
+		// The project has something to review: items or sync activity (review entry).
+		hasReviewContent: [
+			"comp",
+			[
+				"< @all:_node_id < reviewItems",
+				"< @all:_node_id < activitySummaries",
+			] as const,
+			(items: unknown, summaries: unknown) =>
+				(Array.isArray(items) && items.length > 0) ||
+				(Array.isArray(summaries) && summaries.length > 0),
+		],
 		reviewOpenItemCount: [
 			"comp",
 			["< @all:openItemCount < reviewSessions"] as const,

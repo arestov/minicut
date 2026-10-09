@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildDeleteVsEditRestorePayload } from "../../../components/review/reviewActionPayloads";
-import type { HeadlessReviewPeer } from "./createHeadlessReviewPair";
+import {
+	type HeadlessReviewPeer,
+	createHeadlessReviewPair,
+} from "./createHeadlessReviewPair";
 import { dispatchReviewActionLikeUi } from "./dispatchReviewActionLikeUi";
 import { createNaturalDeleteVsEditConflict } from "./naturalConflictGenerators";
 import { expectReviewResolvedOnBoth } from "./reviewAssertions";
@@ -20,13 +23,24 @@ const statusFilter = async (peer: HeadlessReviewPeer) => {
 	return peer.ctx.queryAttr(peer.project, "reviewStatusFilter");
 };
 
-describe("headless review list status filter", () => {
+describe("headless review entry and list status filter", () => {
+	it("has no review content before any conflict or sync activity", async () => {
+		const pair = await createHeadlessReviewPair("room-headless-review-content-empty");
+		try {
+			await pair.a.ctx.computed();
+			expect(await pair.a.ctx.queryAttr(pair.a.project, "hasReviewContent")).toBe(false);
+		} finally {
+			pair.close();
+		}
+	});
+
 	it("lists unresolved items by default and switches through the session filters", async () => {
 		const { pair, item } = await createNaturalDeleteVsEditConflict(
 			"room-headless-review-filter",
 		);
 		try {
 			const peer = pair.a;
+			expect(await peer.ctx.queryAttr(peer.project, "hasReviewContent")).toBe(true);
 			expect(await statusFilter(peer)).toBe("unresolved");
 			expect(await visibleConflictIds(peer)).toEqual([item.conflictId]);
 
