@@ -253,23 +253,27 @@ describe("MiniCut CRDT durable reinit", () => {
 			profileId: "minicut-crdt-v1",
 			profileVersion: 1,
 		});
-		const getTargetSnapshot = (
-			target.storagePackage?.dktStorage as {
-				getSnapshot?: DktStorageRequest<unknown>;
-			}
-		)?.getSnapshot;
-		const targetSnapshot = getTargetSnapshot
-			? await runDktStorageRequest(getTargetSnapshot)
-			: null;
-		if (!targetSnapshot) throw new Error("Expected target snapshot");
+		// The source is a second device: it starts empty and receives the target's
+		// CRDT history from the relay, never a graph snapshot without history.
 		const sourceFromTarget = await bootDktModels({
-			reinitFromSnapshot: targetSnapshot,
 			crdt: {
 				enabled: true,
 				peerId: "durable-reinit-source",
 				storage: "memory",
 				transport: sourceTransport,
 			},
+		});
+		sourceTransport.requestSync("durable-reinit-source-bootstrap");
+		await (
+			sourceFromTarget.runtime.crdt_runtime as {
+				transport_receive_tail?: Promise<unknown>;
+			} | null
+		)?.transport_receive_tail;
+		await sourceFromTarget.computed();
+		await sourceFromTarget.lockToRead(async () => {
+			await sourceFromTarget.sessionRoot.dispatch("syncActiveProjectRel", {
+				project: findModel(sourceFromTarget, String(targetProject._node_id)),
+			});
 		});
 		const sourceProject = findModel(sourceFromTarget, String(targetProject._node_id));
 		const restartedTargetTransport = createMiniCutRoomCrdtTransport({
@@ -279,6 +283,7 @@ describe("MiniCut CRDT durable reinit", () => {
 			profileId: "minicut-crdt-v1",
 			profileVersion: 1,
 		});
+		await target.computed();
 		const restartedTarget = await reinitContext(
 			target,
 			"durable-reinit-target-restarted",

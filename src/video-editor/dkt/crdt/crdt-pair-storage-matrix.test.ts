@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { queryAddr } from "dkt/async/queryAddr.js";
-import { toReinitableData } from "dkt/runtime/app/reinit.js";
 import { bootDktModels, type DktTestContext } from "../testingInit";
 import { createMiniCutCrdtStorageProfiles } from "../test/crdtStorageMatrix";
 import type { MiniCutDktCrdtStorageOptions } from "../testingInit";
@@ -8,7 +7,6 @@ import type { MiniCutCrdtStorageProfile } from "../test/crdtStorageMatrix";
 import { createInMemoryCrdtRelay } from "./createInMemoryCrdtRelay";
 import { createMiniCutRoomCrdtTransport } from "./createMiniCutRoomCrdtTransport";
 import type { DktCrdtTransport } from "./testRelayContracts";
-import { runDktStorageRequest, type DktStorageRequest } from "../storage/dktStorageRequest";
 
 type Model = DktTestContext["sessionRoot"];
 
@@ -76,13 +74,15 @@ const createPeer = async (
 	peerId: string,
 	profile: MiniCutCrdtStorageProfile,
 	options: {
-		snapshot?: unknown;
+		/** Join an existing document: receive the other peer's CRDT history. */
+		syncFromRelay?: boolean;
 		storage?: MiniCutDktCrdtStorageOptions;
-		transport: DktCrdtTransport;
-	} = {},
+		transport: DktCrdtTransport & {
+			requestSync?: (requestId: string) => void;
+		};
+	},
 ) => {
 	const ctx = await bootDktModels({
-		reinitFromSnapshot: options.snapshot,
 		crdt: {
 			enabled: true,
 			peerId,
@@ -91,20 +91,23 @@ const createPeer = async (
 		},
 		unloadModels: false,
 	});
-	if (options.snapshot) {
+	if (options.syncFromRelay) {
+		options.transport.requestSync?.(`storage-matrix-bootstrap-${peerId}`);
+		await (
+			ctx.runtime.crdt_runtime as {
+				transport_receive_tail?: Promise<unknown>;
+			} | null
+		)?.transport_receive_tail;
+		await ctx.computed();
 		const projects = await ctx.queryRel(ctx.appModel, "project");
 		const projectInfos = await Promise.all(
 			projects.map(async (project) => ({
 				project,
 				title: await ctx.queryAttr(project, "title"),
-				tracks: await ctx.queryRel(project, "tracks"),
 			})),
 		);
-		const project =
-			projectInfos.find((item) => item.title === "Pair A")?.project ??
-			projectInfos.find((item) => item.tracks.length > 0)?.project ??
-			projects[0];
-		if (!project) throw new Error("Expected snapshot project");
+		const project = projectInfos.find((item) => item.title === "Pair A")?.project;
+		if (!project) throw new Error("Expected project from synced CRDT history");
 		await ctx.lockToRead(async () => {
 			await ctx.sessionRoot.dispatch("syncActiveProjectRel", { project });
 		});
@@ -119,83 +122,6 @@ const createPeer = async (
 	if (!project) throw new Error("Expected project");
 	const videoTrack = await findVideoTrack(ctx, project);
 	return { ctx, project, videoTrack };
-};
-
-const seedDktSnapshot = async (ctx: DktTestContext, snapshot: unknown) => {
-	const dktStorage = ctx.storagePackage?.dktStorage as
-		| {
-				putSchema?: (schema: unknown) => Promise<unknown> | unknown;
-				createModel?: (
-					id: string,
-					modelName: string,
-					attrs?: Record<string, unknown>,
-					rels?: Record<string, unknown>,
-					mentions?: Record<string, unknown>,
-				) => Promise<unknown> | unknown;
-				createExpectedRel?: (
-					key: string,
-					data: unknown,
-				) => Promise<unknown> | unknown;
-				commitChanges?: DktStorageRequest<unknown, [unknown]>;
-			}
-		| undefined;
-	if (!dktStorage) return;
-	const data = snapshot as {
-		models?: Record<
-			string,
-			{
-				id?: string;
-				model_name?: string;
-				attrs?: Record<string, unknown>;
-				rels?: Record<string, unknown>;
-				mentions?: Record<string, unknown>;
-			}
-		>;
-		expected_rels_to_chains?: Record<string, unknown>;
-	};
-	const models = Object.entries(data.models ?? {});
-	const schema: Record<
-		string,
-		{ attrs: Array<{ name: string }>; rels: Array<{ name: string }> }
-	> = {};
-	for (const [, model] of models) {
-		const modelName = model.model_name;
-		if (!modelName) continue;
-		const entry = (schema[modelName] ??= { attrs: [], rels: [] });
-		const attrNames = new Set(entry.attrs.map((attr) => attr.name));
-		const relNames = new Set(entry.rels.map((rel) => rel.name));
-		for (const name of Object.keys(model.attrs ?? {})) {
-			if (!attrNames.has(name)) {
-				entry.attrs.push({ name });
-				attrNames.add(name);
-			}
-		}
-		for (const name of Object.keys(model.rels ?? {})) {
-			if (!relNames.has(name)) {
-				entry.rels.push({ name });
-				relNames.add(name);
-			}
-		}
-	}
-	await dktStorage.putSchema?.(schema);
-	for (const [fallbackId, model] of models) {
-		if (!model.model_name) continue;
-		await dktStorage.createModel?.(
-			model.id ?? fallbackId,
-			model.model_name,
-			model.attrs ?? {},
-			model.rels ?? {},
-			model.mentions ?? {},
-		);
-	}
-	for (const [key, value] of Object.entries(data.expected_rels_to_chains ?? {})) {
-		await dktStorage.createExpectedRel?.(key, value);
-	}
-	if (dktStorage.commitChanges) {
-		await runDktStorageRequest(dktStorage.commitChanges, {
-			reason: "minicut-storage-matrix-snapshot",
-		});
-	}
 };
 
 const addClip = async (ctx: DktTestContext, videoTrack: Model) => {
@@ -250,7 +176,6 @@ describe("MiniCut CRDT pair storage matrix", () => {
 			const clipA = await addClip(a.ctx, a.videoTrack);
 			flushTransportOutbox(a.ctx);
 			const bStorage = storageForPeer(profile, "B");
-			const snapshot = await toReinitableData(a.ctx.runtime);
 			const transportB = createMiniCutRoomCrdtTransport({
 				relay,
 				roomId,
@@ -259,13 +184,10 @@ describe("MiniCut CRDT pair storage matrix", () => {
 				profileVersion: 1,
 			});
 			const b = await createPeer("B", profile, {
-				snapshot,
+				syncFromRelay: true,
 				storage: bStorage,
 				transport: transportB,
 			});
-			await seedDktSnapshot(b.ctx, snapshot);
-			await b.ctx.runtime.crdt_runtime?.restoreFromStorage?.();
-			await b.ctx.computed();
 			let clipB = (await b.ctx.queryRel(b.videoTrack, "clips"))[0];
 			if (!clipB) throw new Error("Expected synced clip");
 			if (profile.unloadModels) {
