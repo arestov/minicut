@@ -1,11 +1,17 @@
 import { Check, CopyPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { MiniCutReviewItem } from "../../../dkt/review/types";
-import type {
-	ClipTimingField,
-	ClipTimingPreview,
-	ClipTimingVariant,
+import {
+	clipTimingFields,
+	type ClipTimingField,
+	type ClipTimingPreview,
+	type ClipTimingVariant,
 } from "../../../dkt/review/features/clipTiming";
+import {
+	formatClipTimingValue,
+	readClipTimingResolutionSummary,
+	visibleClipTimingFields,
+} from "../../../dkt/review/features/clipTiming/clipTimingResolution";
 import {
 	buildClipTimingParkPayload,
 	buildClipTimingResolvePayload,
@@ -17,13 +23,7 @@ type Props = {
 	onParkVariant: (payload: unknown) => void;
 };
 
-const fields: ClipTimingField[] = [
-	"start",
-	"in",
-	"duration",
-	"fadeIn",
-	"fadeOut",
-];
+const fields = clipTimingFields;
 
 const isClipTimingPreview = (value: unknown): value is ClipTimingPreview =>
 	Boolean(value) &&
@@ -34,61 +34,22 @@ const isClipTimingPreview = (value: unknown): value is ClipTimingPreview =>
 	typeof (value as { incoming?: Record<string, unknown> }).incoming?.start ===
 		"number";
 
-const formatTimingValue = (value: number): string => `${Number(value.toFixed(3))}s`;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	Boolean(value) && typeof value === "object" && !Array.isArray(value);
-
-const resolutionDomainResult = (item: MiniCutReviewItem): Record<string, unknown> | null => {
-	const resolution = isRecord(item.resolution) ? item.resolution : null;
-	const domainResult = resolution?.domain_result;
-	return isRecord(domainResult) ? domainResult : null;
-};
-
-const timingFromRecord = (value: unknown): ClipTimingVariant | null => {
-	if (!isRecord(value)) {
-		return null;
-	}
-	const result = Object.fromEntries(
-		fields.map((field) => [field, value[field]]),
-	) as Record<ClipTimingField, unknown>;
-	return fields.every(
-		(field) => typeof result[field] === "number" && Number.isFinite(result[field]),
-	)
-		? (result as ClipTimingVariant)
-		: null;
-};
-
 const ClipTimingResolvedSummary = ({ item }: { item: MiniCutReviewItem }) => {
-	const result = resolutionDomainResult(item);
-	const sourceTiming =
-		timingFromRecord(result?.sourceTiming) ??
-		timingFromRecord(result) ??
-		null;
-	const parkedClipId = isRecord(result?.parkedClipId)
-		? "parked clip"
-		: typeof result?.parkedClipId === "string"
-			? result.parkedClipId
-			: null;
-	const variant =
-		typeof result?.variant === "string"
-			? result.variant
-			: typeof result?.selectedVariant === "string"
-				? result.selectedVariant
-				: null;
+	const { variant, appliedTiming, parkedClipId } =
+		readClipTimingResolutionSummary(item);
 
 	return (
 		<div className="ve-review-inspector__resolution">
 			<strong>Resolution result</strong>
 			{variant ? <p>{variant.replaceAll("_", " ")} applied</p> : null}
-			{sourceTiming ? (
+			{appliedTiming ? (
 				<table className="ve-review-inspector__timing">
 					<caption>Applied timing</caption>
 					<tbody>
 						{fields.map((field) => (
 							<tr key={field}>
 								<th scope="row">{field}</th>
-								<td>{formatTimingValue(sourceTiming[field])}</td>
+								<td>{formatClipTimingValue(appliedTiming[field])}</td>
 							</tr>
 						))}
 					</tbody>
@@ -112,14 +73,8 @@ export const ClipTimingConflictInspector = ({
 	const preview = item.preview;
 	const [draft, setDraft] = useState<ClipTimingVariant>(preview.current);
 	const visibleFields = useMemo(
-		() =>
-			fields.filter(
-				(field) =>
-					preview.fields.includes(field) ||
-					field === "fadeIn" ||
-					field === "fadeOut",
-			),
-		[preview.fields],
+		() => visibleClipTimingFields(preview),
+		[preview],
 	);
 	const setField = (field: ClipTimingField, value: string) => {
 		const next = Number(value);
@@ -149,8 +104,8 @@ export const ClipTimingConflictInspector = ({
 					{visibleFields.map((field) => (
 						<tr key={field}>
 							<th scope="row">{field}</th>
-							<td>{formatTimingValue(preview.current[field])}</td>
-							<td>{formatTimingValue(preview.incoming[field])}</td>
+							<td>{formatClipTimingValue(preview.current[field])}</td>
+							<td>{formatClipTimingValue(preview.incoming[field])}</td>
 							<td>
 								<input
 									aria-label={`Final ${field}`}
