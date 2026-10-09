@@ -254,8 +254,9 @@ const ProjectReviewContent = ({
 }) => {
 	const runtime = useReactScopeRuntime();
 	const appModelScope = useRootOne(REVIEW_APP_MODEL_REL);
-	const reviewItemScopes = useMany("reviewItems");
-	const reviewSessionScopes = useMany("reviewSessions");
+	// useMany declares these rels in the scope shape, so the runtime syncs them.
+	useMany("reviewItems");
+	useMany("reviewSessions");
 	const itemSnapshots = useRelAttrSnapshots(
 		projectScope,
 		"reviewItems",
@@ -266,14 +267,16 @@ const ProjectReviewContent = ({
 		"reviewSessions",
 		REVIEW_SESSION_ATTRS,
 	);
-	// useMany declares the rel in the scope shape, so the runtime syncs it.
 	useMany("visibleReviewItems");
 	const listItemSnapshots = useRelAttrSnapshots(
 		projectScope,
 		"visibleReviewItems",
 		REVIEW_ITEM_ATTRS,
 	);
-	const { reviewStatusFilter } = useAttrs(["reviewStatusFilter"]);
+	const { reviewStatusFilter, hasReviewContent } = useAttrs([
+		"reviewStatusFilter",
+		"hasReviewContent",
+	]);
 	const statusFilter =
 		asReviewStatusFilter(reviewStatusFilter) ?? DEFAULT_REVIEW_STATUS_FILTER;
 	const [isOpen, setIsOpen] = useState(false);
@@ -319,15 +322,7 @@ const ProjectReviewContent = ({
 		setSelectedItemId(session?.selectedReviewItemId ?? items[0]?.id ?? null);
 	}, [session?.id, session?.selectedReviewItemId, items]);
 
-	if (
-		reviewItemScopes.length === 0 &&
-		reviewSessionScopes.length === 0 &&
-		activitySummaries.length === 0
-	) {
-		return null;
-	}
-
-	if (items.length === 0 && activitySummaries.length === 0) {
+	if (hasReviewContent !== true) {
 		return null;
 	}
 

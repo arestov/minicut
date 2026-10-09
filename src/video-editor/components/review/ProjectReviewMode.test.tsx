@@ -42,6 +42,7 @@ const renderProjectReviewMode = (item: MiniCutReviewItem) => {
 			},
 		},
 		attrsByNodeId: {
+			"project:1": { hasReviewContent: true },
 			[item.id]: attrsFromReviewItem(item),
 			"review-session:project:1": {
 				reviewSessionId: "review-session:project:1",
@@ -171,7 +172,7 @@ describe("ProjectReviewMode review actions", () => {
 				},
 			},
 			attrsByNodeId: {
-				"project:1": { reviewStatusFilter: "unresolved" },
+				"project:1": { reviewStatusFilter: "unresolved", hasReviewContent: true },
 				[open.id]: attrsFromReviewItem(open),
 				[resolved.id]: attrsFromReviewItem(resolved),
 			},
@@ -211,6 +212,26 @@ describe("ProjectReviewMode review actions", () => {
 		]);
 	});
 
+	it("shows no review entry while the model says the project has no review content", () => {
+		const runtime = createTestReactScopeRuntime({
+			rootNodeId: "root",
+			relsByNodeId: {
+				root: { activeProject: "project:1" },
+				"project:1": { reviewItems: [], reviewSessions: ["session:1"], activitySummaries: [] },
+			},
+			attrsByNodeId: { "project:1": { hasReviewContent: false } },
+		});
+		render(
+			<ReactScopeRuntimeContext.Provider value={runtime}>
+				<ScopeContext.Provider value={runtime.getRootScope()}>
+					<ProjectReviewMode />
+				</ScopeContext.Provider>
+			</ReactScopeRuntimeContext.Provider>,
+		);
+
+		expect(screen.queryByRole("button", { name: /^Review/ })).toBeNull();
+	});
+
 	it("lists the project's activity summaries without any review session", async () => {
 		const runtime = createTestReactScopeRuntime({
 			rootNodeId: "root",
@@ -223,6 +244,7 @@ describe("ProjectReviewMode review actions", () => {
 				},
 			},
 			attrsByNodeId: {
+				"project:1": { hasReviewContent: true },
 				"activity:1": {
 					activitySummaryId: "activity:1",
 					projectId: "project:1",
@@ -263,6 +285,7 @@ describe("ProjectReviewMode review actions", () => {
 				},
 			},
 			attrsByNodeId: {
+				"project:1": { hasReviewContent: true },
 				[item.id]: {
 					reviewItemSnapshot: item,
 					reviewItemId: item.id,
