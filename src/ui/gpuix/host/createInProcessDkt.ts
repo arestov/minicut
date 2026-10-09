@@ -1,10 +1,13 @@
-import type { PageSyncRuntime } from "../../../dkt-ui-sync/runtime/PageSyncRuntime";
+﻿import type { PageSyncRuntime } from "../../../dkt-ui-sync/runtime/PageSyncRuntime";
 import type { MiniCutEffectInterfaces } from "../../../video-editor/core/contracts/effectInterfaces";
 import {
 	createEffectContractFakes,
 	type EffectContractFakes,
 } from "../../../video-editor/dkt/test/effectContractFakes";
-import { createMiniCutDktRuntime } from "../../../video-editor/dkt/runtime/createMiniCutDktRuntime";
+import {
+	createMiniCutDktRuntime,
+	type MiniCutCrdtTransport,
+} from "../../../video-editor/dkt/runtime/createMiniCutDktRuntime";
 import { createMiniCutPageSyncRuntime } from "../../../video-editor/dkt/runtime/createMiniCutPageSyncRuntime";
 import { createInProcessTransportPair } from "../../../video-editor/hosts/desktop/inProcessTransport";
 
@@ -30,6 +33,8 @@ export const createInProcessDkt = (
 		sessionKey?: string;
 		/** Defaults to the contract fakes: external executors are not part of the fixtures. */
 		effectInterfaces?: MiniCutEffectInterfaces;
+		/** Replaces the default single-peer CRDT identity (two-peer fixtures). */
+		crdt?: { peerId: string; transport: MiniCutCrdtTransport };
 	} = {},
 ): InProcessDkt => {
 	const fakes = options.effectInterfaces ? null : createEffectContractFakes();
@@ -37,7 +42,13 @@ export const createInProcessDkt = (
 	const dktRuntime = createMiniCutDktRuntime({
 		enabled: true,
 		effectInterfaces,
-		crdt: { enabled: true, testOnly: true, storage: "memory", transport: null },
+		crdt: {
+			enabled: true,
+			testOnly: true,
+			storage: "memory",
+			transport: options.crdt?.transport ?? null,
+			...(options.crdt ? { peerId: options.crdt.peerId } : null),
+		},
 	});
 	const { page, runtime } = createInProcessTransportPair();
 	const connection = dktRuntime.connect(runtime);

@@ -60,3 +60,12 @@ export const waitForMany = (
 		() => createManyFor(runtime, () => scope, rel),
 		(members) => acceptCount(members.length),
 	);
+
+/** Like waitForMany, with the member handles (in rel order) for the predicate. */
+export const waitForManyScopes = (
+	runtime: ReactScopeRuntime,
+	scope: ReactSyncScopeHandle,
+	rel: string,
+	accept: (members: readonly ReactSyncScopeHandle[]) => boolean,
+): Promise<readonly ReactSyncScopeHandle[]> =>
+	waitUntil(() => createManyFor(runtime, () => scope, rel), accept);
