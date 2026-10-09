@@ -34,7 +34,7 @@ const renderProjectReviewMode = (item: MiniCutReviewItem) => {
 	const runtime = createTestReactScopeRuntime({
 		rootNodeId: "root",
 		relsByNodeId: {
-			root: { activeProject: "project:1" },
+			root: { activeProject: "project:1", pioneer: "app:1" },
 			"project:1": {
 				reviewItems: [item.id],
 				reviewSessions: ["review-session:project:1"],
@@ -121,6 +121,28 @@ describe("ProjectReviewMode review actions", () => {
 					clipId: "clip:1",
 					variant: "incoming",
 				}),
+			}),
+		]);
+	});
+
+	it("sends Acknowledge to the app model reached through the root pioneer rel, not the session root", async () => {
+		const item = materializeClipTimingReviewItem({
+			conflict: clipTimingConflictFixture,
+			projectId: "project:1",
+		});
+		const runtime = renderProjectReviewMode(item);
+		await screen.findByRole("region", { name: "Project review" });
+
+		await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
+
+		expect(runtime.dispatchCalls).toEqual([
+			expect.objectContaining({
+				actionName: "acknowledgeReviewItem",
+				scopeNodeId: "app:1",
+				payload: {
+					conflict_id: "conflict:clip-timing",
+					review_item_id: "review:conflict:clip-timing",
+				},
 			}),
 		]);
 	});

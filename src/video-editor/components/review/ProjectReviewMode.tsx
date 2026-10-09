@@ -4,6 +4,7 @@ import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandl
 import { useMany } from "../../../dkt-react-sync/hooks/useMany";
 import { useOne } from "../../../dkt-react-sync/hooks/useOne";
 import { useReactScopeRuntime } from "../../../dkt-react-sync/hooks/useReactScopeRuntime";
+import { useRootOne } from "../../../dkt-react-sync/hooks/useRootOne";
 import type {
 	CrdtConflictStatus,
 	MiniCutActivitySummary,
@@ -11,7 +12,10 @@ import type {
 	MiniCutReviewKind,
 	MiniCutReviewObject,
 } from "../../dkt/review/types";
-import { reviewActionScopeForItem } from "./reviewActionRouting";
+import {
+	REVIEW_APP_MODEL_REL,
+	reviewActionScopeForItem,
+} from "./reviewActionRouting";
 import { ReviewPanel } from "./ReviewPanel";
 
 const REVIEW_ITEM_ATTRS = [
@@ -244,6 +248,7 @@ const ProjectReviewContent = ({
 	projectScope: ReactSyncScopeHandle;
 }) => {
 	const runtime = useReactScopeRuntime();
+	const appModelScope = useRootOne(REVIEW_APP_MODEL_REL);
 	const reviewItemScopes = useMany("reviewItems");
 	const reviewSessionScopes = useMany("reviewSessions");
 	const itemSnapshots = useRelAttrSnapshots(
@@ -325,16 +330,17 @@ const ProjectReviewContent = ({
 						selectedItemId={selectedItemId ?? session?.selectedReviewItemId}
 						onSelectReviewItem={(item) => setSelectedItemId(item.id)}
 						onClose={() => setIsOpen(false)}
-						onAcknowledgeReviewItem={(item) =>
+						onAcknowledgeReviewItem={(item) => {
+							if (!appModelScope) return;
 							runtime.dispatch(
 								"acknowledgeReviewItem",
 								{
 									conflict_id: item.conflictId,
 									review_item_id: item.id,
 								},
-								null,
-							)
-						}
+								appModelScope,
+							);
+						}}
 						onReviewAction={(actionId, item, payload) => {
 							const actionScope = reviewActionScopeForItem(item, actionId);
 							if (!actionScope) return;

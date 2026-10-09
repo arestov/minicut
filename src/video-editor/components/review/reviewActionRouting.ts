@@ -11,3 +11,11 @@ export const reviewActionScopeForItem = (
 	}
 	return { kind: "scope", _nodeId: target.id };
 };
+
+
+/**
+ * Generic review actions (`acknowledgeReviewItem`) are owned by the app model,
+ * not by an item's actionTargets. The UI reaches it from the root (session)
+ * scope through this rel; the session root has no handler for them.
+ */
+export const REVIEW_APP_MODEL_REL = "pioneer";

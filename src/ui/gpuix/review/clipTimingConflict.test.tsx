@@ -232,11 +232,23 @@ describe("review mode: a real clip timing conflict", () => {
 	test.todo("accepting the incoming timing resolves the review item on both peers", () => {});
 	test.todo("applying a final timing resolves the review item on both peers", () => {});
 
-	// Not covered: acknowledging. The UI sends acknowledgeReviewItem to the session
-	// root exactly like Web's ProjectReviewMode, but only AppRoot defines that
-	// action ("missing action handler in model" on session_root), so the button
-	// cannot work until the model routes it (model change; see the stage report).
-	test.todo("acknowledging marks the item acknowledged on both peers without changing the clip", () => {});
+	test("acknowledging marks the item acknowledged on both peers without changing the clip", async () => {
+		const current = (fixture = await setup());
+		await makeTimingConflict(current);
+		const { view, peers, project, clip } = current;
+		const { current: before } = await previewTimings(current);
+
+		view.click("review-acknowledge");
+
+		for (const side of ["a", "b"] as const) {
+			const [item] = await untilPeerMany(peers[side], project[side], "reviewItems", (n) => n >= 1);
+			await untilPeerAttr(peers[side], item, "status", (v) => v === "acknowledged");
+			await untilPeerAttr(peers[side], project[side], "reviewOpenItemCount", (v) => v === 0);
+		}
+		view.settle();
+		await untilPeerAttr(peers.a, clip.a, "duration", (v) => v === before.duration);
+		expect(view.texts()).toContain("0 open / 1 total");
+	}, TIMEOUT);
 
 	test("keeps the current timing on both peers", async () => {
 		const current = (fixture = await setup());

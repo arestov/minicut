@@ -1,15 +1,19 @@
-import { useScopeRuntime } from "../../../dkt-solid-sync";
-import { reviewActionScopeForItem } from "../../../video-editor/components/review/reviewActionRouting";
+import { createOneFor, useRootScope, useScopeRuntime } from "../../../dkt-solid-sync";
+import {
+	REVIEW_APP_MODEL_REL,
+	reviewActionScopeForItem,
+} from "../../../video-editor/components/review/reviewActionRouting";
 import type { MiniCutReviewItem } from "../../../video-editor/dkt/review/types";
 
 /**
  * Sends review actions the way Web's ProjectReviewMode does: an item action
  * goes to the scope named by `item.actionTargets[actionId]`, with the conflict
  * and item ids merged into the payload built by the feature inspector;
- * acknowledging goes to the root. All domain handling is in the model.
+ * acknowledging goes to the app model (see REVIEW_APP_MODEL_REL). All domain handling is in the model.
  */
 export const useReviewActions = () => {
 	const runtime = useScopeRuntime();
+	const appModel = createOneFor(runtime, useRootScope(), REVIEW_APP_MODEL_REL);
 	return {
 		act(item: MiniCutReviewItem, actionId: string, payload?: unknown) {
 			const scope = reviewActionScopeForItem(item, actionId);
@@ -21,7 +25,9 @@ export const useReviewActions = () => {
 			});
 		},
 		acknowledge(item: MiniCutReviewItem) {
-			runtime.getDispatch(null)("acknowledgeReviewItem", {
+			const scope = appModel();
+			if (!scope) return;
+			runtime.getDispatch(scope)("acknowledgeReviewItem", {
 				conflict_id: item.conflictId,
 				review_item_id: item.id,
 			});

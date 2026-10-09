@@ -60,7 +60,7 @@ const build = (data: Data) => {
 		},
 	};
 	const relsByNodeId: Record<string, Record<string, string | string[] | null>> = {
-		root: { activeProject: "project" },
+		root: { activeProject: "project", pioneer: "app" },
 		project: {
 			reviewItems: items.map((item) => `item:${item.id}`),
 			reviewSessions: data.hasSession || summaries.length > 0 ? ["session"] : [],
@@ -189,7 +189,7 @@ describe("review actions", () => {
 		]);
 	});
 
-	test("parking goes to the project scope and acknowledging goes to the root", () => {
+	test("parking goes to the project scope and acknowledging goes to the app model", () => {
 		const runtime = build({ items: [clipTimingItem()] });
 		const current = show(runtime);
 
@@ -200,7 +200,7 @@ describe("review actions", () => {
 			runtime.dispatchCalls.map((call) => [call.actionName, call.scopeNodeId]),
 		).toEqual([
 			["parkIncomingVariantOnReviewTrack", "project"],
-			["acknowledgeReviewItem", null],
+			["acknowledgeReviewItem", "app"],
 		]);
 		expect(runtime.dispatchCalls[1].payload).toEqual({
 			conflict_id: "conflict:timing",

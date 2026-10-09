@@ -769,6 +769,95 @@ test('p2p real CRDT timing conflict keeps current from review UI on both peers',
 	}
 })
 
+test('p2p real CRDT timing conflict acknowledges from review UI on both peers', async ({ browser }, testInfo) => {
+	test.setTimeout(180_000)
+	const roomId = createP2PRoomId('real-crdt-acknowledge', testInfo)
+	const roomUrl = buildRoomUrl(roomId)
+	const first = await openP2PPeer(browser, roomUrl)
+	const second = await openP2PPeer(browser, roomUrl)
+
+	try {
+		await Promise.all([waitForP2PDebugState(first.page), waitForP2PDebugState(second.page)])
+		await waitForRolePair(first.page, second.page)
+		const [firstRole] = await Promise.all([getRole(first.page), getRole(second.page)])
+		const sourcePage = firstRole === 'client' ? first.page : second.page
+		const replicaPage = sourcePage === first.page ? second.page : first.page
+		const sourceSendBatchIdsBefore = await readTraceBatchIds(sourcePage, /crdt-send/)
+
+		await sourcePage.evaluate(async () => window.__MINICUT_P2P_DEBUG__?.dispatchCreateProject?.('Real CRDT acknowledge'))
+		await waitForRuntimeSettled(sourcePage)
+		const sourceProject = await waitForActiveProject(sourcePage, 'Real CRDT acknowledge')
+		const sourceProjectId = stringId(sourceProject.projectId, 'source project id')
+		await importFixtureVideoToTimeline(sourcePage)
+		await waitForRuntimeSettled(sourcePage)
+
+		const firstClipId = await waitForFirstVideoClipId(sourcePage)
+		await expectSourceProjectHasVideoClip(sourcePage, firstClipId)
+		const sourceSendBatchIds = await waitForNewCrdtSendBatchIds(sourcePage, sourceSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(replicaPage, sourceSendBatchIds)
+		await waitForWorkerDumpContainsProjectResourceAndClip(replicaPage, sourceProjectId, firstClipId)
+		await waitForReplicaProject(replicaPage, sourceProjectId)
+		await waitForClipOnActiveProject(replicaPage, firstClipId)
+
+		await Promise.all([
+			setCrdtPartition(first.page, true),
+			setCrdtPartition(second.page, true),
+		])
+		await Promise.all([
+			dragClipEdgeByUi(first.page, firstClipId, 'end', -28),
+			dragClipEdgeByUi(second.page, firstClipId, 'start', 28),
+		])
+		await Promise.all([waitForRuntimeSettled(first.page), waitForRuntimeSettled(second.page)])
+		await Promise.all([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+
+		const reviewButtonName = /Review\s+[1-9]\d*/
+		await expect(first.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await expect(second.page.getByRole('button', { name: reviewButtonName })).toBeVisible({ timeout: 30_000 })
+		await first.page.getByRole('button', { name: reviewButtonName }).click()
+		const projectReview = first.page.getByRole('region', { name: 'Project review' })
+		await expect(projectReview).toBeVisible({ timeout: 10_000 })
+		await expect(projectReview.getByText(/clip timing/i).first()).toBeVisible({ timeout: 30_000 })
+		await waitForRuntimeSettled(first.page)
+
+		const openCountBefore = await readReviewOpenCount(first.page)
+		expect(openCountBefore).toEqual(expect.any(Number))
+		const dispatchCountBefore = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'acknowledgeReviewItem',
+		)
+		const actionSendBatchIdsBefore = await readTraceBatchIds(first.page, /crdt-send/)
+		const conflictId = stringId((await readFirstClipTimingReviewItem(first.page)).attrs?.conflictId, 'conflict id')
+
+		await projectReview.getByRole('button', { name: 'Acknowledge' }).click()
+		await waitForRuntimeSettled(first.page)
+		const dispatchCountAfter = countDispatchMessages(
+			await readRuntimeMessages(first.page),
+			'acknowledgeReviewItem',
+		)
+		expect(dispatchCountAfter).toBeGreaterThan(dispatchCountBefore)
+		const actionSendBatchIds = await waitForNewCrdtSendBatchIds(first.page, actionSendBatchIdsBefore)
+		await waitForCrdtReceiveBatchIds(second.page, actionSendBatchIds)
+		await Promise.all([
+			waitForReviewItemStatus(first.page, conflictId, 'acknowledged'),
+			waitForReviewItemStatus(second.page, conflictId, 'acknowledged'),
+		])
+		await waitForReviewOpenCountOnBoth(first.page, second.page, Math.max(0, (openCountBefore ?? 1) - 1))
+		await waitForNoConflictBadgesOnBoth(first.page, second.page)
+	} catch (error) {
+		const artifactPath = await writeP2PDebugArtifacts('real-crdt-acknowledge-timeout', first.page, second.page)
+		throw new Error(`Timed out waiting for real CRDT acknowledge proof. Debug artifact: ${artifactPath}`, { cause: error })
+	} finally {
+		await Promise.allSettled([
+			setCrdtPartition(first.page, false),
+			setCrdtPartition(second.page, false),
+		])
+		await closePeerHandles(first, second)
+	}
+})
+
 test('p2p real CRDT timing conflict applies final timing from review UI on both peers', async ({ browser }, testInfo) => {
 	test.setTimeout(180_000)
 	const roomId = createP2PRoomId('real-crdt-apply-final', testInfo)
