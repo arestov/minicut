@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ReactSyncScopeHandle } from "../../../dkt-ui-sync/scope/ScopeHandle";
 import type { MiniCutReviewItem } from "../../../video-editor/dkt/review/types";
 import { AppShell } from "../AppShell";
+import { Timeline } from "../timeline/Timeline";
 import {
 	type ConflictPeer,
 	type ConflictPeers,
@@ -37,7 +38,7 @@ afterEach(() => {
 	fixture = null;
 });
 
-const setup = async (): Promise<Fixture> => {
+const setup = async (options: { withTimeline?: boolean } = {}): Promise<Fixture> => {
 	const peers = await createConflictPeers(`gpuix-timing-${(seq += 1)}`);
 	const shared = await createSharedProject(peers);
 	await peers.a.driver.run(
@@ -51,7 +52,13 @@ const setup = async (): Promise<Fixture> => {
 	await untilPeerAttr(peers.b, clipB, "duration", (v) => v === 4);
 
 	// The review UI is up before the conflict exists, as on a running app.
-	const view = renderOnPeer(peers.a, () => <AppShell />);
+	const view = renderOnPeer(peers.a, () =>
+		options.withTimeline ? (
+			<AppShell timeline={<Timeline viewportWidth={() => 600} />} />
+		) : (
+			<AppShell />
+		),
+	);
 	view.settle();
 	return {
 		peers,
@@ -251,6 +258,40 @@ describe("review mode: a real clip timing conflict", () => {
 		await untilPeerAttr(peers.a, clip.a, "duration", (v) => v === before.duration);
 		expect(view.texts()).toContain("0 open / 1 total");
 	}, TIMEOUT);
+
+	test("the timeline clip carries a conflict badge until the conflict is resolved", async () => {
+		const current = (fixture = await setup({ withTimeline: true }));
+		const { view, peers, clip } = current;
+		// Everything the timeline reads before it places the clip.
+		await untilPeerAttr(peers.a, peers.a.runtime.getRootScope()!, "timelineZoom", (v) => typeof v === "number");
+		for (const track of current.tracks.a) {
+			await untilPeerAttr(peers.a, track, "kind", (v) => typeof v === "string");
+		}
+		for (const attr of ["start", "duration", "name"]) {
+			await untilPeerAttr(peers.a, clip.a, attr, (v) => v != null);
+		}
+		view.settle();
+		expect(view.findAll("clip")).toHaveLength(1);
+		expect(view.has("clip-conflict-badge")).toBe(false);
+
+		await makeTimingConflict(current);
+		await untilPeerAttr(peers.a, clip.a, "openReviewItemCount", (v) => v === 1);
+		view.settle();
+		expect(view.findAll("clip-conflict-badge")).toHaveLength(1);
+		expect(view.textOf("clip-conflict-count")).toBe("! 1");
+
+		view.click("timing-choose-current");
+		await expectResolvedOnBoth(current);
+		await untilPeerAttr(peers.a, clip.a, "openReviewItemCount", (v) => v === 0);
+		view.settle();
+		expect(view.has("clip-conflict-badge")).toBe(false);
+	}, TIMEOUT);
+
+	// Not asserted on peer B (the clip came to B through CRDT replication): a
+	// suspected DKT bug leaves addr comp rels uncomputed on replicated clips, so
+	// Clip.openReviewItemCount stays unset there (see
+	// dkt/review/headless/clipConflictBadge.headless.test.ts, it.fails case).
+	test.todo("the badge also shows on the peer that received the clip", () => {});
 
 	test("keeps the current timing on both peers", async () => {
 		const current = (fixture = await setup());

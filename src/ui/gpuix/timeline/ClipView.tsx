@@ -37,7 +37,7 @@ export const ClipView = () => {
 	const scope = useScope();
 	const dispatch = useActions();
 	const rootDispatch = useRootDispatch();
-	const attrs = useAttrs(["name", "color", "start", "duration"]);
+	const attrs = useAttrs(["name", "color", "start", "duration", "openReviewItemCount"]);
 	const [drag, setDrag] = createSignal<Drag | null>(null);
 
 	const clipId = () => scope()?._nodeId ?? null;
@@ -108,6 +108,9 @@ export const ClipView = () => {
 		}
 	};
 
+	// Open review items about this clip (model comp); shown as a badge.
+	const conflictCount = () => numberOr(attrs.openReviewItemCount(), 0);
+
 	const color = () =>
 		typeof attrs.color() === "string" ? (attrs.color() as string) : FALLBACK_CLIP_COLOR;
 
@@ -146,6 +149,28 @@ export const ClipView = () => {
 							}}
 						>
 							{String(attrs.name())}
+						</text>
+					</div>
+				</Show>
+				<Show when={conflictCount() > 0}>
+					<div
+						testId="clip-conflict-badge"
+						aria-label={`${conflictCount()} open conflict${conflictCount() === 1 ? "" : "s"}`}
+						style={{
+							position: "absolute",
+							top: 2,
+							right: TRIM_HANDLE_WIDTH + 2,
+							paddingLeft: 4,
+							paddingRight: 4,
+							borderRadius: 3,
+							backgroundColor: colors.danger,
+						}}
+					>
+						<text
+							testId="clip-conflict-count"
+							style={{ color: colors.text, fontSize: 10, fontWeight: 700 }}
+						>
+							{`! ${conflictCount()}`}
 						</text>
 					</div>
 				</Show>
