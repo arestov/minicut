@@ -43,6 +43,7 @@ import { resolveExportDir, resolveProfileDir } from "../../../video-editor/adapt
 import { StartupError } from "./preflight";
 import { StartupErrorScreen } from "./StartupErrorScreen";
 import { type RealHost, startRealHost } from "./startRealHost";
+import { createGuardedPathPrompt } from "../host/nativeDialogs";
 
 /**
  * MiniCut GPUIX app on the real host: workspace on disk (LevelDB in the
@@ -136,7 +137,7 @@ try {
 	host = await startRealHost({
 		profileDir,
 		exportDir: resolveExportDir(profileDir),
-		prompt: (options) => renderer.promptForPaths(options),
+		prompt: createGuardedPathPrompt(renderer),
 		audio: process.env.MINICUT_AUDIO === "off" ? "off" : "device",
 		onCrash: (error) => {
 			console.error("[minicut:gpuix] the DKT worker crashed", error);
