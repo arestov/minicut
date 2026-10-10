@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { createBunRuntimeEnvironment } from './bunRuntimeEnvironment.mjs'
 
 // Runs the GPUIX host entry. Bun reads bunfig.toml only from cwd, so the
 // process starts in src/ui/gpuix. Extra args are forwarded to the entry
@@ -7,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 const bun = process.env.BUN_BIN || 'bun'
 const cwd = fileURLToPath(new URL('../src/ui/gpuix/', import.meta.url))
 
-const result = spawnSync(bun, ['run', 'main.tsx', ...process.argv.slice(2)], { cwd, stdio: 'inherit' })
+const result = spawnSync(bun, ['run', 'main.tsx', ...process.argv.slice(2)], { cwd, stdio: 'inherit', env: createBunRuntimeEnvironment() })
 
 if (result.error) {
 	console.error(
