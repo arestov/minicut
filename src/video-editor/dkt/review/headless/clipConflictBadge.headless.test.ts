@@ -60,11 +60,8 @@ describe("headless clip open review item count", () => {
 		}
 	});
 
-	// Suspected DKT bug (reported, not worked around): addr comp rels never
-	// compute on a Clip that this peer got from an incoming CRDT op, so peer B's
-	// count stays null although B has the open review item. Flip to `it` once
-	// DKT is fixed.
-	it.fails("counts the open clip timing items on the peer that received the clip", async () => {
+	// Incoming clips must compute the badge from their materialized open review item.
+	it("counts the open clip timing items on the peer that received the clip", async () => {
 		const { pair, clipB } = await createNaturalClipTimingConflict(
 			"room-headless-clip-conflict-badge-remote",
 		);
