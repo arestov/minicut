@@ -2,6 +2,7 @@ import { expect, test, type Download, type Page } from '@playwright/test'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ensureFixture } from '../../src/video-editor/media/node/testing/mediaFixtures'
 import {
 	analyzeExportedAudio,
 	expectToneEnergy,
@@ -10,6 +11,34 @@ import {
 	sampleVideoFramePixelRgba,
 	sampleVideoFrameRgba,
 } from './audio-analysis'
+
+const createDeterministicTwoToneVideoFile = async (name: string): Promise<PlaywrightFilePayload & { sourceDuration: number }> => {
+	const filePath = await ensureFixture('video-two-tone-webm')
+	const media = await probeMedia(filePath)
+	expect(media.videoStreams).toHaveLength(1)
+	expect(media.audioStreams).toHaveLength(1)
+	const sourceDuration = media.formatDuration
+	expect(sourceDuration).toBeGreaterThan(1.9)
+	expect(sourceDuration).toBeLessThan(2.1)
+	for (const inPoint of [0.5, 1]) {
+		expect(inPoint + Math.round((sourceDuration - inPoint) * 10) / 10).toBeLessThanOrEqual(sourceDuration)
+	}
+	const { samples } = await analyzeExportedAudio(filePath)
+	for (const [frequency, otherFrequency, start, end] of [[440, 880, 0.1, 0.8], [880, 440, 1.1, 1.8]]) {
+		const power = measureFrequencyPower(samples, 2, 48_000, frequency, { start, end })
+		const otherPower = measureFrequencyPower(samples, 2, 48_000, otherFrequency, { start, end })
+		expect(power).toBeGreaterThan(0.001)
+		expect(power).toBeGreaterThan(otherPower * 3)
+	}
+	return { name, mimeType: 'video/webm', buffer: await readFile(filePath), sourceDuration }
+}
+
+const expectProbedSourceDuration = async (page: Page, name: string, sourceDuration: number): Promise<void> => {
+	await expect.poll(async () => page.evaluate((name) => {
+		const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() as { resources?: Array<{ name?: unknown; duration?: unknown }> } | undefined
+		return details?.resources?.find((resource) => resource.name === name)?.duration
+	}, name)).toBeCloseTo(sourceDuration, 3)
+}
 
 const timelineZoomPxPerSecond = 56
 
@@ -602,15 +631,9 @@ test.describe('exported audio artifacts', () => {
 		await page.goto('/')
 		await createProjectFromMenu(page)
 
-		const videoFile = await createVideoWithToneFile(page, {
-			name: 'linked-two-tone-video.webm',
-			durationSeconds: 2,
-			segments: [
-				{ start: 0, end: 1, frequency: 440 },
-				{ start: 1, end: 2, frequency: 880 },
-			],
-		})
+		const videoFile = await createDeterministicTwoToneVideoFile('linked-two-tone-video.webm')
 		await importMediaFiles(page, [videoFile])
+		await expectProbedSourceDuration(page, videoFile.name, videoFile.sourceDuration)
 		await selectTimelineClip(page, /linked-two-tone-video\.webm/i)
 		await trimSelectedClipStartByOneSecond(page)
 
@@ -966,15 +989,9 @@ test.describe('exported audio artifacts', () => {
 			await page.goto('/')
 			await createProjectFromMenu(page)
 
-			const videoFile = await createVideoWithToneFile(page, {
-				name: 'fallback-linked-two-tone-video.webm',
-				durationSeconds: 2,
-				segments: [
-					{ start: 0, end: 1, frequency: 440 },
-					{ start: 1, end: 2, frequency: 880 },
-				],
-			})
+			const videoFile = await createDeterministicTwoToneVideoFile('fallback-linked-two-tone-video.webm')
 			await importMediaFiles(page, [videoFile])
+			await expectProbedSourceDuration(page, videoFile.name, videoFile.sourceDuration)
 			await selectTimelineClip(page, /fallback-linked-two-tone-video\.webm/i)
 			await trimSelectedClipStartByOneSecond(page)
 

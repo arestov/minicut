@@ -12,6 +12,7 @@ export type FixtureName =
 	| "video-cfr"
 	| "video-audio"
 	| "video-av-webm"
+	| "video-two-tone-webm"
 	| "video-blue-webm"
 	| "video-red-bt709"
 	| "video-vfr"
@@ -92,6 +93,16 @@ export const FIXTURE_SPECS: Record<FixtureName, FixtureSpec> = {
 			"-ac",
 			"2",
 			"-shortest",
+		],
+	},
+	"video-two-tone-webm": {
+		file: "video-two-tone.webm",
+		args: [
+			"-f", "lavfi", "-i", LAVFI_VIDEO,
+			"-f", "lavfi", "-i",
+			"aevalsrc='0.08*sin(2*PI*if(lt(t,1),440,880)*t)':s=48000:d=2",
+			"-c:v", "libvpx-vp9", "-pix_fmt", "yuv420p", "-g", "25",
+			"-c:a", "libopus", "-ac", "2", "-shortest",
 		],
 	},
 	// Solid-colour VP9 clips for layering checks (blue is layered over other clips).
