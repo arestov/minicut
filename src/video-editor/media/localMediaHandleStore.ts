@@ -151,7 +151,9 @@ export const createLocalMediaHandleStore = (
 	};
 	const makeRef = (projectId: string, resourceId: string, operationId: string): LocalMediaHandleVersionRef =>
 		`project/${safeSegment(projectId)}/resource/${safeSegment(resourceId)}/handle/${safeSegment(operationId)}`;
+	const protectedPublications = new Set<string>();
 	const api = {
+		protectPublicationResource(resourceId: string) { protectedPublications.add(resourceId); },
 		async put(record: LocalMediaHandleRecord): Promise<void> {
 			validateRecord(record);
 			await withStore("readwrite", (store) => store.put(record));
@@ -193,7 +195,17 @@ export const createLocalMediaHandleStore = (
 		async reconcile(resourceId: string, publishedHandleRef: string | null): Promise<{ kept: string[]; removed: string[] }> {
 			const records = await withStore("readonly", (store) => store.index("resourceId").getAll(resourceId), LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME) as LocalMediaHandleVersionRecord[];
 			const result = { kept: [] as string[], removed: [] as string[] };
-			for (const record of records) { if (record.handleRef === publishedHandleRef) result.kept.push(record.handleRef); else { await api.rollback(record.handleRef); result.removed.push(record.handleRef); } }
+			for (const record of records) { if (record.handleRef === publishedHandleRef) result.kept.push(record.handleRef); else {
+					if (protectedPublications.has(resourceId)) break;
+					let deleted = false;
+					await withStore("readwrite", (store) => {
+						if (protectedPublications.has(resourceId)) return store.get(record.handleRef);
+						deleted = true;
+						return store.delete(record.handleRef);
+					}, LOCAL_MEDIA_HANDLE_VERSION_STORE_NAME);
+					if (!deleted) break;
+					result.removed.push(record.handleRef);
+				} }
 			return result;
 		},
 		async cleanup(resourceId: string, publishedHandleRef: string): Promise<number> { return (await api.reconcile(resourceId, publishedHandleRef)).removed.length; },

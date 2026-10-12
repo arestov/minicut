@@ -42,6 +42,7 @@ interface ResourceSnapshot {
 }
 
 interface LocalResourceEntry extends ResourceSnapshot {
+	publicationIdentity?: string;
 	blob: Blob;
 	objectUrl: string;
 }
@@ -217,8 +218,9 @@ export interface ResourceTransferManager {
 	registerLocalResource(
 		resourceId: string,
 		file: File | Blob,
-		snapshot: Omit<ResourceSnapshot, "resourceId"> & { objectUrl: string },
+		snapshot: Omit<ResourceSnapshot, "resourceId"> & { objectUrl: string; publicationIdentity?: string },
 	): void;
+	releaseLocalResource(resourceId: string, publicationIdentity: string): void;
 	attachClientTransport(transport: P2PRawTransportLike): void;
 	attachServerTransport(
 		remotePeerId: string,
@@ -1512,6 +1514,7 @@ export const createResourceTransferManager = (
 			localResources.set(resourceId, {
 				resourceId,
 				blob: file,
+				publicationIdentity: snapshot.publicationIdentity,
 				objectUrl: snapshot.objectUrl,
 				kind: snapshot.kind,
 				mime: snapshot.mime,
@@ -1531,6 +1534,13 @@ export const createResourceTransferManager = (
 			updateTransferView(resourceId);
 		},
 
+		releaseLocalResource(resourceId, publicationIdentity) {
+			const current = localResources.get(resourceId);
+			if (!current || current.publicationIdentity !== publicationIdentity) return;
+			localResources.delete(resourceId);
+			URL.revokeObjectURL(current.objectUrl);
+			updateTransferView(resourceId);
+		},
 		attachClientTransport(transport) {
 			attachTransport(SERVER_TRANSPORT_KEY, transport);
 			resetRemoteRequestsForPeer(SERVER_TRANSPORT_KEY);

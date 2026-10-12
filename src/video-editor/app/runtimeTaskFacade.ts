@@ -55,9 +55,10 @@ const isSerializable = (value: unknown): boolean => {
 	return false;
 };
 
-export const createRuntimeTaskFacade = () => {
+export const createRuntimeTaskFacade = (options: { runtimeRefPrefix?: string } = {}) => {
 	let taskSeq = 0;
 	let runtimeRefSeq = 0;
+	const runtimeRefPrefix = options.runtimeRefPrefix ?? "rt_tmp_";
 	const runtimeRefs = new Map<string, RuntimeRefRecord>();
 	const queuedTaskByIntent = new Map<string, string>();
 	const taskRuntimeRef = new Map<string, string>();
@@ -69,7 +70,7 @@ export const createRuntimeTaskFacade = () => {
 
 	const putRuntimeRef = (value: unknown): string => {
 		runtimeRefSeq += 1;
-		const runtimeHandleId = `rt_tmp_${runtimeRefSeq}`;
+		const runtimeHandleId = `${runtimeRefPrefix}${runtimeRefSeq}`;
 		runtimeRefs.set(runtimeHandleId, { value });
 		return runtimeHandleId;
 	};

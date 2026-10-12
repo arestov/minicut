@@ -12,6 +12,8 @@ const TASK_REQUEST_TYPES: readonly string[] = [
 	DKT_MSG.EXPORT_REQUEST,
 	DKT_MSG.IMPORT_FILES_REQUEST,
 	DKT_MSG.MEDIA_RECOVERY_REQUEST,
+DKT_MSG.MEDIA_PUBLICATION_DECISION,
+DKT_MSG.MEDIA_PUBLICATION_RETIREMENT,
 	DKT_MSG.PLAYBACK_RUN_REQUEST,
 ];
 
@@ -81,6 +83,8 @@ const createRecordingInterfaces = () => {
 		exportCancel: [] as unknown[],
 		import: [] as unknown[],
 		mediaRecovery: [] as unknown[],
+		publicationDecision: [] as unknown[],
+		publicationRetirement: [] as unknown[],
 		playback: [] as unknown[],
 	};
 	const changed = new Set<() => void>();
@@ -108,7 +112,7 @@ const createRecordingInterfaces = () => {
 			cancelExport: record(calls.exportCancel),
 		},
 		importRuntime: { requestImportFiles: record(calls.import) },
-		mediaRecoveryRuntime: { requestMediaRecovery: record(calls.mediaRecovery) },
+		mediaRecoveryRuntime: { requestMediaRecovery: record(calls.mediaRecovery), publishMediaPublicationDecision: record(calls.publicationDecision), releaseMediaPublication: record(calls.publicationRetirement) },
 		playbackRuntime: { applyPlaybackRun: record(calls.playback) },
 	};
 	return { interfaces, calls, whenCalled };
@@ -301,7 +305,7 @@ describe("createMiniCutDktRuntime injected effect interfaces", () => {
 				} as unknown as MiniCutEffectInterfaces,
 			}),
 		).toThrow(
-			"exportRuntime.requestExport, exportRuntime.cancelExport, mediaRecoveryRuntime.requestMediaRecovery",
+			"exportRuntime.requestExport, exportRuntime.cancelExport, mediaRecoveryRuntime.requestMediaRecovery, mediaRecoveryRuntime.publishMediaPublicationDecision, mediaRecoveryRuntime.releaseMediaPublication",
 		);
 	});
 });

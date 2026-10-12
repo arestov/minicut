@@ -1,3 +1,4 @@
+import { createEffectContractFakes } from "../test/effectContractFakes";
 import { IDBKeyRange, indexedDB } from "fake-indexeddb";
 import { getModelById } from "dkt-all/libs/provoda/utils/getModelById.js";
 import { describe, expect, it } from "vitest";
@@ -62,6 +63,7 @@ const reinitContext = async (
 	if (!snapshot) throw new Error("Expected DKT storage snapshot");
 	return bootDktModels({
 		reinitFromSnapshot: snapshot,
+interfaces: createEffectContractFakes().interfaces as unknown as Record<string, unknown>,
 		crdt: {
 			enabled: true,
 			peerId,
@@ -95,8 +97,9 @@ const findModel = (ctx: DktTestContext, id: string): Model => {
 
 describe("MiniCut CRDT durable reinit", () => {
 	it("persists the full write-set of a local-only task root action", async () => {
-		const ctx = await bootDktModels({
-			interfaces: { mediaRecoveryRuntime: { requestMediaRecovery: () => {} } },
+		const effects = createEffectContractFakes();
+const ctx = await bootDktModels({
+			interfaces: effects.interfaces as unknown as Record<string, unknown>,
 			crdt: {
 				enabled: true,
 				peerId: "durable-local-root",
@@ -117,18 +120,20 @@ describe("MiniCut CRDT durable reinit", () => {
 		});
 		const resource = (await ctx.queryRel(project, "resources"))[0]!;
 		const task = (await ctx.queryRel(resource, "activeMediaRecoveryTask"))[0]!;
-		for (const phase of ["ready-to-commit", "committing"] as const) {
-			await ctx.lockToRead(async () => {
-				await task.dispatch("transition", { operationId: "operation:durable", phase, updatedAt: 2 });
-			});
-		}
-		await ctx.lockToRead(async () => {
-			await task.dispatch("completePublication", {
-				operationId: "operation:durable", assetStorageKind: "project-copy", assetRef: "asset:durable",
-				sourceKind: "file-handle", sourceRef: "handle:durable", url: "blob:after",
-				localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted", updatedAt: 3,
-			});
-		});
+		const candidateMetadata = { kind: "video", duration: 4, width: null, height: null };
+		await ctx.lockToRead(() => task.dispatch("recordInspection", { operationId: "operation:durable", classification: "compatible-replacement", confirmationRequired: false, candidateMetadata, candidateFingerprint: "fp:durable", candidateFingerprintVersion: "v1", updatedAt: 2 }));
+		await ctx.lockToRead(() => task.dispatch("requestCommit", { operationId: "operation:durable", updatedAt: 2 }));
+		const commitRequest = effects.mediaRecoveryCalls.at(-1)!;
+		expect(commitRequest).toMatchObject({ mode: "commit", taskId: task._node_id, resourceId: resource._node_id, projectId: project._node_id });
+		await ctx.lockToRead(() => task.dispatch("completePublication", {
+			...commitRequest,
+			pointer: { assetStorageKind: "project-copy", assetRef: "asset:durable", sourceKind: "file-handle", sourceRef: "handle:durable", url: "blob:after", contentFingerprint: "fp:durable", fingerprintVersion: "v1", duration: 4, width: null, height: null, localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted" },
+			candidateFileMetadata: { mime: "video/webm", size: 4, lastModified: 1 }, updatedAt: 3,
+		}));
+		expect(await ctx.queryAttr(task, "phase")).toBe("committing");
+		const decision = effects.publicationDecisionCalls.at(-1)!.decision as Record<string, unknown>;
+		expect(await ctx.queryAttr(task, "publicationReceipt")).toEqual(decision);
+		await ctx.lockToRead(() => task.dispatch("recordPublicationBindingResult", { ...decision, outcome: "installed", boundaryUpdatedAt: 4 }));
 		expect(await ctx.queryAttr(resource, "assetRef")).toBe("asset:durable");
 		expect(await ctx.queryAttr(task, "phase")).toBe("completed");
 
@@ -137,6 +142,9 @@ describe("MiniCut CRDT durable reinit", () => {
 		const restoredTask = findModel(restarted, String(task._node_id));
 		expect(await restarted.queryAttr(restoredResource, "assetRef")).toBe("asset:durable");
 		expect(await restarted.queryAttr(restoredTask, "phase")).toBe("completed");
+expect(await restarted.queryAttr(restoredTask, "publicationReceipt")).toEqual(decision);
+expect(await restarted.queryAttr(restoredResource, "localAcceptedPublication")).toEqual(decision);
+expect(await restarted.queryAttr(restoredResource, "localPublicationSequence")).toBe(1);
 
 		await ctx.close();
 		await restarted.close();

@@ -405,6 +405,14 @@ export const createMiniCutPageSyncRuntime = ({
 				emitRuntimeTaskRequest("$fx_handleInputFiles", message.payload);
 				return;
 			}
+			case DKT_MSG.MEDIA_PUBLICATION_DECISION: {
+				emitRuntimeTaskRequest("$fx_mediaPublicationDecision", message.payload);
+				return;
+			}
+			case DKT_MSG.MEDIA_PUBLICATION_RETIREMENT: {
+				emitRuntimeTaskRequest("$fx_mediaPublicationRetirement", message.payload);
+				return;
+			}
 			case DKT_MSG.MEDIA_RECOVERY_REQUEST: {
 				emitRuntimeTaskRequest("$fx_mediaRecovery", message.payload);
 				return;

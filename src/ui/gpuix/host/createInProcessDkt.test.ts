@@ -41,7 +41,7 @@ test("runs on the effect contract fakes unless the host supplies its own interfa
 	const own = {
 		exportRuntime: { requestExport() {}, cancelExport() {} },
 		importRuntime: { requestImportFiles() {} },
-		mediaRecoveryRuntime: { requestMediaRecovery() {} },
+		mediaRecoveryRuntime: { requestMediaRecovery() {}, publishMediaPublicationDecision() {}, releaseMediaPublication() {} },
 		playbackRuntime: { applyPlaybackRun() {} },
 	};
 	dkt = createInProcessDkt({ effectInterfaces: own });

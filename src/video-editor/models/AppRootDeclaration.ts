@@ -1,3 +1,4 @@
+import { makePublicationManifest, capturedPublicationRetirements } from "../media/mediaPublicationProtocol";
 import { addr } from "dkt/dcl/addr.js";
 import { merge as mergeDcl } from "dkt/dcl/merge.js";
 import {
@@ -131,6 +132,7 @@ export const MINICUT_APP_PROPS = mergeDcl({
 	},
 	attrs: {
 		activeReviewItemId: ["input", null],
+		localMediaPublicationManifest: ["comp", ["< @all:localPublicationValidity < resource", "< @all:publicationOwnership < mediaRecoveryTask"] as const, makePublicationManifest],
 
 		projectMetaList: ["input", []],
 		hasProjects: [
@@ -168,12 +170,25 @@ export const MINICUT_APP_PROPS = mergeDcl({
 	},
 	effects: {
 		api: {
+			mediaRecoveryRuntime: [["_node_id"] as const, ["#mediaRecoveryRuntime"] as const, (runtime: unknown) => runtime],
 			// Optional per platform: absent means no boot media restore.
 			mediaRestoreRuntime: [
 				["_node_id"] as const,
 				["#mediaRestoreRuntime"] as const,
 				(mediaRestoreRuntime: unknown) => mediaRestoreRuntime,
 			],
+		},
+		out: {
+			$fx_mediaPublicationRetirement: {
+				runOn: ["local", "sync"],
+				api: ["mediaRecoveryRuntime"],
+				trigger: ["localMediaPublicationManifest", "_node_id"],
+				create_when: { api_inits: true },
+				fn: (api: unknown, state: unknown) => {
+					const runtime = api as { releaseMediaPublication(payload: unknown): void };
+					for (const retirement of capturedPublicationRetirements(state)) runtime.releaseMediaPublication(retirement);
+				},
+			},
 		},
 	},
 	actions: {

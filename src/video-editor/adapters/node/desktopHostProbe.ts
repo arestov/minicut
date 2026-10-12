@@ -30,7 +30,7 @@ const probeEffectInterfaces: MiniCutEffectInterfaces = {
 		cancelExport: probeStub("exportRuntime.cancelExport"),
 	},
 	importRuntime: { requestImportFiles: probeStub("importRuntime.requestImportFiles") },
-	mediaRecoveryRuntime: { requestMediaRecovery: probeStub("mediaRecoveryRuntime.requestMediaRecovery") },
+	mediaRecoveryRuntime: { requestMediaRecovery: probeStub("mediaRecoveryRuntime.requestMediaRecovery"), publishMediaPublicationDecision: probeStub("mediaRecoveryRuntime.publishMediaPublicationDecision"), releaseMediaPublication: probeStub("mediaRecoveryRuntime.releaseMediaPublication") },
 	playbackRuntime: { applyPlaybackRun: probeStub("playbackRuntime.applyPlaybackRun") },
 };
 

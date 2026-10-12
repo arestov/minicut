@@ -364,3 +364,20 @@ describe("createMiniCutPageSyncRuntime", () => {
 		runtime.destroy();
 	});
 });
+
+describe("media publication channel routing", () => {
+	it("routes decisions and retirements to distinct page consumers", () => {
+		const memory = createMemoryTransport();
+		const runtime = createMiniCutPageSyncRuntime({ transport: memory.transport });
+		const decisions: unknown[] = []; const retirements: unknown[] = []; const requests: unknown[] = [];
+		runtime.subscribeRuntimeTaskRequests("$fx_mediaPublicationDecision", (p) => decisions.push(p));
+		runtime.subscribeRuntimeTaskRequests("$fx_mediaPublicationRetirement", (p) => retirements.push(p));
+		runtime.subscribeRuntimeTaskRequests("$fx_mediaRecovery", (p) => requests.push(p));
+		memory.emit({ type: DKT_MSG.MEDIA_PUBLICATION_DECISION, payload: { decision: "accepted" } });
+		memory.emit({ type: DKT_MSG.MEDIA_PUBLICATION_RETIREMENT, payload: { resourceId: "retired" } });
+		expect(decisions).toEqual([{ decision: "accepted" }]);
+		expect(retirements).toEqual([{ resourceId: "retired" }]);
+		expect(requests).toEqual([]);
+		runtime.destroy();
+	});
+});

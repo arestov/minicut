@@ -2,6 +2,23 @@ import { describe, expect, it } from "vitest";
 import { createRuntimeTaskFacade } from "./runtimeTaskFacade";
 
 describe("createRuntimeTaskFacade", () => {
+	it("keeps first runtime refs distinct across prefixed owners", () => {
+		const first = createRuntimeTaskFacade({ runtimeRefPrefix: "first:rt_tmp_" });
+		const second = createRuntimeTaskFacade({ runtimeRefPrefix: "second:rt_tmp_" });
+		const firstFile = new File(["first bytes"], "first.txt");
+		const secondFile = new File(["second bytes"], "second.txt");
+		const firstId = first.putRuntimeRef(firstFile);
+		const secondId = second.putRuntimeRef(secondFile);
+
+		expect(firstId).toBe("first:rt_tmp_1");
+		expect(secondId).toBe("second:rt_tmp_1");
+		expect(firstId).not.toBe(secondId);
+		expect(first.getRuntimeRef(secondId)).toBeUndefined();
+		expect(second.getRuntimeRef(firstId)).toBeUndefined();
+		expect(first.getRuntimeRef(firstId)).toBe(firstFile);
+		expect(second.getRuntimeRef(secondId)).toBe(secondFile);
+		expect(createRuntimeTaskFacade().putRuntimeRef(firstFile)).toBe("rt_tmp_1");
+	});
 	it("stores runtimeRef as runtimeHandleId and consumes it once", () => {
 		const tasks = createRuntimeTaskFacade();
 		const file = new File(["a"], "a.txt", { type: "text/plain" });

@@ -15,6 +15,8 @@ const createTargets = () => {
 		cancelExport: (payload) => sinkCalls.push({ call: "cancelExport", payload }),
 		requestImportFiles: (payload) => sinkCalls.push({ call: "requestImportFiles", payload }),
 		requestMediaRecovery: (payload) => sinkCalls.push({ call: "requestMediaRecovery", payload }),
+		publishMediaPublicationDecision: (payload) => sinkCalls.push({ call: "publishMediaPublicationDecision", payload }),
+		releaseMediaPublication: (payload) => sinkCalls.push({ call: "releaseMediaPublication", payload }),
 	};
 	const window = (name: string, rootNodeId: string | null) => ({
 		rootNodeId,
@@ -54,12 +56,16 @@ describe("desktop effect interfaces (configuration B)", () => {
 		interfaces.exportRuntime.cancelExport({ id: "e1", queueKey: "project", initiatedBy: "root-b" });
 		interfaces.importRuntime.requestImportFiles({ inputBatchHandleId: "b1" });
 		interfaces.mediaRecoveryRuntime.requestMediaRecovery({ taskId: "t1" });
+		interfaces.mediaRecoveryRuntime.publishMediaPublicationDecision({ decision: "canonical" });
+		interfaces.mediaRecoveryRuntime.releaseMediaPublication({ resourceId: "r1" });
 
 		expect(targets.sinkCalls.map((entry) => entry.call)).toEqual([
 			"requestExport",
 			"cancelExport",
 			"requestImportFiles",
 			"requestMediaRecovery",
+			"publishMediaPublicationDecision",
+			"releaseMediaPublication",
 		]);
 		expect(targets.sinkCalls[2].payload).toEqual({ inputBatchHandleId: "b1" });
 		expect(targets.windowMessages).toEqual([]);

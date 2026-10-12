@@ -81,6 +81,8 @@ export const createBrowserEffectInterfaces = ({
 			},
 		},
 		mediaRecoveryRuntime: {
+			publishMediaPublicationDecision: (payload) => publishToPages(DKT_MSG.MEDIA_PUBLICATION_DECISION, payload),
+			releaseMediaPublication: (payload) => publishToPages(DKT_MSG.MEDIA_PUBLICATION_RETIREMENT, payload),
 			requestMediaRecovery: (payload: unknown) => {
 				publishToPages(DKT_MSG.MEDIA_RECOVERY_REQUEST, payload);
 			},

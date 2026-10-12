@@ -222,6 +222,7 @@ export const createDesktopExecutors = ({
 
 	const recovery = createMediaRecoveryExecutor({
 		page: sharedPage,
+		stat: async (filePath) => { const file = await stat(filePath); return { size: file.size, mtimeMs: file.mtimeMs }; },
 		registry,
 		refs,
 		probe,
@@ -285,6 +286,8 @@ export const createDesktopExecutors = ({
 				entry?.exporter.cancel(payload);
 			});
 		},
+		publishMediaPublicationDecision(payload) { run("$fx_mediaPublicationDecision", () => recovery.consumeDecision(payload)); },
+		releaseMediaPublication(payload) { run("$fx_mediaPublicationRetirement", () => recovery.consumeRetirement(payload)); },
 		requestMediaRecovery(payload) {
 			run("$fx_mediaRecovery", () => recovery.handleRequest(payload));
 		},
@@ -308,6 +311,7 @@ export const createDesktopExecutors = ({
 		},
 		async dispose() {
 			disposed = true;
+			recovery.dispose();
 			const entries = [...byRoot.values()];
 			byRoot.clear();
 			await Promise.all(entries.map((entry) => entry.exporter.dispose()));

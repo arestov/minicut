@@ -92,6 +92,10 @@ export const openRealHostFixture = async (
 				refs,
 				probe: (filePath) => media.probe({ requestId: "probe", source: { path: filePath } }),
 				fingerprint: (filePath) => fingerprintNodeFile(filePath),
+				stat: async (filePath) => {
+					const info = await stat(filePath);
+					return { size: info.size, mtimeMs: info.mtimeMs };
+				},
 				onAssetsChanged: () => {},
 				generateId: () => crypto.randomUUID(),
 				now: () => Date.now(),
@@ -100,6 +104,11 @@ export const openRealHostFixture = async (
 				void executor.handleRequest(payload);
 			});
 			if (stop) disposers.push(stop);
+			const stopDecision = page.subscribeRuntimeTaskRequests?.("$fx_mediaPublicationDecision", (payload) => executor.consumeDecision(payload));
+			const stopRetirement = page.subscribeRuntimeTaskRequests?.("$fx_mediaPublicationRetirement", (payload) => executor.consumeRetirement(payload));
+			if (stopDecision) disposers.push(stopDecision);
+			if (stopRetirement) disposers.push(stopRetirement);
+			disposeExecutors.push(async () => executor.dispose());
 			return executor;
 		},
 		attachExport() {

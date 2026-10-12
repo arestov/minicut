@@ -19,7 +19,7 @@ afterEach(async () => {
 	for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-const taskShape = defineShape({ attrs: ["phase", "reasonCode", "operationId"] });
+const taskShape = defineShape({ attrs: ["phase", "reasonCode", "operationId", "publicationReceipt", "publicationBindingResult"] });
 const resourceShape = defineShape({
 	attrs: [
 		"name",
@@ -59,6 +59,21 @@ const activeTask = (h: RealHostFixture, resource: ReactSyncScopeHandle) =>
 		(listener) => h.page.subscribeOne(resource, "activeMediaRecoveryTask", listener),
 	);
 
+const expectInstalledPublication = async (h: RealHostFixture, task: ReactSyncScopeHandle) => {
+	const operationId = await h.driver.waitAttr(task, "operationId");
+	if (typeof operationId !== "string") throw new Error("Expected a publication operation id");
+	const receipt = await waitForAttr(h.page, task, "publicationReceipt", (value) => value !== undefined && value !== null) as { kind: string; taskId: string; operationId: string; sequence: number };
+	const binding = await waitForAttr(h.page, task, "publicationBindingResult", (value) => value !== undefined && value !== null) as { outcome: string; taskId: string; operationId: string; sequence: number };
+	expect(receipt.kind).toBe("accepted");
+	expect(receipt.taskId).toBe(task._nodeId);
+	expect(receipt.operationId).toBe(operationId);
+	expect(Number.isSafeInteger(receipt.sequence) && receipt.sequence > 0).toBe(true);
+	expect(binding.outcome).toBe("installed");
+	expect(binding.taskId).toBe(task._nodeId);
+	expect(binding.operationId).toBe(operationId);
+	expect(binding.sequence).toBe(receipt.sequence);
+};
+
 const openProject = async (profileDir: string) => {
 	const h = await openRealHostFixture(profileDir);
 	host = h;
@@ -80,6 +95,7 @@ test("an imported file completes its recovery task and is reported as available"
 
 	const task = await activeTask(h, resource);
 	await waitForAttr(h.page, task, "phase", (phase) => phase === "completed");
+	await expectInstalledPublication(h, task);
 	const read = (name: string, expected: unknown) =>
 		waitForAttr(h.page, resource, name, (value) => value === expected);
 	await read("localMediaAvailability", "ready-file-handle");
@@ -100,12 +116,22 @@ test("after a restart the resource is restored from the registry; a missing file
 	const [firstResource] = await first.h.driver.waitMany(first.project, "resources", 1);
 	const firstTask = await activeTask(first.h, firstResource);
 	await waitForAttr(first.h.page, firstTask, "phase", (phase) => phase === "completed");
+	await expectInstalledPublication(first.h, firstTask);
 	await first.h.close();
 	host = null;
 
 	// Second run, file still there: restored as available, url republished.
 	const second = await openProject(profile);
 	const [restored] = await second.h.driver.waitMany(second.project, "resources", 1);
+	const secondTask = await waitFor(
+		() => {
+			const current = second.h.page.readOne(restored, "activeMediaRecoveryTask");
+			return current && current._nodeId !== firstTask._nodeId ? current : null;
+		},
+		(listener) => second.h.page.subscribeOne(restored, "activeMediaRecoveryTask", listener),
+	);
+	await waitForAttr(second.h.page, secondTask, "phase", (phase) => phase === "completed");
+	await expectInstalledPublication(second.h, secondTask);
 	await waitForAttr(second.h.page, restored, "localMediaAvailability", (v) => v === "ready-file-handle");
 	await waitForAttr(
 		second.h.page,
@@ -122,12 +148,27 @@ test("after a restart the resource is restored from the registry; a missing file
 	const third = await openProject(profile);
 	const [resource] = await third.h.driver.waitMany(third.project, "resources", 1);
 	await waitForAttr(third.h.page, resource, "originalAccessStatus", (v) => v === "missing");
-	const task = await activeTask(third.h, resource);
+	const task = await waitFor(
+		() => {
+			const current = third.h.page.readOne(resource, "activeMediaRecoveryTask");
+			return current && current._nodeId !== secondTask._nodeId ? current : null;
+		},
+		(listener) => third.h.page.subscribeOne(resource, "activeMediaRecoveryTask", listener),
+	);
 	await waitForAttr(third.h.page, task, "phase", (v) => v === "awaiting-user-action");
 	await waitForAttr(third.h.page, task, "reasonCode", (v) => v === "source-missing");
 
 	// The user picks the moved file: identical bytes are an exact match and commit.
 	third.recovery.requestRelink(resource._nodeId, moved, "locate-original");
+	const relinkTask = await waitFor(
+		() => {
+			const current = third.h.page.readOne(resource, "activeMediaRecoveryTask");
+			return current && current._nodeId !== task._nodeId ? current : null;
+		},
+		(listener) => third.h.page.subscribeOne(resource, "activeMediaRecoveryTask", listener),
+	);
+	await waitForAttr(third.h.page, relinkTask, "phase", (phase) => phase === "completed");
+	await expectInstalledPublication(third.h, relinkTask);
 	await waitForAttr(third.h.page, resource, "originalAccessStatus", (v) => v === "granted");
 	await waitForAttr(third.h.page, resource, "localMediaAvailability", (v) => v === "ready-file-handle");
 	expect(third.h.registry.list()[0].path).toBe(moved);

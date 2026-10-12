@@ -9,6 +9,8 @@ import type { ProjectAssetStore } from "../media/projectAssetStore";
 import { fingerprintMediaFile } from "../media/mediaContentFingerprint";
 import type { HarnessMediaProbeResult } from "./platform/types";
 import { commitRecoveryStorage } from "../media/mediaRecoveryStorageCommit";
+import { createMediaPublicationConsumer, type RetainedPublication } from "../media/mediaPublicationConsumer";
+import { publicationIdentity, publicationTuple, type PublicationProposal } from "../media/mediaPublicationProtocol";
 import {
 	createLocalMediaResolver,
 	type LocalMediaResourceSnapshot,
@@ -161,7 +163,7 @@ export const createVideoEditorHarness = (
 	const mediaRecoveryBootId = `boot:${crypto.randomUUID()}`;
 	const startedRecoveryResources = new Set<string>();
 	const recoveringResources = new Map<string, Promise<void>>();
-	const committingRecoveryOperations = new Set<string>();
+
 	const hydratedRecoveryResources = new Set<string>();
 	const capturedHydratedProjects = new Set<string>();
 	let authorityClientRef: EditorAuthorityClient | null = null;
@@ -217,7 +219,8 @@ export const createVideoEditorHarness = (
 			pageRuntime?.dispatch("completePlayback", completion);
 		},
 	});
-	const runtimeTasks = createRuntimeTaskFacade();
+	const runtimeRefPrefix = `${mediaRecoveryBootId}:rt_tmp_`;
+	const runtimeTasks = createRuntimeTaskFacade({ runtimeRefPrefix });
 	const extensionBus = createAuthorityExtensionBus();
 
 	let isDestroyed = false;
@@ -250,9 +253,9 @@ export const createVideoEditorHarness = (
 					pageRuntime?.dispatch("setLocalMediaStatus", status, resourceScope);
 				}
 			},
-			setLocalMediaAxes: (resourceId, state) => {
+			setLocalMediaAxes: (resourceId, state, restoreSnapshot) => {
 				const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId);
-				if (resourceScope) pageRuntime?.dispatch("recordAutomaticMediaRecovery", { ...state, updatedAt: Date.now() }, resourceScope);
+				if (resourceScope) pageRuntime?.dispatch("recordAutomaticMediaRecovery", { ...state, restoreSnapshot, updatedAt: Date.now() }, resourceScope);
 			},
 		},
 	});
@@ -313,6 +316,8 @@ export const createVideoEditorHarness = (
 							"data",
 							"assetStorageKind",
 							"assetRef",
+							"localMediaPublicationOwnership",
+							"localPublicationSequence",
 						]) as unknown as ResourceAttrs;
 
 						return {
@@ -331,6 +336,9 @@ export const createVideoEditorHarness = (
 					capturedHydratedProjects.add(activeProjectScope._nodeId);
 				}
 				for (const { resourceId, attrs } of resources) {
+					const publicationOwnership = (attrs as unknown as { localMediaPublicationOwnership?: { accepted?: unknown[]; candidates?: unknown[] } }).localMediaPublicationOwnership;
+					const ownedPublication = Boolean(publicationOwnership?.accepted?.length || publicationOwnership?.candidates?.length);
+					if (ownedPublication) { projectAssets.protectPublicationResource(activeProjectScope._nodeId, resourceId); mediaHandleStore.protectPublicationResource(resourceId); }
 					if (!hydratedRecoveryResources.has(`${activeProjectScope._nodeId}:${resourceId}`)) continue;
 					const durableStorageKind = (attrs as { assetStorageKind?: unknown }).assetStorageKind ?? (attrs.source as { assetStorageKind?: unknown } | null)?.assetStorageKind;
 					const durableAssetRef = (attrs as { assetRef?: unknown }).assetRef ?? (attrs.source as { assetRef?: unknown } | null)?.assetRef;
@@ -342,13 +350,9 @@ export const createVideoEditorHarness = (
 					if (recoveringResources.has(resourceId)) continue;
 					const resourceScope = { kind: "scope" as const, _nodeId: resourceId };
 					const durableSourceRef = (attrs as { sourceRef?: unknown }).sourceRef;
-					const snapshot = { resourceId, projectId: activeProjectScope._nodeId, assetStorageKind: durableStorageKind, assetRef: durableAssetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: durableSourceRef, handleRef: durableSourceRef, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
+					const snapshot = { resourceId, publicationSequence: (attrs as unknown as { localPublicationSequence?: unknown }).localPublicationSequence, projectId: activeProjectScope._nodeId, assetStorageKind: durableStorageKind, assetRef: durableAssetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: durableSourceRef, handleRef: (attrs as { sourceKind?: unknown }).sourceKind === "file-handle" ? durableSourceRef : null, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
 					const recovery = (async () => {
 						await new Promise<void>((resolve) => platform.setTimeout(resolve, 0));
-						const assetRef = typeof snapshot.assetRef === "string" ? snapshot.assetRef : null;
-						const handleRef = typeof snapshot.sourceRef === "string" && snapshot.sourceRef.includes("/handle/") ? snapshot.sourceRef : null;
-						await projectAssets.reconcile(activeProjectScope._nodeId, resourceId, assetRef);
-						await mediaHandleStore.reconcile(resourceId, handleRef);
 						if (!startedRecoveryResources.has(resourceId)) {
 							startedRecoveryResources.add(resourceId);
 							pageRuntime.dispatch("startMediaRecovery", { operationId: `${mediaRecoveryBootId}:${resourceId}`, attemptId: `${mediaRecoveryBootId}:${resourceId}`, bootId: mediaRecoveryBootId, recoveryKind: "restore", intent: "restore", createdAt: Date.now(), updatedAt: Date.now() }, resourceScope);
@@ -385,6 +389,8 @@ export const createVideoEditorHarness = (
 							"data",
 							"assetStorageKind",
 							"assetRef",
+							"localMediaPublicationOwnership",
+							"localPublicationSequence",
 						],
 						syncResources,
 					),
@@ -639,39 +645,122 @@ export const createVideoEditorHarness = (
 
 	const subscribeToMediaRecoveryTasks = (): (() => void) => {
 		if (!pageRuntime || !dktPort) return EMPTY_CLEANUP;
-		const commitRequest = async (request: Record<string, unknown>) => {
-					const resourceId = String(request.resourceId ?? ""); const taskId = String(request.taskId ?? ""); const operationId = String(request.operationId ?? "");
-					if (!operationId || committingRecoveryOperations.has(operationId)) return;
-					committingRecoveryOperations.add(operationId);
-					await new Promise<void>((resolve) => platform.setTimeout(resolve, 0));
-					const resourceScope = readActiveProjectResourceScopes().find((scope) => scope._nodeId === resourceId); const root = pageRuntime.getRootScope(); const project = root ? pageRuntime.readOne(root, "activeProject") : null;
-					if (!resourceScope || !project) return;
-					const runtime = runtimeTasks.getRuntimeRef(String(request.runtimeHandleId ?? "")) as { file?: File; handle?: FileSystemFileHandle } | null;
-					if (!(runtime?.file instanceof File)) { pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: "runtime-ref-expired", errorMessage: "Choose the file again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); return; }
-					const url = platform.createObjectUrl(runtime.file); if (!url) return;
-					const now = Date.now();
-					const result = await commitRecoveryStorage({ projectId: project._nodeId, resourceId, operationId, file: runtime.file, handleRecord: runtime.handle ? { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now } : null, assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore, fault: async (point) => {
-						const testWindow = globalThis as typeof globalThis & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean; __MINICUT_MEDIA_RECOVERY_FAULT_POINT__?: string };
-						if (testWindow.__MINICUT_ENABLE_DEBUG_BRIDGE__ === true && testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__ === point) {
-							delete testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__;
-							throw new Error(`Injected media recovery fault at ${point}`);
-						}
-					}, publish: async (refs) => {
-						if (pageRuntime.readOne(resourceScope, "activeMediaRecoveryTask")?._nodeId !== taskId) return "noop";
-						const metadata = request.candidateMetadata as Record<string, unknown> | null;
-						const completion = { operationId, assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: refs.handleRef ? "file-handle" : "object-url", sourceRef: refs.handleRef, url, contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null, ...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}), ...(typeof metadata?.width === "number" ? { width: metadata.width } : {}), ...(typeof metadata?.height === "number" ? { height: metadata.height } : {}), localMediaAvailability: refs.assetRef ? "ready-project-copy" : refs.handleRef ? "ready-file-handle" : "unknown", originalAccessStatus: refs.handleRef ? "granted" : "missing", updatedAt: Date.now() };
-						await pageRuntime.dispatchAndWait("completePublication", completion, { kind: "scope", _nodeId: taskId });
-						return "applied";
-					} });
-					if (result.ok) { localMediaResolver.activateObjectUrl(resourceId, url, result.assetRef ? "ready-project-copy" : result.handleRef ? "ready-file-handle" : "unknown"); runtimeTasks.deleteRuntimeRef(String(request.runtimeHandleId ?? "")); }
-					else { platform.revokeObjectUrl(url); if (result.reason !== "stale") pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: result.reason, errorMessage: "Could not save the selected source. Try again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId }); }
+		const neverHandedUrls = (record: RetainedPublication, duringTeardown = false) => {
+			const playback = record.playbackUrl;
+			if (playback && !record.playbackEntered && (duringTeardown || !consumer.isDisposed())) {
+				record.playbackUrl = undefined;
+				platform.revokeObjectUrl(playback);
+			}
+			const transfer = record.transferUrl;
+			if (transfer && !record.transferEntered && (duringTeardown || !consumer.isDisposed())) {
+				record.transferUrl = undefined;
+				if (transfer !== playback) platform.revokeObjectUrl(transfer);
+			}
 		};
-		return pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {
+		const rollbackRefs = (record: RetainedPublication, excludedAssetRef: string | null = null, excludedHandleRef: string | null = null) => {
+			const pointer = record.proposal?.pointer;
+			const assetRef = pointer?.assetRef ?? record.stagedAssetRef;
+			const handleRef = pointer?.sourceKind === "file-handle" ? pointer.sourceRef : record.stagedHandleRef;
+			if (assetRef && assetRef !== excludedAssetRef) void projectAssets.rollback(assetRef).catch(() => undefined);
+			if (!consumer.isDisposed() && handleRef && handleRef !== excludedHandleRef) void mediaHandleStore.rollback(handleRef).catch(() => undefined);
+		};
+		const consumer = createMediaPublicationConsumer({
+			installTransfer(record, decision) {
+				if (!record.file || !record.transferUrl) throw new Error("Retained publication File/transfer URL unavailable");
+				const resource = decision.acceptedResource;
+				const source = resource.source as { ownerPeerId?: string; kind?: string } | null;
+				const data = resource.data as { chunkSize?: number } | null;
+				resourceTransferManager.registerLocalResource(decision.resourceId, record.file, {
+					kind: resource.kind as ResourceAttrs["kind"], mime: String(resource.mime), duration: Number(resource.duration), size: typeof resource.size === "number" ? resource.size : record.file.size,
+					chunkSize: Math.max(1, typeof data?.chunkSize === "number" ? data.chunkSize : resourceChunkSize), ownerPeerId: typeof source?.ownerPeerId === "string" ? source.ownerPeerId : null,
+					sourceKind: source?.kind === "p2p" ? "p2p" : "local", fallbackUrl: decision.pointer.url, name: String(resource.name), objectUrl: record.transferUrl,
+					publicationIdentity: publicationIdentity(decision, decision.sequence),
+				});
+			},
+			installPlayback(record, decision) {
+				if (!record.playbackUrl) throw new Error("Retained publication playback URL unavailable");
+				localMediaResolver.activateObjectUrl(decision.resourceId, record.playbackUrl, decision.pointer.localMediaAvailability as "ready-project-copy" | "ready-file-handle", publicationIdentity(decision, decision.sequence));
+			},
+			release(record, retirement) {
+				if (retirement.sequence !== null) {
+					resourceTransferManager.releaseLocalResource(retirement.resourceId, retirement.releaseTransferToken!);
+				if (consumer.isDisposed()) return;
+					localMediaResolver.releasePublicationUrl(retirement.resourceId, retirement.releasePlaybackToken!);
+				if (consumer.isDisposed()) return;
+				}
+				rollbackRefs(record, retirement.excludedAssetRef, retirement.excludedHandleRef);
+				if (consumer.isDisposed()) return;
+				neverHandedUrls(record);
+				if (consumer.isDisposed()) return;
+				if (typeof record.request.runtimeHandleId === "string") runtimeTasks.deleteRuntimeRef(record.request.runtimeHandleId);
+				record.file = undefined;
+			},
+			reject(record) { rollbackRefs(record); if (consumer.isDisposed()) return; neverHandedUrls(record); if (consumer.isDisposed()) return; if (typeof record.request.runtimeHandleId === "string") runtimeTasks.deleteRuntimeRef(record.request.runtimeHandleId); record.file = undefined; },
+			result(result) {
+				pageRuntime.dispatch("recordPublicationBindingResult", result, { kind: "scope", _nodeId: result.taskId });
+				if (!consumer.isDisposed() && result.outcome === "installed" && typeof result.runtimeHandleId === "string") runtimeTasks.deleteRuntimeRef(result.runtimeHandleId);
+			},
+			now: () => Date.now(),
+		});
+		const ownsRecoveryRequest = (request: Record<string, unknown>): boolean =>
+			typeof request.runtimeHandleId === "string"
+				? request.runtimeHandleId.startsWith(runtimeRefPrefix)
+				: (request.runtimeHandleId === undefined || request.runtimeHandleId === null) && request.bootId === mediaRecoveryBootId;
+		const commitRequest = async (request: Record<string, unknown>) => {
+			if (!ownsRecoveryRequest(request)) return;
+			if (!publicationTuple(request)) return;
+			const record = consumer.retain(request); if (!record || record.started || record.retired) return;
+			record.started = true; record.settled = false; record.request = request;
+			const operationId = String(request.operationId); const resourceId = String(request.resourceId); const taskId = String(request.taskId); const projectId = String(request.projectId);
+			const fail = (reason: string) => pageRuntime.dispatch("transition", { operationId, phase: "failed", reasonCode: reason, errorMessage: "Could not save the selected source. Choose it again.", updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId });
+			const runtime = runtimeTasks.getRuntimeRef(String(request.runtimeHandleId ?? "")) as { file?: File; handle?: FileSystemFileHandle } | null;
+			if (!(runtime?.file instanceof File)) { consumer.settle(record); fail("runtime-ref-expired"); return; }
+			if (record.file && record.file !== runtime.file) { consumer.settle(record); fail("publication-candidate-substituted"); return; }
+			record.file = runtime.file;
+			try {
+				record.playbackUrl = platform.createObjectUrl(runtime.file) ?? undefined;
+				record.transferUrl = platform.createObjectUrl(runtime.file) ?? undefined;
+				if (!record.playbackUrl || !record.transferUrl || record.playbackUrl === record.transferUrl) throw new Error("Distinct publication URLs unavailable");
+			} catch { neverHandedUrls(record); consumer.settle(record); fail("publication-url-unavailable"); return; }
+			// Candidate/File and both distinct URL ownership records exist before any entered storage await.
+			projectAssets.protectPublicationResource(projectId, resourceId); mediaHandleStore.protectPublicationResource(resourceId);
+			const now = Date.now();
+			const result = await commitRecoveryStorage({ projectId, resourceId, operationId, file: runtime.file,
+				handleRecord: runtime.handle ? { resourceId, handle: runtime.handle, name: runtime.file.name, size: runtime.file.size, lastModified: runtime.file.lastModified, mime: runtime.file.type || "application/octet-stream", createdAt: now, updatedAt: now } : null,
+				assetMetadata: { name: runtime.file.name, mime: runtime.file.type || "application/octet-stream", size: runtime.file.size, lastModified: runtime.file.lastModified }, assets: projectAssets, handles: mediaHandleStore,
+				fault: async (point) => {
+					const testWindow = globalThis as typeof globalThis & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean; __MINICUT_MEDIA_RECOVERY_FAULT_POINT__?: string };
+					if (testWindow.__MINICUT_ENABLE_DEBUG_BRIDGE__ === true && testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__ === point) { delete testWindow.__MINICUT_MEDIA_RECOVERY_FAULT_POINT__; throw new Error(`Injected media recovery fault at ${point}`); }
+				},
+				publish: async (refs) => {
+					const metadata = request.candidateMetadata as Record<string, unknown>; const snapshot = request.transferSnapshot as Record<string, unknown>;
+					const proposal: PublicationProposal = { ...publicationTuple(request)!, candidateMetadata: metadata, candidateFingerprint: request.candidateFingerprint as string | null, candidateFingerprintVersion: request.candidateFingerprintVersion as string | null,
+						candidateFileMetadata: { mime: runtime.file!.type || "application/octet-stream", size: runtime.file!.size, lastModified: runtime.file!.lastModified }, updatedAt: Date.now(),
+						pointer: { assetStorageKind: refs.assetRef ? "project-copy" : "linked", assetRef: refs.assetRef, sourceKind: refs.handleRef ? "file-handle" : "object-url", sourceRef: refs.handleRef, url: record.playbackUrl!, contentFingerprint: request.candidateFingerprint as string | null, fingerprintVersion: request.candidateFingerprintVersion as string | null,
+							duration: typeof metadata.duration === "number" ? metadata.duration : Number(snapshot.duration), width: Object.hasOwn(metadata, "width") ? typeof metadata.width === "number" ? metadata.width : null : typeof snapshot.width === "number" ? snapshot.width : null, height: Object.hasOwn(metadata, "height") ? typeof metadata.height === "number" ? metadata.height : null : typeof snapshot.height === "number" ? snapshot.height : null,
+							localMediaAvailability: refs.assetRef ? "ready-project-copy" : refs.handleRef ? "ready-file-handle" : "unknown", originalAccessStatus: refs.handleRef ? "granted" : "missing" } };
+					record.proposal = proposal; consumer.settle(record);
+					if (record.retired) return { kind: "rejected", candidateDisposition: "rollback-unaccepted" };
+					try { await pageRuntime.dispatchAndWait("completePublication", proposal, { kind: "scope", _nodeId: taskId }); }
+					catch { return record.accepted ? { kind: "accepted", receipt: record.accepted } : { kind: "indeterminate", reason: "publication-dispatch-unknown" }; }
+					return record.accepted ? { kind: "accepted", receipt: record.accepted } : { kind: "indeterminate", reason: "publication-decision-pending" };
+				},
+			});
+			record.stagedAssetRef = result.assetRef; record.stagedHandleRef = result.handleRef;
+			if (!result.ok) { consumer.settle(record); neverHandedUrls(record); if (!record.retired) fail(result.reason); }
+		};
+		const unsubscribeDecision = pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaPublicationDecision", (payload) => consumer.consumeDecision(payload)) ?? EMPTY_CLEANUP;
+		const unsubscribeRetirement = pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaPublicationRetirement", (payload) => consumer.consumeRetirement(payload)) ?? EMPTY_CLEANUP;
+		const unsubscribeRecovery = pageRuntime.subscribeRuntimeTaskRequests?.("$fx_mediaRecovery", (payload) => {
 			const request = payload as Record<string, unknown>;
+			if (!ownsRecoveryRequest(request)) return;
 			if (request.mode === "commit") {
 				void commitRequest(request);
 				return;
 			}
+			const retainedInspection = consumer.retain(request);
+			if (retainedInspection?.retired) return;
+			if (retainedInspection && typeof request.runtimeHandleId === "string") { const candidate = runtimeTasks.getRuntimeRef(request.runtimeHandleId) as { file?: File } | null; if (candidate?.file instanceof File) retainedInspection.file = candidate.file; }
 			if (request.intent === "restore" && typeof request.runtimeHandleId === "string") {
 				const operationId = String(request.operationId); const taskId = String(request.taskId); const candidate = request.original;
 				pageRuntime.dispatch("recordInspection", { operationId, classification: "exact-match", confirmationRequired: false, compatibility: { classification: "exact-match", reasons: [], requiresConfirmation: false, diff: {}, durationTolerance: 0 }, candidateMetadata: candidate, candidateFingerprint: request.originalFingerprint ?? null, candidateFingerprintVersion: request.fingerprintVersion ?? null, updatedAt: Date.now() }, { kind: "scope", _nodeId: taskId });
@@ -690,8 +779,10 @@ export const createVideoEditorHarness = (
 				fingerprint: (file, signal) => fingerprintFile(file, undefined, signal),
 				dispatch: (action, value, target) => pageRuntime.dispatch(action, value, target),
 				now: () => Date.now(),
-			}).then((outcome) => { if (outcome?.policy.classification === "exact-match") pageRuntime.dispatch("requestCommit", { operationId: outcome.operationId, updatedAt: Date.now() }, { kind: "scope", _nodeId: String(request.taskId) }); });
+				isCancelled: () => retainedInspection?.retired === true,
+			}).then((outcome) => { if (retainedInspection) consumer.settle(retainedInspection); if (!retainedInspection?.retired && outcome?.policy.classification === "exact-match") pageRuntime.dispatch("requestCommit", { operationId: outcome.operationId, updatedAt: Date.now() }, { kind: "scope", _nodeId: String(request.taskId) }); });
 		}) ?? EMPTY_CLEANUP;
+		return () => { const retained = consumer.dispose(); unsubscribeDecision(); unsubscribeRetirement(); unsubscribeRecovery(); for (const record of retained) neverHandedUrls(record, true); };
 	};
 
 	const subscribeToPlaybackTasks = (): (() => void) => {
@@ -894,12 +985,12 @@ export const createVideoEditorHarness = (
 
 			destroy(): void {
 			isDestroyed = true;
+			unsubscribeMediaRecoveryTasks();
 			runtimeTasks.clear();
 			unsubscribe();
 			unsubscribeDownloadBridge();
 			unsubscribeRenderExportTasks();
 			unsubscribeHandleInputFilesTasks();
-			unsubscribeMediaRecoveryTasks();
 			unsubscribePlaybackTasks();
 			unsubscribeCanonicalPlaybackCursor();
 			playback.dispose();

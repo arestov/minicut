@@ -10,6 +10,8 @@ export const DKT_MSG = {
 	EXPORT_CANCEL_REQUEST: "dkt:export-cancel-request",
 	IMPORT_FILES_REQUEST: "dkt:import-files-request",
 	MEDIA_RECOVERY_REQUEST: "dkt:media-recovery-request",
+	MEDIA_PUBLICATION_DECISION: "dkt:media-publication-decision",
+	MEDIA_PUBLICATION_RETIREMENT: "dkt:media-publication-retirement",
 	PLAYBACK_RUN_REQUEST: "dkt:playback-run-request",
 	P2P_SESSION_LOST: "dkt:p2p-session-lost",
 	RUNTIME_READY: "dkt:runtime-ready",
@@ -175,6 +177,8 @@ export type MiniCutDktTransportMessage =
 	| DktExportCancelRequestMessage
 	| DktImportFilesRequestMessage
 	| DktMediaRecoveryRequestMessage
+	| { type: typeof DKT_MSG.MEDIA_PUBLICATION_DECISION; payload: unknown }
+	| { type: typeof DKT_MSG.MEDIA_PUBLICATION_RETIREMENT; payload: unknown }
 	| DktPlaybackRunRequestMessage
 	| DktP2PSessionLostMessage
 	| DktRuntimeReadyMessage
