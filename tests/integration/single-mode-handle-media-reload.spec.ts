@@ -1,23 +1,16 @@
 import { chromium, expect, test, type Locator, type Page } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 const installOpfsPicker = async (page: Page) => {
-	await page.addInitScript(async () => {
+	const videoBytes = await readFile(path.resolve('tests/fixtures/media/fixture-video.webm'))
+	const audioBytes = await readFile(path.resolve('tests/fixtures/media/fixture-audio.wav'))
+	expect(videoBytes.subarray(0, 4).toString('hex')).toBe('1a45dfa3')
+	expect(audioBytes.subarray(0, 4).toString()).toBe('RIFF')
+	await page.addInitScript(({ videoBytes, audioBytes }) => {
 		;(window as Window & { __MINICUT_ENABLE_DEBUG_BRIDGE__?: boolean }).__MINICUT_ENABLE_DEBUG_BRIDGE__ = true
-		const root = await navigator.storage.getDirectory()
-		const handle = await root.getFileHandle('picked-handle-video.webm', { create: true })
-		const writable = await handle.createWritable()
-		const videoBytes = await (await fetch('/tests/fixtures/media/fixture-video.webm')).blob()
-		await writable.write(videoBytes)
-		await writable.close()
-		const readVideoFile = handle.getFile.bind(handle)
-		Object.defineProperty(handle, 'getFile', { value: async () => new File([await (await readVideoFile()).arrayBuffer()], 'picked-handle-video.webm', { type: 'video/webm' }), configurable: true })
-		const incompatibleHandle = await root.getFileHandle('picked-incompatible.wav', { create: true })
-		const incompatibleWritable = await incompatibleHandle.createWritable()
-		await incompatibleWritable.write(await (await fetch('/tests/fixtures/media/fixture-audio.wav')).blob())
-		await incompatibleWritable.close()
-		const readIncompatibleFile = incompatibleHandle.getFile.bind(incompatibleHandle)
-		Object.defineProperty(incompatibleHandle, 'getFile', { value: async () => new File([await (await readIncompatibleFile()).arrayBuffer()], 'picked-incompatible.wav', { type: 'audio/wav' }), configurable: true })
-		const handlePrototype = Object.getPrototypeOf(handle) as object
+		if (typeof FileSystemFileHandle === 'undefined') throw new Error('FileSystemFileHandle is unavailable')
+		const handlePrototype = FileSystemFileHandle.prototype
 		Object.defineProperty(handlePrototype, 'queryPermission', {
 			value: async () => {
 				const stats = JSON.parse(localStorage.getItem('minicut-permission-stats') ?? '{"queries":0,"requests":0}') as { queries: number; requests: number }
@@ -33,13 +26,81 @@ const installOpfsPicker = async (page: Page) => {
 				return next as PermissionState
 			}, configurable: true,
 		})
-		Object.defineProperty(window, 'showOpenFilePicker', {
-			value: async () => [localStorage.getItem('minicut-picker-mode') === 'incompatible' ? incompatibleHandle : handle],
-			configurable: true,
-		})
-	})
+		const setup = (async () => {
+			const root = await navigator.storage.getDirectory()
+			const handle = await root.getFileHandle('picked-handle-video.webm', { create: true })
+			const writable = await handle.createWritable()
+			await writable.write(new Uint8Array(videoBytes))
+			await writable.close()
+			const readVideoFile = handle.getFile.bind(handle)
+			Object.defineProperty(handle, 'getFile', { value: async () => new File([await (await readVideoFile()).arrayBuffer()], 'picked-handle-video.webm', { type: 'video/webm' }), configurable: true })
+			const incompatibleHandle = await root.getFileHandle('picked-incompatible.wav', { create: true })
+			const incompatibleWritable = await incompatibleHandle.createWritable()
+			await incompatibleWritable.write(new Uint8Array(audioBytes))
+			await incompatibleWritable.close()
+			const readIncompatibleFile = incompatibleHandle.getFile.bind(incompatibleHandle)
+			Object.defineProperty(incompatibleHandle, 'getFile', { value: async () => new File([await (await readIncompatibleFile()).arrayBuffer()], 'picked-incompatible.wav', { type: 'audio/wav' }), configurable: true })
+			Object.defineProperty(window, 'showOpenFilePicker', {
+				value: async () => [localStorage.getItem('minicut-picker-mode') === 'incompatible' ? incompatibleHandle : handle],
+				configurable: true,
+			})
+		})()
+		;(window as Window & { __MINICUT_PICKER_SETUP__?: Promise<void> }).__MINICUT_PICKER_SETUP__ = setup
+		void setup.catch(() => undefined)
+	}, { videoBytes: Array.from(videoBytes), audioBytes: Array.from(audioBytes) })
 }
 
+const waitForPickerSetup = async (page: Page): Promise<void> => page.evaluate(async () => {
+	const setup = (window as Window & { __MINICUT_PICKER_SETUP__?: Promise<void> }).__MINICUT_PICKER_SETUP__
+	if (!setup) throw new Error('Picker setup was not installed')
+	await setup
+})
+
+type VideoClipSnapshot = { clipId: string; start: number; in: number; duration: number }
+
+const readVideoClips = async (page: Page): Promise<VideoClipSnapshot[]> => page.evaluate(() => {
+	const details = window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.() as {
+		tracks?: Array<{ kind?: unknown; clips?: Array<{ clipId?: unknown; mediaKind?: unknown; start?: unknown; in?: unknown; duration?: unknown }> }>
+	} | undefined
+	return (details?.tracks ?? []).filter((track) => track.kind === 'video').flatMap((track) =>
+		(track.clips ?? []).filter((clip) => clip.mediaKind === 'video').map((clip) => ({
+			clipId: clip.clipId as string, start: clip.start as number, in: clip.in as number, duration: clip.duration as number,
+		})),
+	).sort((a, b) => a.clipId.localeCompare(b.clipId))
+})
+
+const waitForVideoClips = async (page: Page, count: number): Promise<VideoClipSnapshot[]> => {
+	await expect.poll(async () => (await readVideoClips(page)).length).toBe(count)
+	const clips = await readVideoClips(page)
+	expect(new Set(clips.map((clip) => clip.clipId)).size).toBe(count)
+	for (const clip of clips) {
+		expect(typeof clip.clipId).toBe('string')
+		for (const value of [clip.start, clip.in, clip.duration]) expect(Number.isFinite(value)).toBe(true)
+	}
+	return clips
+}
+
+const waitForSingleImportedVideo = async (page: Page): Promise<VideoClipSnapshot[]> => {
+	await expect.poll(async () => page.evaluate(() => {
+		const tasks = window.__MINICUT_P2P_DEBUG__?.dumpRuntimeTasks?.() as {
+			active?: Array<{ fxName?: unknown }>; byFxName?: Record<string, number>; failed?: number; dropped?: number
+		} | undefined
+		return tasks && (tasks.byFxName?.$fx_handleInputFiles ?? 0) > 0 &&
+			!tasks.active?.some((task) => task.fxName === '$fx_handleInputFiles') && tasks.failed === 0 && tasks.dropped === 0
+	})).toBe(true)
+	const clips = await waitForVideoClips(page, 1)
+	const readEmbeddedAudioIds = async () => page.evaluate(() => {
+		const tracks = window.__MINICUT_P2P_DEBUG__?.getActiveProjectTracks?.() as Array<{ clips?: Array<{ clipId?: unknown; name?: unknown; mediaKind?: unknown }> }> | undefined
+		return (tracks ?? []).flatMap((track) => track.clips ?? []).filter((clip) => clip.mediaKind === 'audio' && clip.name === 'Embedded audio').map((clip) => clip.clipId)
+	})
+	await expect.poll(readEmbeddedAudioIds).toHaveLength(1)
+	const embeddedAudioIds = await readEmbeddedAudioIds()
+	expect(typeof embeddedAudioIds[0]).toBe('string')
+	expect(embeddedAudioIds[0]).not.toBe(clips[0].clipId)
+	const video = page.getByRole('region', { name: 'Renderer stage' }).locator('video[data-resource-name="picked-handle-video.webm"]')
+	await expect.poll(async () => video.evaluate((element) => (element as HTMLVideoElement).duration)).toBe(1)
+	return clips
+}
 const setTimelineCursor = async (page: Page, seconds: number): Promise<void> => {
 	const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 	const zoomText = await timeline.getByText(/px\/s$/i).first().textContent()
@@ -87,12 +148,17 @@ const waitForCompletedRecovery = async (page: Page, previous?: RecoverySnapshot)
 }
 
 const confirmReplacementIfNeeded = async (page: Page, row: Locator, previousTaskId?: string): Promise<void> => {
+	let observedPhase: string | null = null
 	await expect.poll(async () => {
 		const task = (await page.evaluate(() => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.()) as { resources?: Array<{ activeMediaRecoveryTask?: { nodeId?: unknown; phase?: unknown } }> }).resources?.[0]?.activeMediaRecoveryTask
-		return typeof task?.nodeId === 'string' && task.nodeId !== previousTaskId ? task.phase : null
+		observedPhase = typeof task?.nodeId === 'string' && task.nodeId !== previousTaskId && typeof task.phase === 'string' ? task.phase : null
+		return observedPhase
 	}, { timeout: 20_000 }).toMatch(/awaiting-confirmation|completed|failed/)
 	const confirm = row.getByRole('button', { name: 'Confirm replacement' })
-	if (await confirm.count()) await confirm.click()
+	if (observedPhase === 'awaiting-confirmation') {
+		await expect(confirm).toBeVisible()
+		await confirm.click()
+	}
 }
 
 const readRecoveryStorageCounts = async (page: Page, snapshot: RecoverySnapshot) => page.evaluate(async ({ projectId, resourceId }) => {
@@ -124,12 +190,13 @@ test('single mode restores a project media copy and persists post-restore edits'
 
 	try {
 		await page.goto('/?__minicut_test_single=1')
+		await waitForPickerSetup(page)
 		await page.getByLabel('Media bin').locator('.ve-import-button').click()
 		const mediaBin = page.getByLabel('Media bin')
 		const handleResourceRow = mediaBin.locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })
 		await expect(handleResourceRow).toContainText('Using project copy', { timeout: 20_000 })
 		const boot1 = await waitForCompletedRecovery(page)
-		await handleResourceRow.getByRole('button', { name: 'Add to timeline' }).click()
+		const initialClips = await waitForSingleImportedVideo(page)
 
 		const timeline = page.getByRole('region', { name: 'Timeline', exact: true })
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(1)
@@ -137,6 +204,8 @@ test('single mode restores a project media copy and persists post-restore edits'
 		await setTimelineCursor(page, 0.5)
 		await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Split clip' }).click()
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(2)
+		const split2 = await waitForVideoClips(page, 2)
+		expect(split2.map((clip) => clip.clipId)).toContain(initialClips[0].clipId)
 
 		await page.reload()
 		await expect(handleResourceRow).toContainText('Using project copy', { timeout: 20_000 })
@@ -144,13 +213,21 @@ test('single mode restores a project media copy and persists post-restore edits'
 		expect(boot2.taskId).not.toBe(boot1.taskId)
 		expect(boot2.operationId).not.toBe(boot1.operationId)
 		expect(boot2.url).not.toBe(boot1.url)
+		await expect.poll(() => readVideoClips(page)).toEqual(split2)
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(2)
 
 		await timeline.getByRole('button', { name: /picked-handle-video\.webm/i }).nth(1).click()
 		await setTimelineCursor(page, 0.75)
 		await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Split clip' }).click()
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(3)
+		await waitForVideoClips(page, 3)
+		const selectedClipId = await page.evaluate(() => (window.__MINICUT_P2P_DEBUG__?.getSelectionState?.() as { selectedClip?: { clipId?: string } }).selectedClip?.clipId)
+		const selectedBefore = (await readVideoClips(page)).find((clip) => clip.clipId === selectedClipId)
+		expect(selectedBefore).toBeDefined()
+		const expectedStart = Math.round((selectedBefore!.start + 0.5) * 10) / 10
 		await timeline.getByLabel('Clip edit actions').getByRole('button', { name: 'Nudge +0.5s' }).click()
+		await expect.poll(async () => (await readVideoClips(page)).find((clip) => clip.clipId === selectedClipId)?.start).toBe(expectedStart)
+		const split3 = await waitForVideoClips(page, 3)
 
 		await page.reload()
 		await expect(handleResourceRow).toContainText('Using project copy', { timeout: 20_000 })
@@ -159,6 +236,7 @@ test('single mode restores a project media copy and persists post-restore edits'
 		expect(boot3.operationId).not.toBe(boot2.operationId)
 		expect(boot3.url).not.toBe(boot2.url)
 		expect(boot3.assetRef).toBe(boot1.assetRef)
+		await expect.poll(() => readVideoClips(page)).toEqual(split3)
 		await expect(timeline.getByRole('button', { name: /picked-handle-video\.webm/i })).toHaveCount(3)
 		expect(await readRecoveryStorageCounts(page, boot3)).toEqual({ versionCount: 1, stagingCount: 0 })
 	} finally {
@@ -173,10 +251,11 @@ test('project copy survives prompt, denied, and granted permission across reload
 	await installOpfsPicker(page)
 	try {
 		await page.goto('/?__minicut_test_single=1')
+		await waitForPickerSetup(page)
 		await page.getByLabel('Media bin').locator('.ve-import-button').click()
 		const row = page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })
 		await expect(row).toContainText('Using project copy', { timeout: 20_000 })
-		await row.getByRole('button', { name: 'Add to timeline' }).click()
+		const initialClips = await waitForSingleImportedVideo(page)
 		const timelineClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /picked-handle-video\.webm/i })
 		await expect(timelineClip).toHaveCount(1)
 		await page.evaluate(() => {
@@ -205,6 +284,7 @@ test('project copy survives prompt, denied, and granted permission across reload
 		await expect(row).toContainText('Using project copy', { timeout: 20_000 })
 		await expect(row.getByRole('button', { name: /Grant access|Try again/ })).toHaveCount(0)
 		await expect(timelineClip).toHaveCount(1)
+		await expect.poll(() => readVideoClips(page)).toEqual(initialClips)
 		const finalStats = await page.evaluate(() => JSON.parse(localStorage.getItem('minicut-permission-stats') ?? '{}') as { queries: number; requests: number })
 		expect(finalStats.requests).toBe(2)
 		expect(finalStats.queries).toBeGreaterThan(beforeGrant.queries)
@@ -220,11 +300,12 @@ test('incompatible replacement is rejected and never replaces the durable source
 	await installOpfsPicker(page)
 	try {
 		await page.goto('/?__minicut_test_single=1')
+		await waitForPickerSetup(page)
 		await page.getByLabel('Media bin').locator('.ve-import-button').click()
 		const row = page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })
 		await expect(row).toContainText('Using project copy', { timeout: 20_000 })
 		const original = await waitForCompletedRecovery(page)
-		await row.getByRole('button', { name: 'Add to timeline' }).click()
+		const initialClips = await waitForSingleImportedVideo(page)
 		const timelineClip = page.getByRole('region', { name: 'Timeline', exact: true }).getByRole('button', { name: /picked-handle-video\.webm/i })
 		await expect(timelineClip).toHaveCount(1)
 		await page.evaluate(() => {
@@ -243,6 +324,7 @@ test('incompatible replacement is rejected and never replaces the durable source
 		await page.reload()
 		const boot3 = await waitForCompletedRecovery(page, boot2)
 		expect(boot3.assetRef).toBe(original.assetRef)
+		await expect.poll(() => readVideoClips(page)).toEqual(initialClips)
 		await expect(timelineClip).toHaveCount(1)
 		expect(await readRecoveryStorageCounts(page, boot3)).toEqual({ versionCount: 1, stagingCount: 0 })
 	} finally {
@@ -257,16 +339,18 @@ test('reconciles interrupted commits before and after the durable pointer switch
 	await installOpfsPicker(page)
 	try {
 		await page.goto('/?__minicut_test_single=1')
+		await waitForPickerSetup(page)
 		await page.getByLabel('Media bin').locator('.ve-import-button').click()
 		const row = page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })
 		await expect(row).toContainText('Using project copy', { timeout: 20_000 })
 		const original = await waitForCompletedRecovery(page)
+		await waitForSingleImportedVideo(page)
 
 		await page.evaluate(() => {
 			;(window as Window & { __MINICUT_MEDIA_RECOVERY_FAULT_POINT__?: string }).__MINICUT_MEDIA_RECOVERY_FAULT_POINT__ = 'after-asset-stage'
-			;(window as Window & { __MINICUT_MEDIA_PROBE_OVERRIDE__?: unknown }).__MINICUT_MEDIA_PROBE_OVERRIDE__ = { kind: 'video', duration: 6, frameRate: null, timebase: null, width: null, height: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: 1, audioStreams: null } }
 		})
 		await row.getByRole('button', { name: 'Replace source' }).click()
+		await confirmReplacementIfNeeded(page, row, original.taskId)
 		await expect(row.getByRole('button', { name: 'Retry' })).toBeVisible({ timeout: 20_000 })
 		expect((await page.evaluate(() => window.__MINICUT_P2P_DEBUG__?.getActiveProjectDetails?.()) as { resources?: Array<{ assetRef?: unknown }> }).resources?.[0]?.assetRef).toBe(original.assetRef)
 		expect(await readRecoveryStorageCounts(page, original)).toEqual({ versionCount: 1, stagingCount: 0 })
@@ -276,7 +360,6 @@ test('reconciles interrupted commits before and after the durable pointer switch
 		expect(afterRollback.assetRef).toBe(original.assetRef)
 		await page.evaluate(() => {
 			;(window as Window & { __MINICUT_MEDIA_RECOVERY_FAULT_POINT__?: string }).__MINICUT_MEDIA_RECOVERY_FAULT_POINT__ = 'after-pointer-switch'
-			;(window as Window & { __MINICUT_MEDIA_PROBE_OVERRIDE__?: unknown }).__MINICUT_MEDIA_PROBE_OVERRIDE__ = { kind: 'video', duration: 6, frameRate: null, timebase: null, width: null, height: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: 1, audioStreams: null } }
 		})
 		await row.getByRole('button', { name: 'Replace source' }).click()
 		await confirmReplacementIfNeeded(page, row, afterRollback.taskId)
@@ -304,15 +387,17 @@ test('keeps commit failure recoverable and retry publishes one stable version', 
 	await installOpfsPicker(page)
 	try {
 		await page.goto('/?__minicut_test_single=1')
+		await waitForPickerSetup(page)
 		await page.getByLabel('Media bin').locator('.ve-import-button').click()
 		const row = page.getByLabel('Media bin').locator('.ve-resource-row').filter({ hasText: 'picked-handle-video.webm' })
 		await expect(row).toContainText('Using project copy', { timeout: 20_000 })
 		const original = await waitForCompletedRecovery(page)
+		await waitForSingleImportedVideo(page)
 		await page.evaluate(() => {
 			;(window as Window & { __MINICUT_MEDIA_RECOVERY_FAULT_POINT__?: string }).__MINICUT_MEDIA_RECOVERY_FAULT_POINT__ = 'after-validation'
-			;(window as Window & { __MINICUT_MEDIA_PROBE_OVERRIDE__?: unknown }).__MINICUT_MEDIA_PROBE_OVERRIDE__ = { kind: 'video', duration: 6, frameRate: null, timebase: null, width: null, height: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: 1, audioStreams: null } }
 		})
 		await row.getByRole('button', { name: 'Replace source' }).click()
+		await confirmReplacementIfNeeded(page, row, original.taskId)
 		await expect(row.getByRole('alert')).toBeVisible({ timeout: 20_000 })
 		const retry = row.getByRole('button', { name: 'Retry' })
 		await expect(retry).toBeVisible()

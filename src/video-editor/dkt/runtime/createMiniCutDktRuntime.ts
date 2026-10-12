@@ -552,7 +552,7 @@ const runOnAppInput = (
 ): Promise<void> =>
 	new Promise<void>((resolve, reject) => {
 		const run = () => {
-			fn().then(resolve, reject);
+			return fn().then(resolve, reject);
 		};
 		if (typeof app.input === "function") app.input(run);
 		else run();

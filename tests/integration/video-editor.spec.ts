@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { ensureFixtures } from '../../src/video-editor/media/node/testing/mediaFixtures'
+import { ensureFixture, ensureFixtures } from '../../src/video-editor/media/node/testing/mediaFixtures'
 
 const createProjectFromMenu = async (page: import('@playwright/test').Page) => {
 	const beforeCount = await page.evaluate(() => {
@@ -861,12 +861,15 @@ test('preview playback lets video decode forward without seeking every cursor ti
 
 	await page.goto('/')
 	await createProjectFromMenu(page)
-	await importFixtureVideo(page)
+	const videoPath = await ensureFixture('video-av-webm')
+	await page.getByLabel('Import media files').setInputFiles(videoPath)
+	await waitForImportedVideoSemanticState(page, 'video-av.webm')
 	await setTimelineCursor(page, 0.2)
 
 	const renderer = page.getByLabel('Renderer stage')
 	const video = renderer.locator('video')
 	await expect(video).toHaveCount(1)
+	await expect.poll(async () => video.evaluate((element) => (element as HTMLVideoElement).duration)).toBeGreaterThanOrEqual(1.5)
 	await expect.poll(async () => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.15)
 	await page.evaluate(() => {
 		const instrumentedWindow = window as Window & {

@@ -40,32 +40,46 @@ describe("MiniCut CRDT relay convergence", () => {
 		pair.close();
 	});
 
-	it("records a structural conflict when remote delete touches local clip activity", async () => {
-		const pair = await createCrdtWorkerPair(pairOptions("room-membership"));
-		await addMatchingClip(pair);
+	// Observed foreign activity pins the current conservative veto. Update that
+	// outcome with the causal-context fix tracked in backlog 2.24 step 2.
+	it.each(["absent", "observed", "unseen"] as const)(
+		"handles remote deletion with %s foreign clip activity",
+		async (activity) => {
+			const pair = await createCrdtWorkerPair(pairOptions(`room-membership-${activity}`));
+			try {
+				const { clipA, clipB } = await addMatchingClip(pair);
+				const originalClipIds = await pair.b.readVideoClipIds();
+				if (activity === "unseen") pair.partition();
+				if (activity !== "absent") {
+					await pair.b.dispatch(clipB, "trim", { edge: "end", delta: -1 });
+					if (activity === "observed") await pair.waitForConvergence();
+				}
+				expect(await pair.a.ctx.queryAttr(clipA, "duration")).toBe(activity === "observed" ? 3 : 4);
+				expect(await pair.b.ctx.queryAttr(clipB, "duration")).toBe(activity === "absent" ? 4 : 3);
 
-		const clipA = (await pair.a.ctx.queryRel(pair.a.videoTrack, "clips"))[0];
-		if (!clipA) {
-			throw new Error("Expected matching clip");
-		}
-		const originalClipIds = await pair.b.readVideoClipIds();
+				await pair.a.dispatch(clipA, "removeSelf");
+				pair.a.flushOutbound();
+				if (activity === "unseen") pair.heal();
+				await pair.waitForConvergence();
 
-		await pair.a.dispatch(clipA, "removeSelf");
-		pair.a.flushOutbound();
-		await pair.waitForConvergence();
-
-		await expect(pair.b.readVideoClipIds()).resolves.toEqual(originalClipIds);
-		expect(
-			Number(
-				pair.b.ctx.getAttr(
+				const remainingClipIds = await pair.b.readVideoClipIds();
+				const openConflictCount = Number(await pair.b.ctx.queryAttr(
 					pair.b.videoTrack,
 					"$meta$aggregates$crdt$timelineMembership$open_conflicts_count",
-				) ?? 0,
-			),
-		).toBeGreaterThan(0);
-		pair.close();
-	});
-
+				) ?? 0);
+				if (activity === "absent") {
+					expect(remainingClipIds).toEqual([]);
+					expect(openConflictCount).toBe(0);
+				} else {
+					expect(remainingClipIds).toEqual(originalClipIds);
+					expect(await pair.b.ctx.queryAttr(clipB, "duration")).toBe(3);
+					expect(openConflictCount).toBeGreaterThan(0);
+				}
+			} finally {
+				pair.close();
+			}
+		},
+	);
 	it("converges clip timing edits", async () => {
 		const pair = await createCrdtWorkerPair(pairOptions("room-clip-timing"));
 		const { clipA, clipB } = await addMatchingClip(pair);

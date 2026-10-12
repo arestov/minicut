@@ -346,47 +346,51 @@ test.describe('CRDT UI E2E', () => {
 		await expect(page.getByRole('alert')).toHaveCount(0)
 	})
 
-	test('@crdt-smoke keeps room bookmark -> workspace/db identity stable across reload', async ({ page }, testInfo) => {
-		test.skip(testInfo.project.name !== 'crdt-ui-indexeddb', 'CRDT harness storage smoke runs only in the CRDT Playwright profile')
-		const roomId = `bookmark-room-${Date.now()}`
-		await enableDebugBridge(page)
-		await page.goto(`/#/${roomId}`)
-		await waitForDebugBridge(page)
+	for (const reloadCount of [1, 2]) {
+		test(`@crdt-smoke keeps room bookmark -> workspace/db identity stable across reload (${reloadCount} reloads)`, async ({ page }, testInfo) => {
+			test.skip(testInfo.project.name !== 'crdt-ui-indexeddb', 'CRDT harness storage smoke runs only in the CRDT Playwright profile')
+			const roomId = `bookmark-room-${Date.now()}`
+			await enableDebugBridge(page)
+			await page.goto(`/#/${roomId}`)
+			await waitForDebugBridge(page)
 
-		const first = await readStorageSnapshot(page)
-		expect((first.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
-		expect((first.snapshot as { workspaceOpenState?: { status?: unknown; failureReason?: unknown } } | null)?.workspaceOpenState).toEqual({
-			status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
-			failureReason: 0,
-		})
-		expect((first.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown; statusLabel?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
-			status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
-			statusLabel: 'local_empty_ready',
-			manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
-		})
-		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
-		const panel = page.getByRole('region', { name: 'CRDT debug panel' })
-		await expect(panel).toContainText(createHarnessWorkspaceId(roomId))
-		await expect(panel).toContainText(createHarnessDbName(roomId))
-		await expect(panel).toContainText('empty')
+			const first = await readStorageSnapshot(page)
+			expect((first.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
+			expect((first.snapshot as { workspaceOpenState?: { status?: unknown; failureReason?: unknown } } | null)?.workspaceOpenState).toEqual({
+				status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
+				failureReason: 0,
+			})
+			expect((first.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown; statusLabel?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
+				status: WORKSPACE_OPEN_STATUS.LOCAL_EMPTY_READY,
+				statusLabel: 'local_empty_ready',
+				manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
+			})
+			await page.getByRole('button', { name: 'CRDT', exact: true }).click()
+			const panel = page.getByRole('region', { name: 'CRDT debug panel' })
+			await expect(panel).toContainText(createHarnessWorkspaceId(roomId))
+			await expect(panel).toContainText(createHarnessDbName(roomId))
+			await expect(panel).toContainText('empty')
 
-		await page.reload()
-		await waitForDebugBridge(page)
-		const second = await readStorageSnapshot(page)
-		expect((second.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
-		expect((second.snapshot as { workspaceOpenState?: { status?: unknown; failureReason?: unknown } } | null)?.workspaceOpenState).toEqual({
-			status: WORKSPACE_OPEN_STATUS.READY,
-			failureReason: 0,
+			for (let reloadIndex = 0; reloadIndex < reloadCount; reloadIndex++) {
+				await page.reload()
+				await waitForDebugBridge(page)
+				const second = await readStorageSnapshot(page)
+				expect((second.snapshot as { sessionKey?: unknown } | null)?.sessionKey).toBe(roomId)
+				expect((second.snapshot as { workspaceOpenState?: { status?: unknown; failureReason?: unknown } } | null)?.workspaceOpenState).toEqual({
+					status: WORKSPACE_OPEN_STATUS.READY,
+					failureReason: 0,
+				})
+				expect((second.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown; statusLabel?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
+					status: WORKSPACE_OPEN_STATUS.READY,
+					statusLabel: 'ready',
+					manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
+				})
+				await page.getByRole('button', { name: 'CRDT', exact: true }).click()
+				await expect(panel).toContainText(createHarnessWorkspaceId(roomId))
+				await expect(panel).toContainText(createHarnessDbName(roomId))
+			}
 		})
-		expect((second.workerState as { crdt?: { storageOpen?: { manifest?: { workspaceId?: unknown }; status?: unknown; statusLabel?: unknown } } } | null)?.crdt?.storageOpen).toMatchObject({
-			status: WORKSPACE_OPEN_STATUS.READY,
-			statusLabel: 'ready',
-			manifest: { workspaceId: createHarnessWorkspaceId(roomId) },
-		})
-		await page.getByRole('button', { name: 'CRDT', exact: true }).click()
-		await expect(panel).toContainText(createHarnessWorkspaceId(roomId))
-		await expect(panel).toContainText(createHarnessDbName(roomId))
-	})
+	}
 
 	test('@crdt-smoke restores edited project state and renders it after browser restart', async ({ baseURL }, testInfo) => {
 		test.skip(testInfo.project.name !== 'crdt-ui-indexeddb', 'CRDT harness storage smoke runs only in the CRDT Playwright profile')

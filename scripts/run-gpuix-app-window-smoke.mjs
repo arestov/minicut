@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { createBunRuntimeEnvironment } from './bunRuntimeEnvironment.mjs'
 
 // Opens real GPUIX windows on the real host and drives it through @gpuix/solid/automation
 // (src/ui/gpuix/app/automation.app.smoke.ts). Run it serially, never in parallel with
@@ -8,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 const bun = process.env.BUN_BIN || 'bun'
 const cwd = fileURLToPath(new URL('../src/ui/gpuix/', import.meta.url))
 
-const result = spawnSync(bun, ['app/automation.app.smoke.ts'], { cwd, stdio: 'inherit', env: { ...process.env, BUN_BIN: bun, GPUIX_BACKGROUND: process.env.GPUIX_BACKGROUND ?? "1" } })
+const result = spawnSync(bun, ['app/automation.app.smoke.ts'], { cwd, stdio: 'inherit', env: { ...createBunRuntimeEnvironment(), BUN_BIN: bun, GPUIX_BACKGROUND: process.env.GPUIX_BACKGROUND ?? "1" } })
 
 if (result.error) {
 	console.error(

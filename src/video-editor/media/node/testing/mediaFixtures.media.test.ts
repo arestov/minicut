@@ -7,6 +7,7 @@ describe("media fixtures", () => {
 		const names = [
 			"video-cfr",
 			"video-audio",
+			"video-two-tone-webm",
 			"video-vfr",
 			"video-vfr-webm",
 			"video-offset",

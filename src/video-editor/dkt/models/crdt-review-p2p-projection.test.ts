@@ -3,15 +3,14 @@ import {
 	inspectReviewGraph,
 	waitForProjectReviewGraph,
 } from "../review/testHarness/inspectReviewGraph";
-import { clipTimingConflictFixture } from "../review/features/clipTiming/fixtures";
-import type { CrdtConflictRecord } from "../review/types";
+import { createNaturalClipTimingConflict } from "../review/headless/naturalConflictGenerators";
+import { buildClipTimingResolvePayload } from "../../components/review/reviewActionPayloads";
 import { createCrdtWorkerPair } from "../test/createCrdtWorkerPair";
 
 type Pair = Awaited<ReturnType<typeof createCrdtWorkerPair>>;
 type Peer = Pair["a"];
 
 type ConflictStore = {
-	writeConflict?: (conflict: CrdtConflictRecord) => unknown;
 	readConflict?: (conflictId: string) => { status?: unknown } | null;
 };
 
@@ -42,15 +41,10 @@ const conflictStore = (peer: Peer): ConflictStore => {
 	const store = peer.ctx.runtime.crdt_runtime?.conflict_store as
 		| ConflictStore
 		| undefined;
-	if (!store?.writeConflict || !store.readConflict) {
+	if (!store?.readConflict) {
 		throw new Error("Expected CRDT conflict store");
 	}
 	return store;
-};
-
-const seedConflictOnBothPeers = (pair: Pair, conflict: CrdtConflictRecord) => {
-	conflictStore(pair.a).writeConflict?.({ ...conflict, status: "open" });
-	conflictStore(pair.b).writeConflict?.({ ...conflict, status: "open" });
 };
 
 const expectConflictResolvedOnBothPeers = async (
@@ -298,87 +292,34 @@ describe("MiniCut p2p review projection", () => {
 		}
 	});
 
-	it("applies clip timing review choices to state and conflict lifecycle on both peers", async () => {
-		const { pair, clipA, clipB } = await createPairWithClip(
-			"room-review-p2p-button-clip-timing",
-		);
-		try {
-			for (const [suffix, payload, expected] of [
-				[
-					"current",
-					{
-						selectedVariant: "current",
-						start: 0,
-						in: 0,
-						duration: 4,
-						fadeIn: 0,
-						fadeOut: 0,
-					},
-					{ start: 0, in: 0, duration: 4 },
-				],
-				[
-					"incoming",
-					{
-						selectedVariant: "incoming",
-						start: 2,
-						in: 1,
-						duration: 3,
-						fadeIn: 0.2,
-						fadeOut: 0.1,
-					},
-					{ start: 2, in: 1, duration: 3 },
-				],
-				[
-					"custom",
-					{
-						selectedVariant: "custom",
-						start: 1,
-						in: 0.5,
-						duration: 2.5,
-						fadeIn: 0,
-						fadeOut: 0,
-					},
-					{ start: 1, in: 0.5, duration: 2.5 },
-				],
-			] as const) {
-				const conflictId = `conflict:clip-timing:${suffix}`;
-				seedConflictOnBothPeers(pair, {
-					...clipTimingConflictFixture,
-					conflict_id: conflictId,
-					node_id: clipA._node_id,
-					payload: {
-						current: { start: 0, in: 0, duration: 4, fadeIn: 0, fadeOut: 0 },
-						incoming: {
-							start: 2,
-							in: 1,
-							duration: 3,
-							fadeIn: 0.2,
-							fadeOut: 0.1,
-						},
-					},
+	it.each(["current", "incoming", "custom"] as const)(
+		"applies the natural %s clip timing choice on both peers",
+		async (choice) => {
+			const { pair, clipA, clipB, item } = await createNaturalClipTimingConflict(
+				`room-review-p2p-button-clip-timing-${choice}`,
+			);
+			try {
+				const remoteItem = await pair.waitForReviewItem("clip_timing", { peer: pair.b });
+				expect(item.status).toBe("open");
+				expect(remoteItem.status).toBe("open");
+				expect(remoteItem.conflictId).toBe(item.conflictId);
+				const payload = buildClipTimingResolvePayload(item, choice, {
+					start: 1, in: 0.5, duration: 2.5, fadeIn: 0, fadeOut: 0,
 				});
-				await pair.a.dispatch(clipA, "resolveClipTimingConflict", {
-					conflictId,
-					reviewItemId: `review:${conflictId}`,
-					...payload,
-				});
-				await expectConflictResolvedOnBothPeers(pair, conflictId);
-				expect(await pair.a.ctx.queryAttr(clipA, "start")).toBe(expected.start);
-				expect(await pair.b.ctx.queryAttr(clipB, "start")).toBe(expected.start);
-				expect(await pair.a.ctx.queryAttr(clipA, "in")).toBe(expected.in);
-				expect(await pair.b.ctx.queryAttr(clipB, "in")).toBe(expected.in);
-				expect(await pair.a.ctx.queryAttr(clipA, "duration")).toBe(
-					expected.duration,
-				);
-				expect(await pair.b.ctx.queryAttr(clipB, "duration")).toBe(
-					expected.duration,
-				);
-			}
-		} finally {
-			pair.close();
-		}
-	});
 
+				await pair.a.dispatch(clipA, "resolveClipTimingConflict", payload);
+				await expectConflictResolvedOnBothPeers(pair, item.conflictId);
+				await expectReviewItemResolvedOnBothPeers(pair, item.conflictId);
+				for (const [peer, clip] of [[pair.a, clipA], [pair.b, clipB]] as const) {
+					for (const field of ["start", "in", "duration", "fadeIn", "fadeOut"] as const) {
+						expect(await peer.ctx.queryAttr(clip, field)).toBe(payload[field]);
+					}
+				}
+			} finally {
+				pair.close();
+			}
+		},
+	);
 	it("parks an incoming timing variant into review tracks on both peers", async () => {
 		const { pair, clipA, clipB } = await createPairWithClip(
 			"room-review-p2p-button-park-incoming",

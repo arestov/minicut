@@ -1,12 +1,13 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { createBunRuntimeEnvironment } from './bunRuntimeEnvironment.mjs'
 
 // bun test only reads bunfig.toml from its cwd (and ignores --config), so the
 // Solid tests run from src/dkt-solid-sync. Bun comes from BUN_BIN or PATH.
 const bun = process.env.BUN_BIN || 'bun'
 const cwd = fileURLToPath(new URL('../src/dkt-solid-sync/', import.meta.url))
 
-const result = spawnSync(bun, ['test', ...process.argv.slice(2)], { cwd, stdio: 'inherit' })
+const result = spawnSync(bun, ['test', ...process.argv.slice(2)], { cwd, stdio: 'inherit', env: createBunRuntimeEnvironment() })
 
 if (result.error) {
 	console.error(

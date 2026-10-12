@@ -24,7 +24,7 @@ const extractMessage = <Message>(
 	payload: DomSyncTransportPayloadLike<Message>,
 ): Message =>
 	typeof payload === "object" && payload !== null && "data" in payload
-		? payload.data
+		? (payload as { data: Message }).data
 		: (payload as Message);
 
 export const createPortTransport = <Message>(
