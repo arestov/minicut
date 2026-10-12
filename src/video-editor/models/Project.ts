@@ -116,6 +116,19 @@ const CLIP_INPUT_BASE_REL_SHAPE = {
 	},
 } as const;
 
+export const PROJECT_CRDT_REL_POLICIES = {
+	rootOwner: { sync: false, reason: "framework-owned" },
+	tracks: ["sequence", { conflictMeta: true }],
+	resources: "or-set",
+	primaryVideoTrack: "lww",
+	primaryAudioTrack: "lww",
+	reviewItems: { sync: false, reason: "projection" },
+	visibleReviewItems: { sync: false, reason: "projection" },
+	reviewArchiveEntries: { sync: false, reason: "projection" },
+	reviewSessions: { sync: false, reason: "projection" },
+	activitySummaries: { sync: false, reason: "projection" },
+} as const;
+
 export const Project = model({
 	model_name: "project",
 	aggregates: {
@@ -152,18 +165,7 @@ export const Project = model({
 			activeImportTaskId: { sync: false, reason: "effect-runtime" },
 			previewFrame: { sync: false, reason: "projection" },
 		},
-		rels: {
-			rootOwner: { sync: false, reason: "framework-owned" },
-			tracks: ["sequence", { conflictMeta: true }],
-			resources: "or-set",
-			primaryVideoTrack: "lww",
-			primaryAudioTrack: "lww",
-			reviewItems: { sync: false, reason: "projection" },
-			visibleReviewItems: { sync: false, reason: "projection" },
-			reviewArchiveEntries: { sync: false, reason: "projection" },
-			reviewSessions: { sync: false, reason: "projection" },
-			activitySummaries: { sync: false, reason: "projection" },
-		},
+		rels: PROJECT_CRDT_REL_POLICIES,
 	},
 	attrs: {
 		title: ["input", "Untitled project"],
