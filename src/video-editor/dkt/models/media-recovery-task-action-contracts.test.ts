@@ -8,7 +8,7 @@ import { makeDktCrdtMemoryStorage } from "dkt/crdt/storage/memory.js";
 import { createEffectContractFakes } from "../test/effectContractFakes";
 import { model } from "dkt/model.js";
 import { appRoot } from "dkt/appRoot.js";
-import type { MiniCutAppRoot } from "../../models/AppRoot";
+import { MiniCutAppRoot as productionMiniCutAppRoot, type MiniCutAppRoot } from "../../models/AppRoot";
 import { MINICUT_APP_PROPS, MINICUT_APP_MODELS } from "../../models/AppRootDeclaration";
 import { merge as mergeDcl } from "dkt/dcl/merge.js";
 import { Project, PROJECT_IMPORT_RESOURCE_STEPS, PROJECT_CRDT_REL_POLICIES } from "../../models/Project";
@@ -16,6 +16,7 @@ import { reduceSetResources } from "../../models/Project/actions";
 import { capturedPublicationRetirements, copyPublicationValue, publicationIdentity, publicationTuple, type PublicationManifest } from "../../media/mediaPublicationProtocol";
 import { describe, expect, it } from "vitest";
 import { MediaRecoveryTask } from "../../models/MediaRecoveryTask";
+import { Resource } from "../../models/Resource";
 import { createActionContractHarness as createBaseActionContractHarness, dispatchAndSettle } from "./action-contract-test-harness";
 import { bootDktModels, getAttr, queryAttr, queryRel } from "../testingInit";
 
@@ -549,7 +550,7 @@ describe("publication full tuple and completion guards", () => {
 	});
 	it("D6 automatic and generic completion cannot bypass a requested publication", async () => {
 		const h = await createActionContractHarness();
-		const restoreSnapshot = captureRestoreSnapshot(h);
+		const restoreSnapshot = await captureRestoreSnapshot(h);
 		const { task, proposal } = await preparePublication(h);
 		const beforeRequested = capturePublicationState(h, task);
 		await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { availability: "unavailable", originalAccess: "denied", restoreSnapshot, updatedAt: 104 });
@@ -710,40 +711,198 @@ describe("publication action output guards", () => {
 	});
 });
 
-const captureRestoreSnapshot = (h: Harness) => ({
-	resourceId: h.videoResource._node_id, projectId: h.project._node_id,
-	assetStorageKind: getAttr(h.videoResource, "assetStorageKind"), assetRef: getAttr(h.videoResource, "assetRef"),
-	sourceKind: getAttr(h.videoResource, "sourceKind"), sourceRef: getAttr(h.videoResource, "sourceRef"),
-	handleRef: getAttr(h.videoResource, "sourceKind") === "file-handle" ? getAttr(h.videoResource, "sourceRef") : null,
-	publicationSequence: getAttr(h.videoResource, "localPublicationSequence"),
-});
+const captureRestoreSnapshot = async (h: Harness): Promise<Record<string, unknown>> => {
+	let snapshot!: Record<string, unknown>;
+	await h.ctx.lockToRead(async () => {
+		const [assetStorageKind, assetRef, sourceKind, sourceRef, rawSequence] = await queryNativeManyAttrs(h.videoResource as never, ["assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence"]);
+		const rawProject = await queryNativeRel(h.videoResource as never, "project");
+		const project = Array.isArray(rawProject) ? rawProject[0] : rawProject;
+		const normalizedSourceRef = typeof sourceRef === "string" ? sourceRef : null;
+		snapshot = {
+			resourceId: h.videoResource._node_id, projectId: (project as Harness["project"])._node_id,
+			assetStorageKind, assetRef: typeof assetRef === "string" ? assetRef : null,
+			sourceKind, sourceRef: normalizedSourceRef,
+			handleRef: sourceKind === "file-handle" ? normalizedSourceRef : null,
+			publicationSequencePresent: rawSequence !== undefined,
+			publicationSequence: rawSequence === undefined ? null : rawSequence,
+		};
+	});
+	return snapshot;
+};
 const capturePublicationState = (h: Harness, task?: Harness["videoResource"]) => ({
 	resource: Object.fromEntries(["assetStorageKind", "assetRef", "sourceKind", "sourceRef", "url", "contentFingerprint", "fingerprintVersion", "duration", "width", "height", "localMediaAvailability", "originalAccessStatus", "localPublicationSequence", "localAcceptedPublication"].map((key) => [key, getAttr(h.videoResource, key)])),
 	task: task ? Object.fromEntries(["phase", "outcome", "publicationReceipt", "publicationRequested"].map((key) => [key, getAttr(task, key)])) : null,
 });
 
 describe("captured automatic restore admission and current backing", () => {
+
+	it("captures and admits an absent sequence on a real CRDT-created Resource", async () => {
+		const pair = await createCrdtWorkerPair({ App: productionMiniCutAppRoot, roomId: "restore-sequence-presence-public-pair", profileId: "minicut-crdt-v1", profileVersion: 1 });
+		try {
+			const operationId = "operation:sequence-presence-import";
+			await dispatchAndSettle(pair.a.ctx, pair.a.project, "importResource", {
+				name: "sequence-presence.webm", kind: "video", url: "blob:sequence-presence-import", mime: "video/webm", duration: 4, size: 4, status: "ready",
+				operationId, attemptId: "attempt:sequence-presence-import", bootId: "boot:sequence-presence-import", recoveryKind: "import", intent: "restore", runtimeHandleId: "runtime:sequence-presence-import",
+				original: { kind: "video", duration: 4, streams: { videoStreams: 1, audioStreams: null } }, requiredSourceEnd: 4, createdAt: 1, updatedAt: 1,
+			});
+			let resourceA!: Harness["videoResource"];
+			let taskA!: Harness["videoResource"];
+			let metadata!: { kind: unknown; duration: unknown; width: null; height: null };
+			await pair.a.ctx.lockToRead(async () => {
+				const rawResources = await queryNativeRel(pair.a.project as never, "resources");
+				const resources = (Array.isArray(rawResources) ? rawResources : rawResources == null ? [] : [rawResources]) as Harness["videoResource"][];
+				expect(resources).toHaveLength(1);
+				resourceA = resources[0]!;
+				const rawTasks = await queryNativeRel(resourceA as never, "activeMediaRecoveryTask");
+				const tasks = (Array.isArray(rawTasks) ? rawTasks : rawTasks == null ? [] : [rawTasks]) as Harness["videoResource"][];
+				expect(tasks).toHaveLength(1);
+				const [kind, duration] = await queryNativeManyAttrs(resourceA as never, ["kind", "duration"]);
+				taskA = tasks[0]!;
+				metadata = { kind, duration, width: null, height: null };
+			});
+			await dispatchAndSettle(pair.a.ctx, taskA, "recordInspection", { operationId, classification: "compatible-replacement", confirmationRequired: false, candidateMetadata: metadata, candidateFingerprint: "fp:sequence-presence", candidateFingerprintVersion: "sha256-v1", updatedAt: 101 });
+			await dispatchAndSettle(pair.a.ctx, taskA, "requestCommit", { operationId, updatedAt: 102 });
+			const commitRequest = pair.a.effects.mediaRecoveryCalls.at(-1)!;
+			expect(commitRequest).toMatchObject({ mode: "commit", taskId: taskA._node_id, resourceId: resourceA._node_id, operationId });
+			const pointer = { assetStorageKind: "project-copy", assetRef: "project/" + pair.a.project._node_id + "/resource/" + resourceA._node_id + "/asset/sequence-presence", sourceKind: "file-handle", sourceRef: "handle:sequence-presence", url: "blob:sequence-presence", contentFingerprint: "fp:sequence-presence", fingerprintVersion: "sha256-v1", duration: metadata.duration, width: null, height: null, localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted" };
+			await dispatchAndSettle(pair.a.ctx, taskA, "completePublication", { ...commitRequest, candidateFileMetadata: { mime: "video/webm", size: 4, lastModified: 1 }, pointer, updatedAt: 103 });
+			await pair.a.ctx.lockToRead(async () => {
+				const [sequence, accepted] = await queryNativeManyAttrs(resourceA as never, ["localPublicationSequence", "localAcceptedPublication"]);
+				expect(sequence).toBe(1);
+				expect(accepted).toMatchObject({ kind: "accepted", sequence: 1, pointer });
+			});
+			expect(pair.a.effects.publicationDecisionCalls).toContainEqual(expect.objectContaining({ decision: expect.objectContaining({ kind: "accepted", sequence: 1, pointer }) }));
+			pair.a.flushOutbound();
+			await pair.waitForConvergence();
+			pair.partition();
+			let resourceB!: Harness["videoResource"];
+			let captured!: Record<string, unknown>;
+			await pair.b.ctx.lockToRead(async () => {
+				const rawResources = await queryNativeRel(pair.b.project as never, "resources");
+				const resources = (Array.isArray(rawResources) ? rawResources : rawResources == null ? [] : [rawResources]) as Harness["videoResource"][];
+				resourceB = resources.find((resource) => resource._node_id === resourceA._node_id)!;
+				expect(resourceB).toBeTruthy();
+				const rawProject = await queryNativeRel(resourceB as never, "project");
+				const project = (Array.isArray(rawProject) ? rawProject[0] : rawProject) as Harness["project"];
+				const [assetStorageKind, assetRef, sourceKind, sourceRef, rawSequence] = await queryNativeManyAttrs(resourceB as never, ["assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence"]);
+				expect(project._node_id).toBe(pair.a.project._node_id);
+				expect({ assetStorageKind, assetRef, sourceKind, sourceRef }).toEqual({ assetStorageKind: pointer.assetStorageKind, assetRef: pointer.assetRef, sourceKind: pointer.sourceKind, sourceRef: pointer.sourceRef });
+				expect(rawSequence).toBeUndefined();
+				captured = { resourceId: resourceB._node_id, projectId: project._node_id, assetStorageKind, assetRef, sourceKind, sourceRef, handleRef: sourceRef };
+			});
+			const beforeCount = pair.b.effects.mediaRecoveryCalls.length;
+			await dispatchAndSettle(pair.b.ctx, resourceB, "startMediaRecovery", attempt("boot:sequence-presence", "restore:sequence-presence"));
+			expect(pair.b.effects.mediaRecoveryCalls).toHaveLength(beforeCount + 1);
+			const request = pair.b.effects.mediaRecoveryCalls.at(-1)!;
+			expect(request).toMatchObject({ resourceId: resourceB._node_id, projectId: pair.b.project._node_id, operationId: "restore:sequence-presence", bootId: "boot:sequence-presence", attemptId: "restore:sequence-presence:attempt" });
+			expect(request.restoreSnapshot).toEqual({ ...captured, publicationSequencePresent: false, publicationSequence: null });
+			expect(Object.keys(request.restoreSnapshot as object).sort()).toEqual(["resourceId", "projectId", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "handleRef", "publicationSequencePresent", "publicationSequence"].sort());
+			expect(() => copyPublicationValue(request.restoreSnapshot)).not.toThrow();
+			expect(copyPublicationValue(request.restoreSnapshot)).toEqual(request.restoreSnapshot);
+			let taskB!: Harness["videoResource"];
+			await pair.b.ctx.lockToRead(async () => {
+				const rawTasks = await queryNativeRel(resourceB as never, "activeMediaRecoveryTask");
+				const tasks = (Array.isArray(rawTasks) ? rawTasks : rawTasks == null ? [] : [rawTasks]) as Harness["videoResource"][];
+				expect(tasks).toHaveLength(1);
+				expect(tasks[0]!._node_id).toBe(request.taskId);
+				taskB = tasks[0]!;
+			});
+			await dispatchAndSettle(pair.b.ctx, resourceB, "recordAutomaticMediaRecovery", { availability: "ready-project-copy", originalAccess: "granted", restoreSnapshot: request.restoreSnapshot, updatedAt: 201 });
+			await pair.b.ctx.lockToRead(async () => {
+				expect(await queryNativeManyAttrs(resourceB as never, ["localMediaAvailability", "originalAccessStatus", "localPublicationSequence"])).toEqual(["ready-project-copy", "granted", undefined]);
+				const taskValues = await queryNativeManyAttrs(taskB as never, ["phase", "outcome", "publicationRequested", "publicationReceipt"]);
+				expect(taskValues).toHaveLength(4);
+				expect(taskValues.slice(0, 3)).toEqual(["completed", "completed", false]);
+				expect([null, undefined]).toContain(taskValues[3]);
+			});
+			expect(pair.b.effects.publicationDecisionCalls).toEqual([]);
+		} finally {
+			pair.close();
+		}
+	});
+
+	it("UNIT declaration functions distinguish sequence absence, zero, null, stale and legacy inputs", () => {
+		type PureStep = { fn: readonly [readonly string[], (...args: unknown[]) => unknown] };
+		type TaskDeclarations = { prototype: { __dcls_actions: { runRecoveryEffect: readonly [unknown, PureStep] } } };
+		type ResourceDeclarations = { prototype: { __dcls_actions: { recordAutomaticMediaRecovery: readonly [PureStep, unknown] } } };
+		const taskStep = (MediaRecoveryTask as unknown as TaskDeclarations).prototype.__dcls_actions.runRecoveryEffect[1];
+		const resourceStep = (Resource as unknown as ResourceDeclarations).prototype.__dcls_actions.recordAutomaticMediaRecovery[0];
+		expect(taskStep.fn[0]).toEqual(["$noop", "_node_id", "operationId", "bootId", "intent", "attemptId", "< @one:_node_id < resource.project", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource", "< @one:contentFingerprint < resource", "< @one:fingerprintVersion < resource", "< @one:requiredSourceEnd < resource", "< @one:sourceKind < resource", "< @one:sourceRef < resource", "< @one:assetStorageKind < resource", "< @one:assetRef < resource", "< @one:localPublicationSequence < resource"]);
+		expect(resourceStep.fn[0]).toEqual(["$noop", "_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence", "localAcceptedPublication", "< @one:publicationState < activeMediaRecoveryTask"]);
+		const noop = Symbol("sequence-unit-noop");
+		const backing = { resourceId: "resource:unit", projectId: "project:unit", assetStorageKind: "project-copy", assetRef: "asset:unit", sourceKind: "file-handle", sourceRef: "handle:unit", handleRef: "handle:unit" };
+		const capture = (sequence: unknown) => {
+			const output = taskStep.fn[1]({}, noop, "task:unit", "operation:unit", "boot:unit", "restore", "attempt:unit", backing.projectId, backing.resourceId, "video", 4, null, null, "fp:unit", "sha256-v1", 4, backing.sourceKind, backing.sourceRef, backing.assetStorageKind, backing.assetRef, sequence) as { restoreSnapshot: Record<string, unknown> };
+			return output.restoreSnapshot;
+		};
+		const admit = (snapshot: Record<string, unknown>, current: unknown, removed = false, projectRemoved = false, taskValue: unknown = null) => {
+			const payload = { availability: "ready-project-copy", originalAccess: "granted", restoreSnapshot: snapshot, updatedAt: 201 };
+			const actual = resourceStep.fn[1](payload, noop, backing.resourceId, removed, backing.projectId, projectRemoved, backing.assetStorageKind, backing.assetRef, backing.sourceKind, backing.sourceRef, current, null, taskValue);
+			return { actual, expected: { localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted", forwarded: payload } };
+		};
+		// Pure comparison rows do not assert public null/absent-to-number publication reachability.
+		for (const captured of [undefined, 0, 1, null]) {
+			const snapshot = capture(captured);
+			expect(snapshot).toEqual({ ...backing, publicationSequencePresent: captured !== undefined, publicationSequence: captured === undefined ? null : captured });
+			expect(copyPublicationValue(snapshot)).toEqual(snapshot);
+			for (const current of [undefined, 0, 1, null]) {
+				const { actual, expected } = admit(snapshot, current);
+				if (captured === current) expect(actual).toEqual(expected);
+				else expect(actual).toBe(noop);
+			}
+		}
+		for (const present of ["sequence:serial", false]) {
+			expect(capture(present)).toEqual({ ...backing, publicationSequencePresent: true, publicationSequence: present });
+		}
+		for (const invalid of [NaN, Infinity, -Infinity, Symbol("nonserial"), () => undefined, new Map()]) {
+			expect(() => capture(invalid)).toThrow("Nonserial publication value");
+		}
+		for (const malformed of [undefined, null, 0, 1, "false", "true", {}, []]) {
+			expect(admit({ ...capture(0), publicationSequencePresent: malformed }, 0).actual).toBe(noop);
+		}
+		const missingSequence = { ...capture(0) };
+		delete missingSequence.publicationSequence;
+		expect(admit(missingSequence, 0).actual).toBe(noop);
+		expect(admit({ ...capture(undefined), publicationSequence: 0 }, undefined).actual).toBe(noop);
+		expect(admit({ ...capture(undefined), publicationSequencePresent: true }, undefined).actual).toBe(noop);
+		expect(admit({ ...capture(0), publicationSequencePresent: false }, 0).actual).toBe(noop);
+		for (const legacySequence of [undefined, 0, 1, null]) {
+			const legacy = { ...backing, publicationSequence: legacySequence };
+			expect(Object.hasOwn(legacy, "publicationSequencePresent")).toBe(false);
+			for (const current of [undefined, 0, 1, null]) {
+				const { actual, expected } = admit(legacy, current);
+				if (legacySequence === current) expect(actual).toEqual(expected);
+				else expect(actual).toBe(noop);
+			}
+		}
+		const inherited = Object.assign(Object.create({ publicationSequencePresent: "malformed-inherited" }), { ...backing, publicationSequence: 0 }) as Record<string, unknown>;
+		expect(admit(inherited, 0).actual).toEqual(admit(inherited, 0).expected);
+		for (const [removed, projectRemoved, taskValue] of [[true, false, null], [false, true, null], [false, false, { publicationRequested: true }], [false, false, { publicationReceipt: {} }]] as const) {
+			expect(admit(capture(0), 0, removed, projectRemoved, taskValue).actual).toBe(noop);
+		}
+	});
+
 	it("captures the actual accepted backing in a fresh restore request and admits native missing facts", async () => {
 		const h = await createActionContractHarness(); const { proposal } = await publish(h);
 		await dispatchAndSettle(h.ctx, h.videoResource, "startMediaRecovery", attempt("boot:missing", "restore:missing"));
 		const task = (await queryRel(h.videoResource, "activeMediaRecoveryTask"))[0]!;
 		const request = h.mediaRecoveryRequests.at(-1) as Record<string, unknown>;
-		expect(request.restoreSnapshot).toEqual({ resourceId: h.videoResource._node_id, projectId: h.project._node_id, assetStorageKind: "project-copy", assetRef: proposal.pointer.assetRef, sourceKind: "file-handle", sourceRef: proposal.pointer.sourceRef, handleRef: proposal.pointer.sourceRef, publicationSequence: 1 });
+		expect(request.restoreSnapshot).toEqual({ resourceId: h.videoResource._node_id, projectId: h.project._node_id, assetStorageKind: "project-copy", assetRef: proposal.pointer.assetRef, sourceKind: "file-handle", sourceRef: proposal.pointer.sourceRef, handleRef: proposal.pointer.sourceRef, publicationSequencePresent: true, publicationSequence: 1 });
 		await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { availability: "unavailable", originalAccess: "missing", restoreSnapshot: request.restoreSnapshot, updatedAt: 201 });
 		expect(getAttr(h.videoResource, "localMediaAvailability")).toBe("unavailable");
 		expect(getAttr(h.videoResource, "originalAccessStatus")).toBe("missing");
 		expect(getAttr(task, "phase")).toBe("awaiting-user-action");
 		expect(getAttr(task, "reasonCode")).toBe("source-missing");
 	});
-	it.each(["resourceId", "projectId", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "handleRef", "publicationSequence"] as const)("rejects native missing facts with stale captured %s", async (field) => {
+	it.each(["resourceId", "projectId", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "handleRef", "publicationSequence", "publicationSequencePresent"] as const)("rejects native missing facts with stale captured %s", async (field) => {
 		const h = await createActionContractHarness(); await publish(h);
 		await dispatchAndSettle(h.ctx, h.videoResource, "startMediaRecovery", attempt("boot:missing", "restore:missing"));
 		const task = (await queryRel(h.videoResource, "activeMediaRecoveryTask"))[0]!;
 		const request = h.mediaRecoveryRequests.at(-1) as Record<string, unknown>;
 		const snapshot = request.restoreSnapshot as Record<string, unknown>;
-		expect(snapshot).toEqual(captureRestoreSnapshot(h));
+		expect(snapshot).toEqual(await captureRestoreSnapshot(h));
 		const before = { ...capturePublicationState(h, task), reasonCode: getAttr(task, "reasonCode"), errorMessage: getAttr(task, "errorMessage"), updatedAt: getAttr(task, "updatedAt") };
-		await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { availability: "unavailable", originalAccess: "missing", restoreSnapshot: { ...snapshot, [field]: field === "publicationSequence" ? 0 : "stale:" + field }, updatedAt: 201 });
+		await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { availability: "unavailable", originalAccess: "missing", restoreSnapshot: { ...snapshot, [field]: field === "publicationSequencePresent" ? false : field === "publicationSequence" ? 0 : "stale:" + field }, updatedAt: 201 });
 		expect({ ...capturePublicationState(h, task), reasonCode: getAttr(task, "reasonCode"), errorMessage: getAttr(task, "errorMessage"), updatedAt: getAttr(task, "updatedAt") }).toEqual(before);
 	});
 	it("rejects an actual emitted restore snapshot after a newer publication and admits the fresh one", async () => {
@@ -754,7 +913,7 @@ describe("captured automatic restore admission and current backing", () => {
 		await dispatchAndSettle(h.ctx, h.videoResource, "startMediaRecovery", attempt("boot:new-restore", "restore:new"));
 		const task = (await queryRel(h.videoResource, "activeMediaRecoveryTask"))[0]!;
 		const freshRequest = h.mediaRecoveryRequests.at(-1) as Record<string, unknown>;
-		expect(freshRequest.restoreSnapshot).toEqual(captureRestoreSnapshot(h));
+		expect(freshRequest.restoreSnapshot).toEqual(await captureRestoreSnapshot(h));
 		const before = capturePublicationState(h, task);
 		await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { availability: "unavailable", originalAccess: "missing", restoreSnapshot: oldRequest.restoreSnapshot, updatedAt: 201 });
 		expect(capturePublicationState(h, task)).toEqual(before);
@@ -764,7 +923,8 @@ describe("captured automatic restore admission and current backing", () => {
 		expect(getAttr(task, "reasonCode")).toBe("source-missing");
 	});
 	it("admits matching legacy snapshots and rejects differing axes from an obsolete sequence", async () => {
-		const h = await createActionContractHarness(); const snapshot = captureRestoreSnapshot(h);
+		const h = await createActionContractHarness(); const snapshot = Object.fromEntries(Object.entries(await captureRestoreSnapshot(h)).filter(([key]) => key !== "publicationSequencePresent"));
+		expect(Object.hasOwn(snapshot, "publicationSequencePresent")).toBe(false);
 		await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { availability: "ready-project-copy", originalAccess: "granted", restoreSnapshot: snapshot, updatedAt: 1 });
 		expect(getAttr(h.videoResource, "localMediaAvailability")).toBe("ready-project-copy");
 		expect(getAttr(h.videoResource, "originalAccessStatus")).toBe("granted");

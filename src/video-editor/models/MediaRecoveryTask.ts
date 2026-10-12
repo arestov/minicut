@@ -146,7 +146,7 @@ export const MediaRecoveryTask = model({
 						const value = payload as Record<string, unknown> | null;
 						if (!value || typeof taskId !== "string" || typeof resourceId !== "string") return noop;
 						const normalizedSourceRef = typeof sourceRef === "string" ? sourceRef : null;
-						const restoreSnapshot = copyPublicationValue({ resourceId, projectId, assetStorageKind, assetRef: typeof assetRef === "string" ? assetRef : null, sourceKind, sourceRef: normalizedSourceRef, handleRef: sourceKind === "file-handle" ? normalizedSourceRef : null, publicationSequence });
+						const restoreSnapshot = copyPublicationValue({ resourceId, projectId, assetStorageKind, assetRef: typeof assetRef === "string" ? assetRef : null, sourceKind, sourceRef: normalizedSourceRef, handleRef: sourceKind === "file-handle" ? normalizedSourceRef : null, publicationSequencePresent: publicationSequence !== undefined, publicationSequence: publicationSequence === undefined ? null : publicationSequence });
 						return { taskId, resourceId, projectId, attemptId, operationId, bootId, intent, runtimeHandleId: value.runtimeHandleId ?? null, restoreSnapshot, original: { kind, duration, width: typeof width === "number" ? width : null, height: typeof height === "number" ? height : null, frameRate: null, timebase: null, audioChannels: null, audioSampleRate: null, streams: { videoStreams: kind === "video" ? 1 : 0, audioStreams: kind === "audio" ? 1 : null } }, originalFingerprint: contentFingerprint, fingerprintVersion, requiredSourceEnd, sourceKind, sourceRef };
 					},
 				],

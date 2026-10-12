@@ -516,7 +516,10 @@ localPublicationValidity: ["comp", ["localAcceptedPublication", "$meta$removed",
 						if (!validAvailability || !validAccess || removed || projectRemoved || task?.publicationRequested || task?.publicationReceipt) return noop;
 						const ref = (entry: unknown) => typeof entry === "string" ? entry : null;
 						if (snapshot) {
-							if (snapshot.resourceId !== resourceId || snapshot.projectId !== projectId || snapshot.assetStorageKind !== assetStorageKind || ref(snapshot.assetRef) !== ref(assetRef) || snapshot.sourceKind !== sourceKind || ref(snapshot.sourceRef) !== ref(sourceRef) || ref(snapshot.handleRef) !== (sourceKind === "file-handle" ? ref(sourceRef) : null) || snapshot.publicationSequence !== sequence) return noop;
+							if (snapshot.resourceId !== resourceId || snapshot.projectId !== projectId || snapshot.assetStorageKind !== assetStorageKind || ref(snapshot.assetRef) !== ref(assetRef) || snapshot.sourceKind !== sourceKind || ref(snapshot.sourceRef) !== ref(sourceRef) || ref(snapshot.handleRef) !== (sourceKind === "file-handle" ? ref(sourceRef) : null)) return noop;
+							if (Object.hasOwn(snapshot, "publicationSequencePresent")) {
+								if (typeof snapshot.publicationSequencePresent !== "boolean" || snapshot.publicationSequencePresent !== (sequence !== undefined) || snapshot.publicationSequence !== (sequence === undefined ? null : sequence)) return noop;
+							} else if (snapshot.publicationSequence !== sequence) return noop;
 						} else if (accepted || value?.restoreSnapshot != null) return noop;
 						return { localMediaAvailability: availability, originalAccessStatus: access, forwarded: payload };
 					}],
