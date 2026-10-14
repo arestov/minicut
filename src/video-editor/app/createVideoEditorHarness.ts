@@ -349,15 +349,12 @@ export const createVideoEditorHarness = (
 					if (startedRecoveryResources.has(resourceId)) continue;
 					if (recoveringResources.has(resourceId)) continue;
 					const resourceScope = { kind: "scope" as const, _nodeId: resourceId };
-					const durableSourceRef = (attrs as { sourceRef?: unknown }).sourceRef;
-					const snapshot = { resourceId, publicationSequence: (attrs as unknown as { localPublicationSequence?: unknown }).localPublicationSequence, projectId: activeProjectScope._nodeId, assetStorageKind: durableStorageKind, assetRef: durableAssetRef, sourceKind: (attrs as { sourceKind?: unknown }).sourceKind, sourceRef: durableSourceRef, handleRef: (attrs as { sourceKind?: unknown }).sourceKind === "file-handle" ? durableSourceRef : null, bootId: mediaRecoveryBootId, attemptId: `${mediaRecoveryBootId}:${resourceId}` } satisfies LocalMediaResourceSnapshot;
 					const recovery = (async () => {
 						await new Promise<void>((resolve) => platform.setTimeout(resolve, 0));
 						if (!startedRecoveryResources.has(resourceId)) {
 							startedRecoveryResources.add(resourceId);
 							pageRuntime.dispatch("startMediaRecovery", { operationId: `${mediaRecoveryBootId}:${resourceId}`, attemptId: `${mediaRecoveryBootId}:${resourceId}`, bootId: mediaRecoveryBootId, recoveryKind: "restore", intent: "restore", createdAt: Date.now(), updatedAt: Date.now() }, resourceScope);
 						}
-						await localMediaResolver.restoreResource(snapshot);
 					})().finally(() => recoveringResources.delete(resourceId));
 					recoveringResources.set(resourceId, recovery);
 				}
@@ -756,6 +753,14 @@ export const createVideoEditorHarness = (
 			if (!ownsRecoveryRequest(request)) return;
 			if (request.mode === "commit") {
 				void commitRequest(request);
+				return;
+			}
+			if (request.intent === "restore" && request.runtimeHandleId == null) {
+				const snapshot = request.restoreSnapshot as LocalMediaResourceSnapshot | null | undefined;
+				if (!snapshot || snapshot.resourceId !== request.resourceId || snapshot.projectId !== request.projectId || typeof snapshot.publicationSequencePresent !== "boolean") {
+					throw new Error("Automatic media recovery request is missing its declared restore snapshot");
+				}
+				void localMediaResolver.restoreResource({ ...snapshot, bootId: request.bootId, attemptId: request.attemptId });
 				return;
 			}
 			const retainedInspection = consumer.retain(request);

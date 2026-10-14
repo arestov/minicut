@@ -176,7 +176,7 @@ describe("createLocalMediaResolver", () => {
 		await expect(resolver.restoreResource({ resourceId: "resource:1", projectId: "project:1", assetStorageKind: "project-copy", assetRef: "project:1/resource:1", sourceKind: "file-handle" })).resolves.toBe("blob:project-copy");
 		expect(setLocalMediaStatus).toHaveBeenLastCalledWith("resource:1", "ready-project-copy");
 		expect(queryPermission).toHaveBeenCalledOnce();
-		expect(setLocalMediaAxes).toHaveBeenLastCalledWith("resource:1", { availability: "ready-project-copy", originalAccess: "denied" }, expect.objectContaining({ resourceId: "resource:1", assetRef: "project:1/resource:1" }));
+		expect(setLocalMediaAxes).toHaveBeenLastCalledWith("resource:1", { availability: "ready-project-copy", originalAccess: "denied", url: "blob:project-copy" }, expect.objectContaining({ resourceId: "resource:1", assetRef: "project:1/resource:1" }));
 		expect(resolver.getState("resource:1")).toEqual({ availability: "ready-project-copy", originalAccess: "denied" });
 	});
 

@@ -20,7 +20,7 @@ const accepted = (sequence: number, projectId = "project") => {
 	return { receipt, file };
 };
 const retirement = (receipt: AcceptedPublication): PublicationRetirement => ({ ...receipt, accepted: receipt, pointer: receipt.pointer, assetRef: receipt.pointer.assetRef, handleRef: receipt.pointer.sourceRef, eligible: false, sequence: receipt.sequence, releaseTransferToken: publicationIdentity(receipt, receipt.sequence), releasePlaybackToken: publicationIdentity(receipt, receipt.sequence), disposition: "no-longer-current", reason: "unlinked", excludedAssetRef: null, excludedHandleRef: null });
-const fixture = (onTransfer?: (sequence: number) => void, onPlayback?: (sequence: number) => void, onResult?: () => void, onClock?: () => void) => {
+const fixture = (onTransfer?: (sequence: number) => void, onPlayback?: (sequence: number) => void, onResult?: () => void, onClock?: () => void, onRelease?: () => void) => {
 	const revoked: string[] = []; const files = new Map<string, File>(); const installed: number[] = [];
 	const results: unknown[] = []; const rejected: unknown[] = []; const released: unknown[] = [];
 	const manager = createResourceTransferManager({ getRole: () => "server", getPeerId: () => "owner", chunkSize: 8 });
@@ -32,7 +32,7 @@ const fixture = (onTransfer?: (sequence: number) => void, onPlayback?: (sequence
 			installed.push(decision.sequence); onTransfer?.(decision.sequence);
 		},
 		installPlayback(_record, decision) { resolver.activateObjectUrl(decision.resourceId, decision.pointer.url, "ready-project-copy", publicationIdentity(decision, decision.sequence)); onPlayback?.(decision.sequence); },
-		release(_record, event) { released.push(event); if (event.sequence !== null) { manager.releaseLocalResource(event.resourceId, event.releaseTransferToken!); resolver.releasePublicationUrl(event.resourceId, event.releasePlaybackToken!); } },
+		release(_record, event) { released.push(event); onRelease?.(); if (event.sequence !== null) { manager.releaseLocalResource(event.resourceId, event.releaseTransferToken!); resolver.releasePublicationUrl(event.resourceId, event.releasePlaybackToken!); } },
 		reject(record) { rejected.push(record); }, result(value) { results.push(value); onResult?.(); }, now: () => { onClock?.(); return 1; },
 	});
 	const retain = (sequence: number, projectId?: string) => {
@@ -151,5 +151,57 @@ describe("remaining finite R6 boundary rows", () => {
 		expect(f.results).toEqual(expect.arrayContaining([expect.objectContaining({ sequence: 1, outcome: "indeterminate" }), expect.objectContaining({ sequence: 2, outcome: "installed" })]));
 		expect(f.resolver.resolveResourceUrl("resource", "")).toBe("blob:playback:2");
 		f.consumer.dispose(); f.manager.destroy(); f.resolver.destroy();
+	});
+});
+
+// Physical consumer properties complement the real model-captured retirement regression.
+describe("canonical prior-host retirement", () => {
+	it("keeps B usable across duplicate A retirement and delayed A decisions", async () => {
+		const f = fixture(); const a = accepted(1).receipt; const b = f.retain(2); f.send(b);
+		try {
+			f.consumer.consumeRetirement(retirement(a)); f.consumer.consumeRetirement(retirement(a));
+			f.send(a); f.consumer.retain(a); f.send(a);
+			expect(f.released).toHaveLength(2);
+			expect(f.installed).toEqual([2]);
+			expect(f.resolver.resolveResourceUrl("resource", "")).toBe("blob:playback:2");
+			expect(await f.files.get(f.manager.resolveResourceUrl("resource", ""))?.text()).toBe("bytes:2");
+		} finally { f.consumer.dispose(); f.manager.destroy(); f.resolver.destroy(); }
+	});
+
+	it.each(["tuple", "sequence", "transfer-token", "playback-token", "pointer", "asset-ref", "handle-ref", "disposition", "noncanonical", "unaccepted-unknown"])("rejects %s without releasing B", async (kind) => {
+		const f = fixture(); const a = accepted(1).receipt; const event = retirement(a);
+		const otherTuple = { ...a, attemptId: "other-attempt" };
+		const change: Record<string, unknown> = kind === "tuple" ? { attemptId: otherTuple.attemptId, releaseTransferToken: publicationIdentity(otherTuple, a.sequence), releasePlaybackToken: publicationIdentity(otherTuple, a.sequence) }
+			: kind === "sequence" ? { sequence: 2, releaseTransferToken: publicationIdentity(a, 2), releasePlaybackToken: publicationIdentity(a, 2) }
+			: kind === "transfer-token" ? { releaseTransferToken: "wrong" }
+			: kind === "playback-token" ? { releasePlaybackToken: "wrong" }
+			: kind === "pointer" ? { pointer: { ...a.pointer, assetRef: "asset:other" } }
+			: kind === "asset-ref" ? { assetRef: "asset:other" }
+			: kind === "handle-ref" ? { handleRef: "handle:other" }
+			: kind === "disposition" ? { disposition: "unaccepted" }
+			: kind === "noncanonical" ? { accepted: { ...a, acceptedResource: null } }
+			: { accepted: null, pointer: null, assetRef: null, handleRef: null, sequence: null, releaseTransferToken: null, releasePlaybackToken: null, disposition: "unaccepted" };
+		try {
+			f.consumer.consumeRetirement({ ...event, ...change });
+			f.send(f.retain(2));
+			expect(f.released).toEqual([]); expect(f.rejected).toEqual([]);
+			expect(f.installed).toEqual([2]);
+			expect(f.resolver.resolveResourceUrl("resource", "")).toBe("blob:playback:2");
+			expect(await f.files.get(f.manager.resolveResourceUrl("resource", ""))?.text()).toBe("bytes:2");
+		} finally { f.consumer.dispose(); f.manager.destroy(); f.resolver.destroy(); }
+	});
+
+	it.each([false, true])("serializes nested B behind prior-host release; disposed=%s", async (dispose) => {
+		let f: ReturnType<typeof fixture>; let b: AcceptedPublication; const events: string[] = [];
+		f = fixture((sequence) => events.push("transfer:" + sequence), (sequence) => events.push("playback:" + sequence), undefined, undefined, () => {
+			events.push("release:start"); f.send(b); if (dispose) f.consumer.dispose(); events.push("release:return");
+		});
+		b = f.retain(2);
+		try {
+			f.consumer.consumeRetirement(retirement(accepted(1).receipt));
+			expect(events).toEqual(dispose ? ["release:start", "release:return"] : ["release:start", "release:return", "transfer:2", "playback:2"]);
+			expect(f.installed).toEqual(dispose ? [] : [2]);
+			if (!dispose) expect(await f.files.get(f.manager.resolveResourceUrl("resource", ""))?.text()).toBe("bytes:2");
+		} finally { f.consumer.dispose(); f.manager.destroy(); f.resolver.destroy(); }
 	});
 });

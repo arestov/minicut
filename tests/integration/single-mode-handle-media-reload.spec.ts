@@ -126,6 +126,9 @@ const readRecoverySnapshot = async (page: Page): Promise<RecoverySnapshot | null
 	const resource = details?.resources?.[0]
 	const task = resource?.activeMediaRecoveryTask
 	if (typeof details?.projectId !== 'string' || typeof resource?.resourceId !== 'string' || typeof resource.url !== 'string' || !resource.url.startsWith('blob:') || typeof task?.nodeId !== 'string' || typeof task.operationId !== 'string' || task.phase !== 'completed') return null
+	// The restored URL must be the capability actually decoded by the renderer.
+	const video = document.querySelector('[aria-label="Renderer stage"] video[data-resource-name="picked-handle-video.webm"]') as HTMLVideoElement | null
+	if (!video || video.currentSrc !== resource.url || video.duration !== 1 || video.readyState < 2 || video.error !== null) return null
 	let assetRef = typeof resource.assetRef === 'string' ? resource.assetRef : ''
 	if (!assetRef) {
 		try {
@@ -266,6 +269,7 @@ test('project copy survives prompt, denied, and granted permission across reload
 		await page.reload()
 		await expect(row).toContainText('Using project copy', { timeout: 20_000 })
 		await expect(row.getByRole('button', { name: 'Grant access' })).toBeVisible({ timeout: 20_000 })
+		await waitForCompletedRecovery(page)
 		expect(await page.evaluate(() => JSON.parse(localStorage.getItem('minicut-permission-stats') ?? '{}').requests)).toBe(0)
 		await page.evaluate(() => localStorage.setItem('minicut-permission-next', 'denied'))
 		await row.getByRole('button', { name: 'Grant access' }).click()
@@ -283,6 +287,7 @@ test('project copy survives prompt, denied, and granted permission across reload
 		await page.reload()
 		await expect(row).toContainText('Using project copy', { timeout: 20_000 })
 		await expect(row.getByRole('button', { name: /Grant access|Try again/ })).toHaveCount(0)
+		await waitForCompletedRecovery(page)
 		await expect(timelineClip).toHaveCount(1)
 		await expect.poll(() => readVideoClips(page)).toEqual(initialClips)
 		const finalStats = await page.evaluate(() => JSON.parse(localStorage.getItem('minicut-permission-stats') ?? '{}') as { queries: number; requests: number })
@@ -365,7 +370,22 @@ test('reconciles interrupted commits before and after the durable pointer switch
 		await confirmReplacementIfNeeded(page, row, afterRollback.taskId)
 		const switched = await waitForCompletedRecovery(page, afterRollback)
 		expect(switched.assetRef).not.toBe(original.assetRef)
-		expect((await readRecoveryStorageCounts(page, switched)).versionCount).toBe(2)
+		// Exact retirement starts during semantic publication, before the injected technical fault.
+		const switchedCounts = await readRecoveryStorageCounts(page, switched)
+		expect(switchedCounts.stagingCount).toBe(0)
+		expect([1, 2]).toContain(switchedCounts.versionCount)
+		expect(await page.evaluate(async ({ assetRef, url }) => {
+			const parts = assetRef.split('/')
+			if (parts.length !== 6 || parts[0] !== 'project' || parts[2] !== 'resource' || parts[4] !== 'asset') return false
+			const root = await navigator.storage.getDirectory()
+			const project = await (await root.getDirectoryHandle('projects')).getDirectoryHandle(parts[1])
+			const resource = await (await project.getDirectoryHandle('assets')).getDirectoryHandle(parts[3])
+			const version = await (await resource.getDirectoryHandle('versions')).getDirectoryHandle(parts[5])
+			const stored = new Uint8Array(await (await (await version.getFileHandle('original')).getFile()).arrayBuffer())
+			const rendered = new Uint8Array(await (await fetch(url)).arrayBuffer())
+			return stored.length > 0 && stored.length === rendered.length && stored.every((byte, index) => byte === rendered[index])
+		}, switched)).toBe(true)
+
 
 		await page.reload()
 		const reconciled = await waitForCompletedRecovery(page, switched)

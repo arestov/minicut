@@ -1,4 +1,4 @@
-import { acceptedPublication, publicationIdentity, publicationProposal, publicationTuple, recordOf, samePublicationCandidate, samePublicationValue, type AcceptedPublication, type PublicationProposal, type PublicationBindingResult, type PublicationRetirement } from "./mediaPublicationProtocol";
+import { acceptedPublication, publicationIdentity, publicationProposal, publicationTuple, recordOf, samePublicationCandidate, samePublicationTuple, samePublicationValue, type AcceptedPublication, type PublicationProposal, type PublicationBindingResult, type PublicationRetirement } from "./mediaPublicationProtocol";
 
 /** Physical ownership only. A retained record exists before staging/resolution enters I/O. */
 export type RetainedPublication = { proposal: PublicationProposal | null; request: Record<string, unknown>; retired: boolean; settled: boolean; started?: boolean; accepted: AcceptedPublication | null; lastResult: PublicationBindingResult | null; file?: File; stagedAssetRef?: string | null; stagedHandleRef?: string | null; playbackUrl?: string; transferUrl?: string; playbackEntered: boolean; transferEntered: boolean; nativeAssetId?: string; nativePath?: string; retirement?: PublicationRetirement };
@@ -82,15 +82,23 @@ isDisposed() { return disposed; },
 		consumeRetirement(payload: unknown) {
 			if (disposed) return;
 			const retirement = recordOf(payload) as PublicationRetirement | null; if (!retirement || !publicationTuple(retirement)) return;
-			const record = records.get(keyOf(retirement)); if (!record) return;
+			let record = records.get(keyOf(retirement));
 			const nullableRef = (value: unknown) => value === null || typeof value === "string" && value.length > 0;
 			if (![retirement.assetRef, retirement.handleRef, retirement.excludedAssetRef, retirement.excludedHandleRef].every(nullableRef) || typeof retirement.reason !== "string" || !retirement.reason || (retirement.sequence === null ? retirement.disposition !== "unaccepted" || retirement.accepted !== null : retirement.disposition !== "no-longer-current")) return;
-			if (retirement.sequence !== null && (!Number.isSafeInteger(retirement.sequence) || retirement.sequence < 1 || record.accepted && retirement.sequence !== record.accepted.sequence)) return;
+			if (retirement.sequence !== null && (!Number.isSafeInteger(retirement.sequence) || retirement.sequence < 1 || record?.accepted && retirement.sequence !== record.accepted.sequence)) return;
 			if (retirement.sequence === null ? retirement.releaseTransferToken !== null || retirement.releasePlaybackToken !== null : retirement.releaseTransferToken !== publicationIdentity(retirement, retirement.sequence) || retirement.releasePlaybackToken !== publicationIdentity(retirement, retirement.sequence)) return;
 			if (retirement.sequence !== null) {
 				const canonical = acceptedPublication(retirement.accepted);
-				if (!canonical || canonical.sequence !== retirement.sequence || !record.proposal || !samePublicationCandidate(record.proposal, canonical) || !samePublicationValue(record.proposal.pointer, canonical.pointer) || retirement.assetRef !== canonical.pointer.assetRef || retirement.handleRef !== (canonical.pointer.sourceKind === "file-handle" ? canonical.pointer.sourceRef : null)) return;
+				if (!canonical || canonical.sequence !== retirement.sequence || !samePublicationTuple(canonical, retirement) || !samePublicationValue(retirement.pointer, canonical.pointer) || retirement.assetRef !== canonical.pointer.assetRef || retirement.handleRef !== (canonical.pointer.sourceKind === "file-handle" ? canonical.pointer.sourceRef : null)) return;
+				if (record && (!record.proposal || !samePublicationCandidate(record.proposal, canonical) || !samePublicationValue(record.proposal.pointer, canonical.pointer))) return;
+				if (!record) {
+					// A committed exact retirement also owns durable refs after the old host disappears.
+					// Retire before any host callback; this record has no installable physical capability.
+					record = { request: canonical, proposal: canonical, accepted: canonical, retired: true, settled: true, lastResult: null, playbackEntered: false, transferEntered: false };
+					records.set(keyOf(retirement), record);
+				}
 			}
+			if (!record) return;
 			record.retired = true; record.retirement = retirement;
 			const box = mailbox(retirement.resourceId); if (retirement.sequence !== null) box.highestObserved = Math.max(box.highestObserved, retirement.sequence);
 			box.releases.push({ kind: "release", record, retirement }); drain(box);

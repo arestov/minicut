@@ -11,11 +11,11 @@ type MediaResolverRuntime = {
 	revokeObjectUrl(url: string): void;
 	setLocalMediaStatus?(resourceId: string, status: LocalMediaStatus): void;
 	setResourceStatus?(resourceId: string, status: "ready" | "needs-permission" | "missing"): void;
-	setLocalMediaAxes?(resourceId: string, state: { availability: LocalMediaAvailability; originalAccess: OriginalAccessStatus }, snapshot?: LocalMediaResourceSnapshot): void;
+	setLocalMediaAxes?(resourceId: string, state: { availability: LocalMediaAvailability; originalAccess: OriginalAccessStatus; url?: string }, snapshot?: LocalMediaResourceSnapshot): void;
 };
 export type LocalMediaResourceSnapshot = {
 	resourceId: string; projectId?: unknown; assetStorageKind?: unknown;
-	assetRef?: unknown; handleRef?: unknown; sourceKind?: unknown; sourceRef?: unknown; attemptId?: unknown; bootId?: unknown; publicationSequence?: unknown;
+	assetRef?: unknown; handleRef?: unknown; sourceKind?: unknown; sourceRef?: unknown; attemptId?: unknown; bootId?: unknown; publicationSequence?: unknown; publicationSequencePresent?: boolean;
 };
 type LocalMediaHandleReader = {
 	get(resourceId: string): Promise<LocalMediaHandleRecord | null>;
@@ -42,12 +42,12 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 		leases.set(resource.resourceId, lease);
 		return lease;
 	};
-	const setAxes = (lease: LegacyLease, patch: Partial<{ availability: LocalMediaAvailability; originalAccess: OriginalAccessStatus }>) => {
+	const setAxes = (lease: LegacyLease, patch: Partial<{ availability: LocalMediaAvailability; originalAccess: OriginalAccessStatus }>, url?: string) => {
 		if (!current(lease)) return false;
 		const resourceId = lease.snapshot.resourceId;
 		const next = { ...(axes.get(resourceId) ?? { availability: "unknown" as const, originalAccess: "unknown" as const }), ...patch };
 		axes.set(resourceId, next);
-		runtime.setLocalMediaAxes?.(resourceId, next, lease.snapshot);
+		runtime.setLocalMediaAxes?.(resourceId, url === undefined ? next : { ...next, url }, lease.snapshot);
 		return current(lease);
 	};
 	const setStatus = (lease: LegacyLease, value: LocalMediaStatus) => {
@@ -73,7 +73,7 @@ export const createLocalMediaResolver = ({ handleStore, projectAssets, runtime }
 		// If revocation reentered activation, the replacing owner already revoked this URL.
 		if (!current(lease)) return null;
 		if (!setStatus(lease, ready)) return null;
-		if (!setAxes(lease, { availability: ready })) return null;
+		if (!setAxes(lease, { availability: ready }, url)) return null;
 		return url;
 	};
 	const resolveResourceUrl = (resourceId: string, fallbackUrl: string) => objectUrls.get(resourceId) ?? fallbackUrl;

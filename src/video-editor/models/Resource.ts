@@ -509,11 +509,13 @@ localPublicationValidity: ["comp", ["localAcceptedPublication", "$meta$removed",
 		},
 		recordAutomaticMediaRecovery: [
 			{
-				to: { localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], forwarded: ["$output"] },
-				fn: [["$noop", "_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence", "localAcceptedPublication", "< @one:publicationState < activeMediaRecoveryTask"] as const,
-					(payload: unknown, noop: unknown, resourceId: unknown, removed: unknown, projectId: unknown, projectRemoved: unknown, assetStorageKind: unknown, assetRef: unknown, sourceKind: unknown, sourceRef: unknown, sequence: unknown, accepted: unknown, taskValue: unknown) => {
+				to: { url: ["url"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], forwarded: ["$output"] },
+				fn: [["$noop", "_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence", "localAcceptedPublication", "< @one:publicationState < activeMediaRecoveryTask", "url"] as const,
+					(payload: unknown, noop: unknown, resourceId: unknown, removed: unknown, projectId: unknown, projectRemoved: unknown, assetStorageKind: unknown, assetRef: unknown, sourceKind: unknown, sourceRef: unknown, sequence: unknown, accepted: unknown, taskValue: unknown, currentUrl: unknown) => {
 						const value = recordOf(payload); const snapshot = recordOf(value?.restoreSnapshot); const task = recordOf(taskValue);
 						const availability = value?.availability; const access = value?.originalAccess;
+						const hasUrl = Boolean(value && Object.hasOwn(value, "url"));
+						if (hasUrl && (!snapshot || typeof value?.url !== "string" || !value.url.startsWith("blob:") || value.url.length <= 5 || (availability !== "ready-project-copy" && availability !== "ready-file-handle"))) return noop;
 						const validAvailability = availability === "unknown" || availability === "resolving" || availability === "ready-project-copy" || availability === "ready-file-handle" || availability === "unavailable" || availability === "error";
 						const validAccess = access === "unknown" || access === "granted" || access === "prompt" || access === "denied" || access === "missing";
 						if (!validAvailability || !validAccess || removed || projectRemoved || task?.publicationRequested || task?.publicationReceipt) return noop;
@@ -524,7 +526,7 @@ localPublicationValidity: ["comp", ["localAcceptedPublication", "$meta$removed",
 								if (typeof snapshot.publicationSequencePresent !== "boolean" || snapshot.publicationSequencePresent !== (sequence !== undefined) || snapshot.publicationSequence !== (sequence === undefined ? null : sequence)) return noop;
 							} else if (snapshot.publicationSequence !== sequence) return noop;
 						} else if (accepted || value?.restoreSnapshot != null) return noop;
-						return { localMediaAvailability: availability, originalAccessStatus: access, forwarded: payload };
+						return { url: hasUrl ? value!.url : currentUrl, localMediaAvailability: availability, originalAccessStatus: access, forwarded: payload };
 					}],
 			},
 			{ to: ["<< activeMediaRecoveryTask", { action: "recordRestoreState", sub_flow: true }], fn: (payload: unknown) => payload },

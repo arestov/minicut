@@ -15,6 +15,8 @@ import { Project, PROJECT_IMPORT_RESOURCE_STEPS, PROJECT_CRDT_REL_POLICIES } fro
 import { reduceSetResources } from "../../models/Project/actions";
 import { acceptedPublication, capturedPublicationRetirements, copyPublicationValue, publicationIdentity, publicationProposal, publicationTuple, recordOf, samePublicationCandidate, type AcceptedPublication, type PublicationManifest } from "../../media/mediaPublicationProtocol";
 import { describe, expect, it } from "vitest";
+import { createLocalMediaResolver, type LocalMediaResourceSnapshot } from "../../media/localMediaResolver";
+import { createMediaPublicationConsumer } from "../../media/mediaPublicationConsumer";
 import { MediaRecoveryTask } from "../../models/MediaRecoveryTask";
 import { Resource } from "../../models/Resource";
 import { createActionContractHarness as createBaseActionContractHarness, dispatchAndSettle } from "./action-contract-test-harness";
@@ -1129,7 +1131,7 @@ describe("captured automatic restore admission and current backing", () => {
 		const taskStep = (MediaRecoveryTask as unknown as TaskDeclarations).prototype.__dcls_actions.runRecoveryEffect[1];
 		const resourceStep = (Resource as unknown as ResourceDeclarations).prototype.__dcls_actions.recordAutomaticMediaRecovery[0];
 		expect(taskStep.fn[0]).toEqual(["$noop", "_node_id", "operationId", "bootId", "intent", "attemptId", "< @one:_node_id < resource.project", "< @one:_node_id < resource", "< @one:kind < resource", "< @one:duration < resource", "< @one:width < resource", "< @one:height < resource", "< @one:contentFingerprint < resource", "< @one:fingerprintVersion < resource", "< @one:requiredSourceEnd < resource", "< @one:sourceKind < resource", "< @one:sourceRef < resource", "< @one:assetStorageKind < resource", "< @one:assetRef < resource", "< @one:localPublicationSequence < resource"]);
-		expect(resourceStep.fn[0]).toEqual(["$noop", "_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence", "localAcceptedPublication", "< @one:publicationState < activeMediaRecoveryTask"]);
+		expect(resourceStep.fn[0]).toEqual(["$noop", "_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence", "localAcceptedPublication", "< @one:publicationState < activeMediaRecoveryTask", "url"]);
 		const noop = Symbol("sequence-unit-noop");
 		const backing = { resourceId: "resource:unit", projectId: "project:unit", assetStorageKind: "project-copy", assetRef: "asset:unit", sourceKind: "file-handle", sourceRef: "handle:unit", handleRef: "handle:unit" };
 		const capture = (sequence: unknown) => {
@@ -1138,8 +1140,8 @@ describe("captured automatic restore admission and current backing", () => {
 		};
 		const admit = (snapshot: Record<string, unknown>, current: unknown, removed = false, projectRemoved = false, taskValue: unknown = null) => {
 			const payload = { availability: "ready-project-copy", originalAccess: "granted", restoreSnapshot: snapshot, updatedAt: 201 };
-			const actual = resourceStep.fn[1](payload, noop, backing.resourceId, removed, backing.projectId, projectRemoved, backing.assetStorageKind, backing.assetRef, backing.sourceKind, backing.sourceRef, current, null, taskValue);
-			return { actual, expected: { localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted", forwarded: payload } };
+			const actual = resourceStep.fn[1](payload, noop, backing.resourceId, removed, backing.projectId, projectRemoved, backing.assetStorageKind, backing.assetRef, backing.sourceKind, backing.sourceRef, current, null, taskValue, "blob:unit-current");
+			return { actual, expected: { url: "blob:unit-current", localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted", forwarded: payload } };
 		};
 		// Pure comparison rows do not assert public null/absent-to-number publication reachability.
 		for (const captured of [undefined, 0, 1, null]) {
@@ -1447,5 +1449,114 @@ describe("Root physical publication deletion", () => {
 		expect(forTask(original.taskId)).toEqual([expectedOriginalRetirement]);
 		expect(forTask(importTaskId)).toEqual([expectedImportRetirement]);
 		expect(h.publicationRetirements).toHaveLength(2);
+	});
+});
+
+
+describe("public automatic restore binds the current payload and playback capability", () => {
+	it.each([1, 2].flatMap((sequence) => (["granted", "prompt", "denied"] as const).map((permission) => ({ sequence, permission }))))("restores sequence $sequence with $permission original access", async ({ sequence, permission }) => {
+		const h = await createActionContractHarness();
+		for (let index = 1; index <= sequence; index += 1) await publish(h, h.videoResource, "reload:" + index);
+		const oldUrl = await queryAttr(h.videoResource, "url");
+		await dispatchAndSettle(h.ctx, h.videoResource, "startMediaRecovery", attempt("boot:reload", "restore:reload"));
+		const request = h.mediaRecoveryRequests.at(-1) as { taskId: string; resourceId: string; bootId: string; attemptId: string; restoreSnapshot: LocalMediaResourceSnapshot };
+		expect(request.restoreSnapshot).toMatchObject({ resourceId: h.videoResource._node_id, publicationSequencePresent: true, publicationSequence: sequence });
+		const task = (await queryRel(h.videoResource, "activeMediaRecoveryTask"))[0]!;
+		expect(task._node_id).toBe(request.taskId);
+		const inputs: Record<string, unknown>[] = [];
+		const file = new File(["current durable bytes"], "reload.webm", { type: "video/webm" });
+		const urls: string[] = [];
+		const resolver = createLocalMediaResolver({
+			handleStore: { get: async () => null, getByRef: async () => ({ handle: { queryPermission: async () => permission } }) as never },
+			projectAssets: { getFileByRef: async () => file } as never,
+			runtime: {
+				createObjectUrl: (blob) => { const url = URL.createObjectURL(blob); urls.push(url); return url; },
+				revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+				setLocalMediaAxes: (_id, state, restoreSnapshot) => { inputs.push({ ...state, restoreSnapshot, updatedAt: 201 }); },
+			},
+		});
+		try {
+			const freshUrl = await resolver.restoreResource({ ...request.restoreSnapshot, bootId: request.bootId, attemptId: request.attemptId });
+			expect(freshUrl).toEqual(expect.stringMatching(/^blob:/));
+			expect(freshUrl).not.toBe(oldUrl);
+			// Effect completion returns as later declared inputs, never synchronously inside an effect fake.
+			for (const input of inputs) await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", input);
+			expect(await queryAttr(h.videoResource, "url")).toBe(freshUrl);
+			expect(await queryAttr(h.videoResource, "originalAccessStatus")).toBe(permission);
+			expect(await queryAttr(h.videoResource, "localMediaAvailability")).toBe("ready-project-copy");
+			expect(await queryAttr(task, "phase")).toBe("completed");
+			expect(await queryAttr(task, "outcome")).toBe("completed");
+			expect(await (await fetch(freshUrl!)).text()).toBe("current durable bytes");
+			const noUrl = { availability: "ready-project-copy", originalAccess: permission, restoreSnapshot: request.restoreSnapshot, updatedAt: 202 };
+			await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", noUrl);
+			expect(await queryAttr(h.videoResource, "url")).toBe(freshUrl);
+			const beforeInvalid = capturePublicationState(h, task);
+			for (const url of [undefined, null, "", "https://example.invalid/media", "blob:"]) {
+				await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { ...noUrl, url });
+				expect(capturePublicationState(h, task)).toEqual(beforeInvalid);
+			}
+			await publish(h, h.videoResource, "winning-publication");
+			await dispatchAndSettle(h.ctx, h.videoResource, "startMediaRecovery", attempt("boot:next", "restore:next"));
+			const currentTask = (await queryRel(h.videoResource, "activeMediaRecoveryTask"))[0]!;
+			const beforeLate = capturePublicationState(h, currentTask);
+			await dispatchAndSettle(h.ctx, h.videoResource, "recordAutomaticMediaRecovery", { ...inputs.at(-1), url: freshUrl });
+			expect(capturePublicationState(h, currentTask)).toEqual(beforeLate);
+			// The resolver's existing publication lease prevents late restore work from revoking a winner.
+			const winningUrl = URL.createObjectURL(new Blob(["winning bytes"])); urls.push(winningUrl);
+			resolver.activateObjectUrl(request.resourceId, winningUrl, "ready-project-copy", "winning-publication");
+			expect(await resolver.restoreResource({ ...request.restoreSnapshot, bootId: "late" })).toBe(winningUrl);
+			expect(await (await fetch(winningUrl)).text()).toBe("winning bytes");
+		} finally {
+			resolver.destroy();
+			for (const url of urls) URL.revokeObjectURL(url);
+		}
+	});
+});
+
+// The model is native; the small physical store is a host-boundary fake, not graph state.
+// The existing whole browser interrupted-commit case covers real OPFS reclamation.
+describe("public prior-runtime accepted retirement reclaims only exact obsolete backing", () => {
+	it("consumes actual captured model retirements without a previous host capability", async () => {
+		const h = await createActionContractHarness();
+		const { proposal: a } = await publish(h, h.videoResource, "prior-host:A");
+		const files = new Map<string, File>([[a.pointer.assetRef!, new File(["A durable bytes"], "a.webm")]]);
+		const handles = new Set([a.pointer.sourceRef!]);
+		const consumer = createMediaPublicationConsumer({
+			installTransfer() { throw new Error("A retired prior-host publication cannot install"); },
+			installPlayback() { throw new Error("A retired prior-host publication cannot install"); },
+			release(record, event) {
+				const pointer = record.proposal!.pointer;
+				if (pointer.assetRef && pointer.assetRef !== event.excludedAssetRef) files.delete(pointer.assetRef);
+				if (pointer.sourceKind === "file-handle" && pointer.sourceRef && pointer.sourceRef !== event.excludedHandleRef) handles.delete(pointer.sourceRef);
+			},
+			reject() { throw new Error("No unaccepted prior-host candidate is authorized"); },
+			result() {}, now: () => 201,
+		});
+		try {
+			h.publicationRetirements.length = 0;
+			await dispatchAndSettle(h.ctx, h.videoResource, "setLocalMediaAxes", { availability: "unavailable", originalAccess: "denied" });
+			expect(h.publicationRetirements).toHaveLength(1);
+			for (const event of h.publicationRetirements) consumer.consumeRetirement(event);
+			expect(await files.get(a.pointer.assetRef!)!.text()).toBe("A durable bytes");
+			expect(handles.has(a.pointer.sourceRef!)).toBe(true);
+
+			h.publicationRetirements.length = 0;
+			const current = await queryAttr(h.videoResource, "transferSnapshot") as object;
+			await dispatchAndSettle(h.ctx, h.videoResource, "setResourceAttrs", { ...current, ...a.pointer, ...a.candidateFileMetadata, sourceRef: "handle:independent-current" });
+			expect(h.publicationRetirements).toHaveLength(1);
+			for (const event of h.publicationRetirements) consumer.consumeRetirement(event);
+			expect(await files.get(a.pointer.assetRef!)!.text()).toBe("A durable bytes");
+			expect(handles.has(a.pointer.sourceRef!)).toBe(false);
+
+			h.publicationRetirements.length = 0;
+			const { proposal: b } = await publish(h, h.videoResource, "current-host:B");
+			files.set(b.pointer.assetRef!, new File(["B durable bytes"], "b.webm")); handles.add(b.pointer.sourceRef!);
+			expect(h.publicationRetirements.length).toBeGreaterThan(0);
+			for (const event of h.publicationRetirements) { consumer.consumeRetirement(event); consumer.consumeRetirement(event); }
+			expect(files.has(a.pointer.assetRef!)).toBe(false);
+			expect(files.size).toBe(1);
+			expect(await files.get(b.pointer.assetRef!)!.text()).toBe("B durable bytes");
+			expect(handles.has(b.pointer.sourceRef!)).toBe(true);
+		} finally { consumer.dispose(); }
 	});
 });
