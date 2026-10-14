@@ -13,7 +13,7 @@ import { MINICUT_APP_PROPS, MINICUT_APP_MODELS } from "../../models/AppRootDecla
 import { merge as mergeDcl } from "dkt/dcl/merge.js";
 import { Project, PROJECT_IMPORT_RESOURCE_STEPS, PROJECT_CRDT_REL_POLICIES } from "../../models/Project";
 import { reduceSetResources } from "../../models/Project/actions";
-import { capturedPublicationRetirements, copyPublicationValue, publicationIdentity, publicationTuple, type PublicationManifest } from "../../media/mediaPublicationProtocol";
+import { acceptedPublication, capturedPublicationRetirements, copyPublicationValue, publicationIdentity, publicationProposal, publicationTuple, recordOf, samePublicationCandidate, type AcceptedPublication, type PublicationManifest } from "../../media/mediaPublicationProtocol";
 import { describe, expect, it } from "vitest";
 import { MediaRecoveryTask } from "../../models/MediaRecoveryTask";
 import { Resource } from "../../models/Resource";
@@ -736,6 +736,307 @@ const capturePublicationState = (h: Harness, task?: Harness["videoResource"]) =>
 
 describe("captured automatic restore admission and current backing", () => {
 
+	it("first replica publication preserves current backing and advances missing host sequence", async () => {
+		// A peer with no local publication history admits its first valid receipt while preserving current backing.
+		// Strict receipt absence is a public premise; only accepted pointer and receipt writes allocate host order.
+		const pair = await createCrdtWorkerPair({ App: productionMiniCutAppRoot, roomId: "media-replica-first-publication", profileId: "minicut-crdt-v1", profileVersion: 1 });
+		try {
+			const operationA = "op:replica-first:A:import";
+			await dispatchAndSettle(pair.a.ctx, pair.a.project, "importResource", {
+				name: "replica-first.webm", kind: "video", duration: 4, mime: "video/webm", size: 4, url: "https://example.invalid/replica-first", status: "ready", source: { kind: "local" }, data: { status: "ready" },
+				operationId: operationA, attemptId: "attempt:replica-first:A:import", bootId: "boot:replica-first:A:import", recoveryKind: "import", intent: "restore", runtimeHandleId: "runtime:replica-first:A", createdAt: 1, updatedAt: 1,
+			});
+			let resourceA!: Harness["videoResource"];
+			let taskA!: Harness["videoResource"];
+			await pair.a.ctx.lockToRead(async () => {
+				const rawResources = await queryNativeRel(pair.a.project as never, "resources");
+				const resources = (Array.isArray(rawResources) ? rawResources : rawResources == null ? [] : [rawResources]) as Harness["videoResource"][];
+				expect(resources).toHaveLength(1);
+				resourceA = resources[0]!;
+				const rawTasks = await queryNativeRel(resourceA as never, "activeMediaRecoveryTask");
+				const tasks = (Array.isArray(rawTasks) ? rawTasks : rawTasks == null ? [] : [rawTasks]) as Harness["videoResource"][];
+				expect(tasks).toHaveLength(1);
+				taskA = tasks[0]!;
+				const rawOwner = await queryNativeRel(resourceA as never, "project");
+				const owner = (Array.isArray(rawOwner) ? rawOwner[0] : rawOwner) as Harness["project"];
+				expect(owner._node_id).toBe(pair.a.project._node_id);
+				const rawTaskResource = await queryNativeRel(taskA as never, "resource");
+				const taskResource = (Array.isArray(rawTaskResource) ? rawTaskResource[0] : rawTaskResource) as Harness["videoResource"];
+				expect(taskResource._node_id).toBe(resourceA._node_id);
+				const values = await queryNativeManyAttrs(resourceA as never, ["kind", "duration", "width", "height", "localPublicationSequence"]);
+				expect(values.slice(0, 2)).toEqual(["video", 4]);
+				expect(values[4]).toBe(0);
+				expect(await queryNativeManyAttrs(taskA as never, ["operationId", "attemptId", "bootId", "runtimeHandleId"])).toEqual([operationA, "attempt:replica-first:A:import", "boot:replica-first:A:import", "runtime:replica-first:A"]);
+			});
+			const metadataA = { kind: "video", duration: 4, width: null, height: null };
+			await dispatchAndSettle(pair.a.ctx, taskA, "recordInspection", { operationId: operationA, classification: "compatible-replacement", confirmationRequired: false, candidateMetadata: metadataA, candidateFingerprint: "fp:replica:first", candidateFingerprintVersion: "sha256-v1", updatedAt: 101 });
+			const aCallsBeforeCommit = pair.a.effects.mediaRecoveryCalls.length;
+			await dispatchAndSettle(pair.a.ctx, taskA, "requestCommit", { operationId: operationA, updatedAt: 102 });
+			expect(pair.a.effects.mediaRecoveryCalls).toHaveLength(aCallsBeforeCommit + 1);
+			const commitRequestA = pair.a.effects.mediaRecoveryCalls.at(-1)!;
+			expect(commitRequestA).toMatchObject({ mode: "commit", projectId: pair.a.project._node_id, resourceId: resourceA._node_id, taskId: taskA._node_id, operationId: operationA, attemptId: "attempt:replica-first:A:import", bootId: "boot:replica-first:A:import", runtimeHandleId: "runtime:replica-first:A", candidateMetadata: metadataA, candidateFingerprint: "fp:replica:first", candidateFingerprintVersion: "sha256-v1" });
+			const proposalA = Object.freeze(copyPublicationValue({
+				...commitRequestA, candidateFileMetadata: { mime: "video/webm", size: 4, lastModified: 1 },
+				pointer: { assetStorageKind: "project-copy", assetRef: "project/" + pair.a.project._node_id + "/resource/" + resourceA._node_id + "/asset/replica-first-A", sourceKind: "file-handle", sourceRef: "handle:replica-first-A", url: "blob:playback:replica-first-A", contentFingerprint: commitRequestA.candidateFingerprint, fingerprintVersion: commitRequestA.candidateFingerprintVersion, duration: 4, width: null, height: null, localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted" },
+				updatedAt: 103,
+			}) as Record<string, unknown>);
+			const aDecisionsBefore = pair.a.effects.publicationDecisionCalls.length;
+			await dispatchAndSettle(pair.a.ctx, taskA, "completePublication", proposalA);
+			expect(pair.a.effects.publicationDecisionCalls).toHaveLength(aDecisionsBefore + 1);
+			const envelopeA = pair.a.effects.publicationDecisionCalls.at(-1)!;
+			expect(envelopeA).toMatchObject({ bindingEligibility: "current", decision: { kind: "accepted", sequence: 1, pointer: proposalA.pointer } });
+			let acceptedA!: AcceptedPublication;
+			await pair.a.ctx.lockToRead(async () => {
+				const [sequence, accepted] = await queryNativeManyAttrs(resourceA as never, ["localPublicationSequence", "localAcceptedPublication"]);
+				const [receipt, phase] = await queryNativeManyAttrs(taskA as never, ["publicationReceipt", "phase"]);
+				expect(sequence).toBe(1);
+				expect(accepted).toEqual(envelopeA.decision);
+				expect(receipt).toEqual(accepted);
+				expect(phase).toBe("committing");
+				expect(acceptedPublication(accepted)).not.toBeNull();
+				acceptedA = copyPublicationValue(accepted) as AcceptedPublication;
+			});
+			pair.a.flushOutbound();
+			await pair.waitForConvergence();
+			let resourceB!: Harness["videoResource"];
+			let rawBacking!: Record<string, unknown>;
+			await pair.b.ctx.lockToRead(async () => {
+				const rawResources = await queryNativeRel(pair.b.project as never, "resources");
+				const resources = (Array.isArray(rawResources) ? rawResources : rawResources == null ? [] : [rawResources]) as Harness["videoResource"][];
+				resourceB = resources.find((resource) => resource._node_id === resourceA._node_id)!;
+				expect(resourceB).toBeTruthy();
+				const rawOwner = await queryNativeRel(resourceB as never, "project");
+				const owner = (Array.isArray(rawOwner) ? rawOwner[0] : rawOwner) as Harness["project"];
+				expect(owner._node_id).toBe(pair.a.project._node_id);
+				const [assetStorageKind, assetRef, sourceKind, sourceRef, sequence, accepted, removed] = await queryNativeManyAttrs(resourceB as never, ["assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence", "localAcceptedPublication", "$meta$removed"]);
+				expect({ assetStorageKind, assetRef, sourceKind, sourceRef }).toEqual({ assetStorageKind: acceptedA.pointer.assetStorageKind, assetRef: acceptedA.pointer.assetRef, sourceKind: acceptedA.pointer.sourceKind, sourceRef: acceptedA.pointer.sourceRef });
+				expect(sequence).toBeUndefined();
+				expect([null, undefined]).toContain(accepted);
+				expect(removed).toBeFalsy();
+				const [projectRemoved] = await queryNativeManyAttrs(owner as never, ["$meta$removed"]);
+				expect(projectRemoved).toBeFalsy();
+				const rawTasks = await queryNativeRel(resourceB as never, "activeMediaRecoveryTask");
+				expect(rawTasks == null ? [] : Array.isArray(rawTasks) ? rawTasks : [rawTasks]).toEqual([]);
+				rawBacking = { resourceId: resourceB._node_id, projectId: owner._node_id, assetStorageKind, assetRef: typeof assetRef === "string" ? assetRef : null, sourceKind, sourceRef: typeof sourceRef === "string" ? sourceRef : null, handleRef: sourceKind === "file-handle" && typeof sourceRef === "string" ? sourceRef : null };
+			});
+			pair.partition();
+			const operationB = "op:replica-first:B";
+			const bCallsBeforeStart = pair.b.effects.mediaRecoveryCalls.length;
+			await dispatchAndSettle(pair.b.ctx, resourceB, "startMediaRecovery", { bootId: "boot:replica-first:B", operationId: operationB, attemptId: "attempt:replica-first:B", recoveryKind: "restore", intent: "locate-original", runtimeHandleId: "runtime:replica-first:B", createdAt: 200, updatedAt: 200 });
+			expect(pair.b.effects.mediaRecoveryCalls).toHaveLength(bCallsBeforeStart + 1);
+			const restoreRequestB = pair.b.effects.mediaRecoveryCalls.at(-1)!;
+			expect(restoreRequestB).toMatchObject({ projectId: pair.b.project._node_id, resourceId: resourceB._node_id, operationId: operationB, attemptId: "attempt:replica-first:B", bootId: "boot:replica-first:B", runtimeHandleId: "runtime:replica-first:B" });
+			const oldAbsentSnapshot = restoreRequestB.restoreSnapshot;
+			expect(oldAbsentSnapshot).toEqual({ ...rawBacking, publicationSequencePresent: false, publicationSequence: null });
+			expect(Object.keys(oldAbsentSnapshot as object).sort()).toEqual(["resourceId", "projectId", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "handleRef", "publicationSequencePresent", "publicationSequence"].sort());
+			expect(copyPublicationValue(oldAbsentSnapshot)).toEqual(oldAbsentSnapshot);
+			let taskB!: Harness["videoResource"];
+			await pair.b.ctx.lockToRead(async () => {
+				const rawTasks = await queryNativeRel(resourceB as never, "activeMediaRecoveryTask");
+				const tasks = (Array.isArray(rawTasks) ? rawTasks : rawTasks == null ? [] : [rawTasks]) as Harness["videoResource"][];
+				expect(tasks).toHaveLength(1);
+				taskB = tasks[0]!;
+				expect(taskB._node_id).toBe(restoreRequestB.taskId);
+				const rawResource = await queryNativeRel(taskB as never, "resource");
+				const taskResource = (Array.isArray(rawResource) ? rawResource[0] : rawResource) as Harness["videoResource"];
+				expect(taskResource._node_id).toBe(resourceB._node_id);
+				const rawOwner = await queryNativeRel(resourceB as never, "project");
+				expect(((Array.isArray(rawOwner) ? rawOwner[0] : rawOwner) as Harness["project"])._node_id).toBe(pair.b.project._node_id);
+				const values = await queryNativeManyAttrs(taskB as never, ["phase", "publicationRequested", "publicationReceipt", "operationId", "attemptId", "bootId", "runtimeHandleId"]);
+				expect(values.slice(0, 2)).toEqual(["inspecting", false]);
+				expect([null, undefined]).toContain(values[2]);
+				expect(values.slice(3)).toEqual([operationB, "attempt:replica-first:B", "boot:replica-first:B", "runtime:replica-first:B"]);
+			});
+			await dispatchAndSettle(pair.b.ctx, taskB, "recordInspection", { operationId: operationB, classification: "exact-match", confirmationRequired: false, candidateMetadata: acceptedA.candidateMetadata, candidateFingerprint: acceptedA.candidateFingerprint, candidateFingerprintVersion: acceptedA.candidateFingerprintVersion, updatedAt: 201 });
+			const bCallsBeforeCommit = pair.b.effects.mediaRecoveryCalls.length;
+			await dispatchAndSettle(pair.b.ctx, taskB, "requestCommit", { operationId: operationB, updatedAt: 202 });
+			expect(pair.b.effects.mediaRecoveryCalls).toHaveLength(bCallsBeforeCommit + 1);
+			const commitRequestB = pair.b.effects.mediaRecoveryCalls.at(-1)!;
+			expect(commitRequestB).toMatchObject({ mode: "commit", projectId: pair.b.project._node_id, resourceId: resourceB._node_id, taskId: taskB._node_id, operationId: operationB, attemptId: "attempt:replica-first:B", bootId: "boot:replica-first:B", runtimeHandleId: "runtime:replica-first:B", candidateMetadata: acceptedA.candidateMetadata, candidateFingerprint: acceptedA.candidateFingerprint, candidateFingerprintVersion: acceptedA.candidateFingerprintVersion });
+			const proposalB = Object.freeze({
+				...(copyPublicationValue(commitRequestB) as Record<string, unknown>),
+				candidateFileMetadata: copyPublicationValue(acceptedA.candidateFileMetadata),
+				pointer: copyPublicationValue(acceptedA.pointer),
+				updatedAt: 203,
+			});
+			const tupleB = publicationTuple(proposalB);
+			const normalizedProposalB = publicationProposal(proposalB);
+			expect(tupleB).toEqual({ projectId: pair.b.project._node_id, resourceId: resourceB._node_id, taskId: taskB._node_id, operationId: operationB, attemptId: "attempt:replica-first:B", bootId: "boot:replica-first:B", runtimeHandleId: "runtime:replica-first:B" });
+			expect(normalizedProposalB).not.toBeNull();
+			const resourceFields = ["assetStorageKind", "assetRef", "sourceKind", "sourceRef", "url", "contentFingerprint", "fingerprintVersion", "duration", "width", "height", "mime", "size", "lastModified", "localMediaAvailability", "originalAccessStatus", "localPublicationSequence", "localAcceptedPublication"];
+			const taskFields = ["phase", "outcome", "publicationRequested", "publicationReceipt", "publicationBindingResult", "stagedAssetRef", "stagedHandleRef", "candidateMetadata", "candidateFingerprint", "candidateFingerprintVersion", "reasonCode", "errorMessage", "updatedAt"];
+			let before!: { resourceValues: unknown[]; taskValues: unknown[]; taskState: unknown; transferSnapshot: unknown; resourceRemoved: unknown; projectRemoved: unknown; projectId: unknown; activeTaskId: unknown; taskResourceId: unknown };
+			await pair.b.ctx.lockToRead(async () => {
+				const resourceValues = await queryNativeManyAttrs(resourceB as never, resourceFields);
+				const taskValues = await queryNativeManyAttrs(taskB as never, taskFields);
+				const [taskState] = await queryNativeManyAttrs(taskB as never, ["publicationState"]);
+				const [transferSnapshot, resourceRemoved] = await queryNativeManyAttrs(resourceB as never, ["transferSnapshot", "$meta$removed"]);
+				const rawOwner = await queryNativeRel(resourceB as never, "project");
+				const owner = (Array.isArray(rawOwner) ? rawOwner[0] : rawOwner) as Harness["project"];
+				const [projectRemoved] = await queryNativeManyAttrs(owner as never, ["$meta$removed"]);
+				const rawActive = await queryNativeRel(resourceB as never, "activeMediaRecoveryTask");
+				const active = (Array.isArray(rawActive) ? rawActive[0] : rawActive) as Harness["videoResource"];
+				const rawTaskResource = await queryNativeRel(taskB as never, "resource");
+				const taskResource = (Array.isArray(rawTaskResource) ? rawTaskResource[0] : rawTaskResource) as Harness["videoResource"];
+				before = { resourceValues, taskValues, taskState, transferSnapshot, resourceRemoved, projectRemoved, projectId: owner._node_id, activeTaskId: active._node_id, taskResourceId: taskResource._node_id };
+			});
+			expect(resourceFields.slice(8, 10)).toEqual(["width", "height"]);
+			for (const index of [8, 9]) expect([null, undefined]).toContain(before.resourceValues[index]);
+			expect([normalizedProposalB!.pointer.width, normalizedProposalB!.pointer.height, normalizedProposalB!.candidateMetadata.width, normalizedProposalB!.candidateMetadata.height]).toEqual([null, null, null, null]);
+			expect(Object.hasOwn(recordOf(before.transferSnapshot)!, "width")).toBe(true);
+			expect(Object.hasOwn(recordOf(before.transferSnapshot)!, "height")).toBe(true);
+			expect([recordOf(before.transferSnapshot)!.width, recordOf(before.transferSnapshot)!.height]).toEqual([undefined, undefined]);
+			const rawTaskState = recordOf(before.taskState)!;
+			expect(rawTaskState).not.toBeNull();
+			expect(samePublicationCandidate(normalizedProposalB, { ...rawTaskState, resourceId: resourceB._node_id, projectId: pair.b.project._node_id })).toBe(true);
+			expect(rawTaskState).toMatchObject({ phase: "committing", publicationRequested: true, taskId: taskB._node_id, operationId: operationB, attemptId: "attempt:replica-first:B", bootId: "boot:replica-first:B", runtimeHandleId: "runtime:replica-first:B", candidateMetadata: acceptedA.candidateMetadata, candidateFingerprint: acceptedA.candidateFingerprint, candidateFingerprintVersion: acceptedA.candidateFingerprintVersion });
+			expect(rawTaskState.removed).toBeFalsy();
+			expect([null, undefined]).toContain(rawTaskState.publicationReceipt);
+			expect(before.resourceRemoved).toBeFalsy();
+			expect(before.projectRemoved).toBeFalsy();
+			expect(before.projectId).toBe(tupleB!.projectId);
+			expect(before.activeTaskId).toBe(tupleB!.taskId);
+			expect(before.taskResourceId).toBe(tupleB!.resourceId);
+			expect(recordOf(before.transferSnapshot)).not.toBeNull();
+			expect(before.resourceValues.slice(0, 4)).toEqual([acceptedA.pointer.assetStorageKind, acceptedA.pointer.assetRef, acceptedA.pointer.sourceKind, acceptedA.pointer.sourceRef]);
+			expect(before.resourceValues[15]).toBeUndefined();
+			expect([null, undefined]).toContain(before.resourceValues[16]);
+			expect(normalizedProposalB!.pointer.contentFingerprint).toBe(normalizedProposalB!.candidateFingerprint);
+			expect(normalizedProposalB!.pointer.fingerprintVersion).toBe(normalizedProposalB!.candidateFingerprintVersion);
+			for (const key of ["duration", "width", "height"] as const) {
+				if (Object.hasOwn(normalizedProposalB!.candidateMetadata, key)) expect(normalizedProposalB!.pointer[key]).toEqual(normalizedProposalB!.candidateMetadata[key]);
+			}
+			expect(normalizedProposalB!.candidateFileMetadata).toEqual({ mime: "video/webm", size: 4, lastModified: 1 });
+			expect(normalizedProposalB!.updatedAt).toBe(203);
+			const bDecisionsBefore = pair.b.effects.publicationDecisionCalls.length;
+			await dispatchAndSettle(pair.b.ctx, taskB, "completePublication", proposalB);
+			expect(pair.b.effects.publicationDecisionCalls).toHaveLength(bDecisionsBefore + 1);
+			const firstEnvelope = pair.b.effects.publicationDecisionCalls.at(-1)!;
+			expect(firstEnvelope).toMatchObject({ bindingEligibility: "current", decision: { ...tupleB, kind: "accepted", sequence: 1, pointer: normalizedProposalB!.pointer, candidateFileMetadata: normalizedProposalB!.candidateFileMetadata, previousAcceptedIdentityAndRefs: null } });
+			const firstDecision = acceptedPublication(firstEnvelope.decision)!;
+			expect(firstDecision).not.toBeNull();
+			expect(publicationTuple(firstDecision)).toEqual(tupleB);
+			expect(firstEnvelope.decision).toEqual(firstDecision);
+			expect([firstDecision.pointer.width, firstDecision.pointer.height, firstDecision.candidateMetadata.width, firstDecision.candidateMetadata.height, firstDecision.acceptedResource.width, firstDecision.acceptedResource.height]).toEqual([null, null, null, null, null, null]);
+			const readAcceptedState = async (taskToRead = taskB) => {
+				let captured!: typeof before;
+				await pair.b.ctx.lockToRead(async () => {
+					const resourceValues = await queryNativeManyAttrs(resourceB as never, resourceFields);
+				const taskValues = await queryNativeManyAttrs(taskToRead as never, taskFields);
+				const [taskState] = await queryNativeManyAttrs(taskToRead as never, ["publicationState"]);
+				const [transferSnapshot, resourceRemoved] = await queryNativeManyAttrs(resourceB as never, ["transferSnapshot", "$meta$removed"]);
+				const rawOwner = await queryNativeRel(resourceB as never, "project");
+				const owner = (Array.isArray(rawOwner) ? rawOwner[0] : rawOwner) as Harness["project"];
+				const [projectRemoved] = await queryNativeManyAttrs(owner as never, ["$meta$removed"]);
+				const rawActive = await queryNativeRel(resourceB as never, "activeMediaRecoveryTask");
+				const active = (Array.isArray(rawActive) ? rawActive[0] : rawActive) as Harness["videoResource"];
+				const rawTaskResource = await queryNativeRel(taskToRead as never, "resource");
+				const taskResource = (Array.isArray(rawTaskResource) ? rawTaskResource[0] : rawTaskResource) as Harness["videoResource"];
+					captured = { resourceValues, taskValues, taskState, transferSnapshot, resourceRemoved, projectRemoved, projectId: owner._node_id, activeTaskId: active._node_id, taskResourceId: taskResource._node_id };
+				});
+				return captured;
+			};
+			const firstState = await readAcceptedState();
+			const firstResourceValues = resourceFields.map((key, index) => key === "localPublicationSequence" ? 1 : key === "localAcceptedPublication" ? firstDecision : Object.hasOwn(normalizedProposalB!.pointer, key) ? normalizedProposalB!.pointer[key as keyof AcceptedPublication["pointer"]] : Object.hasOwn(normalizedProposalB!.candidateFileMetadata, key) ? normalizedProposalB!.candidateFileMetadata[key as keyof AcceptedPublication["candidateFileMetadata"]] : before.resourceValues[index]);
+			const firstTaskValues = taskFields.map((key, index) => key === "publicationReceipt" ? firstDecision : key === "stagedAssetRef" ? firstDecision.pointer.assetRef : key === "stagedHandleRef" ? firstDecision.pointer.sourceRef : before.taskValues[index]);
+			const { resourceValues: firstRaw, ...firstRest } = firstState;
+			const { resourceValues: beforeRaw, ...beforeRest } = before;
+			expect(beforeRaw).toHaveLength(17);
+			expect(firstRaw).toHaveLength(17);
+			expect(firstResourceValues).toHaveLength(17);
+			expect(firstRaw.filter((_, index) => index !== 8 && index !== 9)).toEqual(firstResourceValues.filter((_, index) => index !== 8 && index !== 9));
+			for (const index of [8, 9]) expect([null, undefined]).toContain(firstRaw[index]);
+			expect([null, undefined]).toContain(before.taskValues[3]);
+			expect([null, undefined]).toContain(before.taskValues[4]);
+			expect(firstRest).toEqual({
+				...beforeRest, taskValues: firstTaskValues,
+				taskState: { ...rawTaskState, publicationReceipt: firstDecision, stagedAssetRef: firstDecision.pointer.assetRef, stagedHandleRef: firstDecision.pointer.sourceRef },
+				transferSnapshot: { ...Object.fromEntries(Object.entries(recordOf(before.transferSnapshot)!).map(([key, value]) => [key, Object.hasOwn(firstDecision.pointer, key) ? firstDecision.pointer[key as keyof AcceptedPublication["pointer"]] : Object.hasOwn(firstDecision.candidateFileMetadata, key) ? firstDecision.candidateFileMetadata[key as keyof AcceptedPublication["candidateFileMetadata"]] : value])), url: "", width: undefined, height: undefined },
+			});
+			expect(firstState.taskValues[0]).toBe("committing");
+			expect(firstState.taskValues[2]).toBe(true);
+			expect([null, undefined]).toContain(firstState.taskValues[4]);
+			const replayCount = pair.b.effects.publicationDecisionCalls.length;
+			await dispatchAndSettle(pair.b.ctx, taskB, "completePublication", proposalB);
+			expect(pair.b.effects.publicationDecisionCalls).toHaveLength(replayCount + 1);
+			expect(pair.b.effects.publicationDecisionCalls.at(-1)).toEqual({ decision: firstDecision, bindingEligibility: "current" });
+			expect(await readAcceptedState()).toEqual(firstState);
+			await dispatchAndSettle(pair.b.ctx, resourceB, "recordAutomaticMediaRecovery", { availability: "ready-project-copy", originalAccess: "granted", restoreSnapshot: oldAbsentSnapshot, updatedAt: 250 });
+			expect(await readAcceptedState()).toEqual(firstState);
+
+			const secondOperation = "op:replica-second:B";
+			const secondStartCount = pair.b.effects.mediaRecoveryCalls.length;
+			await dispatchAndSettle(pair.b.ctx, resourceB, "startMediaRecovery", { operationId: secondOperation, attemptId: "attempt:replica-second:B", bootId: "boot:replica-second:B", runtimeHandleId: "runtime:replica-second:B", recoveryKind: "restore", intent: "locate-original", createdAt: 300, updatedAt: 300 });
+			expect(pair.b.effects.mediaRecoveryCalls).toHaveLength(secondStartCount + 1);
+			const secondStartRequest = pair.b.effects.mediaRecoveryCalls.at(-1)!;
+			expect(secondStartRequest).toMatchObject({ original: { kind: "video", duration: 4, width: null, height: null, streams: { videoStreams: 1, audioStreams: null } }, originalFingerprint: "fp:replica:first", fingerprintVersion: "sha256-v1" });
+			const secondMetadata = { kind: "video", duration: 4, width: 128, height: 72, streams: { videoStreams: 1, audioStreams: null } };
+			let secondTask!: Harness["videoResource"];
+			await pair.b.ctx.lockToRead(async () => {
+				const raw = await queryNativeRel(resourceB as never, "activeMediaRecoveryTask");
+				const tasks = (Array.isArray(raw) ? raw : raw == null ? [] : [raw]) as Harness["videoResource"][];
+				expect(tasks).toHaveLength(1);
+				secondTask = tasks[0]!;
+				expect(secondTask._node_id).not.toBe(taskB._node_id);
+				expect(secondTask._node_id).toBe(pair.b.effects.mediaRecoveryCalls.at(-1)!.taskId);
+				expect(await queryNativeManyAttrs(secondTask as never, ["operationId", "attemptId", "bootId", "runtimeHandleId"])).toEqual([secondOperation, "attempt:replica-second:B", "boot:replica-second:B", "runtime:replica-second:B"]);
+			});
+			await dispatchAndSettle(pair.b.ctx, secondTask, "recordInspection", { operationId: secondOperation, classification: "exact-match", confirmationRequired: false, candidateMetadata: secondMetadata, candidateFingerprint: firstDecision.candidateFingerprint, candidateFingerprintVersion: firstDecision.candidateFingerprintVersion, updatedAt: 301 });
+			const secondCommitCount = pair.b.effects.mediaRecoveryCalls.length;
+			await dispatchAndSettle(pair.b.ctx, secondTask, "requestCommit", { operationId: secondOperation, updatedAt: 302 });
+			expect(pair.b.effects.mediaRecoveryCalls).toHaveLength(secondCommitCount + 1);
+			const secondRequest = pair.b.effects.mediaRecoveryCalls.at(-1)!;
+			expect(secondRequest).toMatchObject({ mode: "commit", projectId: pair.b.project._node_id, resourceId: resourceB._node_id, taskId: secondTask._node_id, operationId: secondOperation, attemptId: "attempt:replica-second:B", bootId: "boot:replica-second:B", runtimeHandleId: "runtime:replica-second:B", candidateMetadata: secondMetadata, candidateFingerprint: firstDecision.candidateFingerprint, candidateFingerprintVersion: firstDecision.candidateFingerprintVersion });
+			const secondProposal = { ...copyPublicationValue(secondRequest) as Record<string, unknown>, candidateFileMetadata: firstDecision.candidateFileMetadata, pointer: { ...firstDecision.pointer, assetRef: "project/" + pair.b.project._node_id + "/resource/" + resourceB._node_id + "/asset/replica-second-B", sourceRef: "handle:replica-second-B", url: "blob:playback:replica-second-B", width: 128, height: 72 }, updatedAt: 303 };
+			const normalizedSecondProposal = publicationProposal(secondProposal)!;
+			expect(normalizedSecondProposal).not.toBeNull();
+			expect(normalizedSecondProposal.candidateMetadata).toEqual(secondMetadata);
+			expect([normalizedSecondProposal.pointer.width, normalizedSecondProposal.pointer.height]).toEqual([128, 72]);
+			const beforeSecond = await readAcceptedState(secondTask);
+			expect(beforeSecond.taskValues[0]).toBe("committing");
+			expect(beforeSecond.taskValues[2]).toBe(true);
+			expect([null, undefined]).toContain(beforeSecond.taskValues[3]);
+			expect([null, undefined]).toContain(beforeSecond.taskValues[4]);
+			expect(beforeSecond.projectId).toBe(pair.b.project._node_id);
+			expect(beforeSecond.taskResourceId).toBe(resourceB._node_id);
+			expect(beforeSecond.activeTaskId).toBe(secondTask._node_id);
+			expect(beforeSecond.taskState).toMatchObject({ taskId: secondTask._node_id, operationId: secondOperation, attemptId: "attempt:replica-second:B", bootId: "boot:replica-second:B", runtimeHandleId: "runtime:replica-second:B", phase: "committing", publicationRequested: true, candidateMetadata: secondMetadata, candidateFingerprint: firstDecision.candidateFingerprint, candidateFingerprintVersion: firstDecision.candidateFingerprintVersion });
+			const secondCount = pair.b.effects.publicationDecisionCalls.length;
+			await dispatchAndSettle(pair.b.ctx, secondTask, "completePublication", secondProposal);
+			expect(pair.b.effects.publicationDecisionCalls).toHaveLength(secondCount + 1);
+			const secondEnvelope = pair.b.effects.publicationDecisionCalls.at(-1)!;
+			expect(secondEnvelope).toMatchObject({ bindingEligibility: "current", decision: { ...publicationTuple(secondProposal), kind: "accepted", sequence: 2, pointer: secondProposal.pointer, candidateFileMetadata: firstDecision.candidateFileMetadata, previousAcceptedIdentityAndRefs: { ...publicationTuple(firstDecision), sequence: 1, pointer: firstDecision.pointer } } });
+			const secondDecision = acceptedPublication(secondEnvelope.decision)!;
+			expect(secondDecision).not.toBeNull();
+			expect(secondEnvelope.decision).toEqual(secondDecision);
+			expect(secondDecision.candidateMetadata).toEqual(secondMetadata);
+			expect([secondDecision.pointer.width, secondDecision.pointer.height, secondDecision.acceptedResource.width, secondDecision.acceptedResource.height]).toEqual([128, 72, 128, 72]);
+			const afterSecond = await readAcceptedState(secondTask);
+			const secondResourceValues = resourceFields.map((key, index) => key === "localPublicationSequence" ? 2 : key === "localAcceptedPublication" ? secondDecision : Object.hasOwn(secondDecision.pointer, key) ? secondDecision.pointer[key as keyof AcceptedPublication["pointer"]] : Object.hasOwn(secondDecision.candidateFileMetadata, key) ? secondDecision.candidateFileMetadata[key as keyof AcceptedPublication["candidateFileMetadata"]] : beforeSecond.resourceValues[index]);
+			const secondTaskValues = taskFields.map((key, index) => key === "publicationReceipt" ? secondDecision : key === "stagedAssetRef" ? secondDecision.pointer.assetRef : key === "stagedHandleRef" ? secondDecision.pointer.sourceRef : beforeSecond.taskValues[index]);
+			expect(secondResourceValues).toHaveLength(17);
+			expect(afterSecond).toEqual({
+				...beforeSecond, resourceValues: secondResourceValues, taskValues: secondTaskValues,
+				taskState: { ...recordOf(beforeSecond.taskState), publicationReceipt: secondDecision, stagedAssetRef: secondDecision.pointer.assetRef, stagedHandleRef: secondDecision.pointer.sourceRef },
+				transferSnapshot: { ...Object.fromEntries(Object.entries(recordOf(beforeSecond.transferSnapshot)!).map(([key, value]) => [key, Object.hasOwn(secondDecision.pointer, key) ? secondDecision.pointer[key as keyof AcceptedPublication["pointer"]] : Object.hasOwn(secondDecision.candidateFileMetadata, key) ? secondDecision.candidateFileMetadata[key as keyof AcceptedPublication["candidateFileMetadata"]] : value])), url: "", width: 128, height: 72 },
+			});
+			await pair.b.ctx.lockToRead(async () => {
+				expect(await queryNativeManyAttrs(taskB as never, ["publicationReceipt", "phase"])).toEqual([firstDecision, "interrupted"]);
+			});
+			const secondState = await readAcceptedState();
+			const secondTaskState = await readAcceptedState(secondTask);
+			const oldReplayCount = pair.b.effects.publicationDecisionCalls.length;
+			await dispatchAndSettle(pair.b.ctx, taskB, "completePublication", proposalB);
+			expect(pair.b.effects.publicationDecisionCalls).toHaveLength(oldReplayCount + 1);
+			expect(pair.b.effects.publicationDecisionCalls.at(-1)).toEqual({ decision: firstDecision, bindingEligibility: "obsolete" });
+			expect(await readAcceptedState()).toEqual(secondState);
+			expect(await readAcceptedState(secondTask)).toEqual(secondTaskState);
+		} finally {
+			pair.close();
+		}
+	});
+
+
 	it("captures and admits an absent sequence on a real CRDT-created Resource", async () => {
 		const pair = await createCrdtWorkerPair({ App: productionMiniCutAppRoot, roomId: "restore-sequence-presence-public-pair", profileId: "minicut-crdt-v1", profileVersion: 1 });
 		try {
@@ -882,6 +1183,76 @@ describe("captured automatic restore admission and current backing", () => {
 		}
 	});
 
+	it("UNIT publication allocation distinguishes missing history from invalid or prior order", () => {
+		// Internal declaration boundary only: malformed stored rows are not public reachability claims.
+		type Step = { fn: readonly [readonly string[], (...args: unknown[]) => unknown] };
+		type Declaration = { prototype: { __dcls_actions: { completeMediaRecovery: { steps: readonly Step[] } } } };
+		const step = (Resource as unknown as Declaration).prototype.__dcls_actions.completeMediaRecovery.steps[0]!;
+		expect(step.fn[0]).toEqual(["_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "< @one:publicationState < activeMediaRecoveryTask", "localPublicationSequence", "localAcceptedPublication", "transferSnapshot"]);
+		const pointer = { assetStorageKind: "project-copy", assetRef: "asset:allocation", sourceKind: "file-handle", sourceRef: "handle:allocation", url: "blob:allocation", contentFingerprint: "fp:allocation", fingerprintVersion: "sha256-v1", duration: 4, width: null, height: null, localMediaAvailability: "ready-project-copy", originalAccessStatus: "granted" };
+		const proposal = publicationProposal({ projectId: "project:allocation", resourceId: "resource:allocation", taskId: "task:allocation", operationId: "op:allocation", attemptId: "attempt:allocation", bootId: "boot:allocation", runtimeHandleId: "runtime:allocation", candidateMetadata: { kind: "video", duration: 4, width: null, height: null }, candidateFingerprint: pointer.contentFingerprint, candidateFingerprintVersion: pointer.fingerprintVersion, candidateFileMetadata: { mime: "video/webm", size: 4, lastModified: 1 }, pointer, updatedAt: 103 })!;
+		expect(proposal).not.toBeNull();
+		const snapshot = { resourceId: proposal.resourceId, projectId: proposal.projectId, name: "allocation.webm", kind: "video", status: "ready", source: { kind: "local" }, data: { status: "ready" }, ...proposal.pointer, ...proposal.candidateFileMetadata };
+		const task = { ...publicationTuple(proposal), candidateMetadata: proposal.candidateMetadata, candidateFingerprint: proposal.candidateFingerprint, candidateFingerprintVersion: proposal.candidateFingerprintVersion, publicationRequested: true, phase: "committing", removed: false, publicationReceipt: null };
+		const prior = (sequence: number, resourceId = proposal.resourceId, projectId = proposal.projectId) => {
+			const receipt = acceptedPublication({ ...proposal, resourceId, projectId, kind: "accepted", sequence, acceptedResource: { ...snapshot, resourceId, projectId }, previousAcceptedIdentityAndRefs: null })!;
+			expect(receipt).not.toBeNull();
+			return receipt;
+		};
+		const p1 = prior(1); const p2 = prior(2); const p5 = prior(5); const pMax = prior(Number.MAX_SAFE_INTEGER);
+		const foreign = prior(1, "resource:foreign");
+		const reparented = prior(1, proposal.resourceId, "project:old");
+		type Options = { payload?: unknown; resourceId?: unknown; removed?: unknown; projectId?: unknown; projectRemoved?: unknown; task?: unknown; snapshot?: unknown };
+		const invoke = (sequence: unknown, previous: unknown, options: Options = {}) => {
+			const inputs = [options.payload ?? proposal, options.resourceId ?? proposal.resourceId, options.removed ?? false, options.projectId ?? proposal.projectId, options.projectRemoved ?? false, options.task ?? task, sequence, previous, options.snapshot ?? snapshot];
+			const before = structuredClone(inputs);
+			const result = step.fn[1](...inputs) as Record<string, unknown>;
+			expect(inputs).toEqual(before);
+			return result;
+		};
+		const accepted = (sequence: unknown, previous: unknown, next: number) => {
+			const output = invoke(sequence, previous);
+			const decision = acceptedPublication(recordOf(output.forwarded)?.decision)!;
+			expect(decision).not.toBeNull();
+			const expectedPrevious = previous == null ? null : { ...publicationTuple(previous), sequence: (previous as AcceptedPublication).sequence, pointer: (previous as AcceptedPublication).pointer };
+			const expectedDecision = { ...proposal, kind: "accepted", sequence: next, acceptedResource: snapshot, previousAcceptedIdentityAndRefs: expectedPrevious };
+			expect(decision).toEqual(expectedDecision);
+			expect(output).toEqual({ ...proposal.pointer, ...proposal.candidateFileMetadata, localPublicationSequence: next, localAcceptedPublication: expectedDecision, forwarded: { decision: expectedDecision, bindingEligibility: "current" } });
+		};
+		const rejected = (sequence: unknown, previous: unknown, reason = "publication-sequence-overflow", disposition = "retain-uncertain", options: Options = {}) => {
+			const output = invoke(sequence, previous, options);
+			expect(output).toEqual({ forwarded: { ...publicationTuple(options.payload ?? proposal), kind: "rejected", reason, candidateDisposition: disposition } });
+			for (const key of [...Object.keys(proposal.pointer), ...Object.keys(proposal.candidateFileMetadata), "localPublicationSequence", "localAcceptedPublication"]) expect(Object.hasOwn(output, key)).toBe(false);
+		};
+		for (const sequence of [undefined, null]) for (const previous of [undefined, null]) accepted(sequence, previous, 1);
+		for (const sequence of [0, -0, 1, 5, Number.MAX_SAFE_INTEGER - 1]) accepted(sequence, null, sequence + 1);
+		accepted(1, p1, 2); accepted(5, p1, 6); accepted(5, p5, 6); accepted(5, reparented, 6);
+		for (const sequence of [Number.MAX_SAFE_INTEGER, -1, Number.MIN_SAFE_INTEGER, 1.5, "0", "1", "", true, false, {}, [], NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1]) rejected(sequence, null);
+		rejected(Number.MAX_SAFE_INTEGER, pMax);
+		for (const sequence of [undefined, null]) for (const previous of [p1, false, 0, "", {}, foreign]) rejected(sequence, previous);
+		rejected(0, p2); rejected(1, p2);
+		for (const sequence of [0, 1, 5]) for (const previous of [false, 0, "", {}, [], foreign]) rejected(sequence, previous);
+		// A disjoint unaccepted candidate remains rollback-safe; same backing/prior uncertainty retains.
+		rejected(-1, null, "publication-sequence-overflow", "rollback-unaccepted", { snapshot: { ...snapshot, assetRef: "asset:other", sourceRef: "handle:other" } });
+		for (const sequence of [undefined, null, Number.MAX_SAFE_INTEGER]) {
+			for (const previous of [p1, null]) {
+				const output = invoke(sequence, previous, { task: { ...task, publicationReceipt: p1 } });
+				expect(output).toEqual({ forwarded: { decision: p1, bindingEligibility: previous === p1 ? "current" : "obsolete" } });
+			}
+		}
+		for (const options of [
+			{ removed: true }, { projectRemoved: true }, { resourceId: "resource:wrong" }, { projectId: "project:wrong" },
+			{ task: { ...task, removed: true } }, { task: { ...task, publicationRequested: false } }, { task: { ...task, phase: "inspecting" } },
+			...["taskId", "operationId", "attemptId", "bootId", "runtimeHandleId", "candidateFingerprint", "candidateFingerprintVersion"].map((key) => ({ task: { ...task, [key]: "wrong:" + key } })),
+			{ task: { ...task, candidateMetadata: { kind: "audio" } } },
+		]) {
+			// exactness is false for task/candidate mismatches; all cases retain current backing.
+			rejected(undefined, null, "publication-not-current", "retain-uncertain", options);
+		}
+		for (const pointerChange of [{ contentFingerprint: "fp:wrong" }, { fingerprintVersion: "version:wrong" }, { duration: 5 }, { width: 1 }, { height: 1 }]) {
+			rejected(undefined, null, "candidate-pointer-mismatch", "retain-uncertain", { payload: { ...proposal, pointer: { ...proposal.pointer, ...pointerChange } } });
+		}
+	});
 	it("captures the actual accepted backing in a fresh restore request and admits native missing facts", async () => {
 		const h = await createActionContractHarness(); const { proposal } = await publish(h);
 		await dispatchAndSettle(h.ctx, h.videoResource, "startMediaRecovery", attempt("boot:missing", "restore:missing"));

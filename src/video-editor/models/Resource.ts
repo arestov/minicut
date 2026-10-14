@@ -1,5 +1,5 @@
 import { model } from "dkt/model.js";
-import { makePublicationManifest, publicationProposal, publicationTuple, recordOf, samePublicationCandidate, samePublicationTuple, samePublicationValue, copyPublicationValue, type AcceptedPublication } from "../media/mediaPublicationProtocol";
+import { makePublicationManifest, acceptedPublication, publicationProposal, publicationTuple, recordOf, samePublicationCandidate, samePublicationTuple, samePublicationValue, copyPublicationValue, type AcceptedPublication } from "../media/mediaPublicationProtocol";
 import { crdtReviewResolveTarget } from "../dkt/review/crdtReviewCommands";
 import {
 	reduceKeepOfflinePlaceholder,
@@ -434,9 +434,12 @@ localPublicationValidity: ["comp", ["localAcceptedPublication", "$meta$removed",
 						const reject = (reason: string) => ({ forwarded: { ...tuple, kind: "rejected", reason, candidateDisposition: exact && !task?.publicationReceipt && !samePublicationTuple(previous, tuple) && (!proposal?.pointer.assetRef || proposal.pointer.assetRef !== snapshot?.assetRef) && (!proposal?.pointer.sourceRef || proposal.pointer.sourceRef !== snapshot?.sourceRef) ? "rollback-unaccepted" : "retain-uncertain" } });
 						if (!proposal || !snapshot || !exact || removed || projectRemoved || resourceId !== tuple.resourceId || projectId !== tuple.projectId) return reject("publication-not-current");
 						if (task?.publicationReceipt) return { forwarded: { decision: task.publicationReceipt, bindingEligibility: samePublicationValue(previous, task.publicationReceipt) ? "current" : "obsolete" } };
-						if (!Number.isSafeInteger(sequenceValue) || (sequenceValue as number) < 0 || (sequenceValue as number) >= Number.MAX_SAFE_INTEGER) return reject("publication-sequence-overflow");
+						const previousAbsent = previousValue === null || previousValue === undefined;
+						const priorReceipt = previousAbsent ? null : acceptedPublication(previousValue);
+						const sequenceBase = (sequenceValue === null || sequenceValue === undefined) && previousAbsent ? 0 : sequenceValue;
+						if (!Number.isSafeInteger(sequenceBase) || (sequenceBase as number) < 0 || (sequenceBase as number) >= Number.MAX_SAFE_INTEGER || (!previousAbsent && (!priorReceipt || priorReceipt.resourceId !== resourceId || priorReceipt.sequence > (sequenceBase as number)))) return reject("publication-sequence-overflow");
 						if (proposal.pointer.contentFingerprint !== proposal.candidateFingerprint || proposal.pointer.fingerprintVersion !== proposal.candidateFingerprintVersion || ["duration", "width", "height"].some((key) => Object.hasOwn(proposal.candidateMetadata, key) && !samePublicationValue(proposal.candidateMetadata[key], proposal.pointer[key as keyof typeof proposal.pointer]))) return reject("candidate-pointer-mismatch");
-						const sequence = (sequenceValue as number) + 1;
+						const sequence = (sequenceBase as number) + 1;
 						const acceptedResource = copyPublicationValue({ ...Object.fromEntries(Object.entries(snapshot).map(([key, value]) => [key, value ?? null])), projectId, ...proposal.pointer, ...proposal.candidateFileMetadata }) as Record<string, unknown>;
 						const decision = { ...proposal, kind: "accepted", sequence, acceptedResource, previousAcceptedIdentityAndRefs: previous ? { ...publicationTuple(previous), sequence: previous.sequence, pointer: previous.pointer } : null };
 						return { ...proposal.pointer, ...proposal.candidateFileMetadata, localPublicationSequence: sequence, localAcceptedPublication: decision, forwarded: { decision, bindingEligibility: "current" } };
