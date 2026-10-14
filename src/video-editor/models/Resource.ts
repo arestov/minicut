@@ -1,4 +1,5 @@
 import { model } from "dkt/model.js";
+import { makePublicationManifest, acceptedPublication, publicationProposal, publicationTuple, recordOf, samePublicationCandidate, samePublicationTuple, samePublicationValue, copyPublicationValue, type AcceptedPublication } from "../media/mediaPublicationProtocol";
 import { crdtReviewResolveTarget } from "../dkt/review/crdtReviewCommands";
 import {
 	reduceKeepOfflinePlaceholder,
@@ -43,6 +44,8 @@ export const RESOURCE_CREATION_SHAPE = {
 		"originalAccessStatus",
 		"audioStreams",
 		"doneBoot",
+		"localPublicationSequence",
+		"localAcceptedPublication",
 	],
 	rels: {
 		project: {},
@@ -167,6 +170,8 @@ export const Resource = model({
 			audioStreams: "lww",
 			timelineAddRequest: { sync: false, reason: "effect-runtime" },
 			doneBoot: { sync: false, reason: "effect-runtime" },
+			localPublicationSequence: { sync: false, reason: "effect-runtime" },
+			localAcceptedPublication: { sync: false, reason: "effect-runtime" },
 		},
 			rels: {
 			project: { sync: false, reason: "framework-owned" },
@@ -201,6 +206,15 @@ export const Resource = model({
 		audioStreams: ["input", null],
 		// Boot stamp of the last boot restore started (or import-covered) for this resource.
 		doneBoot: ["input", null],
+		localPublicationSequence: ["input", 0],
+		localAcceptedPublication: ["input", null],
+		localMediaPublicationOwnership: ["comp", ["localPublicationValidity", "< @all:publicationOwnership < mediaRecoveryTasks"] as const, (accepted: unknown, candidates: unknown) => makePublicationManifest(accepted ? [accepted] : [], candidates)],
+localPublicationValidity: ["comp", ["localAcceptedPublication", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "url", "contentFingerprint", "fingerprintVersion", "duration", "width", "height", "localMediaAvailability", "originalAccessStatus"] as const,
+			(acceptedValue: unknown, removed: unknown, projectId: unknown, projectRemoved: unknown, ...values: unknown[]) => {
+				const accepted = acceptedValue as AcceptedPublication | null; if (!accepted) return null;
+				const pointer = Object.fromEntries(["assetStorageKind", "assetRef", "sourceKind", "sourceRef", "url", "contentFingerprint", "fingerprintVersion", "duration", "width", "height", "localMediaAvailability", "originalAccessStatus"].map((key, index) => [key, ["assetRef", "sourceRef", "contentFingerprint", "fingerprintVersion", "width", "height"].includes(key) ? values[index] ?? null : values[index]]));
+				return { ...publicationTuple(accepted), accepted, pointer: accepted.pointer, assetRef: accepted.pointer.assetRef, handleRef: accepted.pointer.sourceKind === "file-handle" ? accepted.pointer.sourceRef : null, currentBacking: !removed && !projectRemoved && typeof projectId === "string" && projectId ? { projectId, assetRef: typeof pointer.assetRef === "string" ? pointer.assetRef : null, handleRef: pointer.sourceKind === "file-handle" && typeof pointer.sourceRef === "string" ? pointer.sourceRef : null } : null, eligible: !removed && !projectRemoved && projectId === accepted.projectId && samePublicationValue(pointer, accepted.pointer) };
+			}],
 		// Boot stamp while the owning project is attended and the platform can restore, else null.
 		wantBoot: ["comp", ["< @one:attendedBoot < project"] as const, (boot: unknown) => boot ?? null],
 		requiredSourceEnd: [
@@ -391,6 +405,10 @@ export const Resource = model({
 			},
 		],
 	},
+	effects: {
+		api: { mediaRecoveryRuntime: [["_node_id"] as const, ["#mediaRecoveryRuntime"] as const, (runtime: unknown) => runtime] },
+		out: { $fx_mediaPublicationDecision: { api: ["mediaRecoveryRuntime"], create_when: { api_inits: false }, fn: (api: unknown, state: unknown) => { (api as { publishMediaPublicationDecision(payload: unknown): void }).publishMediaPublicationDecision(recordOf(state)?.payload); } } },
+	},
 	actions: {
 		startMediaRecovery: START_MEDIA_RECOVERY_STEPS,
 		"handleAttr:wantBoot": [
@@ -404,34 +422,31 @@ export const Resource = model({
 			...START_MEDIA_RECOVERY_STEPS,
 		],
 		completeMediaRecovery: {
-			aggregate: {
-				name: "importPipeline",
-				as: "completeMediaRecovery",
-				permission: "entry",
+			aggregate: { name: "importPipeline", as: "completeMediaRecovery", permission: "entry" },
+			steps: [
+			{
+				to: { assetStorageKind: ["assetStorageKind"], assetRef: ["assetRef"], sourceKind: ["sourceKind"], sourceRef: ["sourceRef"], url: ["url"], contentFingerprint: ["contentFingerprint"], fingerprintVersion: ["fingerprintVersion"], duration: ["duration"], width: ["width"], height: ["height"], mime: ["mime"], size: ["size"], lastModified: ["lastModified"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], localPublicationSequence: ["localPublicationSequence"], localAcceptedPublication: ["localAcceptedPublication"], forwarded: ["$output"] },
+				fn: [["_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "< @one:publicationState < activeMediaRecoveryTask", "localPublicationSequence", "localAcceptedPublication", "transferSnapshot"] as const,
+					(payload: unknown, resourceId: unknown, removed: unknown, projectId: unknown, projectRemoved: unknown, taskValue: unknown, sequenceValue: unknown, previousValue: unknown, snapshotValue: unknown) => {
+						const proposal = publicationProposal(payload); const tuple = publicationTuple(payload); const task = recordOf(taskValue); const snapshot = recordOf(snapshotValue); const previous = previousValue as AcceptedPublication | null;
+						if (!tuple) return { forwarded: {} };
+						const exact = Boolean(proposal && task && samePublicationCandidate(proposal, { ...task, resourceId, projectId }) && task.publicationRequested && task.phase === "committing" && !task.removed);
+						const reject = (reason: string) => ({ forwarded: { ...tuple, kind: "rejected", reason, candidateDisposition: exact && !task?.publicationReceipt && !samePublicationTuple(previous, tuple) && (!proposal?.pointer.assetRef || proposal.pointer.assetRef !== snapshot?.assetRef) && (!proposal?.pointer.sourceRef || proposal.pointer.sourceRef !== snapshot?.sourceRef) ? "rollback-unaccepted" : "retain-uncertain" } });
+						if (!proposal || !snapshot || !exact || removed || projectRemoved || resourceId !== tuple.resourceId || projectId !== tuple.projectId) return reject("publication-not-current");
+						if (task?.publicationReceipt) return { forwarded: { decision: task.publicationReceipt, bindingEligibility: samePublicationValue(previous, task.publicationReceipt) ? "current" : "obsolete" } };
+						const previousAbsent = previousValue === null || previousValue === undefined;
+						const priorReceipt = previousAbsent ? null : acceptedPublication(previousValue);
+						const sequenceBase = (sequenceValue === null || sequenceValue === undefined) && previousAbsent ? 0 : sequenceValue;
+						if (!Number.isSafeInteger(sequenceBase) || (sequenceBase as number) < 0 || (sequenceBase as number) >= Number.MAX_SAFE_INTEGER || (!previousAbsent && (!priorReceipt || priorReceipt.resourceId !== resourceId || priorReceipt.sequence > (sequenceBase as number)))) return reject("publication-sequence-overflow");
+						if (proposal.pointer.contentFingerprint !== proposal.candidateFingerprint || proposal.pointer.fingerprintVersion !== proposal.candidateFingerprintVersion || ["duration", "width", "height"].some((key) => Object.hasOwn(proposal.candidateMetadata, key) && !samePublicationValue(proposal.candidateMetadata[key], proposal.pointer[key as keyof typeof proposal.pointer]))) return reject("candidate-pointer-mismatch");
+						const sequence = (sequenceBase as number) + 1;
+						const acceptedResource = copyPublicationValue({ ...Object.fromEntries(Object.entries(snapshot).map(([key, value]) => [key, value ?? null])), projectId, ...proposal.pointer, ...proposal.candidateFileMetadata }) as Record<string, unknown>;
+						const decision = { ...proposal, kind: "accepted", sequence, acceptedResource, previousAcceptedIdentityAndRefs: previous ? { ...publicationTuple(previous), sequence: previous.sequence, pointer: previous.pointer } : null };
+						return { ...proposal.pointer, ...proposal.candidateFileMetadata, localPublicationSequence: sequence, localAcceptedPublication: decision, forwarded: { decision, bindingEligibility: "current" } };
+					}],
 			},
-			to: {
-				assetStorageKind: ["assetStorageKind"], assetRef: ["assetRef"], sourceKind: ["sourceKind"], sourceRef: ["sourceRef"], url: ["url"], contentFingerprint: ["contentFingerprint"], fingerprintVersion: ["fingerprintVersion"], duration: ["duration"], width: ["width"], height: ["height"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"],
-			},
-			fn: [
-				["duration", "width", "height"] as const,
-				(payload: unknown, duration: unknown, width: unknown, height: unknown) => {
-					const value = payload as Record<string, unknown> | null;
-					if (!value) return {};
-					return {
-						assetStorageKind: value.assetStorageKind,
-						assetRef: value.assetRef ?? null,
-						sourceKind: value.sourceKind,
-						sourceRef: value.sourceRef ?? null,
-						url: typeof value.url === "string" ? value.url : "",
-						contentFingerprint: value.contentFingerprint ?? null,
-						fingerprintVersion: value.fingerprintVersion ?? null,
-						duration: typeof value.duration === "number" ? value.duration : duration,
-						width: typeof value.width === "number" ? value.width : width ?? null,
-						height: typeof value.height === "number" ? value.height : height ?? null,
-						localMediaAvailability: value.localMediaAvailability,
-						originalAccessStatus: value.originalAccessStatus,
-					};
-				},
+			{ when: [[] as const, (payload: unknown) => recordOf(recordOf(payload)?.decision)?.kind === "accepted"], to: { receipt: ["<< activeMediaRecoveryTask", { action: "recordPublicationDecision", sub_flow: true }], forwarded: ["$output"] }, fn: (payload: unknown) => ({ receipt: recordOf(payload)?.decision, forwarded: payload }) },
+			{ when: [[] as const, (payload: unknown) => recordOf(recordOf(payload)?.decision)?.kind === "accepted" || recordOf(payload)?.kind === "rejected"], to: ["$fx_mediaPublicationDecision", { intent: "call", drop_when_api_not_ready: false }], fn: (payload: unknown) => payload },
 			],
 		},
 		renameResource: {
@@ -493,7 +508,27 @@ export const Resource = model({
 			],
 		},
 		recordAutomaticMediaRecovery: [
-			{ to: { localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], forwarded: ["$output"] }, fn: (payload: unknown) => { const value = payload as { availability?: unknown; originalAccess?: unknown } | null; return { localMediaAvailability: value?.availability, originalAccessStatus: value?.originalAccess, forwarded: payload }; } },
+			{
+				to: { url: ["url"], localMediaAvailability: ["localMediaAvailability"], originalAccessStatus: ["originalAccessStatus"], forwarded: ["$output"] },
+				fn: [["$noop", "_node_id", "$meta$removed", "< @one:_node_id < project", "< @one:$meta$removed < project", "assetStorageKind", "assetRef", "sourceKind", "sourceRef", "localPublicationSequence", "localAcceptedPublication", "< @one:publicationState < activeMediaRecoveryTask", "url"] as const,
+					(payload: unknown, noop: unknown, resourceId: unknown, removed: unknown, projectId: unknown, projectRemoved: unknown, assetStorageKind: unknown, assetRef: unknown, sourceKind: unknown, sourceRef: unknown, sequence: unknown, accepted: unknown, taskValue: unknown, currentUrl: unknown) => {
+						const value = recordOf(payload); const snapshot = recordOf(value?.restoreSnapshot); const task = recordOf(taskValue);
+						const availability = value?.availability; const access = value?.originalAccess;
+						const hasUrl = Boolean(value && Object.hasOwn(value, "url"));
+						if (hasUrl && (!snapshot || typeof value?.url !== "string" || !value.url.startsWith("blob:") || value.url.length <= 5 || (availability !== "ready-project-copy" && availability !== "ready-file-handle"))) return noop;
+						const validAvailability = availability === "unknown" || availability === "resolving" || availability === "ready-project-copy" || availability === "ready-file-handle" || availability === "unavailable" || availability === "error";
+						const validAccess = access === "unknown" || access === "granted" || access === "prompt" || access === "denied" || access === "missing";
+						if (!validAvailability || !validAccess || removed || projectRemoved || task?.publicationRequested || task?.publicationReceipt) return noop;
+						const ref = (entry: unknown) => typeof entry === "string" ? entry : null;
+						if (snapshot) {
+							if (snapshot.resourceId !== resourceId || snapshot.projectId !== projectId || snapshot.assetStorageKind !== assetStorageKind || ref(snapshot.assetRef) !== ref(assetRef) || snapshot.sourceKind !== sourceKind || ref(snapshot.sourceRef) !== ref(sourceRef) || ref(snapshot.handleRef) !== (sourceKind === "file-handle" ? ref(sourceRef) : null)) return noop;
+							if (Object.hasOwn(snapshot, "publicationSequencePresent")) {
+								if (typeof snapshot.publicationSequencePresent !== "boolean" || snapshot.publicationSequencePresent !== (sequence !== undefined) || snapshot.publicationSequence !== (sequence === undefined ? null : sequence)) return noop;
+							} else if (snapshot.publicationSequence !== sequence) return noop;
+						} else if (accepted || value?.restoreSnapshot != null) return noop;
+						return { url: hasUrl ? value!.url : currentUrl, localMediaAvailability: availability, originalAccessStatus: access, forwarded: payload };
+					}],
+			},
 			{ to: ["<< activeMediaRecoveryTask", { action: "recordRestoreState", sub_flow: true }], fn: (payload: unknown) => payload },
 		],
 		setResourceAttrs: {

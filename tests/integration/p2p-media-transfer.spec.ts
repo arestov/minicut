@@ -7,8 +7,10 @@ import {
 	createP2PRoomId,
 	getActiveProjectNodeId,
 	getRole,
+	getTransfers,
 	openP2PPeer,
 	readActiveProjectNodeId,
+	readP2PDebugState,
 	selectSharedActiveProject,
 	setActiveProject,
 	waitForReadyTransfer,
@@ -87,6 +89,48 @@ test('p2p timeline clip created on the main peer renders preview on the remote p
 		const clientTimeline = clientPage.getByRole('region', { name: 'Timeline', exact: true })
 		await expect(clientTimeline.getByRole('button', { name: /fixture-video\.webm/i }).first()).toBeVisible()
 		await waitForReadyTransfer(clientPage, 'remote')
+		const [ownerTransfers, remoteTransfers, ownerState] = await Promise.all([
+			getTransfers(serverPage),
+			getTransfers(clientPage),
+			readP2PDebugState(serverPage),
+		])
+		const fixtureByteLength = generatedVideo.buffer.length
+		expect(fixtureByteLength).toBeGreaterThan(512)
+		const remoteMatches = remoteTransfers.filter((transfer) =>
+			transfer.name === generatedVideo.name && transfer.availability === 'remote',
+		)
+		expect(remoteMatches).toHaveLength(1)
+		const remoteTransfer = remoteMatches[0]!
+		expect(remoteTransfer.resourceId).toEqual(expect.any(String))
+		expect(remoteTransfer.resourceId).not.toBe('')
+		expect(remoteTransfer.totalBytes).toBe(fixtureByteLength)
+		expect(remoteTransfer.loadedBytes).toBe(fixtureByteLength)
+		expect(remoteTransfer.loadedRanges).toEqual([[0, fixtureByteLength]])
+		expect(remoteTransfer.lastError).toBeNull()
+
+		const ownerMatches = ownerTransfers.filter((transfer) =>
+			transfer.resourceId === remoteTransfer.resourceId && transfer.availability === 'local',
+		)
+		expect(ownerMatches).toHaveLength(1)
+		const ownerTransfer = ownerMatches[0]!
+		expect(ownerTransfer.name).toBe(generatedVideo.name)
+		expect(ownerTransfer.status).toBe('ready')
+		expect(ownerTransfer.totalBytes).toBe(fixtureByteLength)
+		expect(ownerTransfer.lastError).toBeNull()
+		expect(ownerState?.peerId).toEqual(expect.any(String))
+		expect(ownerState?.peerId).not.toBe('')
+		expect(ownerTransfer.ownerPeerId).toBe(ownerState?.peerId)
+		expect(remoteTransfer.ownerPeerId).toBe(ownerState?.peerId)
+
+		expect(remoteTransfer.previewUrl).toMatch(/^blob:/)
+		const receivedBytes = await clientPage.evaluate(async (previewUrl) => {
+			const response = await fetch(previewUrl)
+			if (!response.ok) throw new Error(`Could not read received media blob: ${response.status}`)
+			return Array.from(new Uint8Array(await response.arrayBuffer()))
+		}, remoteTransfer.previewUrl)
+		const receivedBuffer = Buffer.from(receivedBytes)
+		expect(receivedBuffer).toEqual(generatedVideo.buffer)
+		expect(receivedBuffer.subarray(0, 512)).toEqual(generatedVideo.buffer.subarray(0, 512))
 		try {
 			await waitForRendererVideoReady(clientPage, 'fixture-video.webm')
 		} catch (error) {

@@ -29,6 +29,8 @@ export const createEffectContractFakes = (
 	const exportCancelRuntime = createRecorder();
 	const importRuntime = createRecorder();
 	const mediaRecoveryRuntime = createRecorder();
+	const publicationDecision = createRecorder();
+	const publicationRetirement = createRecorder();
 	const playbackRuntime = createRecorder();
 
 	const interfaces: MiniCutEffectInterfaces = {
@@ -37,7 +39,7 @@ export const createEffectContractFakes = (
 			cancelExport: exportCancelRuntime.record,
 		},
 		importRuntime: { requestImportFiles: importRuntime.record },
-		mediaRecoveryRuntime: { requestMediaRecovery: mediaRecoveryRuntime.record },
+		mediaRecoveryRuntime: { requestMediaRecovery: mediaRecoveryRuntime.record, publishMediaPublicationDecision: publicationDecision.record, releaseMediaPublication: publicationRetirement.record },
 		playbackRuntime: { applyPlaybackRun: playbackRuntime.record },
 		...(options.mediaRestore
 			? { mediaRestoreRuntime: { restoresMediaAtBoot: true as const } }
@@ -50,6 +52,8 @@ export const createEffectContractFakes = (
 		exportCancelCalls: exportCancelRuntime.calls,
 		importCalls: importRuntime.calls,
 		mediaRecoveryCalls: mediaRecoveryRuntime.calls,
+		publicationDecisionCalls: publicationDecision.calls,
+		publicationRetirementCalls: publicationRetirement.calls,
 		playbackCalls: playbackRuntime.calls,
 	};
 };

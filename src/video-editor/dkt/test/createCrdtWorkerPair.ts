@@ -1,6 +1,7 @@
+import { createEffectContractFakes, type EffectContractFakes } from "./effectContractFakes";
 import { createInMemoryCrdtRelay } from "../crdt/createInMemoryCrdtRelay";
 import { createTestWorkerCrdtTransport } from "../crdt/createTestWorkerCrdtTransport";
-import { bootDktModels, type DktTestContext } from "../testingInit";
+import { bootDktModels, type BootDktModelsOptions, type DktTestContext } from "../testingInit";
 import type { DktCrdtTransport } from "../crdt/testRelayContracts";
 import { waitForRuntimeIdle } from "./waitForRuntimeIdle";
 import { runDktStorageRequest, type DktStorageRequest } from "../storage/dktStorageRequest";
@@ -11,6 +12,7 @@ type PeerId = "A" | "B";
 type PeerRuntime = {
 	id: PeerId;
 	ctx: DktTestContext;
+	effects: EffectContractFakes;
 	project: RuntimeModel;
 	videoTrack: RuntimeModel;
 	dispatch: (
@@ -26,6 +28,7 @@ type PeerRuntime = {
 };
 
 type Options = {
+	App?: BootDktModelsOptions["App"];
 	roomId: string;
 	profileId: string;
 	profileVersion: number;
@@ -81,8 +84,12 @@ const bindPeerProject = async (ctx: DktTestContext, project: RuntimeModel) => {
 const bootPeerContext = async (
 	peerId: PeerId,
 	transport: DktCrdtTransport,
+	effects: EffectContractFakes,
+	App?: BootDktModelsOptions["App"],
 ): Promise<DktTestContext> =>
 	bootDktModels({
+		App,
+		interfaces: effects.interfaces as unknown as Record<string, unknown>,
 		crdt: {
 			enabled: true,
 			peerId,
@@ -91,7 +98,7 @@ const bootPeerContext = async (
 		},
 	});
 
-const wrapPeer = async (peerId: PeerId, ctx: DktTestContext): Promise<PeerRuntime> => {
+const wrapPeer = async (peerId: PeerId, ctx: DktTestContext, effects: EffectContractFakes): Promise<PeerRuntime> => {
 	const project = (await ctx.queryRel(ctx.sessionRoot, "activeProject"))[0];
 	if (!project) {
 		throw new Error("Expected active project");
@@ -111,6 +118,7 @@ const wrapPeer = async (peerId: PeerId, ctx: DktTestContext): Promise<PeerRuntim
 	return {
 		id: peerId,
 		ctx,
+		effects,
 		project,
 		videoTrack,
 		async dispatch(target, actionName, payload, meta) {
@@ -155,7 +163,8 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		profileId: options.profileId,
 		profileVersion: options.profileVersion,
 	});
-	const ctxA = await bootPeerContext("A", transportA);
+	const effectsA = createEffectContractFakes(); const effectsB = createEffectContractFakes();
+	const ctxA = await bootPeerContext("A", transportA, effectsA, options.App);
 	await ctxA.lockToRead(async () => {
 		await ctxA.sessionRoot.dispatch("createProject", {
 			title: "CRDT worker pair project",
@@ -169,15 +178,15 @@ export const createCrdtWorkerPair = async (options: Options) => {
 		?.flushTransportOutbox?.();
 	const projectA = (await ctxA.queryRel(ctxA.sessionRoot, "activeProject"))[0];
 	if (!projectA) throw new Error("Expected source project");
-	const ctxB = await bootPeerContext("B", transportB);
+	const ctxB = await bootPeerContext("B", transportB, effectsB, options.App);
 	transportB.requestSync("crdt-worker-pair-bootstrap");
 	await (
 		ctxB.runtime.crdt_runtime as { transport_receive_tail?: Promise<unknown> } | null
 	)?.transport_receive_tail;
 	await waitForRuntimeIdle(ctxB);
 	await bindPeerProject(ctxB, await findSharedProject(ctxB, String(projectA._node_id)));
-	const a = await wrapPeer("A", ctxA);
-	const b = await wrapPeer("B", ctxB);
+	const a = await wrapPeer("A", ctxA, effectsA);
+	const b = await wrapPeer("B", ctxB, effectsB);
 
 	const waitForTransport = async () => {
 		await Promise.all([

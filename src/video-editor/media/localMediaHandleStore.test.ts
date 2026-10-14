@@ -126,3 +126,33 @@ describe("local media handle side-channel store", () => {
 		expect(ref && await store.validate(ref)).toBe(true);
 	});
 });
+
+describe("owned handle reconciliation", () => {
+	it("S4 keeps the exact newly staged handle despite a stale published ref", async () => {
+		const store = createLocalMediaHandleStore(indexedDB);
+		const base = { resourceId: "r-protected", handle: makeHandle("protected.webm"), name: "protected.webm", size: 4, lastModified: 1, mime: "video/webm", createdAt: 1, updatedAt: 1 };
+		const old = await store.stage("p-protected", "r-protected", "old", base);
+		const fresh = await store.stage("p-protected", "r-protected", "new", base);
+		store.protectPublicationResource("r-protected");
+		await store.reconcile("r-protected", old);
+		expect((await store.getByRef(fresh))?.handle.name).toBe("protected.webm");
+		await store.rollback(old);
+		expect(await store.getByRef(old)).toBeNull();
+		expect((await store.getByRef(fresh))?.handle.name).toBe("protected.webm");
+	});
+});
+describe("handle deletion boundary cancellation", () => {
+	it("S4 rechecks new ownership after the stale loop entered an asynchronous DB open", async () => {
+		let armed = false; let openings = 0;
+		const factory = { open(...args: Parameters<typeof indexedDB.open>) {
+			if (armed && ++openings === 2) store.protectPublicationResource("r-boundary");
+			return indexedDB.open(...args);
+		} };
+		const store = createLocalMediaHandleStore(factory);
+		const record = { resourceId: "r-boundary", handle: makeHandle("boundary.webm"), name: "boundary.webm", size: 1, lastModified: 1, mime: "video/webm", createdAt: 1, updatedAt: 1 };
+		const fresh = await store.stage("p-boundary", "r-boundary", "new-boundary", record);
+		armed = true;
+		expect((await store.reconcile("r-boundary", null)).removed).toEqual([]);
+		expect((await store.getByRef(fresh))?.name).toBe("boundary.webm");
+	});
+});

@@ -1,3 +1,5 @@
+import { createMediaPublicationConsumer } from "../../media/mediaPublicationConsumer";
+import { publicationTuple, type PublicationProposal } from "../../media/mediaPublicationProtocol";
 import type { NodeAssetRegistry } from "../../adapters/node/nodeAssetRegistry";
 import type { ProbeResult } from "../../media/contracts/probe";
 import {
@@ -8,6 +10,7 @@ import { assetUriFor } from "./assetUri";
 import { localAssetIdOf } from "./localAssetSource";
 import {
 	classifyProbe,
+	mimeForPath,
 	technicalMetadataFromProbe,
 } from "./hostMedia";
 import { type HostPage, type RuntimeRefs, scopeFor } from "./hostTypes";
@@ -33,6 +36,7 @@ export type MediaRecoveryExecutorDeps = {
 	registry: Pick<NodeAssetRegistry, "resolve" | "register" | "relink" | "get">;
 	refs: RuntimeRefs;
 	probe(filePath: string): Promise<ProbeResult>;
+	stat(filePath: string): Promise<{ size: number; mtimeMs: number }>;
 	fingerprint(
 		filePath: string,
 	): Promise<{ fingerprint: string; version: string }>;
@@ -47,6 +51,9 @@ export type MediaRecoveryExecutorDeps = {
 export type MediaRecoveryExecutor = {
 	/** Handler of the `$fx_mediaRecovery` task request published by the host. */
 	handleRequest(payload: unknown): Promise<void>;
+	consumeDecision(payload: unknown): void;
+	consumeRetirement(payload: unknown): void;
+	dispose(): void;
 	/**
 	 * Starts a user relink of one resource from a picked file: the path stays in
 	 * the process-local ref store, the model gets `startMediaRecovery` with its
@@ -72,9 +79,11 @@ type RecoveryRequest = {
 	requiredSourceEnd: number;
 	sourceKind?: unknown;
 	sourceRef?: unknown;
+	restoreSnapshot?: unknown;
 };
 
 type CommitRequest = {
+	projectId: string; attemptId: string; bootId: string; transferSnapshot: Record<string, unknown>;
 	taskId: string;
 	resourceId: string;
 	operationId: string;
@@ -120,7 +129,14 @@ export const createMediaRecoveryExecutor = (
 	deps: MediaRecoveryExecutorDeps,
 ): MediaRecoveryExecutor => {
 	const { page, refs, registry } = deps;
-	const committing = new Set<string>();
+	const consumer = createMediaPublicationConsumer({
+		installTransfer(record, decision) { if (record.nativeAssetId !== decision.pointer.sourceRef || decision.pointer.sourceKind !== "local-asset" || !record.nativePath) throw new Error("Captured native publication identity mismatch"); },
+		installPlayback() { /* Native acknowledges the already captured asset; no registry replay. */ },
+		release(record) { if (typeof record.request.runtimeHandleId === "string") refs.delete(record.request.runtimeHandleId); },
+		reject(record) { if (typeof record.request.runtimeHandleId === "string") refs.delete(record.request.runtimeHandleId); },
+		result(result) { page.dispatch("recordPublicationBindingResult", result, scopeFor(result.taskId)); if (!consumer.isDisposed() && result.outcome === "installed" && typeof result.runtimeHandleId === "string") refs.delete(result.runtimeHandleId); },
+		now: deps.now,
+	});
 
 	const failTask = (
 		request: { taskId: string; operationId: string },
@@ -169,7 +185,7 @@ export const createMediaRecoveryExecutor = (
 	const markMissing = (request: RecoveryRequest): void => {
 		page.dispatch(
 			"recordAutomaticMediaRecovery",
-			{ ...NODE_MISSING, updatedAt: deps.now() },
+			{ ...NODE_MISSING, ...(request.restoreSnapshot !== undefined ? { restoreSnapshot: request.restoreSnapshot } : {}), updatedAt: deps.now() },
 			scopeFor(request.resourceId),
 		);
 	};
@@ -180,6 +196,7 @@ export const createMediaRecoveryExecutor = (
 		assetId: string | null,
 	): Promise<void> => {
 		const resolution = assetId ? await registry.resolve(assetId) : null;
+		if (consumer.get(request)?.retired) return;
 		if (!resolution?.ok) {
 			markMissing(request);
 			return;
@@ -199,6 +216,7 @@ export const createMediaRecoveryExecutor = (
 				failTask(request, "inspection-failed", "The selected file is not media.");
 				return;
 			}
+			if (consumer.get(request)?.retired) return;
 			const candidate = technicalMetadataFromProbe(info, kind);
 			let fingerprint: { fingerprint: string; version: string } | null = null;
 			try {
@@ -206,6 +224,7 @@ export const createMediaRecoveryExecutor = (
 			} catch {
 				// Unknown identity is explicit and never promoted to exact.
 			}
+			if (consumer.get(request)?.retired) return;
 			const identity =
 				fingerprint && request.originalFingerprint
 					? fingerprint.version === request.fingerprintVersion &&
@@ -247,6 +266,7 @@ export const createMediaRecoveryExecutor = (
 				);
 			}
 		} catch (error) {
+			if (consumer.get(request)?.retired) return;
 			failTask(
 				request,
 				"inspection-failed",
@@ -256,64 +276,51 @@ export const createMediaRecoveryExecutor = (
 	};
 
 	const commit = async (request: CommitRequest): Promise<void> => {
-		if (committing.has(request.operationId)) return;
-		committing.add(request.operationId);
+		if (!publicationTuple(request)) return;
+		const record = consumer.retain(request as unknown as Record<string, unknown>);
+		if (!record || record.started || record.retired) return;
+		record.started = true; record.settled = false; record.request = request as unknown as Record<string, unknown>;
+		let dispatchStarted = false;
 		try {
-			const ref =
-				typeof request.runtimeHandleId === "string"
-					? (refs.get(request.runtimeHandleId) as {
-							assetId?: string;
-							path?: string;
-						} | null)
-					: null;
+			const ref = typeof request.runtimeHandleId === "string" ? refs.get(request.runtimeHandleId) as { assetId?: string; path?: string } | null : null;
 			let assetId = ref?.assetId ?? localAssetIdOf(request);
+			if (record.nativePath && typeof ref?.path === "string" && record.nativePath !== ref.path || record.nativeAssetId && assetId && record.nativeAssetId !== assetId) {
+				consumer.settle(record);
+				if (!record.retired) failTask(request, "publication-candidate-substituted", "The native source for this attempt changed.");
+				return;
+			}
+			record.nativeAssetId = assetId ?? undefined; record.nativePath = typeof ref?.path === "string" ? ref.path : undefined;
 			if (typeof ref?.path === "string") {
-				// Relink: the asset id stays, it now points at the picked file.
-				assetId = assetId
-					? (await registry.relink(assetId, ref.path)).assetId
-					: (await registry.register(ref.path)).assetId;
+				assetId = assetId ? (await registry.relink(assetId, ref.path)).assetId : (await registry.register(ref.path)).assetId;
+				if (record.retired) { consumer.settle(record); return; }
 				deps.onAssetsChanged();
 			}
 			const resolution = assetId ? await registry.resolve(assetId) : null;
-			if (!assetId || !resolution?.ok) {
-				failTask(request, "source-missing", "The source file is not available.");
-				return;
-			}
-			const metadata = request.candidateMetadata ?? null;
-			await page.dispatchAndWait(
-				"completePublication",
-				{
-					operationId: request.operationId,
-					assetStorageKind: "linked",
-					assetRef: null,
-					// `local-asset`: file registered in the host asset registry (M2).
-					sourceKind: "local-asset",
-					sourceRef: assetId,
-					url: (deps.assetUrl ?? assetUriFor)(assetId),
-					contentFingerprint: request.candidateFingerprint ?? null,
-					fingerprintVersion: request.candidateFingerprintVersion ?? null,
-					...(typeof metadata?.duration === "number" ? { duration: metadata.duration } : {}),
-					...(typeof metadata?.width === "number" ? { width: metadata.width } : {}),
-					...(typeof metadata?.height === "number" ? { height: metadata.height } : {}),
-					localMediaAvailability: NODE_AVAILABLE.availability,
-					originalAccessStatus: NODE_AVAILABLE.originalAccess,
-					updatedAt: deps.now(),
-				},
-				scopeFor(request.taskId),
-			);
-			if (typeof request.runtimeHandleId === "string") {
-				refs.delete(request.runtimeHandleId);
-			}
+			if (!assetId || !resolution?.ok) { consumer.settle(record); if (!record.retired) failTask(request, "source-missing", "The source file is not available."); return; }
+			if (record.retired) { consumer.settle(record); return; }
+			record.nativeAssetId = assetId; record.nativePath = resolution.location.path;
+			const file = await deps.stat(resolution.location.path);
+			if (record.retired) { consumer.settle(record); return; }
+			const metadata = request.candidateMetadata ?? {}; const snapshot = request.transferSnapshot;
+			const proposal: PublicationProposal = { ...publicationTuple(request)!, candidateMetadata: metadata, candidateFingerprint: request.candidateFingerprint ?? null, candidateFingerprintVersion: request.candidateFingerprintVersion ?? null,
+				candidateFileMetadata: { mime: mimeForPath(resolution.location.path), size: file.size, lastModified: Math.round(file.mtimeMs) }, updatedAt: deps.now(),
+				pointer: { assetStorageKind: "linked", assetRef: null, sourceKind: "local-asset", sourceRef: assetId, url: (deps.assetUrl ?? assetUriFor)(assetId), contentFingerprint: request.candidateFingerprint ?? null, fingerprintVersion: request.candidateFingerprintVersion ?? null,
+					duration: typeof metadata.duration === "number" ? metadata.duration : Number(snapshot.duration), width: Object.hasOwn(metadata, "width") ? typeof metadata.width === "number" ? metadata.width : null : typeof snapshot.width === "number" ? snapshot.width : null, height: Object.hasOwn(metadata, "height") ? typeof metadata.height === "number" ? metadata.height : null : typeof snapshot.height === "number" ? snapshot.height : null,
+					localMediaAvailability: NODE_AVAILABLE.availability, originalAccessStatus: NODE_AVAILABLE.originalAccess } };
+			record.proposal = proposal; consumer.settle(record); if (record.retired) return;
+			dispatchStarted = true;
+			await page.dispatchAndWait("completePublication", proposal, scopeFor(request.taskId));
+			// The separate semantic decision consumer, never technical ACK, owns handoff/ref release.
 		} catch (error) {
-			failTask(
-				request,
-				"commit-failed",
-				error instanceof Error ? error.message : "Could not save the selected source.",
-			);
+			consumer.settle(record);
+			if (!dispatchStarted && !record.retired) failTask(request, "commit-failed", error instanceof Error ? error.message : "Could not save the selected source.");
 		}
 	};
 
 	return {
+		consumeDecision: consumer.consumeDecision,
+		consumeRetirement: consumer.consumeRetirement,
+		dispose() { consumer.dispose(); },
 		async handleRequest(payload) {
 			if (isObject(payload) && payload.mode === "commit") {
 				if (
@@ -327,12 +334,16 @@ export const createMediaRecoveryExecutor = (
 			}
 			const request = parseRequest(payload);
 			if (!request) return;
+			const retained = consumer.retain(payload as Record<string, unknown>); if (retained?.retired) return;
 			if (request.intent === "restore") {
 				const ref =
 					typeof request.runtimeHandleId === "string"
 						? (refs.get(request.runtimeHandleId) as { assetId?: string } | null)
 						: null;
-				await restore(request, ref?.assetId ?? localAssetIdOf(request));
+				const assetId = ref?.assetId ?? localAssetIdOf(request);
+				if (retained) retained.nativeAssetId = assetId ?? undefined;
+				await restore(request, assetId);
+			if (retained) consumer.settle(retained);
 				return;
 			}
 			const picked =
@@ -354,7 +365,9 @@ export const createMediaRecoveryExecutor = (
 				);
 				return;
 			}
+			if (retained) retained.nativePath = picked.path;
 			await inspectCandidate(request, picked.path);
+			if (retained) consumer.settle(retained);
 		},
 
 		requestRelink(resourceId, filePath, intent) {

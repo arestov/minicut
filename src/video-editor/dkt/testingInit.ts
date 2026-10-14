@@ -18,7 +18,7 @@ import { prepare as prepareAppRuntime } from "dkt/runtime/app/prepare.js";
 import { reinit } from "dkt/runtime/app/reinit.js";
 import { DktCRDTEngine } from "dkt-all/libs/provoda/crdt/index.js";
 import { hookSessionRoot } from "dkt-all/libs/provoda/provoda/BrowseMap.js";
-import { MiniCutAppRoot } from "../models/AppRoot";
+import type { MiniCutAppRoot } from "../models/AppRoot";
 import { sanitizeDktCrdtStoragePackage } from "./crdt/sanitizeStoragePackage";
 import type { DktCrdtTransport } from "./crdt/testRelayContracts";
 import {
@@ -297,6 +297,7 @@ export type DktTestContext = {
 const TEST_SESSION_KEY = "test-session";
 
 export type BootDktModelsOptions = {
+	App?: typeof MiniCutAppRoot;
 	interfaces?: Record<string, unknown>;
 	reinitFromSnapshot?: unknown;
 	graphSemantics?: {
@@ -428,6 +429,7 @@ const createCrdtRuntimeForTests = async (
 export const bootDktModels = async (
 	options: BootDktModelsOptions = {},
 ): Promise<DktTestContext> => {
+	const App = options.App ?? (await import("../models/AppRoot")).MiniCutAppRoot;
 	const errorsCatcher = catchFlowErrors();
 	const { crdtRuntime, storagePackage, storageOpen, transport } =
 		await createCrdtRuntimeForTests(options.crdt);
@@ -460,7 +462,7 @@ export const bootDktModels = async (
 	const startPromise: Promise<RuntimeStartResult> = options.reinitFromSnapshot
 		? (Promise.resolve(
 				reinit(
-					MiniCutAppRoot,
+					App,
 					runtime,
 					options.reinitFromSnapshot,
 					options.interfaces ?? {},
@@ -468,7 +470,7 @@ export const bootDktModels = async (
 				),
 			) as Promise<RuntimeStartResult>)
 		: runtime.start({
-				App: MiniCutAppRoot,
+				App,
 				interfaces: options.interfaces ?? {},
 			});
 

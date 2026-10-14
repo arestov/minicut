@@ -207,6 +207,10 @@ export const startRealHost = async ({
 			refs,
 			probe,
 			fingerprint: (filePath) => fingerprintNodeFile(filePath),
+			stat: async (filePath) => {
+				const info = await stat(filePath);
+				return { size: info.size, mtimeMs: info.mtimeMs };
+			},
 			onAssetsChanged: () => {
 				preview.refreshAssets();
 				audioMix.refreshAssets();
@@ -214,6 +218,7 @@ export const startRealHost = async ({
 			generateId: () => crypto.randomUUID(),
 			now: () => Date.now(),
 		});
+		cleanups.push(() => recovery.dispose());
 		const playback = createPlaybackExecutor({
 			page: pageRuntime,
 			...(playbackAudio ? { audio: playbackAudio } : {}),
@@ -241,6 +246,8 @@ export const startRealHost = async ({
 		listen("$fx_renderExport", (payload) => exporter.handleRequest(payload));
 		listen("$fx_cancelExport", (payload) => exporter.cancel(payload));
 		listen("$fx_mediaRecovery", (payload) => recovery.handleRequest(payload));
+		listen("$fx_mediaPublicationDecision", (payload) => recovery.consumeDecision(payload));
+		listen("$fx_mediaPublicationRetirement", (payload) => recovery.consumeRetirement(payload));
 		listen("$fx_applyPlaybackRun", (payload) => playback.handleRequest(payload));
 
 		const importFromDialog = createImportFromDialog(prompt, importer);

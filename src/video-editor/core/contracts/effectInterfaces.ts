@@ -21,6 +21,8 @@ export interface ImportRuntimeInterface {
 /** `$fx_mediaRecovery`, `$fx_mediaRecoveryCommit` (MediaRecoveryTask) -> `#mediaRecoveryRuntime`. */
 export interface MediaRecoveryRuntimeInterface {
 	requestMediaRecovery(payload: unknown): void;
+	publishMediaPublicationDecision(payload: unknown): void;
+	releaseMediaPublication(payload: unknown): void;
 }
 
 /**

@@ -18,6 +18,8 @@ export type DesktopEffectSink = {
 	cancelExport(payload: unknown): void;
 	requestImportFiles(payload: unknown): void;
 	requestMediaRecovery(payload: unknown): void;
+	publishMediaPublicationDecision(payload: unknown): void;
+	releaseMediaPublication(payload: unknown): void;
 };
 
 export type DesktopEffectInterfacesOptions = {
@@ -102,6 +104,8 @@ export const createDesktopEffectInterfaces = ({
 				),
 		},
 		mediaRecoveryRuntime: {
+			publishMediaPublicationDecision: (payload) => toSink("mediaRecoveryRuntime.publishMediaPublicationDecision", (target) => target.publishMediaPublicationDecision(payload)),
+			releaseMediaPublication: (payload) => toSink("mediaRecoveryRuntime.releaseMediaPublication", (target) => target.releaseMediaPublication(payload)),
 			requestMediaRecovery: (payload) =>
 				toSink("mediaRecoveryRuntime.requestMediaRecovery", (target) =>
 					target.requestMediaRecovery(payload),

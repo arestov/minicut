@@ -1,3 +1,4 @@
+import type { MiniCutAppRoot } from "../../models/AppRoot";
 import type { DktTestContext } from "../testingInit";
 import { bootDktModels, getAttr, queryRel } from "../testingInit";
 
@@ -17,9 +18,13 @@ export type ActionContractHarness = {
 	exportRequests: unknown[];
 	importRequests: unknown[];
 	playbackRequests: unknown[];
+	mediaRecoveryRequests: unknown[];
+	publicationDecisions: unknown[];
+	publicationRetirements: unknown[];
 };
 
 type HarnessOptions = {
+	App?: typeof MiniCutAppRoot;
 	interfaces?: Record<string, unknown>;
 };
 
@@ -73,7 +78,11 @@ export const createActionContractHarness = async (
 	const exportRequests: unknown[] = [];
 	const importRequests: unknown[] = [];
 	const playbackRequests: unknown[] = [];
+	const mediaRecoveryRequests: unknown[] = [];
+	const publicationDecisions: unknown[] = [];
+	const publicationRetirements: unknown[] = [];
 	const userInterfaces = options.interfaces ?? {};
+	const recovery = userInterfaces.mediaRecoveryRuntime as { requestMediaRecovery?: (p: unknown) => unknown; publishMediaPublicationDecision?: (p: unknown) => unknown; releaseMediaPublication?: (p: unknown) => unknown } | undefined;
 	const userExportRuntime = (
 		userInterfaces as {
 			exportRuntime?: { requestExport?: (payload: unknown) => unknown };
@@ -91,8 +100,14 @@ export const createActionContractHarness = async (
 	).playbackRuntime;
 
 	const ctx = await bootDktModels({
+		App: options.App,
 		interfaces: {
 			...userInterfaces,
+			mediaRecoveryRuntime: {
+				requestMediaRecovery(p: unknown) { mediaRecoveryRequests.push(p); return recovery?.requestMediaRecovery?.(p); },
+				publishMediaPublicationDecision(p: unknown) { publicationDecisions.push(p); return recovery?.publishMediaPublicationDecision?.(p); },
+				releaseMediaPublication(p: unknown) { publicationRetirements.push(p); return recovery?.releaseMediaPublication?.(p); },
+			},
 			exportRuntime: {
 				...userExportRuntime,
 				requestExport(payload: unknown) {
@@ -254,5 +269,8 @@ export const createActionContractHarness = async (
 		exportRequests,
 		importRequests,
 		playbackRequests,
+		mediaRecoveryRequests,
+		publicationDecisions,
+		publicationRetirements,
 	};
 };

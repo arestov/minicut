@@ -1441,3 +1441,30 @@ describe("resource transfer manager", () => {
 		server.destroy();
 	});
 });
+
+describe("publication-owned byte serving", () => {
+	it("M1 serves the accepted candidate bytes after an exact stale token release", async () => {
+		const captured: Blob[] = [];
+		const createUrl = vi.fn((blob: Blob) => { captured.push(blob); return "blob:received:" + captured.length; });
+		const revokeUrl = vi.fn((_url: string) => {});
+		vi.stubGlobal("URL", { ...URL, createObjectURL: createUrl, revokeObjectURL: revokeUrl });
+		const [left, right] = createTransportPair();
+		const server = createResourceTransferManager({ getRole: () => "server", getPeerId: () => "owner", chunkSize: 8 });
+		const client = createResourceTransferManager({ getRole: () => "client", getPeerId: () => "receiver", chunkSize: 8 });
+		try {
+			const snapshot = { kind: "video" as const, mime: "video/webm", duration: 4, chunkSize: 8, ownerPeerId: "owner", sourceKind: "p2p" as const, fallbackUrl: "", name: "kept name" };
+			server.registerLocalResource("published", new File(["old-bytes"], "old.webm"), { ...snapshot, objectUrl: "blob:transfer:A", size: 9, publicationIdentity: "A" });
+			const candidate = new File(["accepted-candidate-bytes"], "candidate.webm", { type: "video/webm" });
+			server.registerLocalResource("published", candidate, { ...snapshot, objectUrl: "blob:transfer:B", size: candidate.size, publicationIdentity: "B" });
+			server.releaseLocalResource("published", "A");
+			expect(server.resolveResourceUrl("published", "")).toBe("blob:transfer:B");
+			server.attachServerTransport("receiver", left); client.attachClientTransport(right);
+			syncResource(client, "published", { size: candidate.size, ownerPeerId: "owner" });
+			await vi.waitFor(() => expect(client.getTransfer("published")).toMatchObject({ status: "ready", loadedBytes: candidate.size }));
+			expect(await captured.at(-1)?.text()).toBe("accepted-candidate-bytes");
+			server.releaseLocalResource("published", "B");
+			expect(server.resolveResourceUrl("published", "")).not.toBe("blob:transfer:B");
+			expect(revokeUrl.mock.calls.filter(([url]) => url === "blob:transfer:B")).toHaveLength(1);
+		} finally { server.destroy(); client.destroy(); vi.unstubAllGlobals(); }
+	});
+});

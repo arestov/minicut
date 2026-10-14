@@ -7,7 +7,7 @@ import type { MiniCutEffectInterfaces } from "../contracts/effectInterfaces";
 export const REQUIRED_EFFECT_INTERFACE_METHODS = {
 	exportRuntime: ["requestExport", "cancelExport"],
 	importRuntime: ["requestImportFiles"],
-	mediaRecoveryRuntime: ["requestMediaRecovery"],
+	mediaRecoveryRuntime: ["requestMediaRecovery", "publishMediaPublicationDecision", "releaseMediaPublication"],
 	playbackRuntime: ["applyPlaybackRun"],
 } as const satisfies Partial<
 	Record<keyof MiniCutEffectInterfaces, readonly string[]>

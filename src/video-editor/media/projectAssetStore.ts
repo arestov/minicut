@@ -6,6 +6,7 @@ export type ProjectAssetReconcileResult = { kept: string[]; removed: string[] };
 export type ProjectAssetDiagnostics = { available: boolean; committedAssets: number; staleTemporaryEntries: number };
 
 export interface ProjectAssetStore {
+	protectPublicationResource(projectId: string, resourceId: string): void;
 	stage(projectId: string, resourceId: string, operationId: string, file: File, metadata: ProjectAssetMetadata, options?: { signal?: AbortSignal }): Promise<ProjectAssetPutResult>;
 	validate(assetRef: string): Promise<boolean>;
 	publishOutcome(assetRef: string): Promise<boolean>;
@@ -35,12 +36,16 @@ const makeAssetRef = (projectId: string, resourceId: string, operationId: string
 const parseAssetRef = (value: string) => { const p = value.split("/"); return p.length === 6 && p[0] === "project" && p[2] === "resource" && p[4] === "asset" ? { projectId: safeSegment(p[1]), resourceId: safeSegment(p[3]), operationId: safeSegment(p[5]) } : null; };
 
 export const createProjectAssetStore = (getRoot: ProjectAssetRootProvider): ProjectAssetStore => {
+	const protectedPublications = new Set<string>();
+	const protectedProjects = new Set<string>();
+	const publicationProtected = (projectId: string, resourceId: string) => protectedPublications.has(`${projectId}:${resourceId}`);
 	const rootOrNull = async () => { try { return await getRoot(); } catch { return null; } };
 	const projectDir = async (root: FileSystemDirectoryHandle, projectId: string, create = false) => directory(await directory(root, "projects", create), projectId, create);
 	const resourceDir = async (root: FileSystemDirectoryHandle, projectId: string, resourceId: string, create = false) => directory(await directory(await projectDir(root, projectId, create), "assets", create), resourceId, create);
 	const versionsDir = async (root: FileSystemDirectoryHandle, projectId: string, resourceId: string, create = false) => directory(await resourceDir(root, projectId, resourceId, create), "versions", create);
 	const versionDir = async (root: FileSystemDirectoryHandle, projectId: string, resourceId: string, operationId: string, create = false) => directory(await versionsDir(root, projectId, resourceId, create), operationId, create);
 	const api: ProjectAssetStore = {
+		protectPublicationResource(projectId, resourceId) { protectedPublications.add(`${projectId}:${resourceId}`); protectedProjects.add(projectId); },
 		async stage(projectId, resourceId, operationId, file, metadata, options = {}) {
 			const root = await rootOrNull(); if (!root) return { ok: false, reason: "unavailable" };
 			const ref = makeAssetRef(projectId, resourceId, operationId);
@@ -68,7 +73,7 @@ export const createProjectAssetStore = (getRoot: ProjectAssetRootProvider): Proj
 		async cleanup(projectId, resourceId, publishedRef) { return (await api.reconcile(projectId, resourceId, publishedRef)).removed.length; },
 		async reconcile(projectId, resourceId, publishedRef) {
 			const root = await rootOrNull(); const result: ProjectAssetReconcileResult = { kept: [], removed: [] }; if (!root) return result;
-			try { const versions = await versionsDir(root, projectId, resourceId); for await (const [operationId, entry] of entriesOf(versions)) { if (entry.kind !== "directory") continue; const ref = makeAssetRef(projectId, resourceId, operationId); if (ref === publishedRef && await api.validate(ref)) result.kept.push(ref); else { await versions.removeEntry(operationId, { recursive: true }); result.removed.push(ref); } } } catch { /* none */ }
+			try { const versions = await versionsDir(root, projectId, resourceId); for await (const [operationId, entry] of entriesOf(versions)) { if (entry.kind !== "directory") continue; const ref = makeAssetRef(projectId, resourceId, operationId); if (ref === publishedRef && await api.validate(ref)) result.kept.push(ref); else { if (publicationProtected(projectId, resourceId)) break; await versions.removeEntry(operationId, { recursive: true }); result.removed.push(ref); } } } catch { /* none */ }
 			await api.cleanupStaleTemporaryEntries(projectId); return result;
 		},
 		async getFileByRef(ref) { const parsed = parseAssetRef(ref); const root = await rootOrNull(); if (!parsed || !root) return null; try { return await (await (await versionDir(root, parsed.projectId, parsed.resourceId, parsed.operationId)).getFileHandle("original")).getFile(); } catch { return null; } },
@@ -81,7 +86,7 @@ export const createProjectAssetStore = (getRoot: ProjectAssetRootProvider): Proj
 		async has(projectId, resourceId) { return (await api.getFile(projectId, resourceId)) !== null; },
 		async deleteResource(projectId, resourceId) { const root = await rootOrNull(); if (!root) return; try { await (await directory(await projectDir(root, projectId), "assets")).removeEntry(safeSegment(resourceId), { recursive: true }); } catch { /* absent */ } },
 		async deleteProject(projectId) { const root = await rootOrNull(); if (!root) return; try { await (await directory(root, "projects")).removeEntry(safeSegment(projectId), { recursive: true }); } catch { /* absent */ } },
-		async cleanupStaleTemporaryEntries(projectId) { const root = await rootOrNull(); if (!root) return 0; let removed = 0; for (const name of ["tmp", "staging"]) try { const dir = await directory(await projectDir(root, projectId), name); for await (const [entry] of entriesOf(dir)) { await dir.removeEntry(entry, { recursive: true }); removed += 1; } } catch { /* absent */ } return removed; },
+		async cleanupStaleTemporaryEntries(projectId) { const root = await rootOrNull(); if (!root) return 0; let removed = 0; for (const name of ["tmp", "staging"]) try { const dir = await directory(await projectDir(root, projectId), name); for await (const [entry] of entriesOf(dir)) { if (protectedProjects.has(projectId)) break; await dir.removeEntry(entry, { recursive: true }); removed += 1; } } catch { /* absent */ } return removed; },
 		async diagnostics() { const root = await rootOrNull(); if (!root) return { available: false, committedAssets: 0, staleTemporaryEntries: 0 }; let committedAssets = 0; let staleTemporaryEntries = 0; try { for await (const [, project] of entriesOf(await directory(root, "projects"))) { if (project.kind !== "directory") continue; for (const name of ["tmp", "staging"]) try { for await (const _ of entriesOf(await directory(project as FileSystemDirectoryHandle, name))) staleTemporaryEntries += 1; } catch { /* absent */ } try { for await (const [, resource] of entriesOf(await directory(project as FileSystemDirectoryHandle, "assets"))) if (resource.kind === "directory" && await readJson(resource as FileSystemDirectoryHandle, "manifest.json")) committedAssets += 1; } catch { /* absent */ } } } catch { /* empty */ } return { available: true, committedAssets, staleTemporaryEntries }; },
 	}; return api;
 };

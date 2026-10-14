@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createNodeAssetRegistry,
 	type NodeAssetRegistry,
@@ -389,9 +389,11 @@ describe("desktop executors", () => {
 	it("restores media for a resource through the shared recovery executor", async () => {
 		const { fake, executors } = start();
 		const missing = await registry.register(path.join(tempDir, "gone.mp4"));
+		const restoreSnapshot = { resourceId: "resource-1", projectId: "project-1", assetStorageKind: "linked", assetRef: null, sourceKind: "local-asset", sourceRef: missing.assetId, handleRef: null, publicationSequence: 1 };
 
 		executors.requestMediaRecovery({
 			taskId: "task-1",
+projectId: "project-1", attemptId: "attempt-1", runtimeHandleId: null,
 			resourceId: "resource-1",
 			operationId: "restore:1:resource-1",
 			bootId: "1",
@@ -400,12 +402,48 @@ describe("desktop executors", () => {
 			requiredSourceEnd: 2,
 			sourceKind: "local-asset",
 			sourceRef: missing.assetId,
+			restoreSnapshot,
 		});
 		const marked = await fake.next((d) => d.actionName === "recordAutomaticMediaRecovery");
 
 		expect(marked.scopeNodeId).toBe("resource-1");
-		expect(marked.payload).toMatchObject({ availability: "unavailable", originalAccess: "missing" });
+		expect(marked.payload).toEqual({ availability: "unavailable", originalAccess: "missing", restoreSnapshot, updatedAt: 1 });
+		expect(marked.payload.restoreSnapshot).toBe(restoreSnapshot);
+		executors.requestMediaRecovery({ taskId: "task-legacy", projectId: "project-1", resourceId: "resource-legacy", operationId: "restore:legacy", attemptId: "attempt-legacy", bootId: "legacy", runtimeHandleId: null, intent: "restore", original: { kind: "video", duration: 2 }, requiredSourceEnd: 2, sourceKind: "local-asset", sourceRef: missing.assetId });
+		const legacy = await fake.next((d) => d.actionName === "recordAutomaticMediaRecovery" && d.scopeNodeId === "resource-legacy");
+		expect(legacy.scopeNodeId).toBe("resource-legacy");
+		expect(legacy.payload).toEqual({ availability: "unavailable", originalAccess: "missing", updatedAt: 1 });
 		expect(failed).toEqual([]);
+	});
+
+	it("N1 acknowledges the captured native asset through a semantic full-tuple result, never technical ACK", async () => {
+		const asset = await registry.register(clipPath);
+		const resolve = vi.spyOn(registry, "resolve");
+		const { fake, executors } = start();
+		const tuple = { projectId: "project-native", resourceId: "resource-native", taskId: "task-native", operationId: "operation-native", attemptId: "attempt-native", bootId: "boot-native", runtimeHandleId: null };
+		executors.requestMediaRecovery({ ...tuple, mode: "commit", sourceKind: "local-asset", sourceRef: asset.assetId, candidateMetadata: { kind: "video", duration: 2, width: 320, height: 240 }, candidateFingerprint: "fp-native", candidateFingerprintVersion: "v1", transferSnapshot: { duration: 2 } });
+		const completion = await fake.next((d) => d.actionName === "completePublication");
+		const proposal = completion.payload as Record<string, unknown>;
+		const pointer = proposal.pointer as Record<string, unknown>;
+		expect(pointer).toMatchObject({ sourceKind: "local-asset", sourceRef: asset.assetId, url: "/asset/" + asset.assetId });
+		expect(proposal.candidateFileMetadata).toMatchObject({ size: 64, mime: "video/mp4" });
+		expect(fake.dispatches.filter((d) => d.actionName === "recordPublicationBindingResult")).toEqual([]);
+		const resolvedAtDispatch = resolve.mock.calls.length;
+		const decision = { ...proposal, kind: "accepted", sequence: 1, previousAcceptedIdentityAndRefs: null, acceptedResource: { projectId: tuple.projectId, resourceId: tuple.resourceId, name: "native name", kind: "video", status: "ready", source: { kind: "local" }, data: { status: "ready" }, ...pointer, ...(proposal.candidateFileMetadata as object) } };
+		executors.publishMediaPublicationDecision({ decision, bindingEligibility: "current" });
+		const result = await fake.next((d) => d.actionName === "recordPublicationBindingResult");
+		expect(result.payload).toMatchObject({ ...tuple, sequence: 1, outcome: "installed", candidateFingerprint: "fp-native", candidateFingerprintVersion: "v1" });
+		expect(resolve).toHaveBeenCalledTimes(resolvedAtDispatch);
+		expect(fake.dispatches.filter((d) => d.actionName === "completePublication")).toHaveLength(1);
+		await executors.dispose(); resolve.mockRestore();
+	});
+	it("N1 ignores late native acceptance after disposal", async () => {
+		const asset = await registry.register(clipPath); const { fake, executors } = start();
+		executors.requestMediaRecovery({ projectId: "p", resourceId: "r", taskId: "t", operationId: "o", attemptId: "a", bootId: "b", runtimeHandleId: null, mode: "commit", sourceKind: "local-asset", sourceRef: asset.assetId, candidateMetadata: { kind: "video", duration: 2 }, candidateFingerprint: null, candidateFingerprintVersion: null, transferSnapshot: { duration: 2 } });
+		const completion = await fake.next((d) => d.actionName === "completePublication"); await executors.dispose();
+		const p = completion.payload; const pointer = p.pointer as object;
+		executors.publishMediaPublicationDecision({ decision: { ...p, kind: "accepted", sequence: 1, previousAcceptedIdentityAndRefs: null, acceptedResource: { resourceId: "r", projectId: "p", name: "native", kind: "video", source: {}, data: {}, status: "ready", ...pointer, ...(p.candidateFileMetadata as object) } }, bindingEligibility: "current" });
+		expect(fake.dispatches.filter((d) => d.actionName === "recordPublicationBindingResult")).toEqual([]);
 	});
 
 	it("reports an executor failure instead of throwing into the runtime", async () => {

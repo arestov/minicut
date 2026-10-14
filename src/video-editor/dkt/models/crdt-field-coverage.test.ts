@@ -193,6 +193,8 @@ const MODEL_CASES: ModelCase[] = [
 				data: "effect-runtime",
 				timelineAddRequest: "effect-runtime",
 				doneBoot: "effect-runtime",
+				localPublicationSequence: "effect-runtime",
+				localAcceptedPublication: "effect-runtime",
 				assetStorageKind: "crdt",
 				assetRef: "crdt",
 				contentFingerprint: "crdt",
