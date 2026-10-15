@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createSignal } from "solid-js";
 import { createTestRoot } from "@gpuix/solid/testing";
 import { Slider } from "./Slider";
-const mount = (noBounds = false) => {
+const mount = (mode: "native" | "null" | number = "native") => {
 	const root = createTestRoot();
-	if (noBounds)
-		root.renderer.getElementBounds = () => null;
+ const actualBounds = root.renderer.getElementBounds.bind(root.renderer);
+ root.renderer.getElementBounds = id => { const bounds = actualBounds(id); return mode === "null" ? null : bounds && typeof mode === "number" ? { ...bounds, width: mode } : bounds; };
 	const [value, setValue] = createSignal(50);
 	const [owner, setOwner] = createSignal("a");
 	const [disabled, setDisabled] = createSignal(false);
@@ -18,9 +18,21 @@ const mount = (noBounds = false) => {
 	const point = (t: number) => { const b = bounds(); return { x: b.x + 5 + t * (b.width - 10), y: b.y + b.height / 2 }; };
 	const click = (t: number, button = 0) => { const p = point(t); root.renderer.nativeSimulateClick(p.x, p.y, button); };
 	const flush = () => root.flushSync(() => { });
-	return { root, value, setValue, setOwner, setDisabled, values, element, bounds, point, click, flush };
+	return { root, value, setValue, setOwner, setDisabled, values, element, actualBounds: () => actualBounds(element().id)!, bounds, point, click, flush };
 };
 describe("Slider", () => {
+ for (const width of [0, 10]) test(`width ${width} native bounds never invent a sample`, () => {
+  const v = mount(width);
+  const bounds = v.actualBounds();
+  const x = bounds.x + 3;
+  const y = bounds.y + bounds.height / 2;
+  v.root.renderer.nativeSimulateMouseDown(x, y);
+  v.root.renderer.nativeSimulateMouseMove(bounds.x + 7, y, 0);
+  v.root.renderer.nativeSimulateMouseUp(bounds.x + 7, y);
+  expect(v.values).toEqual([]);
+  expect(v.value()).toBe(50);
+  v.root.unmount();
+ });
 	test("uses window bounds, rounds steps, reaches endpoints and echoes canonical text", () => {
 		const v = mount();
 		expect(v.bounds().x).toBeGreaterThan(0);
@@ -91,8 +103,8 @@ describe("Slider", () => {
 		expect(v.element().customProps?.tabIndex).toBe(-1);
 		v.root.unmount();
 	});
-	test("null and unusable native bounds never invent a sample", () => {
-		const v = mount(true);
+	test("null native bounds never invent a sample", () => {
+		const v = mount("null");
 		v.root.renderer.nativeSimulateMouseDown(100, 70);
 		expect(v.values).toEqual([]);
 		v.root.unmount();
