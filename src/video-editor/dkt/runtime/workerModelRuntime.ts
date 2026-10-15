@@ -388,6 +388,8 @@ export const createMiniCutDktWorkerModelRuntime = (
 
 	const runtime = createMiniCutDktRuntime({
 		enabled: true,
+		// This authority outlives its page connections; dispose owns storage close.
+		keepStorageOpenOnDisconnect: true,
 		crdt: enableCrdtTestHarness
 			? {
 					enabled: true,
