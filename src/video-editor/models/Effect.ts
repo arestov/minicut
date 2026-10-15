@@ -7,6 +7,7 @@ import {
 	reduceEffectKindAction,
 	reduceEffectNameAction,
 	reduceEffectParamsAction,
+	reducePatchEffectParamsAction,
 	reduceSetEffectProject,
 } from "./Effect/actions";
 import { defaultEffectAttrs } from "./Effect/defaults";
@@ -126,6 +127,14 @@ export const Effect = model({
 				params: ["params"],
 			},
 			fn: [["$noop"] as const, (payload: unknown, noop: unknown) => reduceEffectParamsAction(payload) ?? noop],
+		},
+		patchEffectParams: {
+			to: { params: ["params"] },
+			fn: [
+				["$noop", "params"] as const,
+				(payload: unknown, noop: unknown, params: unknown) =>
+					reducePatchEffectParamsAction(payload, params) ?? noop,
+			],
 		},
 		setEffectColor: {
 			to: {

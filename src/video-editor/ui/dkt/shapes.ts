@@ -87,6 +87,7 @@ const clipShape = defineShape({
 		"opacity",
 		"transform",
 		"mediaKind",
+		"$meta$rels$colorCorrectionEffects$exists",
 		"$meta$aggregates$crdt$clipTiming$open_conflicts_count",
 		"$meta$aggregates$crdt$clipTiming$last_conflict_id",
 		"$meta$aggregates$crdt$clipTiming$last_resolution_error",
@@ -104,6 +105,7 @@ const clipShape = defineShape({
 	},
 	many: {
 		effects: effectShape,
+		colorCorrectionEffects: effectShape,
 		crdtConflicts: conflictShape,
 	},
 });

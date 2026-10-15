@@ -1,5 +1,5 @@
 import { Palette, SlidersHorizontal } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScopeContext } from "../../../dkt-react-sync/context/ScopeContext";
 import { useActions } from "../../../dkt-react-sync/hooks/useActions";
 import { useAttrs } from "../../../dkt-react-sync/hooks/useAttrs";
@@ -67,11 +67,11 @@ const ColorCorrectionControls = ({
 		if (!effectId) {
 			return;
 		}
-		const nextParams: Record<string, unknown> = { ...colorParams };
+		const nextParams: Record<string, unknown> = {};
 		for (const [key, value] of Object.entries(params)) {
 			nextParams[key] = typeof value === "number" ? { value } : value;
 		}
-		dispatch("setEffectParams", { params: { ...nextParams } });
+		dispatch("patchEffectParams", { params: nextParams });
 	};
 
 	const updateParam = (key: PrimaryColorParam, value: number): void => {
@@ -299,58 +299,19 @@ const ColorCorrectionControls = ({
 	);
 };
 
-const ColorCorrectionEffectSlot = ({
-	effectNodeId,
-	mediaElementRegistry,
-	onPresenceChange,
-}: {
-	effectNodeId: string;
-	mediaElementRegistry?: PreviewMediaElementRegistry;
-	onPresenceChange: (effectNodeId: string, present: boolean) => void;
-}) => {
-	const attrs = useAttrs(["kind"]) as { kind?: unknown };
-	const isColorCorrection = attrs.kind === "color-correction";
-
-	useEffect(() => {
-		onPresenceChange(effectNodeId, isColorCorrection);
-		return () => onPresenceChange(effectNodeId, false);
-	}, [effectNodeId, isColorCorrection, onPresenceChange]);
-
-	return isColorCorrection ? (
-		<ColorCorrectionControls mediaElementRegistry={mediaElementRegistry} />
-	) : null;
-};
-
 export const InspectorColorTabPanel = ({
 	mediaElementRegistry,
 }: {
 	mediaElementRegistry?: PreviewMediaElementRegistry;
 }) => {
 	const clipDispatch = useActions();
-	const clipAttrs = useAttrs(["color"]) as ClipRenderAttrs;
-	const effectScopes = useMany("effects");
-	const [colorCorrectionEffectIds, setColorCorrectionEffectIds] = useState<
-		ReadonlySet<string>
-	>(() => new Set());
+	const clipAttrs = useAttrs([
+		"color",
+		"$meta$rels$colorCorrectionEffects$exists",
+	]) as ClipRenderAttrs & { $meta$rels$colorCorrectionEffects$exists?: boolean };
+	const effectScopes = useMany("colorCorrectionEffects");
 	const color = String(clipAttrs.color ?? "#2563eb");
-	const hasColorCorrectionEffect = colorCorrectionEffectIds.size > 0;
-	const handleColorCorrectionPresence = useCallback(
-		(effectNodeId: string, present: boolean) => {
-			setColorCorrectionEffectIds((current) => {
-				const next = new Set(current);
-				if (present) {
-					next.add(effectNodeId);
-				} else {
-					next.delete(effectNodeId);
-				}
-				return next.size === current.size &&
-					[...next].every((id) => current.has(id))
-					? current
-					: next;
-			});
-		},
-		[],
-	);
+	const hasColorCorrectionEffect = clipAttrs.$meta$rels$colorCorrectionEffects$exists;
 
 	return (
 		<div
@@ -396,14 +357,12 @@ export const InspectorColorTabPanel = ({
 			>
 				{effectScopes.map((effectScope) => (
 					<ScopeContext.Provider key={effectScope._nodeId} value={effectScope}>
-						<ColorCorrectionEffectSlot
-							effectNodeId={effectScope._nodeId}
+						<ColorCorrectionControls
 							mediaElementRegistry={mediaElementRegistry}
-							onPresenceChange={handleColorCorrectionPresence}
 						/>
 					</ScopeContext.Provider>
 				))}
-				{!hasColorCorrectionEffect ? (
+				{hasColorCorrectionEffect === false ? (
 					<Button
 						type="button"
 						variant="secondary"
