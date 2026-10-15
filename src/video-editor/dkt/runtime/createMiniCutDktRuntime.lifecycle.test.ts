@@ -101,7 +101,7 @@ describe("createMiniCutDktRuntime lifecycle", () => {
 		await expect(runtime.start()).rejects.toThrow("disposed");
 	});
 
-	it("closes storage when the last connection leaves by default (browser worker behaviour)", async () => {
+	it("closes storage when the last connection leaves by default", async () => {
 		const storage = createCountingStorage();
 		const runtime = createMiniCutDktRuntime({
 			enabled: true,

@@ -210,9 +210,8 @@ type CreateMiniCutDktRuntimeOptions = {
 	effectInterfaces?: MiniCutEffectInterfaces;
 	/**
 	 * Keep the storage package open when the last connection is destroyed.
-	 * Hosts that own the runtime for the whole process (Node/Electron/GPUIX)
-	 * set this and close storage through `dispose()`. Defaults to the
-	 * browser worker behaviour: close storage with the last connection.
+	 * Long-lived worker and process hosts set this and close storage through
+	 * `dispose()`. Defaults to closing storage with the last connection.
 	 */
 	keepStorageOpenOnDisconnect?: boolean;
 };
