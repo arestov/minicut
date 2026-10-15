@@ -35,7 +35,7 @@ import { createNativeRenderer, startFrameLoop } from "@gpuix/native/runtime";
 import { RootScope } from "../../../dkt-solid-sync";
 import { AppShell } from "../AppShell";
 import { HostServicesContext } from "../host/hostServices";
-import { ClipInspector } from "../inspector/ClipInspector";
+import { Inspector } from "../inspector/Inspector";
 import { Sidebar } from "../panels/Sidebar";
 import { colors } from "../theme";
 import { Timeline } from "../timeline/Timeline";
@@ -164,7 +164,7 @@ if (host) {
 				<AppShell
 					sidebar={<Sidebar />}
 					timeline={<Timeline />}
-					inspector={<ClipInspector />}
+					inspector={<Inspector />}
 				/>
 			</RootScope>
 		</HostServicesContext.Provider>

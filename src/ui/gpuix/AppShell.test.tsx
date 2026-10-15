@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { AppShell } from "./AppShell";
 import { HostServicesContext } from "./host/hostServices";
-import { ClipInspector } from "./inspector/ClipInspector";
+import { Inspector } from "./inspector/Inspector";
+import { useReviewMode } from "./review/reviewModeState";
 import { Sidebar } from "./panels/Sidebar";
 import { renderWithScenario } from "./test/renderApp";
 import { createSyntheticPreviewSource } from "./preview/syntheticFrameSource";
@@ -72,13 +73,17 @@ describe("AppShell", () => {
 	});
 });
 
+const InspectorFixture = () => {
+ const review = useReviewMode();
+ return <><div testId="fixture-open-review" tabIndex={0} onClick={() => review.open()} style={{ height: 28, width: 100 }}><text>Open review</text></div><Inspector /></>;
+};
 describe("AppShell with inspector, timeline and task progress", () => {
 	test("selecting a clip fills the inspector and an export shows in the status bar", async () => {
 		view = await renderWithScenario("timeline", () => (
 			<AppShell
 				sidebar={<Sidebar />}
 				timeline={<Timeline viewportWidth={() => 600} />}
-				inspector={<ClipInspector />}
+				inspector={<InspectorFixture />}
 			/>
 		));
 		const project = await view.untilOne(view.rootScope, "activeProject", (t) => t !== null);
@@ -99,7 +104,7 @@ describe("AppShell with inspector, timeline and task progress", () => {
 		await view.untilAttr(selected!, "name", (v) => typeof v === "string");
 		view.settle();
 		expect(view.texts()).not.toContain("No clip selected");
-		expect(view.findAll("inspector-opacity-inc")).toHaveLength(1);
+		expect(view.findAll("inspector-panel-edit")).toHaveLength(1);
 
 		await view.runtime.dispatchAndWait("requestProjectExport", { id: "export:test-1" }, null);
 		await view.untilAttr(
@@ -109,8 +114,21 @@ describe("AppShell with inspector, timeline and task progress", () => {
 		);
 		view.settle();
 		expect(view.texts()).toContain("Export queued 0%");
-		// The inspector is unaffected by the export.
-		expect(view.findAll("inspector-opacity-inc")).toHaveLength(1);
+  expect(view.renderer.findByTestId("inspector-header")).toBeDefined();
+  expect(view.renderer.findByTestId("inspector-tabs")).toBeDefined();
+  view.click("inspector-tabs-color");
+  await view.untilAttr(view.rootScope, "activeInspectorTab", value => value === "color");
+  view.settle();
+  expect(view.findAll("inspector-panel-color")).toHaveLength(1);
+  const nameInput = view.renderer.findByTestId("inspector-name")!;
+  view.renderer.nativeSimulateKeystrokes(nameInput.id, "x");
+  view.click("fixture-open-review");
+  view.settle();
+  expect(view.findAll("inspector-header")).toHaveLength(0);
+  view.click("review-close");
+  view.settle();
+  expect(view.findAll("inspector-header")).toHaveLength(1);
+  expect(view.findAll("inspector-panel-color")).toHaveLength(1);
 	});
 });
 
