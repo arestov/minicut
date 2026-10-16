@@ -42,6 +42,21 @@ const eventually = async (
 	}
 };
 
+const revealInspectorTarget = async (tab: "edit" | "color", testId: string) => {
+ const panel = app.getByTestId(`inspector-panel-${tab}`);
+ const target = app.getByTestId(testId);
+ const panelNode = await panel.element();
+ await app.call("scrollTo", { elementId: panelNode.id, x: 0, y: 0 });
+ const initial = await target.bounds(); const bounds = await panel.bounds();
+ await app.call("scrollTo", { elementId: panelNode.id, x: 0, y: -Math.max(0, initial.y - bounds.y - 20) });
+ await eventually(async () => {
+  const current = await target.bounds(); const viewport = await panel.bounds();
+  const x = current.x + current.width / 2; const y = current.y + current.height / 2;
+  return current.width > 0 && current.height > 0 && x >= viewport.x && x <= viewport.x + viewport.width && y >= viewport.y && y <= viewport.y + viewport.height;
+ }, `inspector target ${testId} did not become visible within ${tab} panel`);
+ return target;
+};
+
 const onlyInspectorPanel = async (tab: "edit" | "color" | "audio" | "export") => {
  await app.getByTestId(`inspector-panel-${tab}`).waitFor();
  const panels = (await app.getByType("div").all()).filter(node => node.testId?.startsWith("inspector-panel-"));
@@ -99,17 +114,18 @@ try {
   await app.getByTestId("inspector-name").fill("Intro renamed"); await app.getByTestId("inspector-name").press("enter"); await app.getByText("Intro renamed").waitFor();
   await app.getByTestId("inspector-tabs-edit").click(); await onlyInspectorPanel("edit");
   const before = await app.getByTestId("inspector-trim-end-value").textContent();
-  await app.getByTestId("inspector-trim-end-dec").click();
+  await (await revealInspectorTarget("edit", "inspector-trim-end-dec")).click();
   await eventually(async () => (await app.getByTestId("inspector-trim-end-value").textContent()) !== before, "duration did not change");
-  await app.getByTestId("inspector-trim-end-inc").click();
+  await (await revealInspectorTarget("edit", "inspector-trim-end-inc")).click();
   await eventually(async () => (await app.getByTestId("inspector-trim-end-value").textContent()) === before, "duration did not restore");
-  await app.getByTestId("inspector-opacity").press("home"); await app.getByText("Opacity 0%").waitFor();
-  await app.getByTestId("inspector-opacity").press("end"); await app.getByText("Opacity 100%").waitFor();
+  await (await revealInspectorTarget("edit", "inspector-opacity")).press("home"); await app.getByText("Opacity 0%").waitFor();
+  await (await revealInspectorTarget("edit", "inspector-opacity")).press("end"); await app.getByText("Opacity 100%").waitFor();
+  await app.screenshot({ path: path.join(shots, "inspector-edit.png") });
  });
 
  await check("Color persists label and Before restores on release and automation blur", async () => {
-  await app.getByTestId("inspector-tabs-color").click(); await onlyInspectorPanel("color"); await app.getByTestId("inspector-label-color-16a34a").click();
-  await eventually(async () => (await app.getByTestId("inspector-label-color-preview").element()).style?.backgroundColor === "#16a34a", "label color did not echo");
+  await app.getByTestId("inspector-tabs-color").click(); await onlyInspectorPanel("color"); await (await revealInspectorTarget("color", "inspector-label-color-16a34a")).click();
+  await eventually(async () => (await app.getByTestId("inspector-label-color").element()).customProps?.value === "#16a34a", "label color did not echo");
   await app.getByTestId("inspector-tabs-edit").click(); await app.getByTestId("inspector-tabs-color").click();
   await eventually(async () => (await app.getByTestId("inspector-label-color").element()).customProps?.value === "#16a34a", "label color did not persist");
   await app.getByTestId("inspector-correction-add").click();
