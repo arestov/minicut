@@ -27,6 +27,11 @@ const DICT = [
 	"colorCorrectionEffects",
 	"enabled",
 	"$meta$rels$colorCorrectionEffects$exists",
+	"selectedEntityId",
+	"activeProject",
+	"$meta$rels$activeProject$exists",
+	"$meta$rels$selectedClip$exists",
+	"cursor",
 ] as const;
 const KEY = {
 	title: 1,
@@ -44,8 +49,13 @@ const KEY = {
 	colorCorrectionEffects: 13,
 	enabled: 14,
 	$meta$rels$colorCorrectionEffects$exists: 15,
+	selectedEntityId: 16,
+	activeProject: 17,
+	$meta$rels$activeProject$exists: 18,
+	$meta$rels$selectedClip$exists: 19,
+	cursor: 20,
 } as const;
-type FixtureAttr = Exclude<keyof typeof KEY, "tracks" | "clips" | "selectedClip" | "resource" | "colorCorrectionEffects">;
+type FixtureAttr = Exclude<keyof typeof KEY, "activeProject" | "tracks" | "clips" | "selectedClip" | "resource" | "colorCorrectionEffects">;
 type FixtureAttrs = Partial<Record<FixtureAttr, string | number | null | boolean>>;
 
 const ROOT_NODE_ID = "root";
@@ -63,6 +73,7 @@ export type SkeletonRaceFixture = {
 	deliverClipsRel(trackNodeId: string, clipNodeIds: readonly string[]): void;
 	/** Delivers the root `selectedClip` rel: a node id with no attrs yet. */
 	deliverSelectedClipRel(clipNodeId: string | null): void;
+	deliverActiveProjectRel(projectNodeId: string | null): void;
 	deliverResourceRel(clipNodeId: string, resourceNodeId: string | null): void;
 	deliverColorCorrectionEffectsRel(clipId: string, effectIds: readonly string[]): void;
 	/** Delivers attrs of any node (for example a clip) that had none. */
@@ -146,6 +157,9 @@ export const createSkeletonRaceFixture = (
 		},
 		deliverClipsRel(trackNodeId, clipNodeIds) {
 			emitSync(SYNCR_TYPES.UPDATE, [1, trackNodeId, KEY.clips, [...clipNodeIds]]);
+		},
+		deliverActiveProjectRel(projectNodeId) {
+			emitSync(SYNCR_TYPES.UPDATE, [1, ROOT_NODE_ID, KEY.activeProject, projectNodeId]);
 		},
 		deliverSelectedClipRel(clipNodeId) {
 			emitSync(SYNCR_TYPES.UPDATE, [
