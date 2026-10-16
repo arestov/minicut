@@ -11,6 +11,8 @@ import { InspectorAudioTabPanel } from "./InspectorAudioTabPanel";
 
 import { InspectorColorTabPanel } from "./InspectorColorTabPanel";
 
+import { InspectorExportTabPanel } from "./InspectorExportTabPanel";
+
 const options = inspectorTabs.map(({ id, label }) => ({ value: id, label }));
 const Empty = () => <div style={{ padding: 12 }}><text testId="inspector-empty" style={{ color: colors.textMuted, fontSize: 12 }}>No clip selected</text></div>;
 
@@ -32,6 +34,7 @@ export const Inspector = () => {
       <Switch fallback={<text>{options.find(option => option.value === activeTab())!.label}</text>}>
        <Match when={activeTab() === "edit"}><InspectorEditTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
        <Match when={activeTab() === "color"}><InspectorColorTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
+       <Match when={activeTab() === "export"}><InspectorExportTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} exportProgress={attrs.exportProgress()} /></Match>
        <Match when={activeTab() === "audio"}><InspectorAudioTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
       </Switch>
      </div>
