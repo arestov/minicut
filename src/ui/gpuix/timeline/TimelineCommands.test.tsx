@@ -146,15 +146,20 @@ describe("TimelineCommands", () => {
  test("boundary and outside cursor Split leaves public clip membership and timing unchanged", async () => {
   const { v, driver, tracks, clips, select, read } = await mount();
   await select(clips[1]);
+  await v.untilAttr(v.rootScope, "activeInspectorTab", x => x === "edit");
+  if (typeof v.runtime.waitForRuntimeSettled !== "function") throw new Error("runtime idle synchronization is required for boundary Split");
   const before = read(clips[1]);
   const members = v.runtime.readMany(tracks[0], "clips").map(x => x._nodeId);
-  for (const cursor of [0, 4, 10.5, 12]) {
+  for (const [cursor, tab] of [[0, "audio"], [4, "edit"], [10.5, "audio"], [12, "edit"]] as const) {
    await driver.run("commitSeek", { cursor });
    await v.untilAttr(v.rootScope, "cursor", x => x === cursor);
    v.settle(); v.click("timeline-split");
-   // Public completion step after the native command, then independent public readback.
-   await driver.run("setActiveInspectorTab", "edit");
-   expect((await v.untilMany(tracks[0], "clips", () => true)).map(x => x._nodeId)).toEqual(members);
+   // Idle only synchronizes; a changed delivered marker and public readback own the proof.
+   await v.runtime.waitForRuntimeSettled();
+   await driver.run("setActiveInspectorTab", tab);
+   await v.untilAttr(v.rootScope, "activeInspectorTab", x => x === tab);
+   v.settle();
+   expect(v.runtime.readMany(tracks[0], "clips").map(x => x._nodeId)).toEqual(members);
    expect(read(clips[1])).toEqual(before);
   }
  });
