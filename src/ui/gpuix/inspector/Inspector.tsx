@@ -9,6 +9,8 @@ import { InspectorClipHeader, type InspectorTrackPosition } from "./InspectorCli
 import { InspectorEditTabPanel } from "./InspectorEditTabPanel";
 import { InspectorAudioTabPanel } from "./InspectorAudioTabPanel";
 
+import { InspectorColorTabPanel } from "./InspectorColorTabPanel";
+
 const options = inspectorTabs.map(({ id, label }) => ({ value: id, label }));
 const Empty = () => <div style={{ padding: 12 }}><text testId="inspector-empty" style={{ color: colors.textMuted, fontSize: 12 }}>No clip selected</text></div>;
 
@@ -29,6 +31,7 @@ export const Inspector = () => {
      <div role="tabpanel" aria-label={`${options.find(option => option.value === activeTab())!.label} inspector`} testId={`inspector-panel-${activeTab()}`} style={{ padding: 10, display: "flex", flexDirection: "column", flexGrow: 1, minHeight: 0, overflowY: "scroll" }}>
       <Switch fallback={<text>{options.find(option => option.value === activeTab())!.label}</text>}>
        <Match when={activeTab() === "edit"}><InspectorEditTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
+       <Match when={activeTab() === "color"}><InspectorColorTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
        <Match when={activeTab() === "audio"}><InspectorAudioTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
       </Switch>
      </div>

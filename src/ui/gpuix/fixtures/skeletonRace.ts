@@ -24,6 +24,9 @@ const DICT = [
 	"color",
 	"mediaKind",
 	"activeInspectorTab",
+	"colorCorrectionEffects",
+	"enabled",
+	"$meta$rels$colorCorrectionEffects$exists",
 ] as const;
 const KEY = {
 	title: 1,
@@ -38,9 +41,12 @@ const KEY = {
 	color: 10,
 	mediaKind: 11,
 	activeInspectorTab: 12,
+	colorCorrectionEffects: 13,
+	enabled: 14,
+	$meta$rels$colorCorrectionEffects$exists: 15,
 } as const;
-type FixtureAttr = Exclude<keyof typeof KEY, "tracks" | "clips" | "selectedClip" | "resource">;
-type FixtureAttrs = Partial<Record<FixtureAttr, string | number | null>>;
+type FixtureAttr = Exclude<keyof typeof KEY, "tracks" | "clips" | "selectedClip" | "resource" | "colorCorrectionEffects">;
+type FixtureAttrs = Partial<Record<FixtureAttr, string | number | null | boolean>>;
 
 const ROOT_NODE_ID = "root";
 
@@ -58,6 +64,7 @@ export type SkeletonRaceFixture = {
 	/** Delivers the root `selectedClip` rel: a node id with no attrs yet. */
 	deliverSelectedClipRel(clipNodeId: string | null): void;
 	deliverResourceRel(clipNodeId: string, resourceNodeId: string | null): void;
+	deliverColorCorrectionEffectsRel(clipId: string, effectIds: readonly string[]): void;
 	/** Delivers attrs of any node (for example a clip) that had none. */
 	deliverAttrs(nodeId: string, attrs: FixtureAttrs): void;
 	/** Delivers attrs of every track in one sync update. */
@@ -147,6 +154,9 @@ export const createSkeletonRaceFixture = (
 				KEY.selectedClip,
 				clipNodeId === null ? null : clipNodeId,
 			]);
+		},
+		deliverColorCorrectionEffectsRel(clipId, effectIds) {
+			emitSync(SYNCR_TYPES.UPDATE, [1, clipId, KEY.colorCorrectionEffects, [...effectIds]]);
 		},
 		deliverResourceRel(clipNodeId, resourceNodeId) {
 			emitSync(SYNCR_TYPES.UPDATE, [1, clipNodeId, KEY.resource, resourceNodeId]);
