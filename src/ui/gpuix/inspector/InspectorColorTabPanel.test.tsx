@@ -208,6 +208,30 @@ test("reset and each shared basic preset patch canonical params without enabling
  }
 });
 
+test("Before label drag keeps native hold without text selection", async () => {
+ const { v, held } = await mount();
+ const control = v.renderer.findByTestId(`inspector-before-${held._nodeId}`)!;
+ const panel = v.renderer.findByTestId("inspector-panel-color")!;
+ v.renderer.scrollTo(panel.id, 0, 0); v.settle();
+ const initial = v.renderer.getElementBounds(control.id)!;
+ const panelBounds = v.renderer.getElementBounds(panel.id)!;
+ v.renderer.scrollTo(panel.id, 0, -Math.max(0, initial.y - panelBounds.y - 20)); v.settle();
+ const label = v.renderer.findByTestId(`inspector-before-label-${held._nodeId}`)!;
+ const bounds = v.renderer.getElementBounds(label.id)!;
+ expect(bounds.width).toBeGreaterThan(4); expect(bounds.height).toBeGreaterThan(0);
+ const y = bounds.y + bounds.height / 2;
+ v.renderer.clearSelection();
+ v.renderer.nativeSimulateMouseDown(bounds.x + 2, y);
+ await v.untilAttr(held, "enabled", x => x === false); v.settle();
+ expect(v.texts()).toContain("Before held");
+ v.renderer.nativeSimulateMouseMove(bounds.x + bounds.width - 2, y, 0); v.settle();
+ expect(v.renderer.getSelectedText() ?? "").toBe("");
+ expect(v.texts()).toContain("Before held");
+ await v.untilAttr(held, "enabled", x => x === false);
+ v.renderer.nativeSimulateMouseUp(bounds.x + bounds.width - 2, y);
+ await v.untilAttr(held, "enabled", x => x === true); v.settle();
+ expect(v.texts()).toContain("Press and hold: Before");
+});
 test("Before mouse release, leave and real blur restore canonical enabled", async () => {
  const { v, held, driver } = await mount();
  for (const finish of ["up", "leave", "blur"]) {

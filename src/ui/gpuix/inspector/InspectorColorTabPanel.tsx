@@ -5,6 +5,7 @@ import { createDispatchFor, Many, useActions, useAttrs, useScope, useScopeRuntim
 import { ColorField } from "../controls/ColorField";
 import { Slider } from "../controls/Slider";
 import { Button } from "../controls/Button";
+import { colors, metrics } from "../theme";
 import { colorGradePresets } from "../../../video-editor/components/inspector/types";
 
 const fields = [
@@ -54,7 +55,15 @@ const CorrectionControls = (props: { isCurrentOwner: () => boolean }) => {
    for (const [key, value] of Object.entries(preset.params)) if (typeof value === "number") patch[key] = { value };
    dispatch("patchEffectParams", { params: patch });
   }}><text>{preset.label}</text></Button>}</For></div>
-  <div ref={ref => { element = ref; }} role="button" aria-label="Before" aria-selected={pressed()} tabIndex={ready() ? 0 : -1} testId={`inspector-before-${effectId}`} style={{ height: 28, display: "flex", alignItems: "center" }} onMouseDown={event => { if (event.button == null || event.button === 0) begin(); }} onMouseUp={finish} onMouseLeave={finish} onBlur={finish} onKeyDown={event => { if (event.key === "enter" || event.key === "space") begin(); }} onKeyUp={event => { if (event.key === "enter" || event.key === "space") finish(); }}><text>{pressed() ? "Before held" : "Press and hold: Before"}</text></div>
+  <div ref={ref => { element = ref; }} role="button" aria-label="Before" aria-selected={pressed()} tabIndex={ready() ? 0 : -1} testId={`inspector-before-${effectId}`} style={{
+   display: "flex", alignItems: "center", justifyContent: "center", height: 28, minWidth: 28,
+   paddingLeft: 10, paddingRight: 10, borderRadius: metrics.radius,
+   backgroundColor: pressed() ? colors.accent : colors.control,
+   color: !ready() ? colors.textMuted : colors.text, fontSize: metrics.fontSize,
+   opacity: !ready() ? 0.5 : 1, cursor: !ready() ? "default" : "pointer", userSelect: "none",
+   hover: !ready() ? undefined : { backgroundColor: pressed() ? colors.accent : colors.controlHover },
+   active: !ready() ? undefined : { backgroundColor: colors.controlActive },
+  }} onMouseDown={event => { if (event.button == null || event.button === 0) begin(); }} onMouseUp={finish} onMouseLeave={finish} onBlur={finish} onKeyDown={event => { if (event.key === "enter" || event.key === "space") begin(); }} onKeyUp={event => { if (event.key === "enter" || event.key === "space") finish(); }}><text testId={`inspector-before-label-${effectId}`}>{pressed() ? "Before held" : "Press and hold: Before"}</text></div>
  </div>;
 };
 export const InspectorColorTabPanel = (props: { isCurrentOwner: () => boolean }) => {
