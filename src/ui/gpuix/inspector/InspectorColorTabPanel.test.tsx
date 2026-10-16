@@ -101,6 +101,26 @@ test("Before hold then deleteSelectedClip cleanup preserves public ownership abs
 const key = (v: View, id: string, keys: string) => v.renderer.nativeSimulateKeystrokes(v.renderer.findByTestId(id)!.id, keys);
 const scalarParam = (params: unknown, field: string) => (params as Record<string, { value?: number }> | null)?.[field]?.value;
 
+test("native swatch click updates public Clip color and painted HEX without locator props", async () => {
+ const { v, clips } = await mount();
+ await v.untilAttr(clips[0], "color", x => x === "#2563eb"); v.settle();
+ v.click("inspector-label-color-16a34a");
+ await v.untilAttr(clips[0], "color", x => x === "#16a34a"); v.settle();
+ expect(v.renderer.findByTestId("inspector-label-color")!.customProps?.value).toBe("#16a34a");
+ expect(v.runtime.getSnapshot().runtimeError).toBeNull();
+ expect(v.renderer.getPaintedText()).toContain("#16a34a");
+ type AutomationNode = { type: string; testId?: string; style?: unknown; customProps?: unknown; children?: AutomationNode[] };
+ const inputs: AutomationNode[] = [];
+ const visit = (node: AutomationNode) => {
+  if (node.testId === "inspector-label-color") inputs.push(node);
+  for (const child of node.children ?? []) visit(child);
+ };
+ visit(JSON.parse(v.renderer.getAutomationTree()) as AutomationNode);
+ expect(inputs).toHaveLength(1);
+ expect(inputs[0].type).toBe("input");
+ expect(inputs[0].style).toBeUndefined();
+ expect(inputs[0].customProps).toBeUndefined();
+});
 test("label HEX and every swatch write Clip color and echo in header", async () => {
  const { v, clips } = await mount();
  const input = () => v.renderer.findByTestId("inspector-label-color")!;

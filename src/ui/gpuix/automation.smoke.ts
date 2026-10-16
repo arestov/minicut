@@ -125,9 +125,13 @@ try {
 
  await check("Color persists label and Before restores on release and automation blur", async () => {
   await app.getByTestId("inspector-tabs-color").click(); await onlyInspectorPanel("color"); await (await revealInspectorTarget("color", "inspector-label-color-16a34a")).click();
-  await eventually(async () => (await app.getByTestId("inspector-label-color").element()).customProps?.value === "#16a34a", "label color did not echo");
+  await revealInspectorTarget("color", "inspector-label-color");
+  await eventually(async () => (await app.call("getPaintedText", {})).text.includes("#16a34a"), "label color did not echo");
+  await app.screenshot({ path: path.join(shots, "inspector-label-color.png") });
   await app.getByTestId("inspector-tabs-edit").click(); await app.getByTestId("inspector-tabs-color").click();
-  await eventually(async () => (await app.getByTestId("inspector-label-color").element()).customProps?.value === "#16a34a", "label color did not persist");
+  await revealInspectorTarget("color", "inspector-label-color");
+  await eventually(async () => (await app.call("getPaintedText", {})).text.includes("#16a34a"), "label color did not persist");
+  await app.screenshot({ path: path.join(shots, "inspector-label-color-remount.png") });
   await app.getByTestId("inspector-correction-add").click();
   await eventually(async () => (await app.getByType("div").all()).filter(node => node.testId?.startsWith("inspector-before-")).length === 1, "expected one Before target");
   const targets = (await app.getByType("div").all()).filter(node => node.testId?.startsWith("inspector-before-"));
