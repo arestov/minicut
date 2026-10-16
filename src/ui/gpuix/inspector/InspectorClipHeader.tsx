@@ -1,6 +1,6 @@
 import { createEffect, createSignal, Show } from "solid-js";
 import { ScopeContext, useActions, useAttrs, useOne } from "../../../dkt-solid-sync";
-import { formatSeconds } from "../../../video-editor/components/format";
+import { formatInspectorTime } from "./format";
 import { colors, metrics } from "../theme";
 
 export type InspectorTrackPosition = { trackName: string; ordinal: number };
@@ -32,6 +32,6 @@ export const InspectorClipHeader = (props: { trackPosition: InspectorTrackPositi
  return <div testId="inspector-header" style={{ display: "flex", flexDirection: "column", padding: 10, gap: 6 }}>
   <Show when={resource()} keyed fallback={<Preview name={name()} color={color()} mediaKind={attrs.mediaKind()} />}>{scope => <ScopeContext.Provider value={() => scope}><ResourcePreview name={name()} color={color()} mediaKind={attrs.mediaKind()} /></ScopeContext.Provider>}</Show>
   <input testId="inspector-name" aria-label="Clip name" value={shown()} style={{ height: 28, color: colors.text, backgroundColor: colors.control, borderRadius: metrics.radius, paddingLeft: 8, fontSize: 12 }} onChange={event => { if (!props.isCurrentOwner()) { reset(); return; } draft = event.value ?? ""; setShown(draft); }} onSubmit={commit} onBlur={commit} onKeyDown={event => { if (event.key === "escape") reset(); }} />
-  <text style={{ color: colors.textMuted, fontSize: 11 }}>{`Clip ${props.trackPosition?.ordinal ?? 1} - ${props.trackPosition?.trackName ?? "Track"} - ${formatSeconds(Number(attrs.start()))} - Duration ${formatSeconds(Number(attrs.duration()))}`}</text>
+  <text style={{ color: colors.textMuted, fontSize: 11 }}>{`Clip ${props.trackPosition?.ordinal ?? 1} - ${props.trackPosition?.trackName ?? "Track"} - ${formatInspectorTime(attrs.start())} - Duration ${formatInspectorTime(attrs.duration())}`}</text>
  </div>;
 };

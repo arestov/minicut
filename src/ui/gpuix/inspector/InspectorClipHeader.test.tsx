@@ -1,6 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { renderWithScenario } from "../test/renderApp";
 import { Inspector } from "./Inspector";
+import { createTestRoot } from "@gpuix/solid/testing";
+import { RootScope } from "../../../dkt-solid-sync";
+import { createSkeletonRaceFixture } from "../fixtures/skeletonRace";
 let view: Awaited<ReturnType<typeof renderWithScenario>> | null = null;
 afterEach(() => { view?.destroy(); view = null; });
 const mount = async () => {
@@ -85,4 +88,29 @@ test("selection replacement and unmount discard drafts without editing either cl
  replace("Discard");
  v.root.unmount();
  expect(await v.untilAttr(clips[1], "name", x => x === secondName)).toBe(secondName);
+});
+
+test("header preserves unavailable timing until each finite numeric attr arrives", () => {
+ const current = createSkeletonRaceFixture([]);
+ const root = createTestRoot();
+ const summary = (start: string, duration: string) => `Clip 1 - Track - ${start} - Duration ${duration}`;
+ try {
+  root.render(() => <div style={{ display: "flex", width: 400, height: 600 }}><RootScope runtime={current.runtime}><Inspector /></RootScope></div>);
+  root.flushSync(() => { current.deliverSelectedClipRel("clip"); current.deliverAttrs("clip", { name: "Named before timing" }); });
+  expect(root.renderer.findByTestId("inspector-name")!.customProps?.value).toBe("Named before timing");
+  expect(root.renderer.getAllText()).toContain(summary("Unavailable", "Unavailable"));
+  expect(root.renderer.getAllText().some(text => text.includes("NaNs"))).toBe(false);
+  root.flushSync(() => current.deliverAttrs("clip", { start: 0 }));
+  expect(root.renderer.getAllText()).toContain(summary("0.0s", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { duration: 4 }));
+  expect(root.renderer.getAllText()).toContain(summary("0.0s", "4.0s"));
+  root.flushSync(() => current.deliverAttrs("clip", { start: null, duration: null }));
+  expect(root.renderer.getAllText()).toContain(summary("Unavailable", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { start: "0", duration: "4" }));
+  expect(root.renderer.getAllText()).toContain(summary("Unavailable", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { start: 1 }));
+  expect(root.renderer.getAllText()).toContain(summary("1.0s", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { duration: 5 }));
+  expect(root.renderer.getAllText()).toContain(summary("1.0s", "5.0s"));
+ } finally { root.unmount(); current.destroy(); }
 });
