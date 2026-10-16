@@ -42,6 +42,11 @@ const eventually = async (
 	}
 };
 
+const onlyInspectorPanel = async (tab: "edit" | "color" | "audio" | "export") => {
+ await app.getByTestId(`inspector-panel-${tab}`).waitFor();
+ const panels = (await app.getByType("div").all()).filter(node => node.testId?.startsWith("inspector-panel-"));
+ if (panels.length !== 1 || panels[0].testId !== `inspector-panel-${tab}`) throw new Error(`inactive inspector content remained mounted at ${tab}`);
+};
 let failures = 0;
 const check = async (name: string, fn: () => Promise<void>) => {
 	try {
@@ -89,7 +94,59 @@ try {
 		);
 	});
 
-	await app.screenshot({ path: path.join(shots, "timeline-final.png") });
+	 await check("inspector edits canonical Clip name, trim and opacity", async () => {
+  await app.getByText("Intro").click(); await app.getByTestId("inspector-name").waitFor();
+  await app.getByTestId("inspector-name").fill("Intro renamed"); await app.getByTestId("inspector-name").press("enter"); await app.getByText("Intro renamed").waitFor();
+  await app.getByTestId("inspector-tabs-edit").click(); await onlyInspectorPanel("edit");
+  const before = await app.getByTestId("inspector-trim-end-value").textContent();
+  await app.getByTestId("inspector-trim-end-dec").click();
+  await eventually(async () => (await app.getByTestId("inspector-trim-end-value").textContent()) !== before, "duration did not change");
+  await app.getByTestId("inspector-trim-end-inc").click();
+  await eventually(async () => (await app.getByTestId("inspector-trim-end-value").textContent()) === before, "duration did not restore");
+  await app.getByTestId("inspector-opacity").press("home"); await app.getByText("Opacity 0%").waitFor();
+  await app.getByTestId("inspector-opacity").press("end"); await app.getByText("Opacity 100%").waitFor();
+ });
+
+ await check("Color persists label and Before restores on release and automation blur", async () => {
+  await app.getByTestId("inspector-tabs-color").click(); await onlyInspectorPanel("color"); await app.getByTestId("inspector-label-color-16a34a").click();
+  await eventually(async () => (await app.getByTestId("inspector-label-color-preview").element()).style?.backgroundColor === "#16a34a", "label color did not echo");
+  await app.getByTestId("inspector-tabs-edit").click(); await app.getByTestId("inspector-tabs-color").click();
+  await eventually(async () => (await app.getByTestId("inspector-label-color").element()).customProps?.value === "#16a34a", "label color did not persist");
+  await app.getByTestId("inspector-correction-add").click();
+  await eventually(async () => (await app.getByType("div").all()).filter(node => node.testId?.startsWith("inspector-before-")).length === 1, "expected one Before target");
+  const targets = (await app.getByType("div").all()).filter(node => node.testId?.startsWith("inspector-before-"));
+  if (targets.length !== 1 || !targets[0].testId) throw new Error("Before target is ambiguous");
+  const before = app.getByTestId(targets[0].testId);
+  const panel = app.getByTestId("inspector-panel-color");
+  const hold = async () => {
+   const panelNode = await panel.element(); await app.call("scrollTo", { elementId: panelNode.id, x: 0, y: 0 });
+   const initial = await before.bounds(); const bounds = await panel.bounds();
+   await app.call("scrollTo", { elementId: panelNode.id, x: 0, y: -Math.max(0, initial.y - bounds.y - 20) });
+   const point = await before.center(); await app.mouse.down(point); await app.getByText("Before held").waitFor(); return point;
+  };
+  let point = await hold(); await app.mouse.up(point); await app.getByText("Enabled").waitFor(); await app.getByText("Press and hold: Before").waitFor();
+  point = await hold(); await app.call("blur", {}); await app.mouse.up(point); await app.getByText("Enabled").waitFor(); await app.getByText("Press and hold: Before").waitFor();
+  await app.screenshot({ path: path.join(shots, "inspector-color.png") });
+ });
+
+ await check("Audio gain echoes canonical bounds and video selection is unavailable", async () => {
+  await app.getByText("Music bed").click(); await app.getByTestId("inspector-tabs-audio").click(); await onlyInspectorPanel("audio");
+  await app.getByTestId("inspector-audio-gain").press("home"); await app.getByText("Gain 0%").waitFor();
+  await app.getByTestId("inspector-audio-gain").press("end"); await app.getByText("Gain 150%").waitFor();
+  const rail = await app.getByTestId("inspector-audio-gain").bounds();
+  await app.mouse.click({ x: rail.x + 5 + (rail.width - 10) * (100 / 150), y: rail.y + rail.height / 2 }); await app.getByText("Gain 100%").waitFor();
+  await app.getByText("Intro renamed").click(); await app.getByText("Select an audio clip to edit playback settings.").waitFor(); await app.getByTestId("inspector-tabs-edit").click();
+ });
+
+ await check("Export fixture shows fixed settings without a false saved file", async () => {
+  await app.getByTestId("inspector-tabs-export").click();
+  for (const text of ["Range Clip", "Format WebM", "Quality High", "Queue clip export"]) await app.getByText(text).waitFor();
+  await onlyInspectorPanel("export");
+  const text = await app.getByType("text").all();
+  if (text.some(node => node.text?.startsWith("Saved file:") || node.text?.startsWith("Export folder:"))) throw new Error("fixture implied a saved host file");
+  await app.screenshot({ path: path.join(shots, "inspector-export.png") });
+ });
+ await app.screenshot({ path: path.join(shots, "timeline-final.png") });
 	console.error(`[window-smoke] done, ${failures} failure(s)`);
 } finally {
 	await app.close();

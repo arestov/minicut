@@ -11,7 +11,7 @@ import {
 import { PARITY_ROOT, parityDirectory, readManifest } from './artifacts'
 import { ensureFixtures } from '../../src/video-editor/media/node/testing/mediaFixtures'
 import { flatColorSsim, imageSsim, sourceFrameSsim } from './imageMetrics'
-import { PARITY_FILES, PARITY_STEPS, PARITY_THRESHOLDS, type ParityManifest } from './sharedScenario'
+import { PARITY_FILES, PARITY_STEPS, PARITY_THRESHOLDS, findClip, type ParityManifest } from './sharedScenario'
 import { diffSnapshots } from './snapshotDiff'
 
 /**
@@ -97,6 +97,25 @@ describe('model state', () => {
 			expect(manifest.checkpoints.playing.session.isPlaying).toBe(true)
 			expect(manifest.checkpoints.paused.session).toMatchObject({ isPlaying: false, cursor: 1.6 })
 			expect(edited.session.selectedClip).toEqual({ track: 'V1', name: 'av.webm', nth: 0 })
+   const color = manifest.checkpoints['inspector-color']
+   const graded = findClip(color, { track: 'V1', name: 'av.webm' })!
+   expect(color.session.activeInspectorTab).toBe('color')
+   expect(graded).toMatchObject({ color: '#14b8a6', transform: { x: 12, y: -3, scale: 1.25, rotation: 15 }, fadeIn: 0.5, fadeOut: 0.5, correctionEffectIndices: [1, 2], hasColorCorrection: true })
+   expect(graded.effects).toEqual([
+    { name: 'Parity bypass blur', kind: 'blur', enabled: false, params: {} },
+    { name: 'Parity grade A', kind: 'color-correction', enabled: false, params: { lookId: 'custom', exposure: { value: 0.25 }, contrast: { value: 1.2 }, saturation: { value: 0.8 }, temperature: { value: -0.1 } } },
+    { name: 'Parity grade B', kind: 'color-correction', enabled: false, params: { lookId: 'custom', exposure: { value: -0.2 }, contrast: { value: 0.9 }, saturation: { value: 1.1 }, temperature: { value: 0.15 } } },
+   ])
+   const restored = manifest.checkpoints['inspector-edit-restored']
+   expect(restored.session.activeInspectorTab).toBe('edit')
+   expect(findClip(restored, { track: 'V1', name: 'av.webm' })).toMatchObject({ transform: { x: 0, y: 0, scale: 1, rotation: 0 }, fadeIn: 0, fadeOut: 0 })
+   const audioInspector = manifest.checkpoints['inspector-audio']
+   expect(audioInspector.session).toMatchObject({ activeInspectorTab: 'audio', selectedClip: { track: 'A1', name: 'Embedded audio', nth: 0 } })
+   expect(findClip(audioInspector, { track: 'A1', name: 'Embedded audio' })).toMatchObject({ gain: 0.75, pan: 0.25 })
+   const exportInspector = manifest.checkpoints['inspector-export']
+   expect(exportInspector.session).toMatchObject({ activeInspectorTab: 'export', selectedClip: { track: 'V1', name: 'av.webm', nth: 0 } })
+   expect(findClip(exportInspector, { track: 'A1', name: 'Embedded audio' })).toMatchObject({ gain: 0.5, pan: 0 })
+   expect(manifest.checkpoints['inspector-restored'].session).toMatchObject({ activeInspectorTab: 'edit', selectedClip: { track: 'V1', name: 'av.webm', nth: 0 } })
 		}
 	})
 })

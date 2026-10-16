@@ -48,8 +48,10 @@ afterEach(async () => {
 	host = null;
 });
 
+const effectShape = defineShape({ attrs: ["name", "kind", "enabled", "params"] });
+
 const rootShape = defineShape({
-	attrs: ["cursor", "isPlaying", "selectedEntityId", "previewStructure", "exportProgress"],
+	attrs: ["cursor", "isPlaying", "selectedEntityId", "activeInspectorTab", "previewStructure", "exportProgress"],
 	one: {
 		activeProject: defineShape({
 			attrs: ["fps", "width", "height", "duration", "importProgress"],
@@ -59,8 +61,9 @@ const rootShape = defineShape({
 					attrs: ["name", "kind"],
 					many: {
 						clips: defineShape({
-							attrs: ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity"],
+							attrs: ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity", "color", "transform", "$meta$rels$colorCorrectionEffects$exists"],
 							one: { resource: defineShape({ attrs: ["name"] }) },
+       many: { effects: effectShape, colorCorrectionEffects: effectShape },
 						}),
 					},
 				}),
@@ -100,9 +103,10 @@ test("runs the shared scenario on the real desktop host", async () => {
 	// Updates reach the page after the action settled, so reads wait for them: the helper
 	// subscribes to every scope the snapshot is built from (the accessors components use)
 	// and resolves when the graph satisfies `accept`.
-	const ROOT_ATTRS = ["cursor", "isPlaying", "selectedEntityId"] as const;
+	const ROOT_ATTRS = ["cursor", "isPlaying", "selectedEntityId", "activeInspectorTab"] as const;
 	const PROJECT_ATTRS = ["fps", "width", "height"] as const;
-	const CLIP_ATTRS = ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity"] as const;
+	const EFFECT_ATTRS = ["name", "kind", "enabled", "params"] as const;
+	const CLIP_ATTRS = ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity", "color", "transform", "$meta$rels$colorCorrectionEffects$exists"] as const;
 	const waitForSnapshot = (accept: (snapshot: ParitySnapshot) => boolean, what: string): Promise<ParitySnapshot> =>
 		new Promise<ParitySnapshot>((resolve) => {
 			const subscriptions = new Map<string, () => void>();
@@ -134,6 +138,10 @@ test("runs the shared scenario on the real desktop host", async () => {
 					for (const clip of page.readMany(track, "clips")) {
 						attrs(clip._nodeId ?? "clip", clip, CLIP_ATTRS);
 						wanted.set(`one:${clip._nodeId}:resource`, () => page.subscribeOne(clip, "resource", onChange));
+      for (const rel of ["effects", "colorCorrectionEffects"]) {
+       many(clip._nodeId, clip, rel);
+       for (const effect of page.readMany(clip, rel)) attrs(effect._nodeId, effect, EFFECT_ATTRS);
+      }
 					}
 				}
 				for (const [key, stop] of subscriptions) {
