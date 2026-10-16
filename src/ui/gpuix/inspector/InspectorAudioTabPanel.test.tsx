@@ -118,5 +118,6 @@ test("receiver late Resource kind enables gain without guessing or writes", () =
  root.flushSync(() => current.deliverAttrs("clip", { mediaKind: "audio" }));
  root.flushSync(() => current.deliverAttrs("resource", { kind: "video" }));
  expect(root.renderer.getAllText()).toContain("Gain 100%");
+ expect(current.runtime.getSnapshot().runtimeError).toBeNull();
  root.unmount();
 });

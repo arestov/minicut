@@ -249,5 +249,6 @@ test("receiver timing display stays unavailable until each declared finite value
   expect(valueText(root.renderer, "inspector-trim-start-value")).toBe("0.0s");
   expect(valueText(root.renderer, "inspector-trim-end-value")).toBe("4.0s");
   expect(root.renderer.findByTestId("inspector-trim-end-inc")!.customProps?.tabIndex).toBe(-1);
+  expect(current.runtime.getSnapshot().runtimeError).toBeNull();
  } finally { root.unmount(); current.destroy(); }
 });
