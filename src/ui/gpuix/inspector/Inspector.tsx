@@ -1,10 +1,13 @@
-import { Show } from "solid-js";
+import { Match, Show, Switch } from "solid-js";
 import { createAttrsFor, ReadyGate, ScopeContext, useAttrs, useOne, useRootDispatch, useScopeRuntime } from "../../../dkt-solid-sync";
 import { inspectorTabs, type InspectorTab } from "../../../video-editor/components/inspector/types";
 import { Panel } from "../controls/Panel";
 import { Tabs } from "../controls/Tabs";
 import { colors, metrics } from "../theme";
 import { InspectorClipHeader, type InspectorTrackPosition } from "./InspectorClipHeader";
+
+import { InspectorEditTabPanel } from "./InspectorEditTabPanel";
+import { InspectorAudioTabPanel } from "./InspectorAudioTabPanel";
 
 const options = inspectorTabs.map(({ id, label }) => ({ value: id, label }));
 const Empty = () => <div style={{ padding: 12 }}><text testId="inspector-empty" style={{ color: colors.textMuted, fontSize: 12 }}>No clip selected</text></div>;
@@ -23,8 +26,11 @@ export const Inspector = () => {
    <ScopeContext.Provider value={() => scope}>
     <ReadyGate attrName="name" fallback={<Empty />}>
      <InspectorClipHeader trackPosition={attrs.selectedClipTrackPosition() as InspectorTrackPosition | null} isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} />
-     <div role="tabpanel" aria-label={`${options.find(option => option.value === activeTab())!.label} inspector`} testId={`inspector-panel-${activeTab()}`} style={{ padding: 10 }}>
-      <text>{options.find(option => option.value === activeTab())!.label}</text>
+     <div role="tabpanel" aria-label={`${options.find(option => option.value === activeTab())!.label} inspector`} testId={`inspector-panel-${activeTab()}`} style={{ padding: 10, display: "flex", flexDirection: "column", flexGrow: 1, minHeight: 0, overflowY: "scroll" }}>
+      <Switch fallback={<text>{options.find(option => option.value === activeTab())!.label}</text>}>
+       <Match when={activeTab() === "edit"}><InspectorEditTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
+       <Match when={activeTab() === "audio"}><InspectorAudioTabPanel isCurrentOwner={() => ready() && selected()?._nodeId === scope._nodeId} /></Match>
+      </Switch>
      </div>
     </ReadyGate>
    </ScopeContext.Provider>
