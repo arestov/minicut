@@ -1,3 +1,5 @@
+import { SYNCR_TYPES } from "dkt-all/libs/provoda/SyncR_TYPES.js";
+import { ReactSyncReceiver } from "../../src/dkt-ui-sync/receiver/ReactSyncReceiver";
 import { describe, expect, it } from "vitest";
 import {
 	CONTENT_ASPECT,
@@ -10,7 +12,7 @@ import {
 } from "./sharedScenario";
 
 type TestDump = { rootNodeId: string; nodes: Array<{ nodeId: string; modelName: string; attrs: Record<string, unknown>; rels: Record<string, unknown> }> };
-const inspectorAttrs = { color: "#2563eb", transform: { x: { value: 0 }, y: { value: 0 }, scale: { value: 1 }, rotation: { value: 0 } }, $meta$rels$colorCorrectionEffects$exists: false };
+const inspectorAttrs = { color: "#2563eb", transform: { x: { value: 0 }, y: { value: 0 }, scale: { value: 1 }, rotation: { value: 0 } }, $meta$rels$effects$exists: false, $meta$rels$colorCorrectionEffects$exists: false };
 const dump = (clipAttrs: Record<string, unknown> = {}): TestDump => ({
 	rootNodeId: "root",
 	nodes: [
@@ -102,6 +104,7 @@ const correctionDump = (): TestDump => {
  const graph = dump(); const clip = graph.nodes.find(node => node.nodeId === "c1")!;
  clip.rels.effects = ["fx-blur", "fx-grade-a", "fx-grade-b"];
  clip.rels.colorCorrectionEffects = ["fx-grade-a", "fx-grade-b"];
+ clip.attrs.$meta$rels$effects$exists = true;
  clip.attrs.$meta$rels$colorCorrectionEffects$exists = true;
  for (const [nodeId, kind, params] of [["fx-blur", "blur", {}], ["fx-grade-a", "color-correction", { exposure: { value: 0.25 } }], ["fx-grade-b", "color-correction", { exposure: { value: -0.2 } }]] as const) graph.nodes.push({ nodeId, modelName: "effect", attrs: { name: "Duplicate label", kind, enabled: false, params }, rels: {} });
  return graph;
@@ -121,7 +124,8 @@ it.each(["color", "transform", "in", "fadeIn", "fadeOut", "audio", "$meta$rels$c
 });
 
 it.each(["effects", "colorCorrectionEffects"])("keeps missing %s distinct from empty relation", rel => {
- const graph = dump(); delete graph.nodes.find(node => node.nodeId === "c1")!.rels[rel];
+ const graph = dump(); const clip = graph.nodes.find(node => node.nodeId === "c1")!; delete clip.rels[rel];
+ clip.attrs[`$meta$rels$${rel}$exists`] = undefined;
  const snapshot = snapshotFromGraphDump(graph); expect(isSnapshotComplete(snapshot)).toBe(false);
  expect(rel === "effects" ? snapshot.tracks[0].clips[0].effects : snapshot.tracks[0].clips[0].correctionEffectIndices).toBeNull();
 });
@@ -156,4 +160,42 @@ it("does not accept one ready raw grade with stale empty projection and false me
  expect(snapshot.tracks[0].clips[0].effects).toHaveLength(1);
  expect(snapshot.tracks[0].clips[0].correctionEffectIndices).toEqual([]);
  expect(isSnapshotComplete(snapshot)).toBe(false);
+});
+
+it("recognizes public receiver null-wire loaded empty effect relations", () => {
+ const receiver = new ReactSyncReceiver(null);
+ receiver.handleSync(SYNCR_TYPES.SET_DICT, [undefined, "effects", "colorCorrectionEffects", "$meta$rels$effects$exists", "$meta$rels$colorCorrectionEffects$exists"]);
+ receiver.handleSync(SYNCR_TYPES.TREE_ROOT, { node_id: "c1", data: [null, null, null] });
+ receiver.handleSync(SYNCR_TYPES.UPDATE, [1, "c1", 1, null, 1, "c1", 2, null, 0, "c1", 4, 3, false, 4, false]);
+ const root = receiver.getRootScope();
+ if (!root) throw new Error("Expected receiver root");
+ expect(receiver.readManyScopes(root, "effects")).toEqual([]);
+ expect(receiver.readManyScopes(root, "colorCorrectionEffects")).toEqual([]);
+ const received = receiver.debugDescribeNode("c1");
+ if (!received) throw new Error("Expected received Clip");
+ const graph = dump(); const clip = graph.nodes.find(node => node.nodeId === "c1")!;
+ delete clip.rels.effects; delete clip.rels.colorCorrectionEffects;
+ Object.assign(clip.attrs, received.attrs); Object.assign(clip.rels, received.rels);
+ const snapshot = snapshotFromGraphDump(graph);
+ expect(snapshot.tracks[0].clips[0].effects).toEqual([]);
+ expect(snapshot.tracks[0].clips[0].correctionEffectIndices).toEqual([]);
+ expect(snapshot.tracks[0].clips[0].hasColorCorrection).toBe(false);
+ expect(isSnapshotComplete(snapshot)).toBe(true);
+});
+it.each(["effects", "colorCorrectionEffects"])("uses only authoritative false metadata for omitted/null %s", rel => {
+ for (const value of [undefined, null]) for (const exists of [undefined, true, false]) {
+  const graph = dump(); const clip = graph.nodes.find(node => node.nodeId === "c1")!;
+  if (value === undefined) delete clip.rels[rel]; else clip.rels[rel] = value;
+  clip.attrs[`$meta$rels$${rel}$exists`] = exists;
+  const snapshot = snapshotFromGraphDump(graph);
+  expect(isSnapshotComplete(snapshot)).toBe(exists === false);
+  expect(rel === "effects" ? snapshot.tracks[0].clips[0].effects : snapshot.tracks[0].clips[0].correctionEffectIndices).toEqual(exists === false ? [] : null);
+ }
+});
+
+it.each(["effects", "colorCorrectionEffects"])("rejects invalid many %s even with false metadata", rel => {
+ for (const value of ["invalid", {}]) {
+  const graph = dump(); graph.nodes.find(node => node.nodeId === "c1")!.rels[rel] = value;
+  expect(isSnapshotComplete(snapshotFromGraphDump(graph))).toBe(false);
+ }
 });

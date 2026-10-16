@@ -61,7 +61,7 @@ const rootShape = defineShape({
 					attrs: ["name", "kind"],
 					many: {
 						clips: defineShape({
-							attrs: ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity", "color", "transform", "$meta$rels$colorCorrectionEffects$exists"],
+							attrs: ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity", "color", "transform", "$meta$rels$effects$exists", "$meta$rels$colorCorrectionEffects$exists"],
 							one: { resource: defineShape({ attrs: ["name"] }) },
        many: { effects: effectShape, colorCorrectionEffects: effectShape },
 						}),
@@ -106,7 +106,7 @@ test("runs the shared scenario on the real desktop host", async () => {
 	const ROOT_ATTRS = ["cursor", "isPlaying", "selectedEntityId", "activeInspectorTab"] as const;
 	const PROJECT_ATTRS = ["fps", "width", "height"] as const;
 	const EFFECT_ATTRS = ["name", "kind", "enabled", "params"] as const;
-	const CLIP_ATTRS = ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity", "color", "transform", "$meta$rels$colorCorrectionEffects$exists"] as const;
+	const CLIP_ATTRS = ["name", "mediaKind", "start", "in", "duration", "fadeIn", "fadeOut", "audio", "opacity", "color", "transform", "$meta$rels$effects$exists", "$meta$rels$colorCorrectionEffects$exists"] as const;
 	const waitForSnapshot = (accept: (snapshot: ParitySnapshot) => boolean, what: string): Promise<ParitySnapshot> =>
 		new Promise<ParitySnapshot>((resolve) => {
 			const subscriptions = new Map<string, () => void>();

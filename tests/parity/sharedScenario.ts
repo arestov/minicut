@@ -226,9 +226,10 @@ export const snapshotFromGraphDump = (dump: unknown): ParitySnapshot => {
 			const mediaKind = attrOf(clip, "mediaKind");
    const color = attrOf(clip, "color");
    const transform = (attrOf(clip, "transform") ?? {}) as Record<string, { value?: unknown }>;
-   const rawIds = Array.isArray(clip?.rels?.effects) ? idsOf(clip.rels.effects) : null;
-   const correctionIds = Array.isArray(clip?.rels?.colorCorrectionEffects) ? idsOf(clip.rels.colorCorrectionEffects) : null;
+   const rawExists = attrOf(clip, "$meta$rels$effects$exists");
+   const rawIds = Array.isArray(clip?.rels?.effects) ? idsOf(clip.rels.effects) : clip?.rels?.effects == null && rawExists === false ? [] : null;
    const hasCorrection = attrOf(clip, "$meta$rels$colorCorrectionEffects$exists");
+   const correctionIds = Array.isArray(clip?.rels?.colorCorrectionEffects) ? idsOf(clip.rels.colorCorrectionEffects) : clip?.rels?.colorCorrectionEffects == null && hasCorrection === false ? [] : null;
    const effects = rawIds?.map(id => {
     const effect = nodes.get(id);
     const name = attrOf(effect, "name"); const kind = attrOf(effect, "kind"); const enabled = attrOf(effect, "enabled"); const params = attrOf(effect, "params");

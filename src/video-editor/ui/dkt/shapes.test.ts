@@ -4,7 +4,7 @@ import { miniCutEditorRootShape } from "./shapes";
 describe("MiniCut page sync shapes", () => {
  it("loads correction metadata and scopes while retaining source effects", () => {
   const clip = miniCutEditorRootShape.one?.activeProject?.many?.tracks?.many?.clips;
-  expect(clip?.attrs).toContain("$meta$rels$colorCorrectionEffects$exists");
+  expect(clip?.attrs).toEqual(expect.arrayContaining(["$meta$rels$effects$exists", "$meta$rels$colorCorrectionEffects$exists"]));
   expect(clip?.many?.colorCorrectionEffects?.attrs).toEqual(expect.arrayContaining(["enabled", "params"]));
   expect(clip?.many?.effects).toEqual(clip?.many?.colorCorrectionEffects);
   expect(miniCutEditorRootShape.one?.selectedClip).toEqual(clip);
