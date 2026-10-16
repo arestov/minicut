@@ -6,6 +6,7 @@ export type DktEffectActionName =
 	| "setEffectEnabled"
 	| "setEffectAmount"
 	| "setEffectParams"
+	| "patchEffectParams"
 	| "setEffectColor";
 export type DktEffectActionPatch = Partial<EffectAttrs>;
 
@@ -63,6 +64,21 @@ export const reduceEffectParamsAction = (
 	return params && typeof params === "object"
 		? { params: params as EffectAttrs["params"] }
 		: null;
+};
+
+export type PatchEffectParamsPayload = { params: Record<string, unknown> };
+
+const isParamsRecord = (value: unknown): value is Record<string, unknown> =>
+	value !== null && typeof value === "object" && !Array.isArray(value);
+
+export const reducePatchEffectParamsAction = (
+	payload: unknown,
+	currentParams: unknown,
+): Pick<EffectAttrs, "params"> | null => {
+	const patch = isParamsRecord(payload) ? payload.params : null;
+	if (!isParamsRecord(patch) || Object.keys(patch).length === 0) return null;
+	const current = isParamsRecord(currentParams) ? currentParams : {};
+	return { params: { ...current, ...patch } };
 };
 
 export const reduceEffectColorAction = (

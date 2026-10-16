@@ -158,7 +158,31 @@ try {
 		if (fs.statSync(path.join(exportDir, files[0])).size < 1000) throw new Error("export file is empty");
 	});
 
-	await app.screenshot({ path: path.join(shots, "app-before-quit.png") });
+	 await check("selected Clip export saves a second distinct file with matching inspector metadata", async () => {
+  const prior = fs.readdirSync(exportDir).filter(name => name.endsWith(".webm"));
+  if (prior.length !== 1) throw new Error("project export must precede selected Clip export");
+  const clipNodes = await app!.getByTestId("clip").all();
+  const namesImportedClip = (node: (typeof clipNodes)[number]): boolean => (node.type === "text" && !!node.text?.includes("video-audio")) || (node.children ?? []).some(namesImportedClip);
+  const clips = clipNodes.filter(namesImportedClip);
+  if (clips.length !== 1 || !clips[0].bounds) throw new Error("imported video Clip is missing or ambiguous");
+  const bounds = clips[0].bounds;
+  await app!.mouse.click({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
+  await app!.getByTestId("inspector-name").waitFor();
+  await app!.getByTestId("inspector-tabs-export").click();
+  await app!.getByTestId("inspector-panel-export").waitFor();
+  await app!.getByTestId("inspector-export-queue").waitFor();
+  await app!.getByTestId("inspector-export-queue").click();
+  await eventually(async () => (await app!.getByType("text").all()).some(node => node.text?.startsWith("Saved file: ")), "selected Clip did not report a saved file", 120_000);
+  const text = (await app!.getByType("text").all()).map(node => node.text ?? "");
+  const saved = text.find(value => value.startsWith("Saved file: "))?.slice("Saved file: ".length);
+  if (!saved || saved === prior[0]) throw new Error("selected Clip did not receive a distinct saved filename");
+  if (!text.includes(`Export folder: ${exportDir}`)) throw new Error("inspector export folder differs from the configured host directory");
+  const files = fs.readdirSync(exportDir).filter(name => name.endsWith(".webm"));
+  if (files.length !== 2 || new Set(files).size !== 2 || !files.includes(saved) || !files.includes(prior[0])) throw new Error(`expected project and Clip files, found ${files.join(", ")}`);
+  for (const file of files) if (fs.statSync(path.join(exportDir, file)).size <= 0) throw new Error(`empty export ${file}`);
+  await app!.screenshot({ path: path.join(shots, "app-inspector-export.png") });
+ });
+ await app.screenshot({ path: path.join(shots, "app-before-quit.png") });
 	await app.getByTestId("test-quit").click();
 	app = null;
 

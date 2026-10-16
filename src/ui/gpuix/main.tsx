@@ -4,7 +4,7 @@ import { AppShell } from "./AppShell";
 import { createScenarioDriver } from "./fixtures/scenarioDriver";
 import { resolveScenarioSelection, seedScenario } from "./fixtures/scenarios";
 import { createInProcessDkt } from "./host/createInProcessDkt";
-import { ClipInspector } from "./inspector/ClipInspector";
+import { Inspector } from "./inspector/Inspector";
 import { Sidebar } from "./panels/Sidebar";
 import { Timeline } from "./timeline/Timeline";
 
@@ -23,7 +23,7 @@ render(
 			<AppShell
 				sidebar={<Sidebar />}
 				timeline={<Timeline />}
-				inspector={<ClipInspector />}
+				inspector={<Inspector />}
 			/>
 		</RootScope>
 	),

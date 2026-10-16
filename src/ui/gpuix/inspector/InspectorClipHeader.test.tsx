@@ -1,0 +1,116 @@
+import { afterEach, expect, test } from "bun:test";
+import { renderWithScenario } from "../test/renderApp";
+import { Inspector } from "./Inspector";
+import { createTestRoot } from "@gpuix/solid/testing";
+import { RootScope } from "../../../dkt-solid-sync";
+import { createSkeletonRaceFixture } from "../fixtures/skeletonRace";
+let view: Awaited<ReturnType<typeof renderWithScenario>> | null = null;
+afterEach(() => { view?.destroy(); view = null; });
+const mount = async () => {
+ const v = await renderWithScenario("timeline", () => <div style={{ display: "flex", width: 400, height: 600 }}><Inspector /></div>);
+ view = v;
+ const driver = v.verifier();
+ const project = await driver.waitOne(v.rootScope, "activeProject");
+ const tracks = await driver.waitMany(project, "tracks", 3);
+ const clips = await driver.waitMany(tracks[0], "clips", 2);
+ await driver.run("selectEntity", clips[0]._nodeId);
+ await v.untilOne(v.rootScope, "selectedClip", s => s?._nodeId === clips[0]._nodeId);
+ await v.untilAttr(clips[0], "name", x => x === "Intro");
+ v.settle();
+ const input = () => v.renderer.findByTestId("inspector-name")!;
+ const replace = (text: string) => {
+  const old = String(input().customProps?.value ?? "");
+  v.renderer.nativeSimulateKeystrokes(input().id, "backspace ".repeat(old.length));
+  if (text) v.renderer.nativeSimulateKeystrokes(input().id, text.split("").map(c => c === " " ? "space" : c).join(" "));
+ };
+ return { v, driver, clips, input, replace };
+};
+test("header shows an honest placeholder, color and track summary", async () => {
+ const { v, clips } = await mount();
+ await v.untilAttr(clips[0], "start", x => x === 0);
+ await v.untilAttr(clips[0], "duration", x => x === 4);
+ await v.untilAttr(clips[0], "color", x => x === "#2563eb");
+ v.settle();
+ expect(v.texts()).toContain("CLIP");
+ expect(v.texts()).toContain("Thumbnail unavailable");
+ expect(v.texts()).toContain("Clip 1 - V1 - 0.0s - Duration 4.0s");
+ const preview = v.renderer.findByTestId("inspector-thumbnail")!;
+ expect(preview.customProps?.role).toBe("img");
+ expect(preview.style.borderColor).toBe("#2563eb");
+ expect(preview.style.width).toBe(56);
+ expect(preview.style.height).toBe(40);
+ expect(preview.customProps?.["aria-label"]).toBe("Intro clip preview unavailable");
+ expect(v.renderer.findByType("img")).toHaveLength(0);
+});
+test("raw nonblank rename commits once on Enter plus native blur and reads back", async () => {
+ const { v, clips, input, replace } = await mount();
+ const renames: unknown[] = [];
+ const getDispatch = v.runtime.getDispatch.bind(v.runtime);
+ v.runtime.getDispatch = scope => { const dispatch = getDispatch(scope); return (name, payload, meta) => { if (name === "rename") renames.push(payload); return dispatch(name, payload, meta); }; };
+ replace(" Raw ");
+ v.renderer.nativeSimulateKeystrokes(input().id, "enter");
+ v.renderer.focusElement(v.renderer.findByTestId("inspector-tabs-edit")!.id);
+ await v.untilAttr(clips[0], "name", x => x === " Raw ");
+ v.settle();
+ expect(input().customProps?.value).toBe(" Raw ");
+ expect(renames).toEqual([{ name: " Raw " }]);
+});
+test("blank and Escape revert; external canonical rename clears pending draft", async () => {
+ const { v, clips, input, replace, driver } = await mount();
+ replace("  ");
+ v.renderer.focusElement(v.renderer.findByTestId("inspector-tabs-edit")!.id);
+ v.settle();
+ expect(input().customProps?.value).toBe("Intro");
+ replace("Pending");
+ v.renderer.nativeSimulateKeystrokes(input().id, "escape");
+ expect(input().customProps?.value).toBe("Intro");
+ replace("Stale");
+ await driver.run("rename", { name: "External" }, clips[0]);
+ await v.untilAttr(clips[0], "name", x => x === "External");
+ v.settle();
+ expect(input().customProps?.value).toBe("External");
+ v.renderer.nativeSimulateKeystrokes(input().id, "enter");
+ v.renderer.focusElement(v.renderer.findByTestId("inspector-tabs-edit")!.id);
+ expect(await v.untilAttr(clips[0], "name", x => x === "External")).toBe("External");
+});
+test("selection replacement and unmount discard drafts without editing either clip", async () => {
+ const { v, clips, input, replace, driver } = await mount();
+ const secondName = await driver.waitAttr(clips[1], "name");
+ const oldId = input().id;
+ replace("Stale");
+ await driver.run("selectEntity", clips[1]._nodeId);
+ await v.untilOne(v.rootScope, "selectedClip", s => s?._nodeId === clips[1]._nodeId);
+ await v.untilAttr(clips[1], "name", x => x === secondName);
+ v.settle();
+ expect(input().id).not.toBe(oldId);
+ expect(input().customProps?.value).toBe(secondName);
+ expect(await v.untilAttr(clips[0], "name", x => x === "Intro")).toBe("Intro");
+ replace("Discard");
+ v.root.unmount();
+ expect(await v.untilAttr(clips[1], "name", x => x === secondName)).toBe(secondName);
+});
+
+test("header preserves unavailable timing until each finite numeric attr arrives", () => {
+ const current = createSkeletonRaceFixture([]);
+ const root = createTestRoot();
+ const summary = (start: string, duration: string) => `Clip 1 - Track - ${start} - Duration ${duration}`;
+ try {
+  root.render(() => <div style={{ display: "flex", width: 400, height: 600 }}><RootScope runtime={current.runtime}><Inspector /></RootScope></div>);
+  root.flushSync(() => { current.deliverSelectedClipRel("clip"); current.deliverAttrs("clip", { name: "Named before timing" }); });
+  expect(root.renderer.findByTestId("inspector-name")!.customProps?.value).toBe("Named before timing");
+  expect(root.renderer.getAllText()).toContain(summary("Unavailable", "Unavailable"));
+  expect(root.renderer.getAllText().some(text => text.includes("NaNs"))).toBe(false);
+  root.flushSync(() => current.deliverAttrs("clip", { start: 0 }));
+  expect(root.renderer.getAllText()).toContain(summary("0.0s", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { duration: 4 }));
+  expect(root.renderer.getAllText()).toContain(summary("0.0s", "4.0s"));
+  root.flushSync(() => current.deliverAttrs("clip", { start: null, duration: null }));
+  expect(root.renderer.getAllText()).toContain(summary("Unavailable", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { start: "0", duration: "4" }));
+  expect(root.renderer.getAllText()).toContain(summary("Unavailable", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { start: 1 }));
+  expect(root.renderer.getAllText()).toContain(summary("1.0s", "Unavailable"));
+  root.flushSync(() => current.deliverAttrs("clip", { duration: 5 }));
+  expect(root.renderer.getAllText()).toContain(summary("1.0s", "5.0s"));
+ } finally { root.unmount(); current.destroy(); }
+});

@@ -1,5 +1,6 @@
 import type { ParitySnapshot } from "./sharedScenario";
 
+const stableJson = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, (item as Record<string, unknown>)[key]])) : item);
 const near = (a: number | null, b: number | null, tolerance: number): boolean =>
 	a === b || (a !== null && b !== null && Math.abs(a - b) <= tolerance);
 
@@ -28,6 +29,11 @@ export const diffSnapshots = (web: ParitySnapshot, desktop: ParitySnapshot, time
 			check(`${label}.name`, clip.name, peer.name);
 			check(`${label}.mediaKind`, clip.mediaKind, peer.mediaKind);
 			check(`${label}.resource`, clip.resource, peer.resource);
+   check(`${label}.color`, clip.color, peer.color);
+   for (const key of ["x", "y", "scale", "rotation"] as const) check(`${label}.transform.${key}`, clip.transform[key], peer.transform[key], near(clip.transform[key], peer.transform[key], 0.001));
+   check(`${label}.effects`, clip.effects, peer.effects, stableJson(clip.effects) === stableJson(peer.effects));
+   check(`${label}.correctionEffectIndices`, clip.correctionEffectIndices, peer.correctionEffectIndices, JSON.stringify(clip.correctionEffectIndices) === JSON.stringify(peer.correctionEffectIndices));
+   check(`${label}.hasColorCorrection`, clip.hasColorCorrection, peer.hasColorCorrection);
 			for (const key of ["start", "in", "duration"] as const) {
 				check(`${label}.${key}`, clip[key], peer[key], near(clip[key], peer[key], timeTolerance));
 			}
@@ -47,7 +53,8 @@ export const diffSnapshots = (web: ParitySnapshot, desktop: ParitySnapshot, time
 	}
 
 	check("session.cursor", web.session.cursor, desktop.session.cursor, near(web.session.cursor, desktop.session.cursor, 0.005));
-	check("session.isPlaying", web.session.isPlaying, desktop.session.isPlaying);
+	check("session.activeInspectorTab", web.session.activeInspectorTab, desktop.session.activeInspectorTab);
+ check("session.isPlaying", web.session.isPlaying, desktop.session.isPlaying);
 	check("session.selectedClip", web.session.selectedClip, desktop.session.selectedClip,
 		JSON.stringify(web.session.selectedClip) === JSON.stringify(desktop.session.selectedClip));
 	return diffs;

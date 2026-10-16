@@ -55,6 +55,30 @@ export const PARITY_STEPS: readonly ParityStep[] = [
 	{ op: "clip", clip: { track: "A1", name: "Embedded audio", nth: 0 }, action: "setAudio", payload: { gain: 0.5 } },
 	{ op: "select", clip: { track: "V1", name: "av.webm" } },
 	{ op: "checkpoint", name: "edited" },
+ { op: "root", action: "setActiveInspectorTab", payload: "color" },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "color", payload: { color: "#14b8a6" } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "setTransform", payload: { x: 12, y: -3, scale: 1.25, rotation: 15 } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "setFade", payload: { edge: "in", delta: 0.5 } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "setFade", payload: { edge: "out", delta: 0.5 } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "addEffect", payload: { kind: "blur", name: "Parity bypass blur", enabled: false, params: {} } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "addEffect", payload: { kind: "color-correction", name: "Parity grade A", enabled: false, params: { lookId: "custom", exposure: { value: 0.25 }, contrast: { value: 1.2 }, saturation: { value: 0.8 }, temperature: { value: -0.1 } } } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "addEffect", payload: { kind: "color-correction", name: "Parity grade B", enabled: false, params: { lookId: "custom", exposure: { value: -0.2 }, contrast: { value: 0.9 }, saturation: { value: 1.1 }, temperature: { value: 0.15 } } } },
+ { op: "checkpoint", name: "inspector-color" },
+ { op: "root", action: "setActiveInspectorTab", payload: "edit" },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "setTransform", payload: { x: 0, y: 0, scale: 1, rotation: 0 } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "setFade", payload: { edge: "in", delta: -0.5 } },
+ { op: "clip", clip: { track: "V1", name: "av.webm" }, action: "setFade", payload: { edge: "out", delta: -0.5 } },
+ { op: "checkpoint", name: "inspector-edit-restored" },
+ { op: "select", clip: { track: "A1", name: "Embedded audio", nth: 0 } },
+ { op: "root", action: "setActiveInspectorTab", payload: "audio" },
+ { op: "clip", clip: { track: "A1", name: "Embedded audio", nth: 0 }, action: "setAudio", payload: { gain: 0.75, pan: 0.25 } },
+ { op: "checkpoint", name: "inspector-audio" },
+ { op: "clip", clip: { track: "A1", name: "Embedded audio", nth: 0 }, action: "setAudio", payload: { gain: 0.5, pan: 0 } },
+ { op: "select", clip: { track: "V1", name: "av.webm" } },
+ { op: "root", action: "setActiveInspectorTab", payload: "export" },
+ { op: "checkpoint", name: "inspector-export" },
+ { op: "root", action: "setActiveInspectorTab", payload: "edit" },
+ { op: "checkpoint", name: "inspector-restored" },
 	{ op: "root", action: "setCursor", payload: 1.2 },
 	{ op: "root", action: "play" },
 	{ op: "checkpoint", name: "playing" },
@@ -107,7 +131,13 @@ export const PARITY_THRESHOLDS = {
 
 // ---- normalised state -----------------------------------------------------------------
 
+export type ParityEffect = { name: string | null; kind: string | null; enabled: boolean | null; params: Record<string, unknown> | null };
 export type ParityClip = {
+ color: string | null;
+ transform: { x: number | null; y: number | null; scale: number | null; rotation: number | null };
+ effects: ParityEffect[] | null;
+ correctionEffectIndices: number[] | null;
+ hasColorCorrection: boolean | null;
 	name: string;
 	mediaKind: string | null;
 	/** Name of the resource the clip plays, or null. */
@@ -127,6 +157,7 @@ export type ParitySnapshot = {
 	tracks: Array<{ name: string; kind: string | null; clips: ParityClip[] }>;
 	resources: Array<{ name: string; kind: string | null; duration: number | null }>;
 	session: {
+  activeInspectorTab: string | null;
 		cursor: number | null;
 		isPlaying: boolean | null;
 		selectedClip: { track: string; name: string; nth: number } | null;
@@ -193,8 +224,23 @@ export const snapshotFromGraphDump = (dump: unknown): ParitySnapshot => {
 			const audio = (attrOf(clip, "audio") ?? {}) as { gain?: unknown; pan?: unknown };
 			const opacity = (attrOf(clip, "opacity") ?? {}) as { value?: unknown };
 			const mediaKind = attrOf(clip, "mediaKind");
+   const color = attrOf(clip, "color");
+   const transform = (attrOf(clip, "transform") ?? {}) as Record<string, { value?: unknown }>;
+   const rawExists = attrOf(clip, "$meta$rels$effects$exists");
+   const rawIds = Array.isArray(clip?.rels?.effects) ? idsOf(clip.rels.effects) : clip?.rels?.effects == null && rawExists === false ? [] : null;
+   const hasCorrection = attrOf(clip, "$meta$rels$colorCorrectionEffects$exists");
+   const correctionIds = Array.isArray(clip?.rels?.colorCorrectionEffects) ? idsOf(clip.rels.colorCorrectionEffects) : clip?.rels?.colorCorrectionEffects == null && hasCorrection === false ? [] : null;
+   const effects = rawIds?.map(id => {
+    const effect = nodes.get(id);
+    const name = attrOf(effect, "name"); const kind = attrOf(effect, "kind"); const enabled = attrOf(effect, "enabled"); const params = attrOf(effect, "params");
+    return { name: typeof name === "string" ? name : null, kind: typeof kind === "string" ? kind : null, enabled: typeof enabled === "boolean" ? enabled : null, params: params && typeof params === "object" && !Array.isArray(params) ? JSON.parse(JSON.stringify(params)) as Record<string, unknown> : null };
+   }) ?? null;
 			return {
 				name,
+    color: typeof color === "string" ? color : null,
+    transform: { x: round3(transform.x?.value), y: round3(transform.y?.value), scale: round3(transform.scale?.value), rotation: round3(transform.rotation?.value) },
+    effects, correctionEffectIndices: rawIds && correctionIds ? correctionIds.map(id => rawIds.indexOf(id)) : null,
+    hasColorCorrection: typeof hasCorrection === "boolean" ? hasCorrection : null,
 				mediaKind: typeof mediaKind === "string" ? mediaKind : null,
 				resource: resourceName(idsOf(clip?.rels?.resource)[0]),
 				start: round3(attrOf(clip, "start")) as number,
@@ -233,7 +279,8 @@ export const snapshotFromGraphDump = (dump: unknown): ParitySnapshot => {
 		tracks,
 		resources,
 		session: {
-			cursor: round3(attrOf(root, "cursor")),
+			activeInspectorTab: typeof attrOf(root, "activeInspectorTab") === "string" ? attrOf(root, "activeInspectorTab") as string : null,
+   cursor: round3(attrOf(root, "cursor")),
 			isPlaying: typeof playing === "boolean" ? playing : null,
 			selectedClip,
 		},
@@ -243,6 +290,7 @@ export const snapshotFromGraphDump = (dump: unknown): ParitySnapshot => {
 /** True once every clip and resource carries its numbers (the sync of attrs is asynchronous). */
 export const isSnapshotComplete = (snapshot: ParitySnapshot): boolean =>
 	snapshot.project.fps !== null &&
+ ["edit", "color", "audio", "export"].includes(snapshot.session.activeInspectorTab ?? "") &&
 	snapshot.resources.every((resource) => resource.name !== "" && resource.duration !== null) &&
 	snapshot.tracks.every(
 		(track) =>
@@ -253,7 +301,14 @@ export const isSnapshotComplete = (snapshot: ParitySnapshot): boolean =>
 					Number.isFinite(clip.start) &&
 					Number.isFinite(clip.duration) &&
 					Number.isFinite(clip.gain) &&
-					Number.isFinite(clip.opacity),
+					Number.isFinite(clip.opacity) &&
+     [clip.in, clip.fadeIn, clip.fadeOut, clip.pan].every(Number.isFinite) &&
+     typeof clip.color === "string" && [clip.transform.x, clip.transform.y, clip.transform.scale, clip.transform.rotation].every(value => typeof value === "number" && Number.isFinite(value)) &&
+     clip.effects !== null && clip.effects.every(effect => typeof effect.name === "string" && typeof effect.kind === "string" && typeof effect.enabled === "boolean" && effect.params !== null && typeof effect.params === "object" && !Array.isArray(effect.params)) &&
+     clip.correctionEffectIndices !== null && clip.correctionEffectIndices.every(index => Number.isInteger(index) && index >= 0 && index < clip.effects!.length) &&
+     new Set(clip.correctionEffectIndices).size === clip.correctionEffectIndices.length &&
+     JSON.stringify(clip.correctionEffectIndices) === JSON.stringify(clip.effects.flatMap((effect, index) => effect.kind === "color-correction" ? [index] : [])) &&
+     typeof clip.hasColorCorrection === "boolean" && clip.hasColorCorrection === clip.effects.some(effect => effect.kind === "color-correction"),
 			),
 	);
 

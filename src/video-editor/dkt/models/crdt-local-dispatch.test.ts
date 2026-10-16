@@ -261,6 +261,30 @@ describe("MiniCut CRDT local dispatch staging", () => {
 		});
 	});
 
+	it("patches params with a normal MVR write and keeps correction projection local", async () => {
+		const { ctx, videoTrack } = await createCrdtContext();
+		const clip = await addClip(ctx, videoTrack);
+		await ctx.lockToRead(async () => {
+			await clip.dispatch("addEffect", {kind: "blur", params: {unknown: {keep: 1}}});
+		});
+		const [effect] = await ctx.queryRel(clip, "effects");
+		drainCrdtOutbox(ctx.runtime);
+		await ctx.lockToRead(async () => {
+			await effect.dispatch("patchEffectParams", {params: {exposure: {value: .2}}});
+		});
+		const ops = drainCrdtOutbox(ctx.runtime);
+		expectCrdtOutboxContains(ops, {kind: "attr", name: "params", value: {unknown: {keep: 1}, exposure: {value: .2}}});
+		expect(ops).toHaveLength(1);
+		await ctx.lockToRead(async () => {
+			await effect.dispatch("setEffectKind", {kind: "color-correction"});
+		});
+		expect(await ctx.queryRel(clip, "colorCorrectionEffects")).toEqual([effect]);
+		expect(await ctx.queryAttr(clip, "$meta$rels$colorCorrectionEffects$exists")).toBe(true);
+		const kindOps = drainCrdtOutbox(ctx.runtime);
+		expectCrdtOutboxContains(kindOps, {kind: "attr", name: "kind", value: "color-correction"});
+		expect(kindOps).toHaveLength(1);
+	});
+
 	it("SessionRoot.setCursor and import pipeline actions do not create durable CRDT ops", async () => {
 		const { ctx, project } = await createCrdtContext();
 

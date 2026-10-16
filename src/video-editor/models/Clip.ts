@@ -143,6 +143,7 @@ export const Clip = model({
 			project: "lww",
 			crdtConflicts: { sync: false, reason: "framework-owned" },
 			openReviewItems: { sync: false, reason: "projection" },
+			colorCorrectionEffects: { sync: false, reason: "projection" },
 		},
 	},
 	attrs: {
@@ -221,6 +222,17 @@ export const Clip = model({
 		],
 	},
 	rels: {
+		colorCorrectionEffects: [
+			"comp",
+			[
+				addr({
+					relPath: ["effects"],
+					where: ["=", "kind", ["value", "color-correction"]],
+					take: "all",
+				}),
+			],
+			{ many: true, linking: "<< effect << #", role: "projection" },
+		],
 		openReviewItems: [
 			"comp",
 			[

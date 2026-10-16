@@ -163,6 +163,8 @@ const MODEL_CASES: ModelCase[] = [
 			},
 			rels: {
 				effects: "crdt",
+				colorCorrectionEffects: "projection",
+				openReviewItems: "projection",
 				text: "crdt",
 				resource: "crdt",
 				track: "framework-owned",
@@ -361,7 +363,7 @@ describe("CRDT field coverage", () => {
 					...getDeclaredCrdtFieldNames(
 						entry.model,
 						section,
-						entry.name === "MiniCutAppRoot",
+						entry.name === "MiniCutAppRoot" || entry.name === "Clip",
 					),
 					...systemFields,
 				].sort();

@@ -1,0 +1,65 @@
+import { afterEach, expect, test } from "bun:test";
+import { renderWithScenario } from "../test/renderApp";
+import { Inspector } from "./Inspector";
+let view: Awaited<ReturnType<typeof renderWithScenario>> | null = null;
+afterEach(() => { view?.destroy(); view = null; });
+const mount = async () => {
+ const v = await renderWithScenario("timeline", () => <div style={{ display: "flex", width: 400, height: 600 }}><Inspector /></div>);
+ view = v;
+ const driver = v.verifier();
+ const project = await driver.waitOne(v.rootScope, "activeProject");
+ const tracks = await driver.waitMany(project, "tracks", 3);
+ const clips = await driver.waitMany(tracks[0], "clips", 2);
+ return { v, clips, driver };
+};
+test("tabs are canonical root actions and only the active panel is visible", async () => {
+ const { v, clips, driver } = await mount();
+ expect(v.texts()).toContain("No clip selected");
+ expect(v.renderer.findByTestId("inspector-tabs-edit")!.customProps?.tabIndex).toBe(-1);
+ v.click("inspector-tabs-color");
+ await v.untilAttr(v.rootScope, "activeInspectorTab", x => x === "edit");
+ await driver.run("selectEntity", clips[0]._nodeId);
+ await v.untilOne(v.rootScope, "selectedClip", s => s?._nodeId === clips[0]._nodeId);
+ await v.untilAttr(clips[0], "name", x => x === "Intro");
+ v.settle();
+ for (const tab of ["color", "audio", "export", "edit"]) {
+  v.click(`inspector-tabs-${tab}`);
+  await v.untilAttr(v.rootScope, "activeInspectorTab", x => x === tab);
+  v.settle();
+  expect(v.renderer.findByTestId(`inspector-panel-${tab}`)!.customProps?.["aria-label"]).toBe(`${tab[0].toUpperCase()}${tab.slice(1)} inspector`);
+  for (const other of ["edit", "color", "audio", "export"].filter(t => t !== tab)) expect(v.findAll(`inspector-panel-${other}`)).toHaveLength(0);
+ }
+ await driver.run("setActiveInspectorTab", "audio");
+ await v.untilAttr(v.rootScope, "activeInspectorTab", x => x === "audio");
+ v.settle();
+ expect(v.findAll("inspector-panel-audio")).toHaveLength(1);
+ await driver.run("selectEntity", clips[1]._nodeId);
+ await v.untilOne(v.rootScope, "selectedClip", s => s?._nodeId === clips[1]._nodeId);
+ await v.untilAttr(clips[1], "name", x => typeof x === "string");
+ v.settle();
+ expect(v.findAll("inspector-panel-audio")).toHaveLength(1);
+ await driver.run("selectEntity", null);
+ await v.untilOne(v.rootScope, "selectedClip", s => s === null);
+ v.settle();
+ expect(v.texts()).toContain("No clip selected");
+ expect(v.findAll("inspector-panel-audio")).toHaveLength(0);
+ expect(v.renderer.findByTestId("inspector-tabs-audio")!.customProps?.tabIndex).toBe(-1);
+});
+test("project replacement discards the selected editor without changing the root tab", async () => {
+ const { v, clips, driver } = await mount();
+ await driver.run("selectEntity", clips[0]._nodeId);
+ await v.untilOne(v.rootScope, "selectedClip", s => s?._nodeId === clips[0]._nodeId);
+ await v.untilAttr(clips[0], "name", x => typeof x === "string");
+ await driver.run("setActiveInspectorTab", "export");
+ await v.untilAttr(v.rootScope, "activeInspectorTab", x => x === "export");
+ v.settle();
+ const input = v.renderer.findByTestId("inspector-name")!;
+ v.renderer.nativeSimulateKeystrokes(input.id, "x");
+ await driver.run("createProject", { title: "Replacement" });
+ await v.untilOne(v.rootScope, "selectedClip", s => s === null);
+ v.settle();
+ expect(v.texts()).toContain("No clip selected");
+ expect(v.findAll("inspector-panel-export")).toHaveLength(0);
+ await v.untilAttr(v.rootScope, "activeInspectorTab", x => x === "export");
+ expect(await v.untilAttr(clips[0], "name", x => x === "Intro")).toBe("Intro");
+});
