@@ -161,7 +161,9 @@ try {
 	 await check("selected Clip export saves a second distinct file with matching inspector metadata", async () => {
   const prior = fs.readdirSync(exportDir).filter(name => name.endsWith(".webm"));
   if (prior.length !== 1) throw new Error("project export must precede selected Clip export");
-  const clips = (await app!.getByTestId("clip").all()).filter(node => String(node.customProps?.["aria-label"] ?? "").includes("video-audio"));
+  const clipNodes = await app!.getByTestId("clip").all();
+  const namesImportedClip = (node: (typeof clipNodes)[number]): boolean => (node.type === "text" && !!node.text?.includes("video-audio")) || (node.children ?? []).some(namesImportedClip);
+  const clips = clipNodes.filter(namesImportedClip);
   if (clips.length !== 1 || !clips[0].bounds) throw new Error("imported video Clip is missing or ambiguous");
   const bounds = clips[0].bounds;
   await app!.mouse.click({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
