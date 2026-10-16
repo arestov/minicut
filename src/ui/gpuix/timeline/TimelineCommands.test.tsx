@@ -159,6 +159,88 @@ describe("TimelineCommands", () => {
   }
  });
 
+ test("native Add track buttons append video and audio without a selection and preserve existing clips", async () => {
+  const { v, project, tracks } = await mount();
+  await v.untilAttr(v.rootScope, "$meta$rels$selectedClip$exists", x => x === false);
+  const beforeIds = tracks.map(track => track._nodeId);
+  const clipSnapshot = () => tracks.map(track => v.runtime.readMany(track, "clips").map(clip => ({ id: clip._nodeId, ...v.runtime.readAttrs(clip, ["name", "start", "duration"]) })));
+  const beforeClips = clipSnapshot();
+  v.settle();
+  v.click("timeline-add-video-track");
+  const videoTracks = await v.untilMany(project, "tracks", n => n === 4);
+  expect(videoTracks.slice(0, 3).map(track => track._nodeId)).toEqual(beforeIds);
+  await v.untilAttr(videoTracks[3], "kind", x => x === "video");
+  await v.untilAttr(videoTracks[3], "name", x => typeof x === "string");
+  v.settle();
+  v.click("timeline-add-audio-track");
+  const allTracks = await v.untilMany(project, "tracks", n => n === 5);
+  expect(allTracks.slice(0, 4).map(track => track._nodeId)).toEqual(videoTracks.map(track => track._nodeId));
+  await v.untilAttr(allTracks[4], "kind", x => x === "audio");
+  await v.untilAttr(allTracks[4], "name", x => typeof x === "string");
+  v.settle();
+  expect(v.findAll("track-row")).toHaveLength(5);
+  const headers = v.findAll("track-header");
+  const collect = (id: number): string[] => {
+   const node = v.renderer.getElement(id);
+   if (!node) return [];
+   return [...(typeof node.text === "string" ? [node.text] : []), ...node.children.flatMap(collect)];
+  };
+  const headerText = headers.map(header => collect(header.id));
+  expect(headerText).toEqual(allTracks.map(track => {
+   const attrs = v.runtime.readAttrs(track, ["name", "kind"]);
+   return [String(attrs.name), String(attrs.kind)];
+  }));
+  expect(clipSnapshot()).toEqual(beforeClips);
+  expect(v.runtime.readOne(v.rootScope, "selectedClip")).toBeNull();
+ });
+
+ test("native Add follows a delivered project switch and preserves old project membership", async () => {
+  const { v, driver, project, tracks } = await mount();
+  const oldIds = tracks.map(track => track._nodeId);
+  const releaseOld = v.runtime.mountShape(project, defineShape({ many: { tracks: defineShape({ attrs: ["name", "kind"] }) } }));
+  try {
+   await driver.run("createProject", { title: "Replacement" });
+   const replacement = (await v.untilOne(v.rootScope, "activeProject", scope => scope !== null && scope._nodeId !== project._nodeId))!;
+   await v.untilAttr(replacement, "title", x => x === "Replacement");
+   await v.untilAttr(v.rootScope, "$meta$rels$activeProject$exists", x => x === true);
+   const initial = await driver.waitMany(replacement, "tracks", 2);
+   for (const track of initial) await v.untilAttr(track, "kind", x => typeof x === "string");
+   v.settle();
+   v.click("timeline-add-video-track");
+   const current = await v.untilMany(replacement, "tracks", n => n === 3);
+   await v.untilAttr(current[2], "kind", x => x === "video");
+   await v.untilAttr(current[2], "name", x => typeof x === "string");
+   expect(current.slice(0, 2).map(track => track._nodeId)).toEqual(initial.map(track => track._nodeId));
+   expect(v.runtime.readMany(project, "tracks").map(track => track._nodeId)).toEqual(oldIds);
+   v.settle();
+   expect(v.findAll("track-row")).toHaveLength(3);
+  } finally { releaseOld(); }
+ });
+
+ test("receiver Add readiness follows project metadata and scope while late old attrs stay disabled", () => {
+  const fixture = createSkeletonRaceFixture([]);
+  const root = createTestRoot();
+  try {
+   root.render(() => <div style={{ display: "flex", width: 1000, height: 160 }}><RootScope runtime={fixture.runtime}><TimelineCommands /></RootScope></div>);
+   const update = (fn: () => void) => root.flushSync(fn);
+   const state = (enabled: boolean) => {
+    for (const id of ["timeline-add-video-track", "timeline-add-audio-track"]) expect(root.renderer.findByTestId(id)!.customProps?.tabIndex).toBe(enabled ? 0 : -1);
+   };
+   state(false);
+   update(() => fixture.deliverActiveProjectRel("p")); state(false);
+   update(() => fixture.deliverAttrs("p", { title: "" })); state(false);
+   update(() => fixture.deliverAttrs("root", { $meta$rels$activeProject$exists: true })); state(true);
+   update(() => fixture.deliverActiveProjectRel("q")); state(false);
+   update(() => fixture.deliverAttrs("p", { title: "Late old project" })); state(false);
+   expect(root.renderer.getAllText()).toContain("Loading project…");
+   update(() => fixture.deliverAttrs("q", { title: "Current" })); state(true);
+   update(() => fixture.deliverAttrs("root", { $meta$rels$activeProject$exists: false })); state(false);
+   expect(root.renderer.getAllText()).toContain("No active project");
+   update(() => fixture.deliverActiveProjectRel(null)); state(false);
+   update(() => fixture.deliverAttrs("root", { $meta$rels$activeProject$exists: true })); state(false);
+   expect(fixture.runtime.getSnapshot().runtimeError).toBeNull();
+  } finally { root.unmount(); fixture.destroy(); }
+ });
  test("receiver readiness requires project, metadata, identity and finite cursor; late old attrs cannot arm a new selection", () => {
   const fixture = createSkeletonRaceFixture([]);
   const root = createTestRoot();

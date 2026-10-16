@@ -1,4 +1,5 @@
-import { createAttrsFor, createOneFor, useRootDispatch, useRootScope, useScopeRuntime } from "../../../dkt-solid-sync";
+import { createAttrsFor, createDispatchFor, createOneFor, useRootDispatch, useRootScope, useScopeRuntime } from "../../../dkt-solid-sync";
+import type { ProjectAddTrackPayload } from "../../../video-editor/models/Project/actions";
 import { Button } from "../controls/Button";
 import { colors } from "../theme";
 
@@ -12,6 +13,7 @@ export const TimelineCommands = () => {
  const projectAttrs = createAttrsFor(runtime, project, ["title"]);
  const clipAttrs = createAttrsFor(runtime, selected, ["name"]);
  const dispatch = useRootDispatch();
+ const projectDispatch = createDispatchFor(runtime, project);
  const projectReady = () => attrs.$meta$rels$activeProject$exists() === true && project() !== null && typeof projectAttrs.title() === "string";
  const clipReady = () => projectReady() && attrs.$meta$rels$selectedClip$exists() === true && selected() !== null && typeof clipAttrs.name() === "string" && attrs.selectedEntityId() === selected()?._nodeId;
  const splitReady = () => clipReady() && typeof attrs.cursor() === "number" && Number.isFinite(attrs.cursor());
@@ -23,6 +25,8 @@ export const TimelineCommands = () => {
    <Button testId="timeline-nudge-back" aria-label="Nudge -0.5s" disabled={!clipReady()} onClick={() => { if (clipReady()) dispatch("nudgeSelectedClip", { delta: -0.5 }); }}>-0.5s</Button>
    <Button testId="timeline-nudge-forward" aria-label="Nudge +0.5s" disabled={!clipReady()} onClick={() => { if (clipReady()) dispatch("nudgeSelectedClip", { delta: 0.5 }); }}>+0.5s</Button>
    <Button testId="timeline-delete" aria-label="Delete clip" disabled={!clipReady()} onClick={() => { if (clipReady()) dispatch("deleteSelectedClip"); }}>Delete</Button>
+   <Button testId="timeline-add-video-track" aria-label="Add video track" disabled={!projectReady()} onClick={() => { if (projectReady()) projectDispatch("addTrack", ({ kind: "video" } satisfies ProjectAddTrackPayload)); }}>+Video</Button>
+   <Button testId="timeline-add-audio-track" aria-label="Add audio track" disabled={!projectReady()} onClick={() => { if (projectReady()) projectDispatch("addTrack", ({ kind: "audio" } satisfies ProjectAddTrackPayload)); }}>+Audio</Button>
   </div>
  </div>;
 };
