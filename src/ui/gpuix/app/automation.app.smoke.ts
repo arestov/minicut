@@ -167,7 +167,11 @@ try {
   if (clips.length !== 1 || !clips[0].bounds) throw new Error("imported video Clip is missing or ambiguous");
   const bounds = clips[0].bounds;
   await app!.mouse.click({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
-  await app!.getByTestId("inspector-name").waitFor(); await app!.getByTestId("inspector-tabs-export").click(); await app!.getByTestId("inspector-export-queue").click();
+  await app!.getByTestId("inspector-name").waitFor();
+  await app!.getByTestId("inspector-tabs-export").click();
+  await app!.getByTestId("inspector-panel-export").waitFor();
+  await app!.getByTestId("inspector-export-queue").waitFor();
+  await app!.getByTestId("inspector-export-queue").click();
   await eventually(async () => (await app!.getByType("text").all()).some(node => node.text?.startsWith("Saved file: ")), "selected Clip did not report a saved file", 120_000);
   const text = (await app!.getByType("text").all()).map(node => node.text ?? "");
   const saved = text.find(value => value.startsWith("Saved file: "))?.slice("Saved file: ".length);
