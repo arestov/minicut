@@ -30,3 +30,63 @@ just not activated.
 The window test scripts set `GPUIX_BACKGROUND=1` (default; `GPUIX_BACKGROUND=0 npm run test:gpuix:window`
 to watch the window). `main.tsx` and `app/main.tsx` read it as `focus: process.env.GPUIX_BACKGROUND !== "1"`.
 Run window suites serially; they leave no processes behind.
+
+## Reproducing headless host checks with direct media binaries
+
+Run these commands from the agent-owned MiniCut worktree. Keep the existing
+five-second test limits. On Windows, `Get-Command ffmpeg,ffprobe` can resolve
+Chocolatey ShimGen launchers rather than the media executables. Use the existing
+`MINICUT_FFMPEG_PATH` / `MINICUT_FFPROBE_PATH` settings to select the real binaries;
+setting an absolute path to a launcher does not remove its extra process.
+The paths below are an example Chocolatey installation; verify them locally.
+
+The two host scenarios start/restore multiple real hosts and run media probes
+within one test deadline. Phase measurements on 2026-10-17 reached their outcomes
+with no stalled model read: startup/reopen's body took 4.95 s through PATH versus
+1.38 s with direct binaries; the GPUIX/Electron/GPUIX body took 3.48 s versus
+2.26 s. These measurements locate time spent in startup and external media work;
+they are not a guarantee against host load or proof that launchers caused every
+prior timeout. An earlier direct-path run also timed out. A passing isolated run
+is not a substitute for the original host files and the complete GPUIX suite.
+
+For headless acceptance, keep the separately verified test-only native override
+already configured for this checkout; do not install it into `node_modules`.
+The commands below only change media paths for the current process and restore
+them afterwards. Real app-window/compiled-load checks use the published native
+with `NAPI_RS_NATIVE_LIBRARY_PATH` absent. No native/dependency change is implied.
+
+```powershell
+# In the agent-owned worktree; configure the verified headless native separately.
+$mediaTools = 'C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin'
+$mediaPaths = @{
+    MINICUT_FFMPEG_PATH = Join-Path $mediaTools 'ffmpeg.exe'
+    MINICUT_FFPROBE_PATH = Join-Path $mediaTools 'ffprobe.exe'
+}
+$savedMediaPaths = @{}
+foreach ($key in $mediaPaths.Keys) {
+    if (-not (Test-Path -LiteralPath $mediaPaths[$key] -PathType Leaf)) {
+        throw "Missing media binary: $($mediaPaths[$key])"
+    }
+    $savedMediaPaths[$key] = [Environment]::GetEnvironmentVariable($key)
+}
+try {
+    foreach ($key in $mediaPaths.Keys) {
+        Set-Item -LiteralPath "Env:$key" -Value $mediaPaths[$key]
+    }
+    node scripts/run-gpuix-tests.mjs app/startRealHost.test.ts host/desktopHostTurns.test.ts
+    if ($LASTEXITCODE -ne 0) { throw 'Host checks failed; inspect the failure.' }
+    npm run test:gpuix
+    if ($LASTEXITCODE -ne 0) { throw 'Full GPUIX checks failed; inspect the failure.' }
+} finally {
+    foreach ($key in $savedMediaPaths.Keys) {
+        if ($null -eq $savedMediaPaths[$key]) {
+            Remove-Item -LiteralPath "Env:$key" -ErrorAction SilentlyContinue
+        } else {
+            Set-Item -LiteralPath "Env:$key" -Value $savedMediaPaths[$key]
+        }
+    }
+}
+```
+
+Do not add retries, warmup, skips, a larger timeout, or fake preflight/probe results
+to make these checks green. Preserve a failing run's log before further diagnosis.
