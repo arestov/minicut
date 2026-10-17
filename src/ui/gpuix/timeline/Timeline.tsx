@@ -8,6 +8,7 @@ import {
 import { Panel } from "../controls/Panel";
 import { useRootAttrs } from "../hooks/useRootAttrs";
 import { colors } from "../theme";
+import { TimelineCommands } from "./TimelineCommands";
 import { TrackRow } from "./TrackRow";
 import {
 	clamp,
@@ -162,6 +163,7 @@ export const Timeline = (props: {
 	return (
 		<TimelineViewContext.Provider value={view}>
 			<Panel title="Timeline" testId="timeline" grow>
+				<TimelineCommands />
 				<div
 					testId="timeline-surface"
 					style={{ display: "flex", flexDirection: "column", flexGrow: 1, minHeight: 0, position: "relative" }}
